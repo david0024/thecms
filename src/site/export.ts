@@ -43,8 +43,8 @@ export async function buildSite(site: Site, theme: Theme, pages: Page[]): Promis
  * someone's files.
  */
 export async function exportSite(store: Store, outDir: string): Promise<string[]> {
-  const theme = store.theme();
-  if (!theme) throw new Error('this site has no theme yet');
+  const theme = store.publishedTheme();
+  if (!theme) throw new Error('the theme is not published yet');
   const pages = store.published();
   if (pages.length === 0) throw new Error('nothing is published yet');
   if (!pages.some((p) => p.slug === '')) throw new Error('the home page is not published');

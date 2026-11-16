@@ -21,6 +21,7 @@ beforeEach(async () => {
   store = new Store(join(dir, 'site.db'));
   store.setSite(site);
   store.setTheme(plain);
+  store.publishTheme();
   for (const page of DEMO_PAGES) store.publish(store.savePage(page).slug);
 });
 afterEach(async () => {
@@ -159,4 +160,15 @@ test('editor marks exist only in the editor', () => {
   expect(editing).toContain('data-edit="items.0.title"');
   expect(editing).toContain('data-type="hero"');
   expect(visitor).not.toMatch(/data-edit|data-type|data-multiline|cms-empty/);
+});
+
+test('a theme being worked on does not reach the export until it is published', async () => {
+  const css = async (): Promise<string> => (await buildSite(site, store.publishedTheme() as Theme, store.published())).get('assets/site.css') as string;
+  store.setTheme(studio);
+  expect(store.themeChanged()).toBe(true);
+  expect(store.theme()!.name).toBe('Studio');
+  expect(await css()).toContain('--t-color-background:#ffffff');
+  store.publishTheme();
+  expect(store.themeChanged()).toBe(false);
+  expect(await css()).toContain('--t-color-background:#12110f');
 });

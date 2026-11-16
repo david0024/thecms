@@ -1,7 +1,7 @@
 /**
  * The editor, driven in a real browser from the first click to the exported
  * file: add a block, type on the page, style it with a token and with a free
- * value, change the theme, publish, export. Each step is checked by what it
+ * value, change the theme, build on it in the theme builder, publish, export. Each step is checked by what it
  * left behind (the stored document, the exported HTML), not by what the
  * screen said.
  *
@@ -9,7 +9,7 @@
  */
 const { chromium } = require('playwright');
 const { spawn, execFileSync } = require('node:child_process');
-const { mkdtempSync, readFileSync, rmSync } = require('node:fs');
+const { mkdtempSync, readFileSync, rmSync, writeFileSync } = require('node:fs');
 const { tmpdir } = require('node:os');
 const { join } = require('node:path');
 
@@ -93,6 +93,58 @@ const assert = (condition, message) => {
     assert(background === 'rgb(29, 27, 24)', `the token followed the new theme (${background})`);
     if (shots) await page.screenshot({ path: join(shots, 'editor-studio.png') });
 
+    // The theme builder: change a colour and see it on the page at once.
+    await page.locator('[data-theme-mode]').click();
+    const primary = page.locator('input[data-token="color.primary"]');
+    await primary.fill('#ff0066');
+    const buttonColour = () => canvas.locator('a.button').first().evaluate((el) => getComputedStyle(el).backgroundColor);
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('iframe').contentDocument.querySelector('a.button')).backgroundColor === 'rgb(255, 0, 102)');
+    assert(true, 'a colour changed in the theme builder repaints the page');
+    if (shots) await page.screenshot({ path: join(shots, 'theme-colours.png') });
+    await primary.fill('red;}body{display:none');
+    await page.waitForTimeout(600);
+    assert((await buttonColour()) === 'rgb(255, 0, 102)', 'a theme value that is not a colour is not applied; the theme keeps what it had');
+    await primary.fill('#ff0066');
+
+    // A token of the author's own, used as a block type's default.
+    await page.locator('[data-new-token-name="color"]').fill('brand');
+    await page.locator('[data-new-token-value="color"]').fill('#00aa88');
+    await page.locator('[data-add-token="color"]').click();
+    await page.getByText('Blocks', { exact: true }).click();
+    await page.locator('select[data-theme-block]').selectOption('services');
+    await page.locator('[data-theme-style="default"] select[data-style="background"]').selectOption('token:brand');
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('iframe').contentDocument.querySelector('.b-services')).backgroundColor === 'rgb(0, 170, 136)');
+    assert(true, 'a new token can style every block of a type');
+    await page.getByRole('button', { name: 'Remove brand' }).click();
+    await page.getByRole('alert').waitFor();
+    assert(await page.locator('input[data-token="color.brand"]').isVisible(), 'a token still in use cannot be removed, and the builder says why');
+    await page.locator('[data-new-variant]').fill('quiet');
+    await page.getByRole('button', { name: 'Add variant' }).click();
+    await page.locator('[data-theme-style="quiet"]').waitFor();
+
+    // A theme is a file: download it, and refuse a file that is not a theme.
+    await page.getByText('Save or load a theme file').click();
+    const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Download this theme' }).click()]);
+    const themeFile = join(dir, 'downloaded.theme.json');
+    await download.saveAs(themeFile);
+    const downloaded = JSON.parse(readFileSync(themeFile, 'utf8'));
+    assert(downloaded.tokens.color.brand === '#00aa88' && downloaded.blocks.services.variants.quiet, 'the downloaded theme file holds what was built');
+    const bad = join(dir, 'bad.theme.json');
+    writeFileSync(bad, JSON.stringify({ ...downloaded, tokens: { ...downloaded.tokens, color: { ...downloaded.tokens.color, primary: 'url(https://evil.example)' } } }));
+    await page.locator('[data-theme-file]').setInputFiles(bad);
+    await page.getByText('This file is not a valid theme.').waitFor();
+    assert((await buttonColour()) === 'rgb(255, 0, 102)', 'a theme file with a bad value is refused whole');
+    if (shots) await page.screenshot({ path: join(shots, 'theme-builder.png') });
+
+    // Nothing of this has reached visitors yet: the theme has a draft too.
+    await page.waitForTimeout(500);
+    const early = join(dir, 'early');
+    cli('export', db, early);
+    assert(readFileSync(join(early, 'assets/site.css'), 'utf8').includes('--t-color-primary:#2563eb'), 'until the theme is published, the export keeps the published theme');
+    await page.locator('[data-publish-theme]').click();
+    await page.locator('[data-publish-theme]').waitFor({ state: 'detached' });
+    await page.locator('[data-theme-mode]').click();
+
     // Undo brings the padding back off, redo puts it on again.
     await page.locator('aside.left h2').first().click();
     await page.keyboard.press('ControlOrMeta+z');
@@ -130,7 +182,10 @@ const assert = (condition, message) => {
   assert(/\{background-color:var\(--t-color-surface\);padding-block:7rem\}/.test(home), 'the block carries its token and its free value, and nothing else');
   assert(!/display:none|red;/.test(home), 'the refused value never reached the page');
   assert(!/data-edit|contenteditable|cms-|<script/.test(home), 'nothing of the editor is in the export');
-  assert(readFileSync(join(out, 'assets/site.css'), 'utf8').includes('--t-color-background:#12110f'), 'the export uses the theme chosen in the editor');
+  const css = readFileSync(join(out, 'assets/site.css'), 'utf8');
+  assert(css.includes('--t-color-background:#12110f'), 'the export uses the theme chosen in the editor');
+  assert(css.includes('--t-color-primary:#ff0066') && css.includes('.b-services{background-color:var(--t-color-brand)}'), 'the export carries the theme as it was built');
+  assert(!/evil|display:none/.test(css), 'no refused theme value reached the stylesheet');
   assert(readFileSync(join(out, 'preturi-si-comenzi/index.html'), 'utf8').includes('<h1>A headline that says what you do</h1>'), 'the new page is exported at its own address');
   rmSync(dir, { recursive: true, force: true });
   console.log('\nThe editor works end to end.');

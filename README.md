@@ -18,6 +18,7 @@ The decisions behind this, each with its reason:
 - [ADR 0001 — Foundations](docs/adr/0001-foundations.md)
 - [ADR 0002 — The first slice](docs/adr/0002-the-first-slice.md)
 - [ADR 0003 — The editor works on the real page](docs/adr/0003-the-editor.md)
+- [ADR 0004 — The theme builder](docs/adr/0004-the-theme-builder.md)
 
 ## Where it stands
 
@@ -30,8 +31,8 @@ theme, publish, and export the site as static files.
 | SQLite store, draft and published kept apart | done |
 | Static export with sitemap and robots.txt | done |
 | Visual editor: add, move, remove, type on the page, style with theme tokens | done |
-| Theme builder | next |
-| Drag and drop, rich text toolbar, media library, blog | planned |
+| Theme builder: tokens, block defaults and variants, themes as files | done |
+| Drag and drop, rich text toolbar, media library, blog | next |
 | WordPress import | planned |
 | Modules (isolated plugins) | planned |
 
@@ -47,8 +48,10 @@ bun run cms export site.db dist       # the published site as static files
 ```
 
 In the editor, click any text on the page and type. Add blocks from the left,
-style the selected block on the right, change the theme at the top, then
-Publish. `export` writes what is published; serve `dist` with any static file
+style the selected block on the right, then Publish. **Edit theme** opens the
+theme builder: change the colours, typefaces and spacing, set how each block
+type looks by default, and download the result as a file. A theme is published
+separately from pages, with **Publish theme**. `export` writes what is published; serve `dist` with any static file
 server.
 
 The address `edit` prints carries a key. The editor answers only on your own
