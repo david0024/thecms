@@ -1,6 +1,6 @@
 # ADR 0004 — The theme builder
 
-- **Status:** Proposed (awaiting the owner's review)
+- **Status:** Accepted
 - **Date:** 2026-11-16
 - **Builds on:** ADR 0001 d8 (a theme is a data document, and there is a visual
   theme builder), ADR 0002 d2 (token groups and style properties).

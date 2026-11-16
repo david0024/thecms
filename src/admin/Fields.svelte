@@ -1,7 +1,8 @@
 <script lang="ts">
 /** A form for one block's content, generated from the fields its type declares. */
-import type { Field } from '../core/index.ts';
+import type { Field, ImageValue } from '../core/index.ts';
 import Self from './Fields.svelte';
+import ImageField from './ImageField.svelte';
 import { t } from './messages.ts';
 import { getPath } from './paths.ts';
 
@@ -33,15 +34,7 @@ const input = (e: Event): string => (e.currentTarget as HTMLInputElement | HTMLT
     {:else if field.kind === 'richtext'}
       <p class="hint">{t.inspector.onPage}</p>
     {:else if field.kind === 'image'}
-      <fieldset>
-        <legend>{t.fields[name] ?? name}</legend>
-        <label><span>{t.inspector.imageSrc}</span>
-          <input type="url" value={part(name, 'src')} oninput={(e) => onchange(at(name), { src: input(e), alt: part(name, 'alt') })} />
-        </label>
-        <label><span>{t.inspector.imageAlt}</span>
-          <input type="text" value={part(name, 'alt')} oninput={(e) => onchange(at(name), { src: part(name, 'src'), alt: input(e) })} />
-        </label>
-      </fieldset>
+      <ImageField label={t.fields[name] ?? name} value={(getPath(content, name) as ImageValue | null | undefined) ?? null} onchange={(value) => onchange(at(name), value)} />
     {:else if field.kind === 'link'}
       <fieldset>
         <legend>{t.fields[name] ?? name}</legend>

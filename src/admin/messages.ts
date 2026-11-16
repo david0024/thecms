@@ -3,7 +3,7 @@
  * object of this shape; nothing in a component is written in a language.
  */
 export const en = {
-  app: { pages: 'Pages', blocks: 'Add a block', newPage: 'New page', pageTitle: 'Page title', create: 'Create', cancel: 'Cancel', home: 'Home page' },
+  app: { pages: 'Pages', blocks: 'Add a block', blocksHint: 'Click to add, or drag onto the page.', tooDeep: 'Groups nest at most four deep; it cannot go there.', newPage: 'New page', pageTitle: 'Page title', create: 'Create', cancel: 'Cancel', home: 'Home page' },
   bar: {
     undo: 'Undo',
     redo: 'Redo',
@@ -32,11 +32,33 @@ export const en = {
     deletePage: 'Delete this page',
     add: 'Add',
     remove: 'Remove',
-    imageSrc: 'Image address',
+    imageSrc: 'Image address (https://…)',
     imageAlt: 'Describe the image (for people who cannot see it)',
     linkLabel: 'Button text',
     linkHref: 'Where it goes (for example /contact/)',
   },
+  media: {
+    upload: 'Upload an image',
+    uploading: 'Uploading…',
+    library: 'Choose from uploaded',
+    empty: 'Nothing uploaded yet.',
+    remove: 'Delete this image',
+    elsewhere: 'Use an image from another address',
+  },
+  format: {
+    p: 'Paragraph',
+    h2: 'Heading',
+    h3: 'Small heading',
+    quote: 'Quote',
+    ul: 'Bulleted list',
+    ol: 'Numbered list',
+    bold: 'Bold',
+    italic: 'Italic',
+    link: 'Link',
+    linkPlaceholder: 'https://… or /contact/',
+    linkApply: 'Apply',
+    linkRemove: 'Remove link',
+  } as Record<string, string>,
   style: {
     theme: 'From the theme',
     custom: 'My own value',
@@ -99,7 +121,7 @@ export const en = {
     label: 'Button text',
   } as Record<string, string>,
   empty: { image: 'Choose an image in the panel on the right', group: 'An empty group. Select it, then add a block.', page: 'An empty page. Add a block from the left.' } as Record<string, string>,
-  actions: { up: 'Move up', down: 'Move down', duplicate: 'Duplicate', delete: 'Delete' } as Record<string, string>,
+  actions: { drag: 'Drag to move', up: 'Move up', down: 'Move down', duplicate: 'Duplicate', delete: 'Delete' } as Record<string, string>,
 };
 
 export type Messages = typeof en;

@@ -1,7 +1,8 @@
 /**
  * The editor, driven in a real browser from the first click to the exported
  * file: add a block, type on the page, style it with a token and with a free
- * value, change the theme, build on it in the theme builder, publish, export. Each step is checked by what it
+ * value, change the theme, build on it in the theme builder, format text,
+ * upload an image, drag blocks, publish, export. Each step is checked by what it
  * left behind (the stored document, the exported HTML), not by what the
  * screen said.
  *
@@ -9,7 +10,7 @@
  */
 const { chromium } = require('playwright');
 const { spawn, execFileSync } = require('node:child_process');
-const { mkdtempSync, readFileSync, rmSync, writeFileSync } = require('node:fs');
+const { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } = require('node:fs');
 const { tmpdir } = require('node:os');
 const { join } = require('node:path');
 
@@ -159,6 +160,120 @@ const assert = (condition, message) => {
     await page.locator('[data-add="hero"]').click();
     await canvas.locator('h1').waitFor();
     await saved();
+
+    // What the server holds for this page: the document, not the screen.
+    const token = url.split('#token=')[1];
+    const stored = async () => {
+      await saved();
+      return page.evaluate(async (t) => (await (await fetch('/api/page?slug=preturi-si-comenzi', { headers: { 'x-thecms-token': t } })).json()).page.blocks, token);
+    };
+    const format = (name) => canvas.locator(`.cms-format button[data-format="${name}"]`).click();
+
+    // Format text with the bar: a heading, a list, bold, a link, and a link that is refused.
+    await page.locator('[data-add="text"]').click();
+    const text = canvas.locator('.b-text .prose');
+    await text.click();
+    await page.keyboard.press('ControlOrMeta+a');
+    await page.keyboard.type('Our prices');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('Oak table');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('Walnut shelf');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('Ask us for an offer');
+    await text.locator('p').first().click();
+    await format('h2');
+    await text.locator('h2').waitFor();
+    await text.locator('p').first().click();
+    await page.keyboard.press('Home');
+    await page.keyboard.press('Shift+ArrowDown');
+    await page.keyboard.press('Shift+End');
+    await format('ul');
+    await text.locator('ul li').nth(1).waitFor();
+    await text.locator('p').last().click();
+    await page.keyboard.press('End');
+    await page.keyboard.press('Shift+ControlOrMeta+ArrowLeft');
+    await format('link');
+    await canvas.locator('.cms-format input').fill('/contact/');
+    await page.keyboard.press('Enter');
+    await text.locator('a[href="/contact/"]').waitFor();
+    await page.keyboard.press('Home');
+    await page.keyboard.press('Shift+ControlOrMeta+ArrowRight');
+    await format('bold');
+    await format('link');
+    await canvas.locator('.cms-format input').fill('javascript:alert(1)');
+    await page.keyboard.press('Enter');
+    const body = (await stored()).find((b) => b.type === 'text').content.body;
+    assert(body[0].type === 'heading' && body[0].level === 2 && body[0].children[0].text === 'Our prices', 'the bar turns a line into a heading');
+    assert(body[1].type === 'list' && body[1].items.length === 2 && body[1].items[1][0].text === 'Walnut shelf', 'two selected lines become a list of two');
+    const last = body[2].children;
+    assert(last.some((s) => s.href === '/contact/' && s.text.trim() === 'offer'), 'the selected word carries the link');
+    assert(last[0].marks?.includes('bold') && last[0].text.trim() === 'Ask' && !last[0].href, 'bold is kept, and a javascript: link is not');
+    assert((await text.locator('a').count()) === 1, 'the page shows the document: the refused link is not drawn either');
+    if (shots) await page.screenshot({ path: join(shots, 'editor-format.png') });
+
+    // Upload an image. A photo is made lighter on the way; a file that is not an image is refused.
+    await page.locator('[data-add="image"]').click();
+    await canvas.locator('.cms-empty[data-empty="image"]').waitFor();
+    const photo = join(dir, 'photo.jpg');
+    const jpeg = await page.evaluate(() => {
+      const c = document.createElement('canvas');
+      c.width = 3000;
+      c.height = 300;
+      const g = c.getContext('2d');
+      g.fillStyle = '#c96';
+      g.fillRect(0, 0, 3000, 300);
+      return c.toDataURL('image/jpeg').split(',')[1];
+    });
+    writeFileSync(photo, Buffer.from(jpeg, 'base64'));
+    await page.locator('[data-media-file]').setInputFiles(photo);
+    const img = canvas.locator('.b-image img');
+    await img.waitFor({ state: 'attached' });
+    await img.evaluate((el) => el.scrollIntoView());
+    await page.locator('[data-image-alt]').fill('A plank of oak');
+    const image = (await stored()).find((b) => b.type === 'image').content.image;
+    assert(/^\/media\/[a-f0-9]{32}\.webp$/.test(image.src) && image.alt === 'A plank of oak', `the photo is stored with the site, as WebP (${image.src})`);
+    await page.waitForFunction(() => document.querySelector('iframe').contentDocument.querySelector('.b-image img')?.naturalWidth === 2400);
+    assert(true, 'a photo wider than a page needs is made 2400 pixels wide before it is uploaded');
+    const fake = join(dir, 'fake.png');
+    writeFileSync(fake, '<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"/>');
+    await page.locator('[data-media-file]').setInputFiles(fake);
+    await page.locator('[data-image-field] [role="alert"]').waitFor();
+    assert((await stored()).find((b) => b.type === 'image').content.image.src === image.src, 'a file that only claims to be an image is refused, and the picture stays');
+    await page.locator('[data-media-library]').click();
+    await page.locator(`[data-media="${image.src.slice(7)}"]`).waitFor();
+    await page.getByRole('button', { name: /^Delete this image/ }).click();
+    await page.getByText('this image is used on: Prețuri și comenzi').waitFor();
+    assert(true, 'an image a page shows cannot be deleted, and the editor names the page');
+    // Those two refusals are the only failed requests so far; the browser logs each one.
+    assert(errors.length === 2 && errors.every((e) => e.includes('400')), `nothing else has failed up to here ${errors.join(' | ')}`);
+    errors.length = 0;
+    if (shots) await page.screenshot({ path: join(shots, 'editor-image.png') });
+
+    // Drag: a new block from the list onto the page, a block into a group, and out again.
+    const order = async () => (await stored()).map((b) => (b.children ? `${b.type}(${b.children.map((c) => c.type).join(',')})` : b.type)).join(' ');
+    await page.locator('[data-add="group"]').click();
+    await canvas.locator('.b-group .cms-empty').waitFor();
+    assert((await order()) === 'hero text image group()', `before dragging: ${await order()}`);
+    await page.locator('[data-add="contact"]').dragTo(canvas.locator('.b-hero'), { targetPosition: { x: 200, y: 8 } });
+    await canvas.locator('.b-contact').waitFor();
+    assert((await order()) === 'contact hero text image group()', `a block dragged from the list lands where it is dropped: ${await order()}`);
+    await canvas.locator('.b-image img').click();
+    await canvas.locator('.b-image .cms-grip').dragTo(canvas.locator('.b-group .cms-empty'));
+    await canvas.locator('.b-group .b-image').waitFor();
+    assert((await order()) === 'contact hero text group(image)', `a block dragged onto a group goes inside it: ${await order()}`);
+    if (shots) await page.screenshot({ path: join(shots, 'editor-drag.png') });
+    await canvas.locator('.b-text .prose').click();
+    await canvas.locator('.b-text .cms-grip').dragTo(canvas.locator('.b-group .b-image'), { targetPosition: { x: 200, y: 6 } });
+    await canvas.locator('.b-group .b-text').waitFor();
+    assert((await order()) === 'contact hero group(text,image)', `and to a place among the blocks already there: ${await order()}`);
+    await canvas.locator('.b-group .b-image img').click();
+    await canvas.locator('.b-image .cms-grip').dragTo(canvas.locator('.b-group'), { targetPosition: { x: 200, y: 5 } });
+    await page.waitForFunction(() => !document.querySelector('iframe').contentDocument.querySelector('.b-group .b-image'));
+    assert((await order()) === 'contact hero image group(text)', `a block dragged to the edge of a group lands beside it, outside: ${await order()}`);
+    await page.locator('aside.left h2').first().click();
+    await page.keyboard.press('ControlOrMeta+z');
+    assert((await order()) === 'contact hero group(text,image)', 'one undo takes one drag back');
     await page.getByRole('button', { name: 'Publish' }).click();
     await page.getByText('Published', { exact: true }).waitFor();
 
@@ -168,6 +283,10 @@ const assert = (condition, message) => {
     await page.getByRole('button', { name: 'Publish' }).click();
     await page.getByText('Published', { exact: true }).waitFor();
     assert(errors.length === 0, `no errors in the browser console ${errors.join(' | ')}`);
+  } catch (error) {
+    // What the screen showed when a step failed, for whoever reads the log.
+    if (shots) await browser.contexts()[0]?.pages()[0]?.screenshot({ path: join(shots, 'failure.png') }).catch(() => {});
+    throw error;
   } finally {
     await browser.close();
     server.kill();
@@ -186,7 +305,13 @@ const assert = (condition, message) => {
   assert(css.includes('--t-color-background:#12110f'), 'the export uses the theme chosen in the editor');
   assert(css.includes('--t-color-primary:#ff0066') && css.includes('.b-services{background-color:var(--t-color-brand)}'), 'the export carries the theme as it was built');
   assert(!/evil|display:none/.test(css), 'no refused theme value reached the stylesheet');
-  assert(readFileSync(join(out, 'preturi-si-comenzi/index.html'), 'utf8').includes('<h1>A headline that says what you do</h1>'), 'the new page is exported at its own address');
+  const prices = readFileSync(join(out, 'preturi-si-comenzi/index.html'), 'utf8');
+  assert(prices.includes('<h1>A headline that says what you do</h1>'), 'the new page is exported at its own address');
+  assert(prices.includes('<h2>Our prices</h2><ul><li>Oak table</li><li>Walnut shelf</li></ul>'), 'the heading and the list are in the export');
+  assert(/<strong>Ask ?<\/strong>/.test(prices) && /<a href="\/contact\/">offer<\/a>/.test(prices) && !prices.includes('javascript:'), 'so are the bold word and the link, and not the refused one');
+  const picture = prices.match(/<img src="\/(media\/[a-f0-9]{32}\.webp)" alt="A plank of oak"/);
+  assert(picture && readFileSync(join(out, picture[1])).subarray(8, 12).toString() === 'WEBP', 'the uploaded image is exported beside the page that shows it');
+  assert(readdirSync(join(out, 'media')).length === 1, 'only images a published page shows are exported');
   rmSync(dir, { recursive: true, force: true });
   console.log('\nThe editor works end to end.');
 })().catch((error) => {

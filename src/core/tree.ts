@@ -11,7 +11,7 @@
  * here because that module is not published as a package (ADR 0001).
  */
 import type { Block } from './blocks.ts';
-import { isContainerType } from './blocks.ts';
+import { isContainerType, MAX_DEPTH } from './blocks.ts';
 import { newId } from './util.ts';
 
 const kids = (b: Block): Block[] => (isContainerType(b.type) ? (b.children ?? []) : []);
@@ -46,6 +46,28 @@ export function removeById(blocks: Block[], id: string): Block[] {
   return blocks.filter((b) => b.id !== id).map((b) => (isContainerType(b.type) ? withKids(b, removeById(kids(b), id)) : b));
 }
 
+/** How deep a block sits: 1 at the top; undefined when absent. */
+export function depthOf(blocks: Block[], id: string, depth = 1): number | undefined {
+  for (const b of blocks) {
+    if (b.id === id) return depth;
+    const hit = depthOf(kids(b), id, depth + 1);
+    if (hit !== undefined) return hit;
+  }
+  return undefined;
+}
+
+const height = (b: Block): number => 1 + Math.max(0, ...kids(b).map(height));
+
+/**
+ * Whether `block` may go inside `parentId` (null: the top) without nesting
+ * deeper than a page allows. Past that depth the cleaning on save would drop
+ * what the block holds, so the editor refuses the move instead.
+ */
+export function fits(blocks: Block[], parentId: string | null, block: Block): boolean {
+  const parentDepth = parentId === null ? 0 : depthOf(blocks, parentId);
+  return parentDepth !== undefined && parentDepth + height(block) <= MAX_DEPTH;
+}
+
 const clamp = (n: number, lo: number, hi: number): number => Math.min(Math.max(n, lo), hi);
 
 /** Insert at `index` inside the container `parentId`, or at the top when it is null. */
@@ -67,8 +89,8 @@ export function insertAt(blocks: Block[], parentId: string | null, index: number
 /**
  * Move a block to a new parent and index. The index is read against the tree
  * the block has already left. A move into the block itself, into its own
- * subtree or into something that is not a container changes nothing: each of
- * those would detach the branch from the page and lose it.
+ * subtree, into something that is not a container or deeper than a page allows
+ * changes nothing: each of those would lose the branch.
  */
 export function moveTo(blocks: Block[], id: string, parentId: string | null, index: number): Block[] {
   const block = findById(blocks, id);
@@ -76,6 +98,7 @@ export function moveTo(blocks: Block[], id: string, parentId: string | null, ind
   if (parentId !== null) {
     const parent = findById(blocks, parentId);
     if (!parent || !isContainerType(parent.type) || isSelfOrDescendant(blocks, id, parentId)) return blocks;
+    if (!fits(blocks, parentId, block)) return blocks;
   }
   return insertAt(removeById(blocks, id), parentId, index, block);
 }

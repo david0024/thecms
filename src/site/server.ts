@@ -12,7 +12,7 @@
  */
 import { readdir } from 'node:fs/promises';
 import { compile } from 'svelte/compiler';
-import { normalizePage, parseTheme, type Theme, themeCss } from '../core/index.ts';
+import { MEDIA_MAX_BYTES, MEDIA_PREFIX, normalizePage, parseTheme, type Theme, themeCss } from '../core/index.ts';
 import { renderParts } from './document.ts';
 import type { Store } from './store.ts';
 
@@ -131,6 +131,19 @@ export async function startEditor(store: Store, options: { port?: number; listen
   const state = (): unknown => ({ site: store.site(), theme: theme(), themeChanged: store.themeChanged(), themes, pages: store.pages() });
 
   async function api(request: Request, url: URL): Promise<Response> {
+    if (url.pathname === '/api/media') {
+      if (request.method === 'GET') return json({ media: store.media() });
+      if (request.method === 'DELETE') {
+        store.deleteMedia(url.searchParams.get('name') ?? '');
+        return json({ media: store.media() });
+      }
+      if (request.method === 'POST') {
+        // The body is the file itself. What it is, is read from its bytes.
+        if (Number(request.headers.get('content-length') ?? 0) > MEDIA_MAX_BYTES) return json({ error: 'the image is too large' }, 413);
+        const item = store.addMedia(new Uint8Array(await request.arrayBuffer()), url.searchParams.get('label'));
+        return json({ item, media: store.media() });
+      }
+    }
     const body = request.method === 'GET' || request.method === 'DELETE' ? {} : ((await request.json()) as Record<string, unknown>);
     const slug = url.searchParams.get('slug') ?? '';
     const route = `${request.method} ${url.pathname}`;
@@ -190,6 +203,11 @@ export async function startEditor(store: Store, options: { port?: number; listen
       }
     }
     if (request.method !== 'GET') return json({ error: 'not found' }, 404);
+    if (url.pathname.startsWith(MEDIA_PREFIX)) {
+      // An <img> cannot carry the token, so a stored image is read without it. Its name is the hash of its bytes.
+      const file = store.mediaFile(url.pathname.slice(MEDIA_PREFIX.length));
+      return file ? new Response(file.bytes as Uint8Array<ArrayBuffer>, { headers: { 'content-type': file.type, ...SECURITY } }) : json({ error: 'not found' }, 404);
+    }
     switch (url.pathname) {
       case '/':
       case '/admin':
@@ -208,7 +226,7 @@ export async function startEditor(store: Store, options: { port?: number; listen
     }
   }
 
-  const server = options.listen === false ? null : Bun.serve({ hostname: '127.0.0.1', port, fetch: handle });
+  const server = options.listen === false ? null : Bun.serve({ hostname: '127.0.0.1', port, fetch: handle, maxRequestBodySize: MEDIA_MAX_BYTES + 1024 * 1024 });
   if (server?.port) port = server.port;
   return {
     url: `http://127.0.0.1:${port}/admin/#token=${token}`,

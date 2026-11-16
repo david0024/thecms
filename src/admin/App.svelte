@@ -16,8 +16,11 @@ import {
   createBlock,
   duplicate,
   findById,
+  fits,
   insertAt,
+  isBlockType,
   isContainerType,
+  moveTo,
   nudge,
   type Page,
   type Theme,
@@ -68,7 +71,7 @@ async function draw(): Promise<void> {
   try {
     const { body, css } = await api.render(page);
     frame.contentWindow.postMessage(
-      { type: 'render', body, css, selected, themeVersion, labels: { types: t.types, fields: t.fields, empty: t.empty, actions: t.actions } },
+      { type: 'render', body, css, selected, themeVersion, labels: { types: t.types, fields: t.fields, empty: t.empty, actions: t.actions, format: t.format } },
       location.origin,
     );
   } catch (error) {
@@ -134,22 +137,51 @@ function redo(): void {
   change({ ...page, blocks: next }, { step: false });
 }
 
+/** Puts a new block at a place. Deeper than a page allows, it is refused and the author is told. */
+function insert(type: BlockType, parent: string | null, index: number): void {
+  if (!page) return;
+  const fresh = createBlock(type);
+  if (!fits(page.blocks, parent, fresh)) {
+    failure = t.app.tooDeep;
+    return;
+  }
+  failure = '';
+  setBlocks(insertAt(page.blocks, parent, index, fresh));
+  selected = fresh.id;
+  tab = 'content';
+}
+
 /** A new block goes into the selected group, else right after the selected block, else at the end. */
 function add(type: BlockType): void {
   if (!page) return;
-  const fresh = createBlock(type);
   const current = selected ? findById(page.blocks, selected) : null;
   if (current && isContainerType(current.type)) {
-    setBlocks(insertAt(page.blocks, current.id, current.children?.length ?? 0, fresh));
+    insert(type, current.id, current.children?.length ?? 0);
   } else if (current) {
     const parent = parentIdOf(page.blocks, current.id) ?? null;
     const siblings = parent ? (findById(page.blocks, parent)?.children ?? []) : page.blocks;
-    setBlocks(insertAt(page.blocks, parent, siblings.findIndex((b) => b.id === current.id) + 1, fresh));
+    insert(type, parent, siblings.findIndex((b) => b.id === current.id) + 1);
   } else {
-    setBlocks(insertAt(page.blocks, null, page.blocks.length, fresh));
+    insert(type, null, page.blocks.length);
   }
-  selected = fresh.id;
-  tab = 'content';
+}
+
+/** A block dropped at a place on the page. `index` counts the blocks there with the moved one left out. */
+function move(id: string, parent: string | null, index: number): void {
+  if (!page) return;
+  const moved = findById(page.blocks, id);
+  if (!moved) return;
+  const from = parentIdOf(page.blocks, id) ?? null;
+  const siblings = from ? (findById(page.blocks, from)?.children ?? []) : page.blocks;
+  // Dropped where it already was: nothing to do, and nothing to undo.
+  if (from === parent && siblings.findIndex((b) => b.id === id) === index) return;
+  if (parent !== null && !fits(page.blocks, parent, moved)) {
+    failure = t.app.tooDeep;
+    return;
+  }
+  failure = '';
+  selected = id;
+  setBlocks(moveTo(page.blocks, id, parent, index));
 }
 
 function act(id: string, action: 'up' | 'down' | 'duplicate' | 'delete'): void {
@@ -169,7 +201,8 @@ const patch = (id: string, fn: (b: Block) => Block, options?: { redraw?: boolean
 
 function onFrameMessage(event: MessageEvent): void {
   if (event.origin !== location.origin || event.source !== frame?.contentWindow || event.data?.thecms !== true) return;
-  const message = event.data as { type: string; id: string | null; path: string; value: unknown; action: 'up' };
+  const message = event.data as { type: string; id: string | null; path: string; value: unknown; action: 'up'; parent: string | null; index: number; blockType: string };
+  const place = (): boolean => (message.parent === null || typeof message.parent === 'string') && Number.isInteger(message.index);
   if (message.type === 'ready') {
     frameReady = true;
     draw();
@@ -183,6 +216,10 @@ function onFrameMessage(event: MessageEvent): void {
     patch(message.id, (b) => ({ ...b, content: setPath(b.content, message.path, message.value) }), { redraw: false, step });
   } else if (message.type === 'action' && message.id) {
     act(message.id, message.action);
+  } else if (message.type === 'move' && message.id && place()) {
+    move(message.id, message.parent, message.index);
+  } else if (message.type === 'insert' && isBlockType(message.blockType) && place()) {
+    insert(message.blockType, message.parent, message.index);
   }
 }
 
@@ -360,9 +397,20 @@ onMount(() => {
       <h2>{t.app.blocks}</h2>
       <ul class="library">
         {#each BLOCK_TYPES as type (type)}
-          <li><button type="button" onclick={() => add(type)} data-add={type}>{t.types[type] ?? type}</button></li>
+          <li>
+            <button
+              type="button"
+              draggable="true"
+              ondragstart={(e) => {
+                e.dataTransfer?.setData('application/x-thecms-type', type);
+                if (e.dataTransfer) e.dataTransfer.effectAllowed = 'copy';
+              }}
+              onclick={() => add(type)}
+              data-add={type}>{t.types[type] ?? type}</button>
+          </li>
         {/each}
       </ul>
+      <p class="hint">{t.app.blocksHint}</p>
     </aside>
 
     <main class="canvas">

@@ -72,11 +72,8 @@ tool. This is also the path to a single binary later.
 
 Stated so nobody assumes otherwise:
 
-- **Moving blocks is by buttons** (up, down), not by dragging, and a block
-  cannot yet be moved into or out of a group.
-- **Rich text has no toolbar.** Bold and italic work from the keyboard;
-  headings, lists and links cannot be made from the page yet.
-- **Images are given by address.** There is no upload or media library.
+- ~~Moving blocks is by buttons, rich text has no toolbar, images are given by
+  address.~~ Done in ADR 0005.
 - **A page's address is fixed when it is created.**
 - ~~The theme can be chosen, not built.~~ Done in ADR 0004.
 

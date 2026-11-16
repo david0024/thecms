@@ -82,7 +82,7 @@ describe('what a visitor receives', () => {
   test('a static page: no script, no request to another host, no framework marks', async () => {
     const files = await buildSite(site, themeOf(plain), store.published());
     for (const [path, contents] of files) {
-      expect(`${path}: ${/<script|<!--|@import|url\(/i.test(contents)}`).toBe(`${path}: false`);
+      expect(`${path}: ${/<script|<!--|@import|url\(/i.test(String(contents))}`).toBe(`${path}: false`);
     }
     const home = files.get('index.html') as string;
     expect(home).toStartWith('<!doctype html>\n<html lang="en">');

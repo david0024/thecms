@@ -1,6 +1,6 @@
 /**
- * A site is one SQLite file (ADR 0001 d9): its settings, its theme and its
- * pages. Copying the file is a backup.
+ * A site is one SQLite file (ADR 0001 d9): its settings, its theme, its pages
+ * and the images on them. Copying the file is a backup.
  *
  * A page, and the theme, each keep a working draft and, apart from it, a frozen
  * copy of what was last published. Visitors and the export only ever see the copy, so saving a
@@ -11,7 +11,34 @@
  * a row written before a rule was tightened is read under today's rules.
  */
 import { Database } from 'bun:sqlite';
-import { normalizePage, normalizeSite, type Page, parseTheme, type Site, type Theme } from '../core/index.ts';
+import {
+  imageExt,
+  imageSources,
+  isMediaName,
+  MEDIA_MAX_BYTES,
+  MEDIA_TYPES,
+  type MediaExt,
+  mediaNameOf,
+  mediaPath,
+  normalizePage,
+  normalizeSite,
+  type Page,
+  parseTheme,
+  type Site,
+  str,
+  type Theme,
+} from '../core/index.ts';
+
+/** One stored image, as the editor lists it. */
+export interface MediaItem {
+  name: string;
+  /** Where a page points to show it. */
+  path: string;
+  type: string;
+  size: number;
+  /** The file name it was uploaded under: only a label for the author. */
+  label: string;
+}
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -22,6 +49,13 @@ CREATE TABLE IF NOT EXISTS pages (
   published TEXT,
   published_at TEXT,
   updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS media (
+  name TEXT PRIMARY KEY,
+  label TEXT NOT NULL,
+  size INTEGER NOT NULL,
+  bytes BLOB NOT NULL,
+  created_at TEXT NOT NULL
 );`;
 
 export class Store {
@@ -154,5 +188,53 @@ export class Store {
       .query<{ published: string }, []>('SELECT published FROM pages WHERE published IS NOT NULL ORDER BY position, slug')
       .all()
       .map((row) => normalizePage(JSON.parse(row.published)).page);
+  }
+
+  /**
+   * Stores an image and returns where a page points to show it. The name is
+   * the hash of the bytes, so the same picture uploaded twice is stored once
+   * and a name never comes to mean another picture.
+   */
+  addMedia(bytes: Uint8Array, label: unknown = ''): MediaItem {
+    if (bytes.length > MEDIA_MAX_BYTES) throw new Error(`an image is at most ${MEDIA_MAX_BYTES / 1024 / 1024} MB`);
+    const ext = imageExt(bytes);
+    if (!ext) throw new Error('not an image this site can show (PNG, JPEG, GIF, WebP or AVIF)');
+    const name = `${new Bun.CryptoHasher('sha256').update(bytes).digest('hex').slice(0, 32)}.${ext}`;
+    this.db
+      .query('INSERT INTO media (name, label, size, bytes, created_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(name) DO NOTHING')
+      .run(name, str(label, 200).trim(), bytes.length, bytes, new Date().toISOString());
+    return this.media().find((m) => m.name === name) as MediaItem;
+  }
+
+  /** Every stored image, newest first. */
+  media(): MediaItem[] {
+    return this.db
+      .query<{ name: string; label: string; size: number }, []>('SELECT name, label, size FROM media ORDER BY created_at DESC, name')
+      .all()
+      .map((row) => ({ ...row, path: mediaPath(row.name), type: MEDIA_TYPES[row.name.split('.').pop() as MediaExt] }));
+  }
+
+  mediaFile(name: string): { type: string; bytes: Uint8Array } | null {
+    if (!isMediaName(name)) return null;
+    const row = this.db.query<{ bytes: Uint8Array }, [string]>('SELECT bytes FROM media WHERE name = ?').get(name);
+    return row ? { type: MEDIA_TYPES[name.split('.').pop() as MediaExt], bytes: row.bytes } : null;
+  }
+
+  /** The titles of the pages that show this image, in their draft or in what is published. */
+  mediaUsedBy(name: string): string[] {
+    const rows = this.db.query<{ draft: string; published: string | null }, []>('SELECT draft, published FROM pages ORDER BY position, slug').all();
+    const titles: string[] = [];
+    for (const row of rows) {
+      const copies = [row.draft, row.published].filter((c): c is string => c !== null).map((c) => normalizePage(JSON.parse(c)).page);
+      if (copies.some((page) => imageSources(page.blocks).some((src) => mediaNameOf(src) === name))) titles.push((copies[0] as Page).title);
+    }
+    return titles;
+  }
+
+  /** Deletes an image nothing shows. One that a page still shows is refused, with the page named. */
+  deleteMedia(name: string): void {
+    const used = this.mediaUsedBy(name);
+    if (used.length) throw new Error(`this image is used on: ${used.join(', ')}`);
+    this.db.query('DELETE FROM media WHERE name = ?').run(name);
   }
 }
