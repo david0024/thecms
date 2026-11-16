@@ -82,3 +82,42 @@ export function domToRichText(root: DomNode): RichText {
   walk(root, out);
   return normalizeRichText(out);
 }
+
+const MARK_TAG: Record<Mark, string> = { bold: 'strong', italic: 'em', code: 'code' };
+
+/**
+ * A document drawn back into an editable area, with the same elements the
+ * public renderer uses. After a formatting command the browser's own markup
+ * is replaced by this, so the area always shows the document that was read
+ * from it and nothing else.
+ */
+export function richTextToDom(doc: RichText, into: HTMLElement): void {
+  const make = (tag: string): HTMLElement => into.ownerDocument.createElement(tag);
+  const fill = (el: HTMLElement, spans: Span[]): HTMLElement => {
+    for (const span of spans) {
+      let node: Node = into.ownerDocument.createTextNode(span.text);
+      for (const mark of [...(span.marks ?? [])].reverse()) {
+        const wrap = make(MARK_TAG[mark]);
+        wrap.append(node);
+        node = wrap;
+      }
+      if (span.href) {
+        const link = make('a');
+        link.setAttribute('href', span.href);
+        link.append(node);
+        node = link;
+      }
+      el.append(node);
+    }
+    return el;
+  };
+  const nodes = doc.map((node) => {
+    if (node.type === 'list') {
+      const list = make(node.ordered ? 'ol' : 'ul');
+      list.append(...node.items.map((item) => fill(make('li'), item)));
+      return list;
+    }
+    return fill(make(node.type === 'heading' ? `h${node.level}` : node.type === 'quote' ? 'blockquote' : 'p'), node.children);
+  });
+  into.replaceChildren(...nodes);
+}

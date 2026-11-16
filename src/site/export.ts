@@ -4,7 +4,7 @@
  */
 import { mkdir, readdir, rm } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import { type Page, pagePath, type Site, type Theme, themeCss } from '../core/index.ts';
+import { imageSources, mediaNameOf, type Page, pagePath, type Site, type Theme, themeCss } from '../core/index.ts';
 import { type MenuItem, renderPage, STYLESHEET } from './document.ts';
 import type { Store } from './store.ts';
 
@@ -13,14 +13,30 @@ const BASE_CSS = new URL('../blocks/base.css', import.meta.url);
 
 const xml = (v: string): string => v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-/** The whole site as `path → contents`, without touching the disk. */
-export async function buildSite(site: Site, theme: Theme, pages: Page[]): Promise<Map<string, string>> {
-  const files = new Map<string, string>();
+/** Gives a stored image's bytes by name; null when the site does not have it. */
+export type MediaSource = (name: string) => Uint8Array | null;
+
+/**
+ * The whole site as `path → contents`, without touching the disk. Of the
+ * stored images, only those a published page shows are included.
+ */
+export async function buildSite(site: Site, theme: Theme, pages: Page[], media: MediaSource = () => null): Promise<Map<string, string | Uint8Array>> {
+  const files = new Map<string, string | Uint8Array>();
   const menu: MenuItem[] = pages.filter((p) => p.inMenu).map((p) => ({ title: p.title, slug: p.slug }));
 
   files.set(STYLESHEET.slice(1), `${themeCss(theme)}${await Bun.file(BASE_CSS).text()}`);
   for (const page of pages) {
     files.set(`${pagePath(page.slug).slice(1)}index.html`, renderPage(site, theme, page, menu));
+  }
+  for (const page of pages) {
+    for (const src of imageSources(page.blocks)) {
+      const name = mediaNameOf(src);
+      if (!name || files.has(src.slice(1))) continue;
+      const bytes = media(name);
+      // A page that would show a broken picture is not published quietly.
+      if (!bytes) throw new Error(`the page "${page.title}" shows an image this site does not have: ${src}`);
+      files.set(src.slice(1), bytes);
+    }
   }
   files.set(
     '404.html',
@@ -55,7 +71,7 @@ export async function exportSite(store: Store, outDir: string): Promise<string[]
   }
   await rm(outDir, { recursive: true, force: true });
 
-  const files = await buildSite(store.site(), theme, pages);
+  const files = await buildSite(store.site(), theme, pages, (name) => store.mediaFile(name)?.bytes ?? null);
   files.set(MARKER, 'Made by thecms export. This folder is replaced on every export.\n');
   for (const [path, contents] of files) {
     const target = join(outDir, path);

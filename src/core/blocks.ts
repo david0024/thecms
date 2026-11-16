@@ -110,7 +110,8 @@ export interface Block {
 }
 
 const MAX_BLOCKS = 500;
-const MAX_DEPTH = 4;
+/** How deep blocks nest: a block at the top is at depth 1. */
+export const MAX_DEPTH = 4;
 
 function cleanField(field: Field, raw: unknown): unknown {
   switch (field.kind) {
@@ -226,4 +227,24 @@ export function blocksText(blocks: Block[], max = 160): string {
   walk(blocks);
   const all = parts.join(' ').replace(/\s+/g, ' ').trim();
   return all.length > max ? `${all.slice(0, max).replace(/\s+\S*$/, '')}…` : all;
+}
+
+/** The address of every image on a page, as written: for knowing which stored images a page uses. */
+export function imageSources(blocks: Block[]): string[] {
+  const out: string[] = [];
+  const collect = (fields: Record<string, Field>, content: Record<string, unknown>): void => {
+    for (const [name, field] of Object.entries(fields)) {
+      const value = content[name];
+      if (field.kind === 'image' && isObject(value) && typeof value.src === 'string') out.push(value.src);
+      else if (field.kind === 'list' && Array.isArray(value)) for (const item of value) if (isObject(item)) collect(field.item, item);
+    }
+  };
+  const walk = (list: Block[]): void => {
+    for (const b of list) {
+      collect((BLOCKS[b.type] as BlockDef).fields, b.content);
+      if (b.children) walk(b.children);
+    }
+  };
+  walk(blocks);
+  return out;
 }

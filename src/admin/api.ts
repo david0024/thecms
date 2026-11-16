@@ -16,6 +16,14 @@ export interface State {
   pages: PageInfo[];
 }
 
+export interface MediaItem {
+  name: string;
+  path: string;
+  type: string;
+  size: number;
+  label: string;
+}
+
 const token = new URLSearchParams(location.hash.slice(1)).get('token') ?? '';
 
 async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
@@ -39,4 +47,17 @@ export const api = {
   render: (page: Page) => call<{ body: string; css: string }>('POST', '/api/render', { page }),
   setTheme: (theme: Theme) => call<State>('PUT', '/api/theme', { theme }),
   publishTheme: () => call<State>('POST', '/api/theme/publish', {}),
+  media: () => call<{ media: MediaItem[] }>('GET', '/api/media'),
+  removeMedia: (name: string) => call<{ media: MediaItem[] }>('DELETE', `/api/media?name=${encodeURIComponent(name)}`),
+  /** The body is the file itself; the server reads what it is from its bytes. */
+  async upload(file: Blob, label: string): Promise<{ item: MediaItem; media: MediaItem[] }> {
+    const response = await fetch(`/api/media?label=${encodeURIComponent(label)}`, {
+      method: 'POST',
+      headers: { 'x-thecms-token': token, 'content-type': 'application/octet-stream' },
+      body: file,
+    });
+    const data = (await response.json()) as { item: MediaItem; media: MediaItem[]; error?: string };
+    if (!response.ok) throw new Error(data.error ?? `request failed (${response.status})`);
+    return data;
+  },
 };
