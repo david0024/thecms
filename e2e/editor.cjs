@@ -123,13 +123,26 @@ const assert = (condition, message) => {
     await page.getByRole('button', { name: 'Add variant' }).click();
     await page.locator('[data-theme-style="quiet"]').waitFor();
 
+    // The header and footer are laid out by the theme: the same markup, another stylesheet.
+    const headerHtml = () => canvas.locator('.site-header').evaluate((el) => el.innerHTML);
+    const before = await headerHtml();
+    await page.getByText('Header and footer', { exact: true }).click();
+    await page.locator('select[data-layout="header"]').selectOption('centered');
+    await page.locator('[data-layout-style="header"] select[data-style="background"]').selectOption('token:brand');
+    await page.waitForFunction(() => {
+      const header = document.querySelector('iframe').contentDocument.querySelector('.site-header');
+      return getComputedStyle(header.querySelector('.site-in')).flexDirection === 'column' && getComputedStyle(header).backgroundColor === 'rgb(0, 170, 136)';
+    });
+    assert((await headerHtml()) === before, 'the theme rearranges and recolours the header without changing its markup');
+    if (shots) await page.screenshot({ path: join(shots, 'theme-header.png') });
+
     // A theme is a file: download it, and refuse a file that is not a theme.
     await page.getByText('Save or load a theme file').click();
     const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Download this theme' }).click()]);
     const themeFile = join(dir, 'downloaded.theme.json');
     await download.saveAs(themeFile);
     const downloaded = JSON.parse(readFileSync(themeFile, 'utf8'));
-    assert(downloaded.tokens.color.brand === '#00aa88' && downloaded.blocks.services.variants.quiet, 'the downloaded theme file holds what was built');
+    assert(downloaded.tokens.color.brand === '#00aa88' && downloaded.blocks.services.variants.quiet && downloaded.layout.header.arrangement === 'centered', 'the downloaded theme file holds what was built');
     const bad = join(dir, 'bad.theme.json');
     writeFileSync(bad, JSON.stringify({ ...downloaded, tokens: { ...downloaded.tokens, color: { ...downloaded.tokens.color, primary: 'url(https://evil.example)' } } }));
     await page.locator('[data-theme-file]').setInputFiles(bad);
@@ -274,6 +287,32 @@ const assert = (condition, message) => {
     await page.locator('aside.left h2').first().click();
     await page.keyboard.press('ControlOrMeta+z');
     assert((await order()) === 'contact hero group(text,image)', 'one undo takes one drag back');
+
+    // What the header and footer say is the site's: click the footer, change it, give the site a logo.
+    await canvas.locator('.site-footer').click();
+    await page.locator('[data-site-footer]').fill('© Atelier Nord, since 2014');
+    await page.locator('[data-site-footer-links]').getByRole('button', { name: 'Add' }).click();
+    const added = page.locator('[data-site-footer-links] .item').last();
+    await added.locator('input').first().fill('Prices');
+    await added.locator('input').last().fill('/preturi-si-comenzi/');
+    await canvas.locator('.site-footer nav a', { hasText: 'Prices' }).waitFor();
+    assert((await canvas.locator('.site-footer p').innerText()) === '© Atelier Nord, since 2014', 'the footer shows what was typed in the site settings');
+    const mark = join(dir, 'logo.png');
+    const png = await page.evaluate(() => {
+      const c = document.createElement('canvas');
+      c.width = 200;
+      c.height = 50;
+      const g = c.getContext('2d');
+      g.fillStyle = '#f2b84b';
+      g.fillRect(0, 0, 200, 50);
+      return c.toDataURL('image/png').split(',')[1];
+    });
+    writeFileSync(mark, Buffer.from(png, 'base64'));
+    await page.locator('[data-media-file]').setInputFiles(mark);
+    await canvas.locator('.site-header img.site-logo').waitFor();
+    assert((await canvas.locator('.site-logo').getAttribute('alt')) === 'Atelier Nord', 'the logo takes the place of the name, and is read out as the name');
+    if (shots) await page.screenshot({ path: join(shots, 'site-settings.png') });
+    await page.locator('[data-site-mode]').click();
     await page.getByRole('button', { name: 'Publish' }).click();
     await page.getByText('Published', { exact: true }).waitFor();
 
@@ -311,7 +350,10 @@ const assert = (condition, message) => {
   assert(/<strong>Ask ?<\/strong>/.test(prices) && /<a href="\/contact\/">offer<\/a>/.test(prices) && !prices.includes('javascript:'), 'so are the bold word and the link, and not the refused one');
   const picture = prices.match(/<img src="\/(media\/[a-f0-9]{32}\.webp)" alt="A plank of oak"/);
   assert(picture && readFileSync(join(out, picture[1])).subarray(8, 12).toString() === 'WEBP', 'the uploaded image is exported beside the page that shows it');
-  assert(readdirSync(join(out, 'media')).length === 1, 'only images a published page shows are exported');
+  const logo = home.match(/<img class="site-logo" src="\/(media\/[a-f0-9]{32}\.png)" alt="Atelier Nord"/);
+  assert(logo && readdirSync(join(out, 'media')).length === 2, 'the logo is exported too, and no image that nothing shows');
+  assert(home.includes('<p>© Atelier Nord, since 2014</p>') && home.includes('<a href="/preturi-si-comenzi/">Prices</a>'), 'the footer text and link are on every exported page');
+  assert(/\.site-header\{--l-direction:column;[^}]*background-color:var\(--t-color-brand\)\}/.test(css), 'the header arrangement and colour are in the stylesheet, not in the pages');
   rmSync(dir, { recursive: true, force: true });
   console.log('\nThe editor works end to end.');
 })().catch((error) => {

@@ -24,19 +24,20 @@ export async function buildSite(site: Site, theme: Theme, pages: Page[], media: 
   const files = new Map<string, string | Uint8Array>();
   const menu: MenuItem[] = pages.filter((p) => p.inMenu).map((p) => ({ title: p.title, slug: p.slug }));
 
-  files.set(STYLESHEET.slice(1), `${themeCss(theme)}${await Bun.file(BASE_CSS).text()}`);
+  // The structure first, the theme after it: where both set the same thing, the theme wins.
+  files.set(STYLESHEET.slice(1), `${await Bun.file(BASE_CSS).text()}${themeCss(theme)}`);
   for (const page of pages) {
     files.set(`${pagePath(page.slug).slice(1)}index.html`, renderPage(site, theme, page, menu));
   }
-  for (const page of pages) {
-    for (const src of imageSources(page.blocks)) {
-      const name = mediaNameOf(src);
-      if (!name || files.has(src.slice(1))) continue;
-      const bytes = media(name);
-      // A page that would show a broken picture is not published quietly.
-      if (!bytes) throw new Error(`the page "${page.title}" shows an image this site does not have: ${src}`);
-      files.set(src.slice(1), bytes);
-    }
+  const shown: [string, string][] = pages.flatMap((page) => imageSources(page.blocks).map((src): [string, string] => [`the page "${page.title}"`, src]));
+  if (site.logo) shown.push(['the header', site.logo.src]);
+  for (const [where, src] of shown) {
+    const name = mediaNameOf(src);
+    if (!name || files.has(src.slice(1))) continue;
+    const bytes = media(name);
+    // A site that would show a broken picture is not published quietly.
+    if (!bytes) throw new Error(`${where} shows an image this site does not have: ${src}`);
+    files.set(src.slice(1), bytes);
   }
   files.set(
     '404.html',

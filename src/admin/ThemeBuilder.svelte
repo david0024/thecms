@@ -12,6 +12,8 @@ import {
   type BlockStyle,
   type BlockType,
   FONT_STACKS,
+  FOOTER_ARRANGEMENTS,
+  HEADER_ARRANGEMENTS,
   isFreeValue,
   isTokenName,
   parseTheme,
@@ -88,6 +90,12 @@ function addVariant(): void {
 const removeVariant = (variant: string): boolean =>
   apply((d) => {
     delete d.blocks[blockType]?.variants?.[variant];
+  });
+
+const setLayoutStyle = (part: 'header' | 'footer', style: BlockStyle): boolean =>
+  apply((d) => {
+    if (Object.keys(style).length) d.layout[part].style = style;
+    else delete d.layout[part].style;
   });
 
 function download(): void {
@@ -235,6 +243,34 @@ const hex6 = (value: string): string => (/^#[0-9a-f]{6}$/i.test(value) ? value :
   {/key}
 </details>
 
+<details data-theme-layout>
+  <summary>{t.layout.heading}</summary>
+  <h3>{t.layout.header}</h3>
+  <label class="field">
+    <span>{t.layout.arrangement}</span>
+    <select value={theme.layout.header.arrangement} onchange={(e) => apply((d) => { d.layout.header.arrangement = e.currentTarget.value as never; })} data-layout="header">
+      {#each HEADER_ARRANGEMENTS as name}<option value={name}>{t.layout.arrangements[name] ?? name}</option>{/each}
+    </select>
+  </label>
+  <label class="check">
+    <input type="checkbox" checked={theme.layout.header.sticky} onchange={(e) => apply((d) => { d.layout.header.sticky = e.currentTarget.checked; })} data-layout-sticky />
+    <span>{t.layout.sticky}</span>
+  </label>
+  <div data-layout-style="header">
+    <StyleEditor style={theme.layout.header.style} {theme} onstyle={(style) => setLayoutStyle('header', style)} defaultLabel={t.theme.unset} />
+  </div>
+  <h3>{t.layout.footer}</h3>
+  <label class="field">
+    <span>{t.layout.arrangement}</span>
+    <select value={theme.layout.footer.arrangement} onchange={(e) => apply((d) => { d.layout.footer.arrangement = e.currentTarget.value as never; })} data-layout="footer">
+      {#each FOOTER_ARRANGEMENTS as name}<option value={name}>{t.layout.arrangements[name] ?? name}</option>{/each}
+    </select>
+  </label>
+  <div data-layout-style="footer">
+    <StyleEditor style={theme.layout.footer.style} {theme} onstyle={(style) => setLayoutStyle('footer', style)} defaultLabel={t.theme.unset} />
+  </div>
+</details>
+
 <details>
   <summary>{t.theme.file}</summary>
   <p class="hint">{t.theme.fileHint}</p>
@@ -251,5 +287,7 @@ const hex6 = (value: string): string => (/^#[0-9a-f]{6}$/i.test(value) ? value :
   details[open] > summary { margin-bottom: 0.6rem; }
   .token { margin-bottom: 0.5rem; }
   .token.add { padding-top: 0.5rem; border-top: 1px dashed #dddbe6; }
+  .check { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.8rem; }
+  .check span { margin: 0; }
   h3 { display: flex; align-items: center; justify-content: space-between; margin: 0.9rem 0 0.5rem; font-size: 13px; }
 </style>

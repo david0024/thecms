@@ -50,8 +50,8 @@ code, so opening one from a stranger runs nothing.
 
 ## Not yet
 
-- **Templates** (header, footer, page layouts) are part of a theme in ADR 0001
-  d8 and are not built. Header and footer are still fixed components.
+- ~~Header and footer are fixed components.~~ Done in ADR 0006. Page
+  templates are still not built.
 - **Undo** covers a page's blocks, not theme changes.
 - **Dark mode** and per-screen-size values (ADR 0002 d2).
 - **Typefaces** are still the device's own (ADR 0002 d3).

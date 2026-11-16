@@ -1,6 +1,7 @@
 /**
- * A theme is a data document (ADR 0001 d8): tokens, and the default style of
- * each block type with its named variants. It holds no code and no CSS text.
+ * A theme is a data document (ADR 0001 d8): tokens, the default style of each
+ * block type with its named variants, and how the header and footer are laid
+ * out (ADR 0006). It holds no code and no CSS text.
  * The theme builder edits this document; `themeCss` in `css.ts` turns it into
  * a stylesheet.
  */
@@ -26,11 +27,29 @@ export interface BlockTheme {
   variants?: Record<string, BlockStyle>;
 }
 
+/**
+ * How the parts of the header, and of the footer, sit beside each other. A
+ * closed list: a theme picks one by name, and `css.ts` knows what each means.
+ */
+export const HEADER_ARRANGEMENTS = ['inline', 'centered', 'stacked'] as const;
+export const FOOTER_ARRANGEMENTS = ['inline', 'centered'] as const;
+export type HeaderArrangement = (typeof HEADER_ARRANGEMENTS)[number];
+export type FooterArrangement = (typeof FOOTER_ARRANGEMENTS)[number];
+
+export interface ThemeLayout {
+  header: { arrangement: HeaderArrangement; /** Stays at the top of the screen while the page scrolls. */ sticky: boolean; style?: BlockStyle };
+  footer: { arrangement: FooterArrangement; style?: BlockStyle };
+}
+
+export const DEFAULT_LAYOUT: ThemeLayout = { header: { arrangement: 'inline', sticky: false }, footer: { arrangement: 'inline' } };
+
 export interface Theme {
   spec: typeof THEME_SPEC;
   name: string;
   tokens: Tokens;
   blocks: Partial<Record<BlockType, BlockTheme>>;
+  /** Always present once parsed; a theme file written before ADR 0006 gets the default. */
+  layout: ThemeLayout;
 }
 
 /**
@@ -102,7 +121,7 @@ export function parseTheme(input: unknown): { theme: Theme | null; issues: Issue
     }
   }
 
-  const theme: Theme = { spec: THEME_SPEC, name, tokens, blocks: {} };
+  const theme: Theme = { spec: THEME_SPEC, name, tokens, blocks: {}, layout: structuredClone(DEFAULT_LAYOUT) };
   const rawBlocks = isObject(input.blocks) ? input.blocks : {};
   for (const [type, raw] of Object.entries(rawBlocks)) {
     const at = `blocks.${type}`;
@@ -138,6 +157,36 @@ export function parseTheme(input: unknown): { theme: Theme | null; issues: Issue
       }
     }
     theme.blocks[type] = entry;
+  }
+
+  if (input.layout !== undefined && !isObject(input.layout)) issues.push({ path: 'layout', message: 'a layout is an object' });
+  const rawLayout = isObject(input.layout) ? input.layout : {};
+  for (const key of Object.keys(rawLayout)) {
+    if (key !== 'header' && key !== 'footer') issues.push({ path: `layout.${key}`, message: 'not a part of the layout (header, footer)' });
+  }
+  for (const part of ['header', 'footer'] as const) {
+    const raw = rawLayout[part];
+    if (raw === undefined) continue;
+    const at = `layout.${part}`;
+    if (!isObject(raw)) {
+      issues.push({ path: at, message: 'an object' });
+      continue;
+    }
+    const allowed: readonly string[] = part === 'header' ? HEADER_ARRANGEMENTS : FOOTER_ARRANGEMENTS;
+    if (raw.arrangement !== undefined) {
+      if (typeof raw.arrangement === 'string' && allowed.includes(raw.arrangement)) theme.layout[part].arrangement = raw.arrangement as never;
+      else issues.push({ path: `${at}.arrangement`, message: `one of: ${allowed.join(', ')}` });
+    }
+    if (part === 'header' && raw.sticky !== undefined) {
+      if (typeof raw.sticky === 'boolean') theme.layout.header.sticky = raw.sticky;
+      else issues.push({ path: `${at}.sticky`, message: 'true or false' });
+    }
+    if (raw.style !== undefined) {
+      const { style, issues: found } = normalizeStyle(raw.style, `${at}.style`);
+      issues.push(...found);
+      checkStyleTokens(theme, style, `${at}.style`, issues);
+      if (Object.keys(style).length) theme.layout[part].style = style;
+    }
   }
 
   return issues.length ? { theme: null, issues } : { theme, issues };

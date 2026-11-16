@@ -20,6 +20,7 @@ The decisions behind this, each with its reason:
 - [ADR 0003 — The editor works on the real page](docs/adr/0003-the-editor.md)
 - [ADR 0004 — The theme builder](docs/adr/0004-the-theme-builder.md)
 - [ADR 0005 — Images, formatting and dragging](docs/adr/0005-images-formatting-dragging.md)
+- [ADR 0006 — The header and footer](docs/adr/0006-header-and-footer.md)
 
 ## Where it stands
 
@@ -34,7 +35,8 @@ theme, publish, and export the site as static files.
 | Visual editor: add, move, remove, type on the page, style with theme tokens | done |
 | Theme builder: tokens, block defaults and variants, themes as files | done |
 | Images uploaded and kept with the site; headings, lists and links from a bar on the page; blocks moved by dragging | done |
-| Header and footer as part of the theme, blog | next |
+| Header and footer: logo, button and links from the site, layout from the theme | done |
+| Blog (posts, categories, feed) | next |
 | WordPress import | planned |
 | Modules (isolated plugins) | planned |
 

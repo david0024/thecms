@@ -4,7 +4,7 @@
  */
 import type { Block } from './blocks.ts';
 import { type BlockStyle, freeValueCss, isFree, isFreeValue, STYLE_PROPS, type StyleProp, TOKEN_GROUPS, type TokenGroup, tokenVar } from './style.ts';
-import { hasToken, type Theme } from './theme.ts';
+import { type FooterArrangement, hasToken, type HeaderArrangement, type Theme } from './theme.ts';
 import { isId } from './util.ts';
 
 /**
@@ -30,7 +30,26 @@ export function declarations(style: BlockStyle | undefined, theme: Theme): strin
 
 const rule = (selector: string, body: string): string => (body ? `${selector}{${body}}\n` : '');
 
-/** The theme as a stylesheet: its tokens, then each block type's default and variants. */
+/**
+ * What each arrangement means. The header and footer are the same HTML under
+ * every theme; an arrangement only sets the properties their one flex row
+ * reads (`base.css`). So a theme still changes a site's look without changing
+ * a byte of its pages.
+ */
+const HEADER_LAYOUT: Record<HeaderArrangement, string> = {
+  inline: '',
+  centered: '--l-direction:column;--l-align:center;--l-justify:center;text-align:center',
+  stacked: '--l-direction:column;--l-align:flex-start;--l-justify:flex-start',
+};
+const FOOTER_LAYOUT: Record<FooterArrangement, string> = {
+  inline: '',
+  centered: '--l-direction:column;--l-align:center;--l-justify:center;text-align:center',
+};
+const STICKY = 'position:sticky;top:0;z-index:5';
+
+const join = (...parts: string[]): string => parts.filter(Boolean).join(';');
+
+/** The theme as a stylesheet: its tokens, each block type's default and variants, then the header and footer. */
 export function themeCss(theme: Theme): string {
   const vars: string[] = [];
   for (const group of TOKEN_GROUPS) {
@@ -45,6 +64,9 @@ export function themeCss(theme: Theme): string {
       css += rule(`.b-${type}.v-${variant}`, declarations(style, theme));
     }
   }
+  const { header, footer } = theme.layout;
+  css += rule('.site-header', join(HEADER_LAYOUT[header.arrangement], header.sticky ? STICKY : '', declarations(header.style, theme)));
+  css += rule('.site-footer', join(FOOTER_LAYOUT[footer.arrangement], declarations(footer.style, theme)));
   return css;
 }
 

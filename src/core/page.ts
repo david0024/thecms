@@ -1,5 +1,5 @@
 /** A page and the site it belongs to, as documents. */
-import { type Block, blocksText, normalizeBlocks } from './blocks.ts';
+import { type Block, blocksText, cleanImage, cleanLink, type ImageValue, type LinkValue, normalizeBlocks } from './blocks.ts';
 import { type Issue, isObject, safeHref, slugify, str } from './util.ts';
 
 export interface Page {
@@ -18,8 +18,16 @@ export interface Site {
   language: string;
   /** `https://example.com`, no trailing slash. Empty until the owner sets it. */
   url: string;
+  /** Shown in the header in place of the name. What the header looks like is the theme's (ADR 0006). */
+  logo: ImageValue | null;
+  /** One button in the header: "Ask for a quote". */
+  action: LinkValue | null;
   footer: string;
+  /** Links in the footer: a privacy page, a social profile. */
+  footerLinks: LinkValue[];
 }
+
+const MAX_FOOTER_LINKS = 12;
 
 const LANGUAGE = /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/;
 
@@ -47,7 +55,13 @@ export function normalizeSite(input: unknown): Site {
     name: str(raw.name, 120).trim() || 'My site',
     language: typeof raw.language === 'string' && LANGUAGE.test(raw.language) ? raw.language : 'en',
     url: /^https?:\/\//i.test(url) ? url.replace(/\/+$/, '') : '',
+    logo: cleanImage(raw.logo),
+    action: cleanLink(raw.action),
     footer: str(raw.footer, 300).trim(),
+    footerLinks: (Array.isArray(raw.footerLinks) ? raw.footerLinks : [])
+      .slice(0, MAX_FOOTER_LINKS)
+      .map(cleanLink)
+      .filter((link): link is LinkValue => link !== null),
   };
 }
 
