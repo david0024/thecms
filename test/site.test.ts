@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { normalizePage, normalizeSite, parseTheme, type Theme } from '../src/core/index.ts';
 import { DEMO_PAGES, DEMO_SITE } from '../src/site/demo.ts';
-import { renderPage } from '../src/site/document.ts';
+import { renderPage, renderParts } from '../src/site/document.ts';
 import { buildSite, exportSite } from '../src/site/export.ts';
 import { Store } from '../src/site/store.ts';
 import plain from '../themes/plain.json';
@@ -142,4 +142,21 @@ describe('export', () => {
     store.db.query('UPDATE pages SET published = NULL WHERE slug = ?').run('');
     expect(exportSite(store, join(dir, 'out'))).rejects.toThrow(/home page/);
   });
+});
+
+test('a button with words but no address is not drawn for visitors', () => {
+  const { page } = normalizePage({ slug: 'x', title: 'X', blocks: [{ type: 'hero', content: { title: 't', action: { label: 'Soon', href: 'javascript:1' } } }] });
+  const html = renderPage(site, themeOf(plain), page, []);
+  expect(html).not.toContain('Soon');
+  expect(html).not.toContain('class="button"');
+});
+
+test('editor marks exist only in the editor', () => {
+  const page = normalizePage(DEMO_PAGES[0]).page;
+  const editing = renderParts(site, themeOf(plain), page, [], true).body;
+  const visitor = renderParts(site, themeOf(plain), page, []).body;
+  expect(editing).toContain('data-edit="title"');
+  expect(editing).toContain('data-edit="items.0.title"');
+  expect(editing).toContain('data-type="hero"');
+  expect(visitor).not.toMatch(/data-edit|data-type|data-multiline|cms-empty/);
 });

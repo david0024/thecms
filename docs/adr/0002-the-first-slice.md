@@ -1,6 +1,6 @@
 # ADR 0002 — The first slice: documents in, a static site out
 
-- **Status:** Proposed (awaiting the owner's review)
+- **Status:** Accepted 2026-11-16 (owner: "mergem pe ceea ce propui tu")
 - **Date:** 2026-11-16
 - **Builds on:** ADR 0001 (d7 a block keeps content and style apart; d8 a theme
   is data; d9 SQLite and static export).

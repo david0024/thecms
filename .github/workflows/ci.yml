@@ -27,3 +27,9 @@ jobs:
           grep -q '<h1>Solid wood furniture, made to measure</h1>' "$RUNNER_TEMP/out/index.html"
           grep -q -- '--t-color-primary:#2563eb' "$RUNNER_TEMP/out/assets/site.css"
           test -f "$RUNNER_TEMP/out/about/index.html"
+      # The editor in a real browser, from the first click to the exported files.
+      - name: Editor end to end
+        run: |
+          npm install --no-save --no-package-lock playwright
+          npx playwright install --with-deps chromium
+          node e2e/editor.cjs

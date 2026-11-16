@@ -29,6 +29,9 @@ export interface LinkValue {
   href: string;
 }
 
+/** A link a visitor can follow: it has words and an address. */
+export const isLink = (v: LinkValue | null | undefined): v is LinkValue => !!v && !!v.label && !!v.href;
+
 export interface BlockDef {
   /** Holds other blocks in `children`. */
   container?: true;
@@ -122,9 +125,11 @@ function cleanField(field: Field, raw: unknown): unknown {
       return src ? ({ src, alt: str((raw as Record<string, unknown>).alt, 300) } satisfies ImageValue) : null;
     }
     case 'link': {
+      // Kept while half filled in (a label with no address yet), so an author
+      // does not lose what they typed; `isLink` says when it can be followed.
       const label = isObject(raw) ? str(raw.label, 80).trim() : '';
       const href = isObject(raw) ? safeHref(raw.href) : '';
-      return label && href ? ({ label, href } satisfies LinkValue) : null;
+      return label || href ? ({ label, href } satisfies LinkValue) : null;
     }
     case 'list':
       return Array.isArray(raw)
