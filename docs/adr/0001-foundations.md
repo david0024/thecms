@@ -98,7 +98,7 @@ outsider writes components in our framework.
 {
   "id": "b_01",
   "type": "hero",
-  "content": { "title": "…", "subtitle": "…", "action": { "label": "…", "page": "contact" } },
+  "content": { "title": "…", "subtitle": "…", "action": { "label": "…", "href": "/contact/" } },
   "style": { "background": { "token": "primary" }, "paddingBlock": { "value": "6rem" } }
 }
 ```

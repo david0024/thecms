@@ -1,0 +1,5 @@
+# Svelte components are compiled when they are imported, for the CLI and for tests.
+preload = ["./tools/svelte-plugin.ts"]
+
+[test]
+preload = ["./tools/svelte-plugin.ts"]
