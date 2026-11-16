@@ -128,7 +128,7 @@ export async function startEditor(store: Store, options: { port?: number; listen
     store.pages().map((p) => ({ title: p.title, slug: p.slug, inMenu: store.draft(p.slug)?.inMenu !== false }))
       .filter((p) => p.inMenu)
       .map(({ title, slug }) => ({ title, slug }));
-  const state = (): unknown => ({ site: store.site(), theme: theme(), themes, pages: store.pages() });
+  const state = (): unknown => ({ site: store.site(), theme: theme(), themeChanged: store.themeChanged(), themes, pages: store.pages() });
 
   async function api(request: Request, url: URL): Promise<Response> {
     const body = request.method === 'GET' || request.method === 'DELETE' ? {} : ((await request.json()) as Record<string, unknown>);
@@ -161,6 +161,9 @@ export async function startEditor(store: Store, options: { port?: number; listen
       }
       case 'PUT /api/theme':
         store.setTheme(body.theme);
+        return json(state());
+      case 'POST /api/theme/publish':
+        store.publishTheme();
         return json(state());
       case 'PUT /api/site':
         store.setSite(body.site);

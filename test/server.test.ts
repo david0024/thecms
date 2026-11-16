@@ -17,6 +17,7 @@ beforeAll(async () => {
   store = new Store(join(dir, 'site.db'));
   store.setSite(DEMO_SITE);
   store.setTheme(plain);
+  store.publishTheme();
   for (const page of DEMO_PAGES) store.publish(store.savePage(page).slug);
   editor = await startEditor(store, { listen: false });
 });

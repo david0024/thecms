@@ -20,6 +20,7 @@ import {
   isContainerType,
   nudge,
   type Page,
+  type Theme,
   parentIdOf,
   patchById,
   removeById,
@@ -31,6 +32,7 @@ import Fields from './Fields.svelte';
 import { t } from './messages.ts';
 import { setPath } from './paths.ts';
 import StylePanel from './StylePanel.svelte';
+import ThemeBuilder from './ThemeBuilder.svelte';
 
 let site = $state.raw<State | null>(null);
 let page = $state.raw<Page | null>(null);
@@ -39,6 +41,7 @@ let tab = $state<'content' | 'style'>('content');
 let saving = $state<'saved' | 'saving' | 'unsaved' | 'error'>('saved');
 let failure = $state('');
 let newTitle = $state<string | null>(null);
+let themeMode = $state(false);
 let past = $state.raw<Block[][]>([]);
 let future = $state.raw<Block[][]>([]);
 
@@ -47,6 +50,7 @@ let frameReady = false;
 let themeVersion = 0;
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
 let renderTimer: ReturnType<typeof setTimeout> | undefined;
+let themeTimer: ReturnType<typeof setTimeout> | undefined;
 /** The last text typed on the canvas, so one stretch of typing is one undo step. */
 let typing = { key: '', at: 0 };
 
@@ -247,6 +251,34 @@ async function chooseTheme(name: string): Promise<void> {
   }
 }
 
+/**
+ * A theme the builder has already checked. The admin shows it at once; the
+ * server gets it a moment later, and then the canvas fetches the stylesheet
+ * again. This is the theme being worked on: visitors see it after "Publish theme".
+ */
+function editTheme(theme: Theme): void {
+  if (!site) return;
+  site = { ...site, theme, themeChanged: true };
+  clearTimeout(themeTimer);
+  themeTimer = setTimeout(async () => {
+    try {
+      site = await api.setTheme(theme);
+      themeVersion += 1;
+      await draw();
+    } catch (error) {
+      fail(error);
+    }
+  }, 250);
+}
+
+async function publishTheme(): Promise<void> {
+  try {
+    site = await api.publishTheme();
+  } catch (error) {
+    fail(error);
+  }
+}
+
 function onKey(event: KeyboardEvent): void {
   if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'z') return;
   const target = event.target as HTMLElement;
@@ -291,6 +323,9 @@ onMount(() => {
           {#each site.themes as theme}<option value={theme.name}>{theme.name}</option>{/each}
         </select>
       </label>
+      <button type="button" onclick={() => (themeMode = !themeMode)} aria-pressed={themeMode} data-theme-mode>{themeMode ? t.theme.done : t.theme.edit}</button>
+      {#if site.themeChanged}<button type="button" onclick={publishTheme} title={t.theme.changed} data-publish-theme>{t.theme.publish}</button>{/if}
+      <span class="sep"></span>
       <span class="state">{!info?.published ? t.bar.draft : info.changed || saving !== 'saved' ? t.bar.changed : t.bar.published}</span>
       <button type="button" class="primary" onclick={publish} disabled={info?.published && !info.changed && saving === 'saved'}>{t.bar.publish}</button>
     </header>
@@ -335,7 +370,10 @@ onMount(() => {
     </main>
 
     <aside class="right">
-      {#if block && def}
+      {#if themeMode}
+        <h2>{t.theme.heading}</h2>
+        <ThemeBuilder theme={site.theme} onchange={editTheme} />
+      {:else if block && def}
         <h2>{t.types[block.type] ?? block.type}</h2>
         <div class="tabs" role="tablist">
           <button type="button" role="tab" aria-selected={tab === 'content'} onclick={() => (tab = 'content')}>{t.inspector.content}</button>
@@ -404,6 +442,7 @@ onMount(() => {
   .editor { display: grid; height: 100vh; grid-template: 'bar bar bar' auto 'left canvas right' 1fr / 14rem 1fr 19rem; }
   .bar { grid-area: bar; display: flex; align-items: center; gap: 0.6rem; padding: 0.5rem 0.9rem; background: #fff; border-bottom: 1px solid #dddbe6; }
   .grow { flex: 1; }
+  .sep { width: 1px; align-self: stretch; background: #dddbe6; }
   .status, .state { color: #6a6880; font-size: 13px; }
   .status[data-state='error'] { color: #b3261e; }
   .left, .right { overflow-y: auto; padding: 0.9rem; background: #fff; }

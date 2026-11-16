@@ -4,7 +4,7 @@
  *
  *   thecms init <site.db>                 a new site with sample pages
  *   thecms edit <site.db> [port]          open the visual editor in a browser
- *   thecms theme <site.db> <theme.json>   change the site's theme
+ *   thecms theme <site.db> <theme.json>   set and publish the site's theme
  *   thecms export <site.db> <folder>      write the published site as static files
  */
 import { existsSync } from 'node:fs';
@@ -22,6 +22,7 @@ async function main(args: string[]): Promise<void> {
     const store = new Store(dbPath);
     store.setSite(DEMO_SITE);
     store.setTheme(await Bun.file(PLAIN).json());
+    store.publishTheme();
     for (const page of DEMO_PAGES) store.publish(store.savePage(page).slug);
     store.close();
     console.log(`Created ${dbPath} with ${DEMO_PAGES.length} pages.`);
@@ -38,7 +39,8 @@ async function main(args: string[]): Promise<void> {
     const store = new Store(dbPath);
     try {
       if (command === 'theme') {
-        console.log(`Theme is now "${store.setTheme(await Bun.file(extra).json()).name}".`);
+        store.setTheme(await Bun.file(extra).json());
+        console.log(`Theme is now "${store.publishTheme().name}".`);
       } else {
         const files = await exportSite(store, extra);
         console.log(`Wrote ${files.length} files to ${extra}.`);

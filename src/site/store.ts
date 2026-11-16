@@ -2,8 +2,8 @@
  * A site is one SQLite file (ADR 0001 d9): its settings, its theme and its
  * pages. Copying the file is a backup.
  *
- * A page keeps its working draft and, apart from it, a frozen copy of what was
- * last published. Visitors and the export only ever see the copy, so saving a
+ * A page, and the theme, each keep a working draft and, apart from it, a frozen
+ * copy of what was last published. Visitors and the export only ever see the copy, so saving a
  * draft never changes the live site. (The same rule as in MYCMS, where it was
  * learned.)
  *
@@ -58,21 +58,48 @@ export class Store {
     return site;
   }
 
-  /** The site's theme, or null when none was ever set. A stored theme that no longer passes is an error, not a silent default. */
-  theme(): Theme | null {
-    const raw = this.getMeta('theme');
+  private readTheme(key: string): Theme | null {
+    const raw = this.getMeta(key);
     if (raw === null) return null;
     const { theme, issues } = parseTheme(raw);
+    // A stored theme that no longer passes is an error, not a silent default.
     if (!theme) throw new Error(`the stored theme is not valid: ${issues.map((i) => `${i.path}: ${i.message}`).join('; ')}`);
     return theme;
   }
 
-  /** Replaces the theme. Refuses a document with any issue and says which. */
+  /**
+   * The theme being worked on: what the editor shows. Like a page, a theme has
+   * a draft and a published copy, so trying a colour never repaints the live
+   * site. Null when none was ever set.
+   */
+  theme(): Theme | null {
+    return this.readTheme('theme');
+  }
+
+  /** The theme visitors see: what the export uses. Null until one is published. */
+  publishedTheme(): Theme | null {
+    return this.readTheme('theme:published');
+  }
+
+  /** Replaces the theme being worked on. Refuses a document with any issue and says which. */
   setTheme(input: unknown): Theme {
     const { theme, issues } = parseTheme(input);
     if (!theme) throw new Error(`not a valid theme: ${issues.map((i) => `${i.path}: ${i.message}`).join('; ')}`);
     this.setMeta('theme', theme);
     return theme;
+  }
+
+  /** Freezes the theme being worked on as the one visitors see. */
+  publishTheme(): Theme {
+    const theme = this.theme();
+    if (!theme) throw new Error('this site has no theme yet');
+    this.setMeta('theme:published', theme);
+    return theme;
+  }
+
+  /** Whether the theme being worked on differs from the published one. */
+  themeChanged(): boolean {
+    return JSON.stringify(this.theme()) !== JSON.stringify(this.publishedTheme());
   }
 
   /** Saves a page's draft. The published copy, if any, is left as it is. */

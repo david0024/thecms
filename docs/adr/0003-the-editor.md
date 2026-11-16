@@ -1,6 +1,6 @@
 # ADR 0003 — The editor works on the real page
 
-- **Status:** Proposed (awaiting the owner's review)
+- **Status:** Accepted 2026-11-16 (owner: "mergem pe ce propui tu")
 - **Date:** 2026-11-16
 - **Builds on:** ADR 0001 d6 (Svelte 5), d7 (content and style apart), ADR 0002
   d6 (the editor will show the real page).
@@ -78,7 +78,7 @@ Stated so nobody assumes otherwise:
   headings, lists and links cannot be made from the page yet.
 - **Images are given by address.** There is no upload or media library.
 - **A page's address is fixed when it is created.**
-- **The theme can be chosen, not built.** The theme builder is the next slice.
+- ~~The theme can be chosen, not built.~~ Done in ADR 0004.
 
 ## Verification
 

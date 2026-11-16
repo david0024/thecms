@@ -10,6 +10,8 @@ export interface PageInfo {
 export interface State {
   site: Site;
   theme: Theme;
+  /** The theme being worked on differs from the published one. */
+  themeChanged: boolean;
   themes: Theme[];
   pages: PageInfo[];
 }
@@ -36,4 +38,5 @@ export const api = {
   publish: (slug: string) => call<{ pages: PageInfo[] }>('POST', '/api/publish', { slug }),
   render: (page: Page) => call<{ body: string; css: string }>('POST', '/api/render', { page }),
   setTheme: (theme: Theme) => call<State>('PUT', '/api/theme', { theme }),
+  publishTheme: () => call<State>('POST', '/api/theme/publish', {}),
 };
