@@ -1,7 +1,14 @@
 /** A small site to start from: what `thecms init` writes. */
 import { paragraphs } from '../core/index.ts';
 
-export const DEMO_SITE = { name: 'Atelier Nord', language: 'en', url: '', footer: '© Atelier Nord' };
+export const DEMO_SITE = {
+  name: 'Atelier Nord',
+  language: 'en',
+  url: '',
+  action: { label: 'Ask for a quote', href: '/contact/' },
+  footer: '© Atelier Nord',
+  footerLinks: [{ label: 'About', href: '/about/' }],
+};
 
 export const DEMO_PAGES = [
   {

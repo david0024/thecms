@@ -220,10 +220,10 @@ export class Store {
     return row ? { type: MEDIA_TYPES[name.split('.').pop() as MediaExt], bytes: row.bytes } : null;
   }
 
-  /** The titles of the pages that show this image, in their draft or in what is published. */
+  /** Where this image is shown: the titles of pages (draft or published), and the header when it is the logo. */
   mediaUsedBy(name: string): string[] {
     const rows = this.db.query<{ draft: string; published: string | null }, []>('SELECT draft, published FROM pages ORDER BY position, slug').all();
-    const titles: string[] = [];
+    const titles: string[] = mediaNameOf(this.site().logo?.src ?? '') === name ? ['the header (logo)'] : [];
     for (const row of rows) {
       const copies = [row.draft, row.published].filter((c): c is string => c !== null).map((c) => normalizePage(JSON.parse(c)).page);
       if (copies.some((page) => imageSources(page.blocks).some((src) => mediaNameOf(src) === name))) titles.push((copies[0] as Page).title);

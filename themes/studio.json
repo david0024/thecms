@@ -24,5 +24,9 @@
       }
     },
     "services": { "style": { "background": { "token": "surface" } } }
+  },
+  "layout": {
+    "header": { "arrangement": "inline", "sticky": true },
+    "footer": { "arrangement": "centered" }
   }
 }

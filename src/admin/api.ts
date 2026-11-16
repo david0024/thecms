@@ -45,6 +45,7 @@ export const api = {
   remove: (slug: string) => call<{ pages: PageInfo[] }>('DELETE', `/api/page?slug=${encodeURIComponent(slug)}`),
   publish: (slug: string) => call<{ pages: PageInfo[] }>('POST', '/api/publish', { slug }),
   render: (page: Page) => call<{ body: string; css: string }>('POST', '/api/render', { page }),
+  setSite: (site: Site) => call<State>('PUT', '/api/site', { site }),
   setTheme: (theme: Theme) => call<State>('PUT', '/api/theme', { theme }),
   publishTheme: () => call<State>('POST', '/api/theme/publish', {}),
   media: () => call<{ media: MediaItem[] }>('GET', '/api/media'),

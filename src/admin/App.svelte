@@ -23,6 +23,7 @@ import {
   moveTo,
   nudge,
   type Page,
+  type Site,
   type Theme,
   parentIdOf,
   patchById,
@@ -34,6 +35,7 @@ import { api, type State } from './api.ts';
 import Fields from './Fields.svelte';
 import { t } from './messages.ts';
 import { setPath } from './paths.ts';
+import SitePanel from './SitePanel.svelte';
 import StylePanel from './StylePanel.svelte';
 import ThemeBuilder from './ThemeBuilder.svelte';
 
@@ -45,6 +47,7 @@ let saving = $state<'saved' | 'saving' | 'unsaved' | 'error'>('saved');
 let failure = $state('');
 let newTitle = $state<string | null>(null);
 let themeMode = $state(false);
+let siteMode = $state(false);
 let past = $state.raw<Block[][]>([]);
 let future = $state.raw<Block[][]>([]);
 
@@ -54,6 +57,7 @@ let themeVersion = 0;
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
 let renderTimer: ReturnType<typeof setTimeout> | undefined;
 let themeTimer: ReturnType<typeof setTimeout> | undefined;
+let siteTimer: ReturnType<typeof setTimeout> | undefined;
 /** The last text typed on the canvas, so one stretch of typing is one undo step. */
 let typing = { key: '', at: 0 };
 
@@ -206,6 +210,9 @@ function onFrameMessage(event: MessageEvent): void {
   if (message.type === 'ready') {
     frameReady = true;
     draw();
+  } else if (message.type === 'site') {
+    themeMode = false;
+    siteMode = true;
   } else if (message.type === 'select') {
     selected = message.id;
   } else if (message.type === 'edit' && message.id) {
@@ -308,6 +315,46 @@ function editTheme(theme: Theme): void {
   }, 250);
 }
 
+/**
+ * The site's settings as they are being typed. The admin keeps what was typed
+ * (a link with no address yet is not a link to the server, but it is not to be
+ * taken from under the author's hands); the server's cleaned copy is taken
+ * when the panel closes.
+ */
+function editSite(next: Site): void {
+  if (!site) return;
+  site = { ...site, site: next };
+  clearTimeout(siteTimer);
+  siteTimer = setTimeout(async () => {
+    try {
+      const answer = await api.setSite(next);
+      if (site) site = { ...answer, site: siteMode ? site.site : answer.site };
+      await draw();
+    } catch (error) {
+      fail(error);
+    }
+  }, 250);
+}
+
+async function toggleSite(): Promise<void> {
+  siteMode = !siteMode;
+  themeMode = false;
+  if (siteMode || !site) return;
+  try {
+    clearTimeout(siteTimer);
+    site = await api.setSite(site.site);
+    await draw();
+  } catch (error) {
+    fail(error);
+  }
+}
+
+async function toggleTheme(): Promise<void> {
+  const next = !themeMode;
+  if (siteMode) await toggleSite();
+  themeMode = next;
+}
+
 async function publishTheme(): Promise<void> {
   try {
     site = await api.publishTheme();
@@ -353,6 +400,7 @@ onMount(() => {
       <button type="button" onclick={redo} disabled={future.length === 0} title={t.bar.redo} aria-label={t.bar.redo}>↷</button>
       <span class="status" data-state={saving} role="status">{failure && saving === 'error' ? `${t.bar.error}: ${failure}` : t.bar[saving]}</span>
       <span class="grow"></span>
+      <button type="button" onclick={toggleSite} aria-pressed={siteMode} data-site-mode>{siteMode ? t.theme.done : t.site.edit}</button>
       <label class="inline">
         <span>{t.bar.theme}</span>
         <select value={site.theme.name} onchange={(e) => chooseTheme(e.currentTarget.value)} data-theme>
@@ -360,7 +408,7 @@ onMount(() => {
           {#each site.themes as theme}<option value={theme.name}>{theme.name}</option>{/each}
         </select>
       </label>
-      <button type="button" onclick={() => (themeMode = !themeMode)} aria-pressed={themeMode} data-theme-mode>{themeMode ? t.theme.done : t.theme.edit}</button>
+      <button type="button" onclick={toggleTheme} aria-pressed={themeMode} data-theme-mode>{themeMode ? t.theme.done : t.theme.edit}</button>
       {#if site.themeChanged}<button type="button" onclick={publishTheme} title={t.theme.changed} data-publish-theme>{t.theme.publish}</button>{/if}
       <span class="sep"></span>
       <span class="state">{!info?.published ? t.bar.draft : info.changed || saving !== 'saved' ? t.bar.changed : t.bar.published}</span>
@@ -418,7 +466,10 @@ onMount(() => {
     </main>
 
     <aside class="right">
-      {#if themeMode}
+      {#if siteMode}
+        <h2>{t.site.heading}</h2>
+        <SitePanel site={site.site} onchange={editSite} />
+      {:else if themeMode}
         <h2>{t.theme.heading}</h2>
         <ThemeBuilder theme={site.theme} onchange={editTheme} />
       {:else if block && def}

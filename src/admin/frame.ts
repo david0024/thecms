@@ -11,6 +11,8 @@ import { domToRichText, richTextToDom } from './richdom.ts';
 type Up =
   | { type: 'ready' }
   | { type: 'select'; id: string | null }
+  /** The header or footer was clicked: what they say is in the site's settings. */
+  | { type: 'site' }
   | { type: 'edit'; id: string; path: string; value: unknown }
   | { type: 'action'; id: string; action: 'up' | 'down' | 'duplicate' | 'delete' }
   /** `index` counts the blocks already in `parent`, the moved one left out. */
@@ -42,6 +44,10 @@ style.textContent = `
 [data-b]{position:relative;cursor:default}
 [data-b]:hover:not(:has([data-b]:hover)){outline:1px dashed #6d5dfc;outline-offset:-1px}
 [data-b].cms-selected{outline:2px solid #6d5dfc!important;outline-offset:-2px}
+/* While editing, a header that would stay on screen does not: it would cover the block being worked on. */
+.site-header{position:static!important}
+[data-site]{cursor:pointer}
+[data-site]:hover{outline:1px dashed #6d5dfc;outline-offset:-1px}
 [data-edit],[data-edit-rich]{cursor:text;min-width:1ch}
 [data-edit]:focus,[data-edit-rich]:focus{outline:2px dashed #6d5dfc;outline-offset:3px}
 [data-edit]:empty::before{content:attr(data-placeholder);opacity:.45}
@@ -156,6 +162,7 @@ document.addEventListener('click', (event) => {
     showSelection();
     post({ type: 'select', id });
   }
+  if (target.closest('[data-site]')) post({ type: 'site' });
 });
 
 document.addEventListener('input', (event) => {

@@ -147,7 +147,7 @@ describe('export', () => {
 
 test('a button with words but no address is not drawn for visitors', () => {
   const { page } = normalizePage({ slug: 'x', title: 'X', blocks: [{ type: 'hero', content: { title: 't', action: { label: 'Soon', href: 'javascript:1' } } }] });
-  const html = renderPage(site, themeOf(plain), page, []);
+  const html = renderPage({ ...site, action: null }, themeOf(plain), page, []);
   expect(html).not.toContain('Soon');
   expect(html).not.toContain('class="button"');
 });

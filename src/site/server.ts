@@ -220,7 +220,8 @@ export async function startEditor(store: Store, options: { port?: number; listen
       case '/preview':
         return html(previewPage(store.site().language));
       case '/assets/site.css':
-        return text(`${themeCss(theme())}${baseCss}`, 'text/css');
+        // The structure first, the theme after it: where both set the same thing, the theme wins.
+        return text(`${baseCss}${themeCss(theme())}`, 'text/css');
       default:
         return json({ error: 'not found' }, 404);
     }

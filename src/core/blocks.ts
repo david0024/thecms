@@ -113,6 +113,22 @@ const MAX_BLOCKS = 500;
 /** How deep blocks nest: a block at the top is at depth 1. */
 export const MAX_DEPTH = 4;
 
+/** An image a page may show, or null: its address is checked, its description cut to length. */
+export function cleanImage(raw: unknown): ImageValue | null {
+  const src = isObject(raw) ? safeSrc(raw.src) : '';
+  return src ? { src, alt: str((raw as Record<string, unknown>).alt, 300) } : null;
+}
+
+/**
+ * A link, or null. Kept while half filled in (a label with no address yet), so
+ * an author does not lose what they typed; `isLink` says when it can be followed.
+ */
+export function cleanLink(raw: unknown): LinkValue | null {
+  const label = isObject(raw) ? str(raw.label, 80).trim() : '';
+  const href = isObject(raw) ? safeHref(raw.href) : '';
+  return label || href ? { label, href } : null;
+}
+
 function cleanField(field: Field, raw: unknown): unknown {
   switch (field.kind) {
     case 'text': {
@@ -121,17 +137,10 @@ function cleanField(field: Field, raw: unknown): unknown {
     }
     case 'richtext':
       return normalizeRichText(raw);
-    case 'image': {
-      const src = isObject(raw) ? safeSrc(raw.src) : '';
-      return src ? ({ src, alt: str((raw as Record<string, unknown>).alt, 300) } satisfies ImageValue) : null;
-    }
-    case 'link': {
-      // Kept while half filled in (a label with no address yet), so an author
-      // does not lose what they typed; `isLink` says when it can be followed.
-      const label = isObject(raw) ? str(raw.label, 80).trim() : '';
-      const href = isObject(raw) ? safeHref(raw.href) : '';
-      return label || href ? ({ label, href } satisfies LinkValue) : null;
-    }
+    case 'image':
+      return cleanImage(raw);
+    case 'link':
+      return cleanLink(raw);
     case 'list':
       return Array.isArray(raw)
         ? raw.slice(0, field.max).map((item) => cleanFields(field.item, isObject(item) ? item : {}))
