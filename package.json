@@ -1,0 +1,25 @@
+{
+  "name": "thecms",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "license": "GPL-3.0-or-later",
+  "packageManager": "bun@1.4.4",
+  "bin": {
+    "thecms": "src/site/cli.ts"
+  },
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "svelte-check --tsconfig ./tsconfig.json --fail-on-warnings",
+    "check": "bun run typecheck && bun test",
+    "cms": "bun src/site/cli.ts"
+  },
+  "dependencies": {
+    "svelte": "^5.57.3"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.4",
+    "svelte-check": "^4.7.8",
+    "typescript": "~6"
+  }
+}

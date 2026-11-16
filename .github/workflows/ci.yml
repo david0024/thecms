@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - run: bun install --frozen-lockfile
+      - run: bun run typecheck
+      - run: bun test
+      # The command people run, on a real file, checked by what it wrote.
+      - name: Export the sample site
+        run: |
+          bun run cms init "$RUNNER_TEMP/site.db"
+          bun run cms export "$RUNNER_TEMP/site.db" "$RUNNER_TEMP/out"
+          grep -q '<h1>Solid wood furniture, made to measure</h1>' "$RUNNER_TEMP/out/index.html"
+          grep -q -- '--t-color-primary:#2563eb' "$RUNNER_TEMP/out/assets/site.css"
+          test -f "$RUNNER_TEMP/out/about/index.html"
