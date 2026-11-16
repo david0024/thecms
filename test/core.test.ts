@@ -12,10 +12,13 @@ import {
   flatten,
   insertAt,
   isFreeValue,
+  isLink,
+  type LinkValue,
   moveTo,
   normalizeBlocks,
   normalizeRichText,
   normalizeStyle,
+  nudge,
   parentIdOf,
   parseTheme,
   removeById,
@@ -139,7 +142,8 @@ describe('blocks', () => {
         },
       },
     ]);
-    expect(blocks[0]!.content.action).toBeNull();
+    expect(blocks[0]!.content.action).toEqual({ label: 'Go', href: '' });
+    expect(isLink(blocks[0]!.content.action as LinkValue)).toBe(false);
     expect(blocks[0]!.content.secondaryAction).toEqual({ label: 'Go', href: '/contact/' });
     expect(blocks[0]!.content.image).toBeNull();
     expect(safeHref('//evil.example')).toBe('');
@@ -274,4 +278,13 @@ describe('a block style under a theme (ADR 0001 d7)', () => {
     expect(reset[0]!.content).toEqual(blocks[0]!.content);
     expect(blocks[0]!.style!.paddingBlock).toEqual({ value: '6rem' });
   });
+});
+
+test('nudge moves a block among its siblings and stops at the ends', () => {
+  const { blocks } = normalizeBlocks([{ id: 'a', type: 'text' }, { id: 'b', type: 'text' }, { id: 'c', type: 'text' }]);
+  const ids = (list: Block[]): string => list.map((b) => b.id).join('');
+  expect(ids(nudge(blocks, 'a', 1))).toBe('bac');
+  expect(ids(nudge(blocks, 'c', -1))).toBe('acb');
+  expect(nudge(blocks, 'a', -1)).toBe(blocks);
+  expect(nudge(blocks, 'c', 1)).toBe(blocks);
 });

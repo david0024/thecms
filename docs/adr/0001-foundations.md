@@ -1,6 +1,6 @@
 # ADR 0001 — Foundations: who it is for, what a page is, how it is licensed
 
-- **Status:** Proposed (awaiting the owner's review)
+- **Status:** Accepted 2026-11-16 (owner: "mergem pe ceea ce propui tu")
 - **Date:** 2026-11-16
 - **Deciders:** project owner + engineering
 - **Inputs:** the starting brief of 2026-11-16, the owner's answers in the

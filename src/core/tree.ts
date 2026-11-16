@@ -88,6 +88,17 @@ export function patchById(blocks: Block[], id: string, fn: (b: Block) => Block):
   });
 }
 
+/** Move a block one place up or down among its siblings. */
+export function nudge(blocks: Block[], id: string, delta: -1 | 1): Block[] {
+  const parent = parentIdOf(blocks, id);
+  if (parent === undefined) return blocks;
+  const siblings = parent === null ? blocks : kids(findById(blocks, parent) as Block);
+  const from = siblings.findIndex((b) => b.id === id);
+  const to = from + delta;
+  if (to < 0 || to >= siblings.length) return blocks;
+  return moveTo(blocks, id, parent, to);
+}
+
 /** Every block, depth first. */
 export function flatten(blocks: Block[]): Block[] {
   return blocks.flatMap((b) => [b, ...flatten(kids(b))]);

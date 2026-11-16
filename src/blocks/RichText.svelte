@@ -1,12 +1,14 @@
 <script lang="ts">
 /** Draws a rich text document. Every string is escaped by Svelte; no HTML is trusted. */
 import type { RichText } from '../core/index.ts';
+import { marker } from './editing.ts';
 import Spans from './Spans.svelte';
 
-let { doc }: { doc: RichText } = $props();
+let { doc, path = '' }: { doc: RichText; path?: string } = $props();
+const mark = marker();
 </script>
 
-<div class="prose">
+<div class="prose" data-edit-rich={path ? mark(path) : undefined}>
   {#each doc as node}
     {#if node.type === 'paragraph'}
       <p><Spans spans={node.children} /></p>

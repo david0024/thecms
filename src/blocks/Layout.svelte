@@ -3,8 +3,16 @@
 import type { Page, Site } from '../core/index.ts';
 import { pagePath } from '../core/index.ts';
 import BlockView from './BlockView.svelte';
+import { setEditing } from './editing.ts';
 
-let { site, page, menu }: { site: Site; page: Page; menu: { title: string; slug: string }[] } = $props();
+let {
+  site,
+  page,
+  menu,
+  editing = false,
+}: { site: Site; page: Page; menu: { title: string; slug: string }[]; editing?: boolean } = $props();
+// svelte-ignore state_referenced_locally
+setEditing(editing);
 </script>
 
 <header class="site-header">
@@ -19,6 +27,7 @@ let { site, page, menu }: { site: Site; page: Page; menu: { title: string; slug:
 </header>
 <main>
   {#each page.blocks as block (block.id)}<BlockView {block} />{/each}
+  {#if editing && page.blocks.length === 0}<div class="cms-empty" data-empty="page"></div>{/if}
 </main>
 <footer class="site-footer">
   <p>{site.footer || site.name}</p>

@@ -17,16 +17,28 @@ export interface MenuItem {
 
 export const STYLESHEET = '/assets/site.css';
 
+const clean = (html: string): string => html.replace(/<!--(\[-?\d*|\]|)-->/g, '');
+
+/**
+ * A page's markup and the styles its blocks set for themselves.
+ *
+ * Svelte marks where a browser would take the page over (`<!--[-->`). Nothing
+ * does here, so the marks go. Every string an author wrote is escaped by then
+ * (`<` is `&lt;`), so no comment in the markup can be theirs.
+ *
+ * With `editing`, text that can be typed on the page is marked for the editor.
+ */
+export function renderParts(site: Site, theme: Theme, page: Page, menu: MenuItem[], editing = false): { body: string; css: string } {
+  const body = clean(render(Layout, { props: { site, page, menu, editing } }).body);
+  // Generated only from checked values (`blocksCss`); `</style` cannot occur in it.
+  return { body, css: blocksCss(page.blocks, theme) };
+}
+
 export function renderPage(site: Site, theme: Theme, page: Page, menu: MenuItem[]): string {
-  // Svelte marks where a browser would take the page over (`<!--[-->`). Nothing
-  // does here, so the marks go. Every string an author wrote is escaped by now
-  // (`<` is `&lt;`), so no comment in `body` can be theirs.
-  const body = render(Layout, { props: { site, page, menu } }).body.replace(/<!--(\[-?\d*|\]|)-->/g, '');
+  const { body, css: own } = renderParts(site, theme, page, menu);
   const title = page.slug ? `${page.title} · ${site.name}` : site.name;
   const description = pageDescription(page);
   const canonical = site.url ? `${site.url}${pagePath(page.slug)}` : '';
-  // Generated only from checked values (`blocksCss`); `</style` cannot occur in it.
-  const own = blocksCss(page.blocks, theme);
   const head = [
     '<meta charset="utf-8">',
     '<meta name="viewport" content="width=device-width, initial-scale=1">',

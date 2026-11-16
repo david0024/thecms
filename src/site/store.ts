@@ -103,6 +103,24 @@ export class Store {
     return row ? normalizePage(JSON.parse(row.draft)).page : null;
   }
 
+  /** Every page, in menu order, with whether its draft differs from what is published. */
+  pages(): { slug: string; title: string; published: boolean; changed: boolean }[] {
+    return this.db
+      .query<{ slug: string; draft: string; published: string | null }, []>('SELECT slug, draft, published FROM pages ORDER BY position, slug')
+      .all()
+      .map((row) => ({
+        slug: row.slug,
+        title: normalizePage(JSON.parse(row.draft)).page.title,
+        published: row.published !== null,
+        changed: row.published !== row.draft,
+      }));
+  }
+
+  deletePage(slug: string): void {
+    if (slug === '') throw new Error('the home page cannot be deleted');
+    this.db.query('DELETE FROM pages WHERE slug = ?').run(slug);
+  }
+
   /** Every published page, in menu order. */
   published(): Page[] {
     return this.db

@@ -3,12 +3,14 @@
  * thecms: the command line of the prototype.
  *
  *   thecms init <site.db>                 a new site with sample pages
+ *   thecms edit <site.db> [port]          open the visual editor in a browser
  *   thecms theme <site.db> <theme.json>   change the site's theme
  *   thecms export <site.db> <folder>      write the published site as static files
  */
 import { existsSync } from 'node:fs';
 import { DEMO_PAGES, DEMO_SITE } from './demo.ts';
 import { exportSite } from './export.ts';
+import { startEditor } from './server.ts';
 import { Store } from './store.ts';
 
 const PLAIN = new URL('../../themes/plain.json', import.meta.url);
@@ -23,6 +25,12 @@ async function main(args: string[]): Promise<void> {
     for (const page of DEMO_PAGES) store.publish(store.savePage(page).slug);
     store.close();
     console.log(`Created ${dbPath} with ${DEMO_PAGES.length} pages.`);
+    return;
+  }
+  if (command === 'edit' && dbPath) {
+    if (!existsSync(dbPath)) throw new Error(`${dbPath} does not exist`);
+    const editor = await startEditor(new Store(dbPath), extra ? { port: Number(extra) } : {});
+    console.log(`Editing ${dbPath}. Open this address (it carries the key to the editor):\n\n  ${editor.url}\n\nPress Ctrl+C to stop.`);
     return;
   }
   if ((command === 'theme' || command === 'export') && dbPath && extra) {
@@ -40,7 +48,7 @@ async function main(args: string[]): Promise<void> {
     }
     return;
   }
-  console.log('Usage:\n  thecms init <site.db>\n  thecms theme <site.db> <theme.json>\n  thecms export <site.db> <folder>');
+  console.log('Usage:\n  thecms init <site.db>\n  thecms edit <site.db> [port]\n  thecms theme <site.db> <theme.json>\n  thecms export <site.db> <folder>');
   process.exitCode = command ? 1 : 0;
 }
 
