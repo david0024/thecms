@@ -25,6 +25,8 @@ export interface Site {
   footer: string;
   /** Links in the footer: a privacy page, a social profile. */
   footerLinks: LinkValue[];
+  /** What the blog is called in the menu and at the top of its list. */
+  blogTitle: string;
 }
 
 const MAX_FOOTER_LINKS = 12;
@@ -62,6 +64,7 @@ export function normalizeSite(input: unknown): Site {
       .slice(0, MAX_FOOTER_LINKS)
       .map(cleanLink)
       .filter((link): link is LinkValue => link !== null),
+    blogTitle: str(raw.blogTitle, 60).trim() || 'Blog',
   };
 }
 

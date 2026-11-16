@@ -8,7 +8,7 @@
  *   thecms export <site.db> <folder>      write the published site as static files
  */
 import { existsSync } from 'node:fs';
-import { DEMO_PAGES, DEMO_SITE } from './demo.ts';
+import { DEMO_PAGES, DEMO_POSTS, DEMO_SITE } from './demo.ts';
 import { exportSite } from './export.ts';
 import { startEditor } from './server.ts';
 import { Store } from './store.ts';
@@ -24,8 +24,9 @@ async function main(args: string[]): Promise<void> {
     store.setTheme(await Bun.file(PLAIN).json());
     store.publishTheme();
     for (const page of DEMO_PAGES) store.publish(store.savePage(page).slug);
+    for (const post of DEMO_POSTS) store.publishPost(store.savePost(post).slug);
     store.close();
-    console.log(`Created ${dbPath} with ${DEMO_PAGES.length} pages.`);
+    console.log(`Created ${dbPath} with ${DEMO_PAGES.length} pages and ${DEMO_POSTS.length} blog posts.`);
     return;
   }
   if (command === 'edit' && dbPath) {

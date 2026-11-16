@@ -291,6 +291,8 @@ const assert = (condition, message) => {
     // What the header and footer say is the site's: click the footer, change it, give the site a logo.
     await canvas.locator('.site-footer').click();
     await page.locator('[data-site-footer]').fill('© Atelier Nord, since 2014');
+    await page.locator('aside.right input[type="url"]').first().fill('https://example.com/');
+    await page.keyboard.press('Tab');
     await page.locator('[data-site-footer-links]').getByRole('button', { name: 'Add' }).click();
     const added = page.locator('[data-site-footer-links] .item').last();
     await added.locator('input').first().fill('Prices');
@@ -313,6 +315,29 @@ const assert = (condition, message) => {
     assert((await canvas.locator('.site-logo').getAttribute('alt')) === 'Atelier Nord', 'the logo takes the place of the name, and is read out as the name');
     if (shots) await page.screenshot({ path: join(shots, 'site-settings.png') });
     await page.locator('[data-site-mode]').click();
+    await page.getByRole('button', { name: 'Publish' }).click();
+    await page.getByText('Published', { exact: true }).waitFor();
+
+    // A blog post: the same editor, with a date, categories and a summary.
+    await page.locator('[data-new-post]').click();
+    await page.getByPlaceholder('Page title').fill('Winter opening hours');
+    await page.getByRole('button', { name: 'Create' }).click();
+    await canvas.locator('article.post h1').waitFor();
+    assert((await canvas.locator('article.post h1').innerText()) === 'Winter opening hours', 'a new post opens in the same editor, drawn as a post');
+    assert((await canvas.locator('.site-header nav a', { hasText: 'Blog' }).count()) === 1, 'the blog is in the menu');
+    await page.locator('[data-add="text"]').click();
+    await canvas.locator('article.post .prose').click();
+    await page.keyboard.press('ControlOrMeta+a');
+    await page.keyboard.type('From December we are open on Saturdays too.');
+    await page.locator('aside.left h2').first().click();
+    await canvas.locator('article.post h1').click();
+    await page.locator('[data-post-date]').fill('2026-12-01');
+    await page.locator('[data-post-categories]').fill('News, Workshop');
+    await page.keyboard.press('Tab');
+    await page.locator('[data-post-excerpt]').fill('Saturdays too, from December.');
+    await canvas.locator('.post-meta a', { hasText: 'Workshop' }).waitFor();
+    await saved();
+    if (shots) await page.screenshot({ path: join(shots, 'editor-post.png') });
     await page.getByRole('button', { name: 'Publish' }).click();
     await page.getByText('Published', { exact: true }).waitFor();
 
@@ -354,6 +379,20 @@ const assert = (condition, message) => {
   assert(logo && readdirSync(join(out, 'media')).length === 2, 'the logo is exported too, and no image that nothing shows');
   assert(home.includes('<p>© Atelier Nord, since 2014</p>') && home.includes('<a href="/preturi-si-comenzi/">Prices</a>'), 'the footer text and link are on every exported page');
   assert(/\.site-header\{--l-direction:column;[^}]*background-color:var\(--t-color-brand\)\}/.test(css), 'the header arrangement and colour are in the stylesheet, not in the pages');
+
+  // The blog: the post, the list, its categories, the feed.
+  const post = readFileSync(join(out, 'blog/winter-opening-hours/index.html'), 'utf8');
+  assert(post.includes('<time datetime="2026-12-01">December 1, 2026</time>') && post.includes('<p>From December we are open on Saturdays too.</p>'), 'the post is exported at its own address, with its date and its text');
+  assert(post.includes('<meta property="og:type" content="article">') && post.includes('<meta name="description" content="Saturdays too, from December.">'), 'a post tells search engines it is an article, with its summary');
+  const blog = readFileSync(join(out, 'blog/index.html'), 'utf8');
+  const titles = [...blog.matchAll(/<h2><a href="\/blog\/([a-z-]+)\/">/g)].map((m) => m[1]);
+  assert(titles.join(' ') === 'winter-opening-hours a-table-for-twelve how-we-choose-wood', `the blog lists the posts newest first (${titles.join(' ')})`);
+  assert(blog.includes('<p>Saturdays too, from December.</p>') && home.includes('<a href="/blog/">Blog</a>'), 'the list shows the summary, and the menu leads to the blog');
+  const category = readFileSync(join(out, 'blog/category/workshop/index.html'), 'utf8');
+  assert(category.includes('winter-opening-hours') && category.includes('how-we-choose-wood') && !category.includes('a-table-for-twelve'), 'a category page lists the posts of that category only');
+  const feed = readFileSync(join(out, 'blog/feed.xml'), 'utf8');
+  assert(feed.includes('<link href="https://example.com/blog/winter-opening-hours/"/>') && feed.includes('<updated>2026-12-01T00:00:00Z</updated>'), 'the feed carries the post with its full address');
+  assert(readFileSync(join(out, 'sitemap.xml'), 'utf8').includes('<loc>https://example.com/blog/category/news/</loc>'), 'the sitemap lists the blog too');
   rmSync(dir, { recursive: true, force: true });
   console.log('\nThe editor works end to end.');
 })().catch((error) => {

@@ -8,6 +8,7 @@ export * from './content.ts';
 export * from './css.ts';
 export * from './media.ts';
 export * from './page.ts';
+export * from './post.ts';
 export * from './richtext.ts';
 export * from './style.ts';
 export * from './theme.ts';

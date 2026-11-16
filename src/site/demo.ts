@@ -79,3 +79,41 @@ export const DEMO_PAGES = [
     ],
   },
 ];
+
+export const DEMO_POSTS = [
+  {
+    slug: 'a-table-for-twelve',
+    title: 'A table for twelve',
+    date: '2026-10-02',
+    categories: ['Projects'],
+    excerpt: 'Three metres of oak, built in the workshop and carried up four floors in two pieces.',
+    blocks: [
+      {
+        type: 'text',
+        content: {
+          body: paragraphs(
+            'The brief was short: a table the whole family fits around, in a flat with a narrow staircase.',
+            'We built the top in two halves that lock together under the table, so the joint is where nobody looks.',
+          ),
+        },
+      },
+    ],
+  },
+  {
+    slug: 'how-we-choose-wood',
+    title: 'How we choose wood',
+    date: '2026-09-12',
+    categories: ['Workshop'],
+    blocks: [
+      {
+        type: 'text',
+        content: {
+          body: [
+            ...paragraphs('Every board is picked by hand at the yard. We look for straight grain first and colour second.'),
+            { type: 'list', ordered: false, items: [[{ text: 'Oak for tables that will be used every day.' }], [{ text: 'Ash where a lighter room wants a lighter wood.' }]] },
+          ],
+        },
+      },
+    ],
+  },
+];
