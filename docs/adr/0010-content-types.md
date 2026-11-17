@@ -74,6 +74,3 @@ automatic menu adds each type that does.
   one type differently from another.
 - Changing a type's address does not leave redirects from the old one.
 - Entries cannot be ordered by hand.
-- The WordPress import does not yet turn custom post types into content
-  types; it still reports them as left out.
-- No block that shows entries of a type on another page ("latest projects").

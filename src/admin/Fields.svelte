@@ -10,8 +10,9 @@ let {
   fields,
   content,
   prefix = '',
+  sources = [],
   onchange,
-}: { fields: Record<string, Field>; content: unknown; prefix?: string; onchange: (path: string, value: unknown) => void } = $props();
+}: { fields: Record<string, Field>; content: unknown; prefix?: string; /** The content types a block can list. */ sources?: { id: string; name: string }[]; onchange: (path: string, value: unknown) => void } = $props();
 
 const at = (name: string): string => (prefix ? `${prefix}.${name}` : name);
 const text = (name: string): string => (getPath(content, name) as string | undefined) ?? '';
@@ -30,6 +31,19 @@ const input = (e: Event): string => (e.currentTarget as HTMLInputElement | HTMLT
         {:else}
           <input type="text" maxlength={field.max} value={text(name)} oninput={(e) => onchange(at(name), input(e))} />
         {/if}
+      </label>
+    {:else if field.kind === 'source'}
+      <label>
+        <span>{t.fields[name] ?? name}</span>
+        <select value={text(name)} onchange={(e) => onchange(at(name), e.currentTarget.value)} data-field-source>
+          {#each sources as source}<option value={source.id}>{source.name}</option>{/each}
+          {#if !sources.some((s) => s.id === text(name))}<option value={text(name)}>{text(name)}</option>{/if}
+        </select>
+      </label>
+    {:else if field.kind === 'number'}
+      <label>
+        <span>{t.fields[name] ?? name}</span>
+        <input type="number" min={field.min} max={field.max} value={getPath(content, name) as number} onchange={(e) => onchange(at(name), Number(e.currentTarget.value))} />
       </label>
     {:else if field.kind === 'richtext'}
       <p class="hint">{t.inspector.onPage}</p>

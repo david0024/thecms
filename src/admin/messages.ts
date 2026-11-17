@@ -186,9 +186,12 @@ export const en = {
     upload: 'Upload a theme file',
     notATheme: 'This file is not a valid theme.',
   },
-  types: { hero: 'Hero', text: 'Text', image: 'Image', services: 'Services', contact: 'Contact', group: 'Group' } as Record<string, string>,
+  types: { hero: 'Hero', text: 'Text', image: 'Image', services: 'Services', contact: 'Contact', entries: 'List of entries', group: 'Group' } as Record<string, string>,
   fields: {
     eyebrow: 'Small line above the title',
+    source: 'What to list',
+    count: 'How many',
+    more: 'Words of the link to the whole list',
     title: 'Title',
     subtitle: 'Subtitle',
     image: 'Image',

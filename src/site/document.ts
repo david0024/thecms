@@ -5,6 +5,7 @@
  */
 import { render } from 'svelte/server';
 import BlogLayout from '../blocks/BlogLayout.svelte';
+import type { EntryLists } from '../blocks/editing.ts';
 import Layout from '../blocks/Layout.svelte';
 import PostLayout from '../blocks/PostLayout.svelte';
 import {
@@ -51,13 +52,13 @@ const own = (blocks: Block[], theme: Theme): string => blocksCss(blocks, theme);
  * A page's markup and the styles its blocks set for themselves. With
  * `editing`, text that can be typed on the page is marked for the editor.
  */
-export function renderParts(site: Site, theme: Theme, page: Page, menu: MenuItem[], editing = false): { body: string; css: string } {
-  return { body: clean(render(Layout, { props: { site, page, menu, editing } }).body), css: own(page.blocks, theme) };
+export function renderParts(site: Site, theme: Theme, page: Page, menu: MenuItem[], editing = false, lists: EntryLists = {}): { body: string; css: string } {
+  return { body: clean(render(Layout, { props: { site, page, menu, editing, lists } }).body), css: own(page.blocks, theme) };
 }
 
 /** The same for an entry of a content type; a blog post when no type is named. */
-export function renderPostParts(site: Site, theme: Theme, post: Post, menu: MenuItem[], editing = false, type: ContentType = postsType(site.blogTitle)): { body: string; css: string } {
-  return { body: clean(render(PostLayout, { props: { site, post, menu, editing, type } }).body), css: own(post.blocks, theme) };
+export function renderPostParts(site: Site, theme: Theme, post: Post, menu: MenuItem[], editing = false, type: ContentType = postsType(site.blogTitle), lists: EntryLists = {}): { body: string; css: string } {
+  return { body: clean(render(PostLayout, { props: { site, post, menu, editing, type, lists } }).body), css: own(post.blocks, theme) };
 }
 
 interface Head {
@@ -95,8 +96,8 @@ function documentHtml(site: Site, head: Head, body: string, css: string): string
   return `<!doctype html>\n<html lang="${esc(site.language)}">\n<head>\n${lines.join('\n')}\n</head>\n<body>\n${body}\n</body>\n</html>\n`;
 }
 
-export function renderPage(site: Site, theme: Theme, page: Page, menu: MenuItem[]): string {
-  const { body, css } = renderParts(site, theme, page, menu);
+export function renderPage(site: Site, theme: Theme, page: Page, menu: MenuItem[], lists: EntryLists = {}): string {
+  const { body, css } = renderParts(site, theme, page, menu, false, lists);
   return documentHtml(
     site,
     {
@@ -113,8 +114,8 @@ export function renderPage(site: Site, theme: Theme, page: Page, menu: MenuItem[
 
 const feedOf = (site: Site, type: ContentType): string => (site.url && type.feed ? feedPath(type) : '');
 
-export function renderPost(site: Site, theme: Theme, post: Post, menu: MenuItem[], type: ContentType = postsType(site.blogTitle)): string {
-  const { body, css } = renderPostParts(site, theme, post, menu, false, type);
+export function renderPost(site: Site, theme: Theme, post: Post, menu: MenuItem[], type: ContentType = postsType(site.blogTitle), lists: EntryLists = {}): string {
+  const { body, css } = renderPostParts(site, theme, post, menu, false, type, lists);
   return documentHtml(
     site,
     {

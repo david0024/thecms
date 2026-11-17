@@ -537,6 +537,7 @@ onMount(() => {
             <Fields
               fields={def.fields}
               content={block.content}
+              sources={types}
               onchange={(path, value) => patch(block.id, (b) => ({ ...b, content: setPath(b.content, path, value) }))}
             />
           {/key}
@@ -663,7 +664,7 @@ onMount(() => {
   .tabs button[aria-selected='true'] { background: #f1efff; border-color: #6d5dfc; font-weight: 600; }
   :global(.editor .field) { display: block; margin-bottom: 0.7rem; }
   :global(.editor label > span, .editor legend) { display: block; margin-bottom: 0.2rem; font-size: 12.5px; color: #4b4960; }
-  :global(.editor input[type='text'], .editor input[type='url'], .editor input[type='date'], .editor textarea, .editor select) { width: 100%; padding: 0.4rem 0.5rem; border: 1px solid #cfccdc; border-radius: 6px; background: #fff; color: inherit; font: inherit; }
+  :global(.editor input[type='text'], .editor input[type='number'], .editor input[type='url'], .editor input[type='date'], .editor textarea, .editor select) { width: 100%; padding: 0.4rem 0.5rem; border: 1px solid #cfccdc; border-radius: 6px; background: #fff; color: inherit; font: inherit; }
   :global(.editor input[aria-invalid='true']) { border-color: #b3261e; }
   :global(.editor textarea) { resize: vertical; }
   :global(.editor fieldset) { margin: 0; padding: 0.6rem; border: 1px solid #e4e2ee; border-radius: 6px; }

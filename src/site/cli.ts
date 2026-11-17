@@ -42,7 +42,8 @@ async function main(args: string[]): Promise<void> {
   if (command === 'import' && dbPath && extra) {
     if (!existsSync(extra)) throw new Error(`${extra} does not exist`);
     // Read and understood before anything is written: a file that is not an export creates nothing.
-    const plan = planImport(await Bun.file(extra).text(), new Date().toISOString().slice(0, 10));
+    const types = flags.find((f) => f.startsWith('--types='))?.slice(8).split(',').map((name) => name.trim()).filter(Boolean) ?? [];
+    const plan = planImport(await Bun.file(extra).text(), new Date().toISOString().slice(0, 10), { types });
     const fresh = !existsSync(dbPath);
     const store = new Store(dbPath);
     try {
@@ -60,7 +61,7 @@ async function main(args: string[]): Promise<void> {
         },
       });
       console.log(
-        `Imported ${report.pages} pages and ${report.posts} posts into ${dbPath} (${report.drafts} of them as drafts), with ${report.images} images.` +
+        `Imported ${report.pages} pages, ${report.posts} posts${report.entries ? ` and ${report.entries} entries of other types` : ''} into ${dbPath} (${report.drafts} of them as drafts), with ${report.images} images.` +
           `${report.menu ? ' The menu came over too.' : ''}${report.redirects ? ` ${report.redirects} old addresses now lead to their new ones.` : ''}`,
       );
       if (report.notes.length) console.log(`\nWhat to know:\n${report.notes.map((n) => `  - ${n}`).join('\n')}`);
@@ -86,7 +87,7 @@ async function main(args: string[]): Promise<void> {
     }
     return;
   }
-  console.log('Usage:\n  thecms init <site.db>\n  thecms edit <site.db> [port]\n  thecms theme <site.db> <theme.json>\n  thecms export <site.db> <folder>\n  thecms import <site.db> <export.xml> [--no-images]');
+  console.log('Usage:\n  thecms init <site.db>\n  thecms edit <site.db> [port]\n  thecms theme <site.db> <theme.json>\n  thecms export <site.db> <folder>\n  thecms import <site.db> <export.xml> [--no-images] [--types=portfolio,team]');
   process.exitCode = command ? 1 : 0;
 }
 

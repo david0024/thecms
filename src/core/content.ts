@@ -22,6 +22,15 @@ export interface ServicesContent {
   intro: string;
   items: { title: string; text: string }[];
 }
+/** A block that lists entries of a content type: the latest posts, a few projects. What it lists is looked up when the page is drawn. */
+export interface EntriesContent {
+  title: string;
+  /** A content type's name. One the site does not have lists nothing. */
+  source: string;
+  count: number;
+  /** The words of the link to the whole list; empty for no link. */
+  more: string;
+}
 export interface ContactContent {
   title: string;
   text: string;

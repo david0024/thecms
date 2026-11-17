@@ -57,6 +57,10 @@ img{max-width:100%;height:auto;display:block}
 .cards{list-style:none;margin:var(--t-space-md) 0 0;padding:0;display:grid;gap:var(--b-gap);grid-template-columns:repeat(auto-fit,minmax(min(100%,15rem),1fr));text-align:start}
 .card{padding:var(--t-space-md);border:1px solid var(--t-color-border);border-radius:var(--t-radius-md);background:var(--t-color-surface)}
 .card>:last-child{margin-bottom:0}
+.entry-card img{width:100%;aspect-ratio:2;object-fit:cover;border-radius:var(--t-radius-md);margin-bottom:var(--t-space-sm)}
+.entry-card h3 a{color:inherit;text-decoration:none}
+.entry-card h3 a:hover{text-decoration:underline}
+.entries-more{margin:var(--t-space-md) 0 0}
 
 .contact{font-style:normal}
 .group{display:grid;gap:var(--b-gap)}

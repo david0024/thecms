@@ -7,6 +7,7 @@
  * out, and the HTML is exactly what it was before the editor existed.
  */
 import { getContext, setContext } from 'svelte';
+import type { ContentType, Post } from '../core/index.ts';
 
 const KEY = 'thecms:editing';
 
@@ -21,3 +22,19 @@ export const marker = (): ((path: string) => string | undefined) => {
   const on = isEditing();
   return (path) => (on ? path : undefined);
 };
+
+/**
+ * What a block that lists entries can list (ADR 0011): each content type with
+ * the entries to show, in the order its own list shows them. The export gives
+ * what is published; the editor, the drafts.
+ */
+export type EntryLists = Record<string, { type: ContentType; entries: Post[] }>;
+
+const LISTS = 'thecms:lists';
+
+export const setLists = (lists: EntryLists, language: string): void => {
+  setContext(LISTS, { lists, language });
+};
+
+export const getLists = (): { lists: EntryLists; language: string } =>
+  (getContext(LISTS) as { lists: EntryLists; language: string } | undefined) ?? { lists: {}, language: 'en' };

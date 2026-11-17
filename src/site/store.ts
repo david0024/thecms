@@ -289,6 +289,18 @@ export class Store {
     });
   }
 
+  /** Every entry of a type as the author last left it, in the order its list shows them: what the editor's canvas lists. */
+  draftEntries(typeId: string): Post[] {
+    const type = this.type(typeId);
+    return listed(
+      type,
+      this.db
+        .query<{ draft: string }, [string]>('SELECT draft FROM entries WHERE type = ?')
+        .all(typeId)
+        .map((row) => normalizePost(JSON.parse(row.draft), undefined, type).post),
+    );
+  }
+
   deleteEntry(typeId: string, slug: string): void {
     this.db.query('DELETE FROM entries WHERE type = ? AND slug = ?').run(typeId, slug);
   }
