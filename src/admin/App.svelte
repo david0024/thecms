@@ -7,6 +7,11 @@
 import { onMount } from 'svelte';
 import {
   type Block,
+  type ContentType,
+  contentTypes,
+  listPath,
+  type MenuList,
+  POSTS_TYPE,
   BLOCK_TYPES,
   type BlockDef,
   BLOCKS,
@@ -34,6 +39,8 @@ import {
 } from '../core/index.ts';
 import { api, type Doc, type Kind, type State } from './api.ts';
 import ContentList from './ContentList.svelte';
+import ContentTypes from './ContentTypes.svelte';
+import EntryFieldsForm from './EntryFieldsForm.svelte';
 import ImageField from './ImageField.svelte';
 import MediaLibrary from './MediaLibrary.svelte';
 import Fields from './Fields.svelte';
@@ -48,7 +55,7 @@ let site = $state.raw<State | null>(null);
 let page = $state.raw<Doc | null>(null);
 let kind = $state<Kind>('page');
 /** Which section of the admin is showing: a list, or the builder with one page or post open. */
-let view = $state<'pages' | 'posts' | 'media' | 'edit'>('pages');
+let view = $state<'pages' | 'media' | 'types' | 'edit' | `list:${string}`>('pages');
 let selected = $state<string | null>(null);
 let tab = $state<'content' | 'style'>('content');
 let saving = $state<'saved' | 'saving' | 'unsaved' | 'error'>('saved');
@@ -70,7 +77,14 @@ let typing = { key: '', at: 0 };
 
 const block = $derived(page && selected ? findById(page.blocks, selected) : null);
 const def = $derived(block ? (BLOCKS[block.type] as BlockDef) : null);
-const info = $derived((kind === 'post' ? site?.posts : site?.pages)?.find((p) => p.slug === page?.slug));
+const types = $derived(site ? contentTypes(site.site) : []);
+/** The content type of what is open; none for a page. */
+const type = $derived<ContentType | undefined>(kind === 'page' ? undefined : types.find((ty) => ty.id === kind));
+const info = $derived((type ? site?.entries[type.id] : site?.pages)?.find((p) => p.slug === page?.slug));
+/** The lists a menu can lead to: each content type that has an entry. */
+const menuLists = $derived<MenuList[]>(types.filter((ty) => (site?.entries[ty.id]?.length ?? 0) > 0).map((ty) => ({ id: ty.id, title: ty.name, href: listPath(ty) })));
+/** The list the open page or entry came from. */
+const home = $derived<typeof view>(kind === 'page' ? 'pages' : `list:${kind}`);
 const freeOnPage = $derived(page ? countFreeValues(page.blocks) : 0);
 
 const fail = (error: unknown): void => {
@@ -102,8 +116,7 @@ async function save(): Promise<void> {
   const sent = page;
   saving = 'saving';
   try {
-    const { pages, posts } = await api.save(sent, false, kind);
-    site = { ...site, pages, posts };
+    site = { ...site, ...(await api.save(sent, false, kind)), site: site.site };
     // Something may have changed while the request was out; then it is not saved yet.
     saving = page === sent ? 'saved' : 'unsaved';
     failure = '';
@@ -270,10 +283,10 @@ async function createPage(title: string, newKind: Kind): Promise<void> {
   const slug = slugify(title);
   if (!site || !title || !slug) return;
   try {
-    // A post without a date is dated today by the server.
-    const fresh = newKind === 'post' ? ({ slug, title, blocks: [] } as unknown as Post) : { slug, title, description: '', inMenu: true, blocks: [] };
-    const { pages, posts } = await api.save(fresh, true, newKind);
-    site = { ...site, pages, posts };
+    // An entry without a date is dated today by the server.
+    const fresh = newKind === 'page' ? { slug, title, description: '', inMenu: true, blocks: [] } : ({ slug, title, blocks: [] } as unknown as Post);
+    const { pages, posts, entries } = await api.save(fresh, true, newKind);
+    site = { ...site, pages, posts, entries };
     await edit(slug, newKind);
   } catch (error) {
     fail(error);
@@ -285,9 +298,9 @@ async function removePage(): Promise<void> {
   try {
     clearTimeout(saveTimer);
     saving = 'saved';
-    const { pages, posts } = await api.remove(page.slug, kind);
-    site = { ...site, pages, posts };
-    view = kind === 'post' ? 'posts' : 'pages';
+    const { pages, posts, entries } = await api.remove(page.slug, kind);
+    site = { ...site, pages, posts, entries };
+    view = home;
     await open('');
   } catch (error) {
     fail(error);
@@ -299,8 +312,8 @@ async function publish(): Promise<void> {
   try {
     await save();
     if (saving !== 'saved') return;
-    const { pages, posts } = await api.publish(page.slug, kind);
-    site = { ...site, pages, posts };
+    const { pages, posts, entries } = await api.publish(page.slug, kind);
+    site = { ...site, pages, posts, entries };
   } catch (error) {
     fail(error);
   }
@@ -357,6 +370,18 @@ function editSite(next: Site): void {
       fail(error);
     }
   }, 250);
+}
+
+/** The content types as the owner set them. Answers with the reason when the site refuses, '' when it took them. */
+async function saveTypes(next: ContentType[]): Promise<string> {
+  if (!site) return '';
+  try {
+    site = await api.setSite({ ...site.site, types: next });
+    await draw();
+    return '';
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  }
 }
 
 async function toggleSite(): Promise<void> {
@@ -421,16 +446,26 @@ onMount(() => {
     <nav class="rail" aria-label={t.nav.label} hidden={view === 'edit'}>
       <strong>{site.site.name}</strong>
       <button type="button" aria-current={view === 'pages' ? 'page' : undefined} onclick={() => (view = 'pages')} data-nav="pages">{t.nav.pages}</button>
-      <button type="button" aria-current={view === 'posts' ? 'page' : undefined} onclick={() => (view = 'posts')} data-nav="posts">{t.nav.posts}</button>
+      {#each types as ty (ty.id)}
+        <button type="button" aria-current={view === `list:${ty.id}` ? 'page' : undefined} onclick={() => (view = `list:${ty.id}`)} data-nav={ty.id}>{ty.name}</button>
+      {/each}
       <button type="button" aria-current={view === 'media' ? 'page' : undefined} onclick={() => (view = 'media')} data-nav="media">{t.nav.media}</button>
       <button type="button" onclick={() => panel('site')} data-nav="settings">{t.nav.settings}</button>
       <button type="button" onclick={() => panel('theme')} data-nav="theme">{t.nav.theme}</button>
+      <button type="button" aria-current={view === 'types' ? 'page' : undefined} onclick={() => (view = 'types')} data-nav="types">{t.ctypes.heading}</button>
     </nav>
 
     {#if view === 'pages'}
       <ContentList kind="page" items={site.pages} onopen={(slug) => edit(slug, 'page')} oncreate={(title) => createPage(title, 'page')} />
-    {:else if view === 'posts'}
-      <ContentList kind="post" items={site.posts} onopen={(slug) => edit(slug, 'post')} oncreate={(title) => createPage(title, 'post')} />
+    {:else if view === 'types'}
+      <ContentTypes site={site.site} counts={Object.fromEntries(types.map((ty) => [ty.id, site?.entries[ty.id]?.length ?? 0]))} onsave={saveTypes} />
+    {:else if view.startsWith('list:')}
+      {@const listed = types.find((ty) => `list:${ty.id}` === view)}
+      {#if listed}
+        {#key listed.id}
+          <ContentList kind={listed.id} type={listed} items={site.entries[listed.id] ?? []} onopen={(slug) => edit(slug, listed.id)} oncreate={(title) => createPage(title, listed.id)} />
+        {/key}
+      {/if}
     {:else if view === 'media'}
       <MediaLibrary />
     {/if}
@@ -439,7 +474,7 @@ onMount(() => {
     <!-- The builder stays in the page while a list shows, so the canvas is ready when a page is chosen. -->
     <div class="builder" hidden={view !== 'edit'}>
     <header class="bar">
-      <button type="button" class="quiet" onclick={() => (view = kind === 'post' ? 'posts' : 'pages')} data-back>← {kind === 'post' ? t.nav.posts : t.nav.pages}</button>
+      <button type="button" class="quiet" onclick={() => (view = home)} data-back>← {type ? type.name : t.nav.pages}</button>
       <strong class="doc">{page.title}</strong>
       <button type="button" onclick={undo} disabled={past.length === 0} title={t.bar.undo} aria-label={t.bar.undo}>↶</button>
       <button type="button" onclick={redo} disabled={future.length === 0} title={t.bar.redo} aria-label={t.bar.redo}>↷</button>
@@ -487,7 +522,7 @@ onMount(() => {
     <aside class="right">
       {#if siteMode}
         <h2>{t.site.heading}</h2>
-        <SitePanel site={site.site} pages={site.pages} hasPosts={site.posts.length > 0} onchange={editSite} />
+        <SitePanel site={site.site} pages={site.pages} lists={menuLists} onchange={editSite} />
       {:else if themeMode}
         <h2>{t.theme.heading}</h2>
         <ThemeBuilder theme={site.theme} onchange={editTheme} />
@@ -524,7 +559,7 @@ onMount(() => {
           {/key}
         {/if}
       {:else}
-        <h2>{kind === 'post' ? t.posts.post : t.inspector.page}</h2>
+        <h2>{type ? type.singular : t.inspector.page}</h2>
         <label class="field">
           <span>{t.inspector.title}</span>
           <input type="text" maxlength="200" value={page.title} oninput={(e) => page && e.currentTarget.value.trim() && change({ ...page, title: e.currentTarget.value }, { step: false })} />
@@ -534,12 +569,15 @@ onMount(() => {
           <textarea rows="3" maxlength="300" value={page.description} oninput={(e) => page && change({ ...page, description: e.currentTarget.value }, { step: false, redraw: false })}></textarea>
           <small>{t.inspector.descriptionHint}</small>
         </label>
-        {#if 'date' in page}
+        {#if type && 'date' in page}
           {@const post = page}
+          {#if type.dated}
           <label class="field">
             <span>{t.posts.date}</span>
             <input type="date" value={post.date} onchange={(e) => e.currentTarget.value && change({ ...post, date: e.currentTarget.value }, { step: false })} data-post-date />
           </label>
+          {/if}
+          {#if type.categories}
           <label class="field">
             <span>{t.posts.categories}</span>
             <input
@@ -550,6 +588,7 @@ onMount(() => {
             />
             <small>{t.posts.categoriesHint}</small>
           </label>
+          {/if}
           <label class="field">
             <span>{t.posts.excerpt}</span>
             <textarea rows="3" maxlength="400" value={post.excerpt} oninput={(e) => change({ ...post, excerpt: e.currentTarget.value }, { step: false, redraw: false })} data-post-excerpt></textarea>
@@ -558,7 +597,8 @@ onMount(() => {
           <div class="field">
             <ImageField label={t.posts.cover} value={post.cover} onchange={(cover) => change({ ...post, cover: cover.src ? cover : null }, { step: false })} />
           </div>
-        {:else}
+          <EntryFieldsForm {type} values={post.fields} onchange={(fields) => change({ ...post, fields }, { step: false })} />
+        {:else if 'inMenu' in page}
           <label class="check" class:off={site.site.menu !== null} title={site.site.menu !== null ? t.inspector.inMenuOff : undefined}>
             <input type="checkbox" disabled={site.site.menu !== null} checked={page.inMenu} onchange={(e) => page && 'inMenu' in page && change({ ...page, inMenu: e.currentTarget.checked }, { step: false })} />
             <span>{t.inspector.inMenu}</span>
@@ -569,8 +609,8 @@ onMount(() => {
           <button type="button" onclick={() => page && setBlocks(resetToTheme(page.blocks))}>{t.style.resetPage}</button>
         {/if}
         <p class="hint">{t.inspector.nothing}</p>
-        {#if kind === 'post' || page.slug !== ''}
-          <button type="button" class="danger" onclick={removePage}>{kind === 'post' ? t.posts.deletePost : t.inspector.deletePage}</button>
+        {#if type || page.slug !== ''}
+          <button type="button" class="danger" onclick={removePage}>{!type ? t.inspector.deletePage : kind === POSTS_TYPE ? t.posts.deletePost : t.ctypes.deleteEntry}</button>
         {/if}
       {/if}
       {#if failure && saving !== 'error'}<p class="bad" role="alert">{failure}</p>{/if}

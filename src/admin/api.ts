@@ -1,8 +1,8 @@
 /** The admin's calls to the editing server. The token comes from the address the CLI printed. */
 import type { Page, Post, Site, Theme } from '../core/index.ts';
 
-/** What is being edited: a page or a blog post. Both are made of blocks. */
-export type Kind = 'page' | 'post';
+/** What is being edited: `page`, or the name of a content type (`posts`, `projects`). All are made of blocks. */
+export type Kind = string;
 export type Doc = Page | Post;
 
 export interface PageInfo {
@@ -19,6 +19,8 @@ export interface PostInfo extends PageInfo {
 interface Lists {
   pages: PageInfo[];
   posts: PostInfo[];
+  /** Each content type's entries, by the type's name. */
+  entries: Record<string, PostInfo[]>;
 }
 export interface State {
   site: Site;
@@ -28,6 +30,7 @@ export interface State {
   themes: Theme[];
   pages: PageInfo[];
   posts: PostInfo[];
+  entries: Record<string, PostInfo[]>;
 }
 
 export interface MediaItem {

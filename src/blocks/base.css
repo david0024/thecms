@@ -66,6 +66,10 @@ img{max-width:100%;height:auto;display:block}
 .post-meta{display:flex;flex-wrap:wrap;gap:var(--t-space-xs) var(--t-space-sm);font-size:var(--t-size-sm);color:var(--t-color-muted)}
 .post-meta a{color:inherit}
 .post-cover{width:100%;border-radius:var(--t-radius-md);margin-top:var(--t-space-md)}
+.entry-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(11rem,1fr));gap:var(--t-space-sm) var(--t-space-md);margin:var(--t-space-md) 0 0;padding:var(--t-space-md) 0 0;border-top:1px solid var(--t-color-border)}
+.entry-field dt{font-size:var(--t-size-sm);color:var(--t-color-muted)}
+.entry-field dd{margin:0}
+.entry-field img{max-width:100%;border-radius:var(--t-radius-md)}
 .posts{list-style:none;margin:var(--t-space-md) 0 0;padding:0;display:grid;gap:var(--t-space-lg)}
 .post-card img{width:100%;aspect-ratio:2;object-fit:cover;border-radius:var(--t-radius-md);margin-bottom:var(--t-space-sm)}
 .post-card h2{font-size:var(--t-size-xl)}

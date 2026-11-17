@@ -12,7 +12,7 @@
  */
 import { readdir } from 'node:fs/promises';
 import { compile } from 'svelte/compiler';
-import { MEDIA_MAX_BYTES, MEDIA_PREFIX, normalizePage, normalizePost, parseTheme, RESERVED_SLUGS, type Theme, themeCss } from '../core/index.ts';
+import { MEDIA_MAX_BYTES, MEDIA_PREFIX, normalizePage, contentTypes, listPath, type MenuList, normalizePost, parseTheme, POSTS_TYPE, reservedSlugs, type Theme, themeCss } from '../core/index.ts';
 import { type MenuItem, menuOf, renderParts, renderPostParts } from './document.ts';
 import type { Store } from './store.ts';
 
@@ -124,14 +124,23 @@ export async function startEditor(store: Store, options: { port?: number; listen
     if (!current) throw new Error('this site has no theme yet');
     return current;
   };
-  // The menu as the editor shows it: from the drafts, with the blog as soon as there is a post.
-  const menu = (): MenuItem[] =>
-    menuOf(
-      store.site(),
+  // The menu as the editor shows it: from the drafts, with each content type as soon as it has an entry.
+  const menu = (): MenuItem[] => {
+    const site = store.site();
+    return menuOf(
+      site,
       store.pages(),
-      store.posts().length > 0,
+      contentTypes(site)
+        .filter((type) => store.entries(type.id).length > 0)
+        .map((type): MenuList => ({ id: type.id, title: type.name, href: listPath(type) })),
     );
-  const lists = (): { pages: ReturnType<Store['pages']>; posts: ReturnType<Store['posts']> } => ({ pages: store.pages(), posts: store.posts() });
+  };
+  /** Every list the admin shows: the pages, and each content type's entries by the type's name. */
+  const lists = (): { pages: ReturnType<Store['pages']>; posts: ReturnType<Store['posts']>; entries: Record<string, ReturnType<Store['entries']>> } => ({
+    pages: store.pages(),
+    posts: store.posts(),
+    entries: Object.fromEntries(contentTypes(store.site()).map((type) => [type.id, store.entries(type.id)])),
+  });
   const state = (): unknown => ({ site: store.site(), theme: theme(), themeChanged: store.themeChanged(), themes, ...lists() });
 
   async function api(request: Request, url: URL): Promise<Response> {
@@ -151,27 +160,29 @@ export async function startEditor(store: Store, options: { port?: number; listen
     const body = request.method === 'GET' || request.method === 'DELETE' ? {} : ((await request.json()) as Record<string, unknown>);
     const slug = url.searchParams.get('slug') ?? '';
     const route = `${request.method} ${url.pathname}`;
-    // A post is edited through the same calls as a page, said to be one by `kind`.
-    if ((url.searchParams.get('kind') ?? body.kind) === 'post') {
+    // An entry of a content type is edited through the same calls as a page; `kind` names its type.
+    const asked = String(url.searchParams.get('kind') ?? body.kind ?? 'page');
+    if (asked !== 'page') {
+      const type = store.type(asked === 'post' ? POSTS_TYPE : asked);
       switch (route) {
         case 'GET /api/page': {
-          const post = store.postDraft(slug);
-          return post ? json({ page: post }) : json({ error: 'no such post' }, 404);
+          const post = store.entryDraft(type.id, slug);
+          return post ? json({ page: post }) : json({ error: 'no such entry' }, 404);
         }
         case 'PUT /api/page': {
-          const { post, issues } = normalizePost(body.page);
-          if (!post.title || !post.slug) return json({ error: 'a post has a title', issues }, 400);
-          if (body.create === true && store.postDraft(post.slug)) return json({ error: 'a post with this address already exists' }, 409);
-          return json({ page: store.savePost(body.page), issues, ...lists() });
+          const { post, issues } = normalizePost(body.page, undefined, type);
+          if (!post.title || !post.slug) return json({ error: 'an entry has a title', issues }, 400);
+          if (body.create === true && store.entryDraft(type.id, post.slug)) return json({ error: 'an entry with this address already exists' }, 409);
+          return json({ page: store.saveEntry(type.id, body.page), issues, ...lists() });
         }
         case 'DELETE /api/page':
-          store.deletePost(slug);
+          store.deleteEntry(type.id, slug);
           return json(lists());
         case 'POST /api/publish':
-          store.publishPost(String(body.slug ?? ''));
+          store.publishEntry(type.id, String(body.slug ?? ''));
           return json(lists());
         case 'POST /api/render':
-          return json(renderPostParts(store.site(), theme(), normalizePost(body.page, new Date().toISOString().slice(0, 10)).post, menu(), true));
+          return json(renderPostParts(store.site(), theme(), normalizePost(body.page, new Date().toISOString().slice(0, 10), type).post, menu(), true, type));
       }
     }
     switch (route) {
@@ -186,7 +197,7 @@ export async function startEditor(store: Store, options: { port?: number; listen
         if (!page.title) return json({ error: 'a page has a title', issues }, 400);
         // A new page may not silently replace an existing one.
         if (body.create === true && store.draft(page.slug)) return json({ error: 'a page with this address already exists' }, 409);
-        if (RESERVED_SLUGS.includes(page.slug)) return json({ error: `the address "/${page.slug}/" is used by the site itself; choose another title` }, 409);
+        if (reservedSlugs(store.site()).includes(page.slug)) return json({ error: `the address "/${page.slug}/" is used by the site itself; choose another title` }, 409);
         return json({ page: store.savePage(page), issues, ...lists() });
       }
       case 'DELETE /api/page':

@@ -1,0 +1,133 @@
+<script lang="ts">
+/**
+ * The content types of the site (ADR 0010): what kinds of entry it keeps
+ * besides pages. A type is made here from a name and a few choices; nothing
+ * about it is code.
+ */
+import { type ContentType, contentTypes, POSTS_TYPE, type Site, slugify, TYPE_FIELD_KINDS, type TypeField, type TypeFieldKind } from '../core/index.ts';
+import { t } from './messages.ts';
+
+let { site, counts, onsave }: { site: Site; counts: Record<string, number>; /** Resolves to a reason when the site refuses. */ onsave: (types: ContentType[]) => Promise<string> } = $props();
+
+/** The type being made or changed, as it is being typed; null while the list shows. */
+let draft = $state<ContentType | null>(null);
+/** The name of the type being changed; '' for a new one. */
+let editing = $state('');
+let problem = $state('');
+
+const blank = (): ContentType => ({ id: '', name: '', singular: '', path: '', dated: false, categories: false, feed: false, fields: [] });
+const start = (type?: ContentType): void => {
+  problem = '';
+  editing = type?.id ?? '';
+  draft = type ? { ...type, fields: type.fields.map((f) => ({ ...f })) } : blank();
+};
+const patch = (change: Partial<ContentType>): void => {
+  if (draft) draft = { ...draft, ...change };
+};
+const patchField = (i: number, change: Partial<TypeField>): void => patch({ fields: (draft?.fields ?? []).map((f, j) => (j === i ? { ...f, ...change } : f)) });
+
+async function save(): Promise<void> {
+  if (!draft) return;
+  const next = { ...draft, path: slugify(draft.path) || slugify(draft.name) };
+  const others = site.types.filter((type) => type.id !== editing);
+  problem = await onsave(editing ? site.types.map((type) => (type.id === editing ? next : type)) : [...others, next]);
+  if (!problem) draft = null;
+}
+
+async function remove(): Promise<void> {
+  problem = await onsave(site.types.filter((type) => type.id !== editing));
+  if (!problem) draft = null;
+}
+</script>
+
+<section class="screen" data-list="types">
+  <header>
+    <h1>{t.ctypes.heading}</h1>
+    {#if !draft}<button type="button" class="primary" onclick={() => start()} data-new-type>+ {t.ctypes.add}</button>{/if}
+  </header>
+  {#if !draft}
+    <p class="hint intro">{t.ctypes.intro}</p>
+    <table>
+      <thead>
+        <tr><th>{t.inspector.title}</th><th>{t.list.address}</th><th></th></tr>
+      </thead>
+      <tbody>
+        {#each contentTypes(site) as type (type.id)}
+          <tr data-type={type.id}>
+            <td>
+              {#if type.id === POSTS_TYPE}<strong>{type.name}</strong>{:else}<button type="button" class="open" onclick={() => start(type)}>{type.name}</button>{/if}
+            </td>
+            <td class="quiet">/{type.path}/</td>
+            <td class="quiet">{type.id === POSTS_TYPE ? t.ctypes.builtIn : t.ctypes.entries(counts[type.id] ?? 0)}</td>
+          </tr>
+        {/each}
+      </tbody>
+    </table>
+  {:else}
+    <form
+      class="type"
+      onsubmit={(e) => {
+        e.preventDefault();
+        save();
+      }}
+    >
+      <label class="field">
+        <span>{t.ctypes.name}</span>
+        <!-- svelte-ignore a11y_autofocus -->
+        <input type="text" maxlength="60" value={draft.name} oninput={(e) => patch({ name: e.currentTarget.value })} autofocus data-type-name />
+      </label>
+      <label class="field">
+        <span>{t.ctypes.singular}</span>
+        <input type="text" maxlength="60" value={draft.singular} oninput={(e) => patch({ singular: e.currentTarget.value })} data-type-singular />
+      </label>
+      <label class="field">
+        <span>{t.ctypes.path}</span>
+        <input type="text" maxlength="80" value={draft.path} placeholder={slugify(draft.name)} oninput={(e) => patch({ path: e.currentTarget.value })} data-type-path />
+        <small>/{slugify(draft.path) || slugify(draft.name) || '…'}/ · {t.ctypes.pathHint}</small>
+      </label>
+      <label class="check"><input type="checkbox" checked={draft.dated} onchange={(e) => patch({ dated: e.currentTarget.checked, feed: e.currentTarget.checked && (draft?.feed ?? false) })} data-type-dated /><span>{t.ctypes.dated}</span></label>
+      <label class="check"><input type="checkbox" checked={draft.categories} onchange={(e) => patch({ categories: e.currentTarget.checked })} data-type-categories /><span>{t.ctypes.categories}</span></label>
+      <label class="check" class:off={!draft.dated}><input type="checkbox" disabled={!draft.dated} checked={draft.feed} onchange={(e) => patch({ feed: e.currentTarget.checked })} /><span>{t.ctypes.feed}</span></label>
+
+      <h2>{t.ctypes.fields}</h2>
+      <p class="hint">{t.ctypes.fieldsHint}</p>
+      {#each draft.fields as field, i (i)}
+        <div class="row" data-type-field>
+          <input type="text" maxlength="60" value={field.label} placeholder={t.ctypes.fieldLabel} aria-label={t.ctypes.fieldLabel} oninput={(e) => patchField(i, { label: e.currentTarget.value })} />
+          <select value={field.kind} aria-label={t.inspector.content} onchange={(e) => patchField(i, { kind: e.currentTarget.value as TypeFieldKind })}>
+            {#each TYPE_FIELD_KINDS as kind}<option value={kind}>{t.ctypes.kinds[kind]}</option>{/each}
+          </select>
+          <button type="button" class="quiet" onclick={() => patch({ fields: (draft?.fields ?? []).filter((_, j) => j !== i) })} aria-label={t.inspector.remove} title={t.inspector.remove}>✕</button>
+        </div>
+      {/each}
+      <button type="button" onclick={() => patch({ fields: [...(draft?.fields ?? []), { key: '', label: '', kind: 'text' }] })} data-type-add-field>+ {t.ctypes.addField}</button>
+
+      {#if problem}<p class="bad" role="alert">{problem}</p>{/if}
+      <div class="actions">
+        <button type="submit" class="primary" disabled={!slugify(draft.name)} data-type-save>{t.ctypes.save}</button>
+        <button type="button" class="quiet" onclick={() => (draft = null)}>{t.app.cancel}</button>
+        {#if editing}<button type="button" class="danger" onclick={remove}>{t.ctypes.remove}</button>{/if}
+      </div>
+    </form>
+  {/if}
+</section>
+
+<style>
+  header { display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem; }
+  h1 { margin: 0; font-size: 1.4rem; flex: 1; }
+  h2 { margin: 1.2rem 0 0.2rem; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: #6a6880; }
+  .intro { max-width: 44rem; margin-bottom: 1rem; }
+  table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid #dddbe6; border-radius: 8px; overflow: hidden; }
+  th, td { padding: 0.55rem 0.8rem; text-align: start; border-bottom: 1px solid #eceaf3; }
+  th { font-size: 12px; letter-spacing: 0.05em; text-transform: uppercase; color: #6a6880; font-weight: 600; }
+  tr:last-child td { border-bottom: 0; }
+  td.quiet { color: #6a6880; }
+  .open { border: 0 !important; padding: 0 !important; background: none !important; font-weight: 600 !important; color: #4a3bd6 !important; }
+  .type { max-width: 34rem; padding: 1.2rem; background: #fff; border: 1px solid #dddbe6; border-radius: 8px; }
+  .check { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.4rem; }
+  .check span { margin: 0; }
+  .check.off { opacity: 0.55; }
+  .row { display: grid; grid-template-columns: 1fr 9rem auto; gap: 0.4rem; margin-bottom: 0.4rem; }
+  .actions { display: flex; gap: 0.5rem; align-items: center; margin-top: 1.2rem; }
+  .actions :global(.danger) { margin: 0 0 0 auto !important; }
+</style>

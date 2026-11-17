@@ -10,7 +10,11 @@ import PostLayout from '../blocks/PostLayout.svelte';
 import {
   type Block,
   blocksCss,
-  FEED_PATH,
+  type ContentType,
+  entryPath,
+  feedPath,
+  type MenuLists,
+  postsType,
   type MenuLink,
   type MenuPage,
   type Page,
@@ -18,7 +22,6 @@ import {
   pagePath,
   type Post,
   postDescription,
-  postPath,
   resolveMenu,
   type Site,
   type Theme,
@@ -30,7 +33,7 @@ const esc = (v: string): string =>
 export type MenuItem = MenuLink;
 
 /** The menu these pages get: the one the owner arranged, or the pages in order and then the blog. */
-export const menuOf = (site: Site, pages: MenuPage[], hasPosts: boolean): MenuItem[] => resolveMenu(site, pages, hasPosts);
+export const menuOf = (site: Site, pages: MenuPage[], lists: MenuLists): MenuItem[] => resolveMenu(site, pages, lists);
 
 export const STYLESHEET = '/assets/site.css';
 
@@ -52,9 +55,9 @@ export function renderParts(site: Site, theme: Theme, page: Page, menu: MenuItem
   return { body: clean(render(Layout, { props: { site, page, menu, editing } }).body), css: own(page.blocks, theme) };
 }
 
-/** The same for a blog post. */
-export function renderPostParts(site: Site, theme: Theme, post: Post, menu: MenuItem[], editing = false): { body: string; css: string } {
-  return { body: clean(render(PostLayout, { props: { site, post, menu, editing } }).body), css: own(post.blocks, theme) };
+/** The same for an entry of a content type; a blog post when no type is named. */
+export function renderPostParts(site: Site, theme: Theme, post: Post, menu: MenuItem[], editing = false, type: ContentType = postsType(site.blogTitle)): { body: string; css: string } {
+  return { body: clean(render(PostLayout, { props: { site, post, menu, editing, type } }).body), css: own(post.blocks, theme) };
 }
 
 interface Head {
@@ -67,8 +70,8 @@ interface Head {
   type: 'website' | 'article';
   /** A picture for link previews: an address on this site or elsewhere. */
   image?: string;
-  /** Whether the site has a feed to point a reader at. */
-  feed?: boolean;
+  /** The feed to point a reader at, when this part of the site has one. */
+  feed?: string;
 }
 
 function documentHtml(site: Site, head: Head, body: string, css: string): string {
@@ -85,7 +88,7 @@ function documentHtml(site: Site, head: Head, body: string, css: string): string
     canonical ? `<meta property="og:url" content="${esc(canonical)}">` : '',
     `<meta property="og:type" content="${head.type}">`,
     image ? `<meta property="og:image" content="${esc(image)}">` : '',
-    head.feed ? `<link rel="alternate" type="application/atom+xml" title="${esc(site.name)}" href="${FEED_PATH}">` : '',
+    head.feed ? `<link rel="alternate" type="application/atom+xml" title="${esc(site.name)}" href="${head.feed}">` : '',
     `<link rel="stylesheet" href="${STYLESHEET}">`,
     css ? `<style>${css}</style>` : '',
   ].filter(Boolean);
@@ -108,18 +111,20 @@ export function renderPage(site: Site, theme: Theme, page: Page, menu: MenuItem[
   );
 }
 
-export function renderPost(site: Site, theme: Theme, post: Post, menu: MenuItem[]): string {
-  const { body, css } = renderPostParts(site, theme, post, menu);
+const feedOf = (site: Site, type: ContentType): string => (site.url && type.feed ? feedPath(type) : '');
+
+export function renderPost(site: Site, theme: Theme, post: Post, menu: MenuItem[], type: ContentType = postsType(site.blogTitle)): string {
+  const { body, css } = renderPostParts(site, theme, post, menu, false, type);
   return documentHtml(
     site,
     {
       title: `${post.title} · ${site.name}`,
       shareTitle: post.title,
       description: postDescription(post),
-      path: postPath(post.slug),
+      path: entryPath(type, post.slug),
       type: 'article',
       image: post.cover?.src,
-      feed: site.url !== '',
+      feed: feedOf(site, type),
     },
     body,
     css,
@@ -131,11 +136,12 @@ export function renderBlogList(
   site: Site,
   list: { heading: string; path: string; posts: Post[]; newer?: string; older?: string },
   menu: MenuItem[],
+  type: ContentType = postsType(site.blogTitle),
 ): string {
-  const body = clean(render(BlogLayout, { props: { site, menu, heading: list.heading, posts: list.posts, newer: list.newer, older: list.older } }).body);
+  const body = clean(render(BlogLayout, { props: { site, menu, heading: list.heading, posts: list.posts, newer: list.newer, older: list.older, type } }).body);
   return documentHtml(
     site,
-    { title: `${list.heading} · ${site.name}`, shareTitle: list.heading, description: '', path: list.path, type: 'website', feed: site.url !== '' },
+    { title: `${list.heading} · ${site.name}`, shareTitle: list.heading, description: '', path: list.path, type: 'website', feed: feedOf(site, type) },
     body,
     '',
   );

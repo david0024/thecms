@@ -20,7 +20,6 @@ import {
   type MediaExt,
   mediaNameOf,
   mediaPath,
-  newestFirst,
   normalizePage,
   normalizePost,
   normalizeRedirects,
@@ -30,7 +29,12 @@ import {
   parseTheme,
   postImageSources,
   type Redirect,
-  RESERVED_SLUGS,
+  POSTS_TYPE,
+  contentTypes,
+  reservedSlugs,
+  typeById,
+  type ContentType,
+  listed,
   type Site,
   str,
   type Theme,
@@ -57,12 +61,14 @@ CREATE TABLE IF NOT EXISTS pages (
   published_at TEXT,
   updated_at TEXT NOT NULL
 );
-CREATE TABLE IF NOT EXISTS posts (
-  slug TEXT PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS entries (
+  type TEXT NOT NULL,
+  slug TEXT NOT NULL,
   draft TEXT NOT NULL,
   published TEXT,
   published_at TEXT,
-  updated_at TEXT NOT NULL
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (type, slug)
 );
 CREATE TABLE IF NOT EXISTS media (
   name TEXT PRIMARY KEY,
@@ -79,6 +85,14 @@ export class Store {
     this.db = new Database(path, { create: true, strict: true });
     this.db.exec('PRAGMA journal_mode = WAL;');
     this.db.exec(SCHEMA);
+    // A site made before there were content types kept its posts in a table of their own (ADR 0010).
+    if (this.db.query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'posts'").get()) {
+      this.db.transaction(() => {
+        this.db.exec(`INSERT OR IGNORE INTO entries (type, slug, draft, published, published_at, updated_at)
+          SELECT '${POSTS_TYPE}', slug, draft, published, published_at, updated_at FROM posts`);
+        this.db.exec('DROP TABLE posts');
+      })();
+    }
   }
 
   close(): void {
@@ -100,8 +114,22 @@ export class Store {
     return normalizeSite(this.getMeta('site'));
   }
 
+  /**
+   * Sets the site's settings. A content type may not take the address of a
+   * page, and one that still has entries may not be removed: either would
+   * leave something at an address nobody chose.
+   */
   setSite(input: unknown): Site {
     const site = normalizeSite(input);
+    for (const type of site.types) {
+      if (this.draft(type.path)) throw new Error(`a page already lives at "/${type.path}/"; give the content type "${type.name}" another address`);
+    }
+    const kept = new Set([POSTS_TYPE, ...site.types.map((t) => t.id)]);
+    const orphans = this.db.query<{ type: string; n: number }, []>('SELECT type, COUNT(*) AS n FROM entries GROUP BY type').all().filter((row) => !kept.has(row.type));
+    if (orphans.length) {
+      const gone = this.site().types.find((t) => t.id === orphans[0]?.type);
+      throw new Error(`"${gone?.name ?? orphans[0]?.type}" still has ${orphans[0]?.n === 1 ? '1 entry' : `${orphans[0]?.n} entries`}; delete what it holds before removing the content type`);
+    }
     this.setMeta('site', site);
     return site;
   }
@@ -165,7 +193,7 @@ export class Store {
   savePage(input: unknown): Page {
     const { page } = normalizePage(input);
     if (!page.title) throw new Error('a page has a title');
-    if (RESERVED_SLUGS.includes(page.slug)) throw new Error(`the address "/${page.slug}/" is used by the site itself; choose another`);
+    if (reservedSlugs(this.site()).includes(page.slug)) throw new Error(`the address "/${page.slug}/" is used by the site itself; choose another`);
     const now = new Date().toISOString();
     const next = this.db.query<{ n: number }, []>('SELECT COALESCE(MAX(position), 0) + 1 AS n FROM pages').get();
     this.db
@@ -214,52 +242,87 @@ export class Store {
       .map((row) => normalizePage(JSON.parse(row.published)).page);
   }
 
-  /** Saves a post's draft. Like a page, what is published is left as it is. A post with no valid date is dated today. */
-  savePost(input: unknown): Post {
-    const { post } = normalizePost(input, new Date().toISOString().slice(0, 10));
-    if (!post.title) throw new Error('a post has a title');
-    if (!post.slug) throw new Error('a post has an address');
+  /** A content type of this site, by name. Asking for one it does not have is an error, not an empty list. */
+  type(id: string): ContentType {
+    const type = typeById(this.site(), id);
+    if (!type) throw new Error(`this site has no content type "${id}"`);
+    return type;
+  }
+
+  /** Saves an entry's draft. Like a page, what is published is left as it is. An entry with no valid date is dated today. */
+  saveEntry(typeId: string, input: unknown): Post {
+    const type = this.type(typeId);
+    const { post } = normalizePost(input, new Date().toISOString().slice(0, 10), type);
+    if (!post.title) throw new Error('an entry has a title');
+    if (!post.slug) throw new Error('an entry has an address');
     this.db
       .query(
-        `INSERT INTO posts (slug, draft, updated_at) VALUES (?, ?, ?)
-         ON CONFLICT(slug) DO UPDATE SET draft = excluded.draft, updated_at = excluded.updated_at`,
+        `INSERT INTO entries (type, slug, draft, updated_at) VALUES (?, ?, ?, ?)
+         ON CONFLICT(type, slug) DO UPDATE SET draft = excluded.draft, updated_at = excluded.updated_at`,
       )
-      .run(post.slug, JSON.stringify(post), new Date().toISOString());
+      .run(type.id, post.slug, JSON.stringify(post), new Date().toISOString());
     return post;
   }
 
-  publishPost(slug: string): void {
-    const done = this.db.query('UPDATE posts SET published = draft, published_at = ? WHERE slug = ?').run(new Date().toISOString(), slug);
-    if (done.changes === 0) throw new Error(`no post "${slug}"`);
+  publishEntry(typeId: string, slug: string): void {
+    const done = this.db.query('UPDATE entries SET published = draft, published_at = ? WHERE type = ? AND slug = ?').run(new Date().toISOString(), typeId, slug);
+    if (done.changes === 0) throw new Error(`no entry "${slug}"`);
   }
 
-  postDraft(slug: string): Post | null {
-    const row = this.db.query<{ draft: string }, [string]>('SELECT draft FROM posts WHERE slug = ?').get(slug);
-    return row ? normalizePost(JSON.parse(row.draft)).post : null;
+  entryDraft(typeId: string, slug: string): Post | null {
+    const type = this.type(typeId);
+    const row = this.db.query<{ draft: string }, [string, string]>('SELECT draft FROM entries WHERE type = ? AND slug = ?').get(typeId, slug);
+    return row ? normalizePost(JSON.parse(row.draft), undefined, type).post : null;
   }
 
-  /** Every post, newest first by its draft's date, with whether its draft differs from what is published. */
-  posts(): { slug: string; title: string; date: string; published: boolean; changed: boolean }[] {
-    return this.db
-      .query<{ draft: string; published: string | null }, []>('SELECT draft, published FROM posts')
-      .all()
-      .map((row) => ({ post: normalizePost(JSON.parse(row.draft)).post, published: row.published !== null, changed: row.published !== row.draft }))
-      .sort((a, b) => (a.post.date === b.post.date ? a.post.slug.localeCompare(b.post.slug) : a.post.date < b.post.date ? 1 : -1))
-      .map(({ post, published, changed }) => ({ slug: post.slug, title: post.title, date: post.date, published, changed }));
+  /** Every entry of a type, in the order its list shows them, with whether its draft differs from what is published. */
+  entries(typeId: string): { slug: string; title: string; date: string; published: boolean; changed: boolean }[] {
+    const type = this.type(typeId);
+    const rows = this.db
+      .query<{ draft: string; published: string | null }, [string]>('SELECT draft, published FROM entries WHERE type = ?')
+      .all(typeId)
+      .map((row) => ({ post: normalizePost(JSON.parse(row.draft), undefined, type).post, published: row.published !== null, changed: row.published !== row.draft }));
+    const state = new Map(rows.map((row) => [row.post.slug, row]));
+    return listed(type, rows.map((row) => row.post)).map((post) => {
+      const { published, changed } = state.get(post.slug) as { published: boolean; changed: boolean };
+      return { slug: post.slug, title: post.title, date: post.date, published, changed };
+    });
   }
 
-  deletePost(slug: string): void {
-    this.db.query('DELETE FROM posts WHERE slug = ?').run(slug);
+  deleteEntry(typeId: string, slug: string): void {
+    this.db.query('DELETE FROM entries WHERE type = ? AND slug = ?').run(typeId, slug);
   }
 
-  /** Every published post, newest first. */
-  publishedPosts(): Post[] {
-    return newestFirst(
+  /** Every published entry of a type, in the order its list shows them. */
+  publishedEntries(typeId: string): Post[] {
+    const type = this.type(typeId);
+    return listed(
+      type,
       this.db
-        .query<{ published: string }, []>('SELECT published FROM posts WHERE published IS NOT NULL')
-        .all()
-        .map((row) => normalizePost(JSON.parse(row.published)).post),
+        .query<{ published: string }, [string]>('SELECT published FROM entries WHERE type = ? AND published IS NOT NULL')
+        .all(typeId)
+        .map((row) => normalizePost(JSON.parse(row.published), undefined, type).post),
     );
+  }
+
+  // Posts are the content type every site has; these say so by name.
+  savePost(input: unknown): Post {
+    return this.saveEntry(POSTS_TYPE, input);
+  }
+  publishPost(slug: string): void {
+    this.publishEntry(POSTS_TYPE, slug);
+  }
+  postDraft(slug: string): Post | null {
+    return this.entryDraft(POSTS_TYPE, slug);
+  }
+  posts(): { slug: string; title: string; date: string; published: boolean; changed: boolean }[] {
+    return this.entries(POSTS_TYPE);
+  }
+  deletePost(slug: string): void {
+    this.deleteEntry(POSTS_TYPE, slug);
+  }
+  publishedPosts(): Post[] {
+    return this.publishedEntries(POSTS_TYPE);
   }
 
   /**
@@ -300,8 +363,9 @@ export class Store {
       const copies = [row.draft, row.published].filter((c): c is string => c !== null).map((c) => normalizePage(JSON.parse(c)).page);
       if (copies.some((page) => imageSources(page.blocks).some((src) => mediaNameOf(src) === name))) titles.push((copies[0] as Page).title);
     }
-    for (const row of this.db.query<{ draft: string; published: string | null }, []>('SELECT draft, published FROM posts ORDER BY slug').all()) {
-      const copies = [row.draft, row.published].filter((c): c is string => c !== null).map((c) => normalizePost(JSON.parse(c)).post);
+    const types = new Map(contentTypes(this.site()).map((t) => [t.id, t]));
+    for (const row of this.db.query<{ type: string; draft: string; published: string | null }, []>('SELECT type, draft, published FROM entries ORDER BY type, slug').all()) {
+      const copies = [row.draft, row.published].filter((c): c is string => c !== null).map((c) => normalizePost(JSON.parse(c), undefined, types.get(row.type)).post);
       if (copies.some((post) => postImageSources(post).some((src) => mediaNameOf(src) === name))) titles.push((copies[0] as Post).title);
     }
     return titles;
