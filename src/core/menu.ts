@@ -12,6 +12,8 @@ import { isId, isObject, newId, safeHref, slugify, str } from './util.ts';
 export type MenuTarget =
   | { kind: 'page'; slug: string }
   | { kind: 'blog' }
+  /** The list of a content type the owner added. */
+  | { kind: 'type'; id: string }
   | { kind: 'url'; href: string }
   /** A heading that only opens what is under it. */
   | { kind: 'none' };
@@ -32,6 +34,7 @@ function cleanTarget(raw: unknown): MenuTarget {
   if (!isObject(raw)) return { kind: 'none' };
   if (raw.kind === 'page') return { kind: 'page', slug: slugify(raw.slug) };
   if (raw.kind === 'blog') return { kind: 'blog' };
+  if (raw.kind === 'type' && slugify(raw.id)) return { kind: 'type', id: slugify(raw.id) };
   // Kept while the address is still being typed; an item with no address is not drawn.
   if (raw.kind === 'url') return { kind: 'url', href: safeHref(raw.href) };
   return { kind: 'none' };

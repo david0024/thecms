@@ -3,22 +3,37 @@
  * One section of the admin: every page, or every post, as a list. Choosing
  * one opens it in the builder; the list itself changes nothing.
  */
-import { pagePath, postPath, slugify } from '../core/index.ts';
+import { type ContentType, entryPath, pagePath, POSTS_TYPE, slugify } from '../core/index.ts';
 import type { Kind, PageInfo, PostInfo } from './api.ts';
 import { t } from './messages.ts';
 
-let { kind, items, onopen, oncreate }: { kind: Kind; items: (PageInfo | PostInfo)[]; onopen: (slug: string) => void; oncreate: (title: string) => void } = $props();
+let {
+  kind,
+  type,
+  items,
+  onopen,
+  oncreate,
+}: { kind: Kind; /** The content type listed; none for pages. */ type?: ContentType; items: (PageInfo | PostInfo)[]; onopen: (slug: string) => void; oncreate: (title: string) => void } = $props();
+
+/** Posts keep the name the rest of the admin knows them by. */
+const mark = $derived(kind === POSTS_TYPE ? 'post' : kind);
 
 let title = $state<string | null>(null);
-const words = $derived(kind === 'post' ? { heading: t.nav.posts, add: t.posts.newPost, none: t.posts.none } : { heading: t.nav.pages, add: t.app.newPage, none: '' });
+const words = $derived(
+  !type
+    ? { heading: t.nav.pages, add: t.app.newPage, none: '' }
+    : kind === POSTS_TYPE
+      ? { heading: type.name, add: t.posts.newPost, none: t.posts.none }
+      : { heading: type.name, add: t.ctypes.newEntry(type.singular), none: t.ctypes.noEntries },
+);
 const status = (item: PageInfo): string => (!item.published ? t.bar.draft : item.changed ? t.bar.changed : t.bar.published);
 </script>
 
-<section class="screen" data-list={kind}>
+<section class="screen" data-list={mark}>
   <header>
     <h1>{words.heading}</h1>
     {#if title === null}
-      <button type="button" class="primary" onclick={() => (title = '')} data-new={kind}>+ {words.add}</button>
+      <button type="button" class="primary" onclick={() => (title = '')} data-new={mark}>+ {words.add}</button>
     {:else}
       <form
         onsubmit={(e) => {
@@ -42,7 +57,7 @@ const status = (item: PageInfo): string => (!item.published ? t.bar.draft : item
         <tr>
           <th>{t.inspector.title}</th>
           <th>{t.list.address}</th>
-          {#if kind === 'post'}<th>{t.posts.date}</th>{/if}
+          {#if type?.dated}<th>{t.posts.date}</th>{/if}
           <th>{t.list.status}</th>
         </tr>
       </thead>
@@ -50,8 +65,8 @@ const status = (item: PageInfo): string => (!item.published ? t.bar.draft : item
         {#each items as item (item.slug)}
           <tr>
             <td><button type="button" class="open" onclick={() => onopen(item.slug)} data-open={item.slug}>{item.title}</button></td>
-            <td class="quiet">{kind === 'post' ? postPath(item.slug) : pagePath(item.slug)}</td>
-            {#if kind === 'post'}<td class="quiet">{'date' in item ? item.date : ''}</td>{/if}
+            <td class="quiet">{type ? entryPath(type, item.slug) : pagePath(item.slug)}</td>
+            {#if type?.dated}<td class="quiet">{'date' in item ? item.date : ''}</td>{/if}
             <td class="quiet" class:live={item.published && !item.changed}>{status(item)}</td>
           </tr>
         {/each}

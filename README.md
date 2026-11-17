@@ -24,6 +24,7 @@ The decisions behind this, each with its reason:
 - [ADR 0007 — The blog](docs/adr/0007-the-blog.md)
 - [ADR 0008 — The menu](docs/adr/0008-the-menu.md)
 - [ADR 0009 — Importing a WordPress site](docs/adr/0009-wordpress-import.md)
+- [ADR 0010 — Content types](docs/adr/0010-content-types.md)
 
 ## Where it stands
 
@@ -42,6 +43,7 @@ theme, publish, and export the site as static files.
 | Blog: posts, categories, paged list, Atom feed | done |
 | Admin with sections: pages, posts, media, menu and settings, theme | done |
 | Menu builder: sub-menus, wide menus with columns, a folded menu on phones, all without script | done |
+| Content types: the owner adds kinds of entry (projects, team, events) with their own fields, list and address; posts are one of them | done |
 | WordPress import: pages, posts, images, menu, links rewritten, old addresses kept alive, a report of what did not come over | done |
 | Modules (isolated plugins) | planned |
 

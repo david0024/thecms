@@ -7,7 +7,7 @@
  * Until the owner arranges it, the site makes the menu from its pages; this
  * shows that one and offers to take it over.
  */
-import { automaticMenu, MENU_DEPTH, MENU_MAX_ITEMS, type MenuNode, type MenuTarget, newId, type Site } from '../core/index.ts';
+import { automaticMenu, contentTypes, MENU_DEPTH, MENU_MAX_ITEMS, type MenuList, type MenuNode, type MenuTarget, newId, POSTS_TYPE, type Site } from '../core/index.ts';
 import type { PageInfo } from './api.ts';
 import Self from './MenuBuilder.svelte';
 import { t } from './messages.ts';
@@ -15,14 +15,15 @@ import { t } from './messages.ts';
 let {
   site,
   pages,
-  hasPosts,
+  lists,
   nodes,
   depth = 1,
   onchange,
 }: {
   site: Site;
   pages: PageInfo[];
-  hasPosts: boolean;
+  /** The content types that have something to list: the only ones a menu can lead to. */
+  lists: MenuList[];
   /** The items at this level; null at the top means the site still makes its own menu. */
   nodes: MenuNode[] | null;
   depth?: number;
@@ -39,22 +40,33 @@ const move = (i: number, by: -1 | 1): void => {
   onchange(next);
 };
 
-const choice = (target: MenuTarget): string => (target.kind === 'page' ? `page:${target.slug}` : target.kind);
+const choice = (target: MenuTarget): string => (target.kind === 'page' ? `page:${target.slug}` : target.kind === 'type' ? `type:${target.id}` : target.kind);
+const types = $derived(site.types);
 function choose(i: number, value: string): void {
   if (value.startsWith('page:')) patch(i, { target: { kind: 'page', slug: value.slice(5) } });
+  else if (value.startsWith('type:')) patch(i, { target: { kind: 'type', id: value.slice(5) } });
   else if (value === 'blog') patch(i, { target: { kind: 'blog' } });
   else if (value === 'url') patch(i, { target: { kind: 'url', href: '' } });
   else patch(i, { target: { kind: 'none' } });
 }
 /** What the item says when its own label is left empty. */
 const fallback = (target: MenuTarget): string =>
-  target.kind === 'page' ? (pages.find((p) => p.slug === target.slug)?.title ?? '') : target.kind === 'blog' ? site.blogTitle : '';
+  target.kind === 'page'
+    ? (pages.find((p) => p.slug === target.slug)?.title ?? '')
+    : target.kind === 'blog'
+      ? site.blogTitle
+      : target.kind === 'type'
+        ? (contentTypes(site).find((type) => type.id === target.id)?.name ?? '')
+        : '';
+/** Points at a list with nothing in it yet: not drawn until it has an entry. */
+const empty = (target: MenuTarget): boolean =>
+  (target.kind === 'blog' && !lists.some((l) => l.id === POSTS_TYPE)) || (target.kind === 'type' && !lists.some((l) => l.id === target.id));
 const missing = (target: MenuTarget): boolean => target.kind === 'page' && !pages.some((p) => p.slug === target.slug);
 </script>
 
 {#if nodes === null}
   <p class="hint">{t.menu.automatic}</p>
-  <button type="button" onclick={() => onchange(automaticMenu(site, pages, hasPosts).map((n) => ({ ...n, id: newId() })))} data-menu-customise>{t.menu.customise}</button>
+  <button type="button" onclick={() => onchange(automaticMenu(site, pages, lists).map((n) => ({ ...n, id: newId() })))} data-menu-customise>{t.menu.customise}</button>
 {:else}
   <ul class="menu-items" data-menu-level={depth}>
     {#each list as node, i (node.id)}
@@ -78,16 +90,17 @@ const missing = (target: MenuTarget): boolean => target.kind === 'page' && !page
           {#each pages as p}<option value={`page:${p.slug}`}>{t.menu.page}: {p.title}</option>{/each}
           {#if node.target.kind === 'page' && missing(node.target)}<option value={`page:${node.target.slug}`}>{t.menu.gone}</option>{/if}
           <option value="blog">{site.blogTitle}</option>
+          {#each types as type}<option value={`type:${type.id}`}>{type.name}</option>{/each}
           <option value="url">{t.menu.url}</option>
         </select>
         {#if node.target.kind === 'url'}
           <input type="text" value={node.target.href} placeholder="https://… /contact/" aria-label={t.inspector.linkHref} oninput={(e) => patch(i, { target: { kind: 'url', href: e.currentTarget.value.trim() } })} data-menu-href />
         {/if}
         {#if missing(node.target)}<small class="bad">{t.menu.goneHint}</small>{/if}
-        {#if node.target.kind === 'blog' && !hasPosts}<small>{t.menu.noPosts}</small>{/if}
+        {#if empty(node.target)}<small>{t.menu.noPosts}</small>{/if}
         {#if depth < MENU_DEPTH}
           {#if node.children.length}
-            <Self {site} {pages} {hasPosts} nodes={node.children} depth={depth + 1} onchange={(children) => patch(i, { children: children ?? [] })} />
+            <Self {site} {pages} {lists} nodes={node.children} depth={depth + 1} onchange={(children) => patch(i, { children: children ?? [] })} />
           {:else}
             <button type="button" class="quiet" onclick={() => patch(i, { children: [fresh()] })} data-menu-sub>+ {depth === 1 ? t.menu.addSub : t.menu.addLink}</button>
           {/if}

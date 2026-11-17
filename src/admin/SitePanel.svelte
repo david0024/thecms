@@ -4,13 +4,13 @@
  * in the header, the footer's words and links. How these are laid out is the
  * theme's (ADR 0006), so nothing here is a colour or a position.
  */
-import type { LinkValue, Site } from '../core/index.ts';
+import type { LinkValue, MenuList, Site } from '../core/index.ts';
 import type { PageInfo } from './api.ts';
 import ImageField from './ImageField.svelte';
 import MenuBuilder from './MenuBuilder.svelte';
 import { t } from './messages.ts';
 
-let { site, pages, hasPosts, onchange }: { site: Site; pages: PageInfo[]; hasPosts: boolean; onchange: (site: Site) => void } = $props();
+let { site, pages, lists, onchange }: { site: Site; pages: PageInfo[]; lists: MenuList[]; onchange: (site: Site) => void } = $props();
 
 const set = (patch: Partial<Site>): void => onchange({ ...site, ...patch });
 const link = (value: LinkValue | null, patch: Partial<LinkValue>): LinkValue => ({ label: value?.label ?? '', href: value?.href ?? '', ...patch });
@@ -48,7 +48,7 @@ const setFooterLink = (i: number, patch: Partial<LinkValue>): void => set({ foot
 
 <h3>{t.menu.title}</h3>
 <div class="field" data-menu-builder>
-  <MenuBuilder {site} {pages} {hasPosts} nodes={site.menu} onchange={(menu) => set({ menu })} />
+  <MenuBuilder {site} {pages} {lists} nodes={site.menu} onchange={(menu) => set({ menu })} />
 </div>
 
 <h3>{t.site.footer}</h3>

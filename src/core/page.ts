@@ -1,6 +1,7 @@
 /** A page and the site it belongs to, as documents. */
 import { type Block, blocksText, cleanImage, cleanLink, type ImageValue, type LinkValue, normalizeBlocks } from './blocks.ts';
 import { type MenuNode, normalizeMenu } from './menu.ts';
+import { type ContentType, normalizeTypes, postsType, RESERVED_SLUGS } from './types.ts';
 import { type Issue, isObject, safeHref, slugify, str } from './util.ts';
 
 export interface Page {
@@ -30,6 +31,8 @@ export interface Site {
   menu: MenuNode[] | null;
   /** What the blog is called in the menu and at the top of its list. */
   blogTitle: string;
+  /** The content types the owner added. Posts are always there and are not listed here (ADR 0010). */
+  types: ContentType[];
 }
 
 const MAX_FOOTER_LINKS = 12;
@@ -69,8 +72,17 @@ export function normalizeSite(input: unknown): Site {
       .filter((link): link is LinkValue => link !== null),
     menu: normalizeMenu(raw.menu),
     blogTitle: str(raw.blogTitle, 60).trim() || 'Blog',
+    types: normalizeTypes(raw.types),
   };
 }
+
+/** Every content type the site has: posts first, then the owner's. */
+export const contentTypes = (site: Site): ContentType[] => [postsType(site.blogTitle), ...site.types];
+
+export const typeById = (site: Site, id: string): ContentType | undefined => contentTypes(site).find((t) => t.id === id);
+
+/** Addresses a page may not take: the site's own, and each type's. */
+export const reservedSlugs = (site: Site): string[] => [...RESERVED_SLUGS, ...site.types.map((t) => t.path)];
 
 export const pagePath = (slug: string): string => (slug ? `/${slug}/` : '/');
 

@@ -5,20 +5,24 @@
 import { mkdir, readdir, rm } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import {
-  blogPath,
   categoriesOf,
-  categoryPath,
-  FEED_PATH,
+  type ContentType,
+  contentTypes,
+  entryPath,
+  feedPath,
   imageSources,
   mediaNameOf,
-  newestFirst,
+  listed,
+  listPath,
+  type MenuList,
+  POSTS_TYPE,
   type Page,
   paginate,
   pagePath,
   type Post,
   postExcerpt,
   postImageSources,
-  postPath,
+  typeCategoryPath,
   type Redirect,
   redirectFile,
   type Site,
@@ -42,10 +46,10 @@ export type MediaSource = (name: string) => Uint8Array | null;
 const fileOf = (path: string): string => `${path.slice(1)}index.html`;
 
 /** The newest posts as an Atom feed, for people who follow the site in a reader. */
-function feed(site: Site, posts: Post[]): string {
+function feed(site: Site, type: ContentType, posts: Post[]): string {
   const day = (date: string): string => `${date}T00:00:00Z`;
   const entries = posts.slice(0, FEED_ENTRIES).map((post) => {
-    const url = xml(`${site.url}${postPath(post.slug)}`);
+    const url = xml(`${site.url}${entryPath(type, post.slug)}`);
     return [
       '  <entry>',
       `    <title>${xml(post.title)}</title>`,
@@ -60,10 +64,10 @@ function feed(site: Site, posts: Post[]): string {
   return [
     '<?xml version="1.0" encoding="UTF-8"?>',
     `<feed xmlns="http://www.w3.org/2005/Atom" xml:lang="${xml(site.language)}">`,
-    `  <title>${xml(site.name)}</title>`,
-    `  <id>${xml(`${site.url}${blogPath()}`)}</id>`,
-    `  <link href="${xml(`${site.url}${blogPath()}`)}"/>`,
-    `  <link rel="self" href="${xml(`${site.url}${FEED_PATH}`)}"/>`,
+    `  <title>${xml(type.id === POSTS_TYPE ? site.name : `${site.name}: ${type.name}`)}</title>`,
+    `  <id>${xml(`${site.url}${listPath(type)}`)}</id>`,
+    `  <link href="${xml(`${site.url}${listPath(type)}`)}"/>`,
+    `  <link rel="self" href="${xml(`${site.url}${feedPath(type)}`)}"/>`,
     `  <updated>${day(posts[0]?.date ?? '1970-01-01')}</updated>`,
     `  <author><name>${xml(site.name)}</name></author>`,
     ...entries,
@@ -81,12 +85,18 @@ export async function buildSite(
   theme: Theme,
   pages: Page[],
   media: MediaSource = () => null,
-  allPosts: Post[] = [],
+  /** Published entries: the posts alone, or every type's by the type's name. */
+  entries: Post[] | Record<string, Post[]> = [],
   redirects: Redirect[] = [],
 ): Promise<Map<string, string | Uint8Array>> {
   const files = new Map<string, string | Uint8Array>();
-  const posts = newestFirst(allPosts);
-  const menu = menuOf(site, pages, posts.length > 0);
+  const byType = Array.isArray(entries) ? { [POSTS_TYPE]: entries } : entries;
+  const types = contentTypes(site)
+    .map((type) => ({ type, posts: listed(type, byType[type.id] ?? []) }))
+    .filter((t) => t.posts.length > 0);
+  const posts = types.flatMap((t) => t.posts);
+  // A type with nothing published has no list, and so no place in the menu.
+  const menu = menuOf(site, pages, types.map(({ type }): MenuList => ({ id: type.id, title: type.name, href: listPath(type) })));
   /** Every address a visitor can open, for the sitemap. */
   const paths: string[] = [];
   const page = (path: string, html: string): void => {
@@ -98,26 +108,26 @@ export async function buildSite(
   files.set(STYLESHEET.slice(1), `${await Bun.file(BASE_CSS).text()}${themeCss(theme)}`);
   for (const p of pages) page(pagePath(p.slug), renderPage(site, theme, p, menu));
 
-  if (posts.length) {
-    for (const post of posts) page(postPath(post.slug), renderPost(site, theme, post, menu));
+  for (const { type, posts: own } of types) {
+    for (const post of own) page(entryPath(type, post.slug), renderPost(site, theme, post, menu, type));
     const lists = [
-      { heading: site.blogTitle, path: blogPath, posts },
-      ...categoriesOf(posts).map((c) => ({ heading: c.name, path: (n: number) => categoryPath(c.name, n), posts: c.posts })),
+      { heading: type.name, path: (n: number) => listPath(type, n), posts: own },
+      ...categoriesOf(own).map((c) => ({ heading: c.name, path: (n: number) => typeCategoryPath(type, c.name, n), posts: c.posts })),
     ];
     for (const list of lists) {
       const cut = paginate(list.posts);
       cut.forEach((some, i) => {
         const path = list.path(i + 1);
-        page(path, renderBlogList(site, { heading: list.heading, path, posts: some, newer: i > 0 ? list.path(i) : '', older: i < cut.length - 1 ? list.path(i + 2) : '' }, menu));
+        page(path, renderBlogList(site, { heading: list.heading, path, posts: some, newer: i > 0 ? list.path(i) : '', older: i < cut.length - 1 ? list.path(i + 2) : '' }, menu, type));
       });
     }
-    // A feed names every post by its full address, so it needs the site's own.
-    if (site.url) files.set(FEED_PATH.slice(1), feed(site, posts));
+    // A feed names every entry by its full address, so it needs the site's own.
+    if (site.url && type.feed) files.set(feedPath(type).slice(1), feed(site, type, own));
   }
 
   const shown: [string, string][] = [
     ...pages.flatMap((p) => imageSources(p.blocks).map((src): [string, string] => [`the page "${p.title}"`, src])),
-    ...posts.flatMap((p) => postImageSources(p).map((src): [string, string] => [`the post "${p.title}"`, src])),
+    ...posts.flatMap((p) => postImageSources(p).map((src): [string, string] => [`the entry "${p.title}"`, src])),
   ];
   if (site.logo) shown.push(['the header', site.logo.src]);
   for (const [where, src] of shown) {
@@ -175,7 +185,7 @@ export async function exportSite(store: Store, outDir: string): Promise<string[]
   }
   await rm(outDir, { recursive: true, force: true });
 
-  const files = await buildSite(store.site(), theme, pages, (name) => store.mediaFile(name)?.bytes ?? null, store.publishedPosts(), store.redirects());
+  const files = await buildSite(store.site(), theme, pages, (name) => store.mediaFile(name)?.bytes ?? null, Object.fromEntries(contentTypes(store.site()).map((type) => [type.id, store.publishedEntries(type.id)])), store.redirects());
   files.set(MARKER, 'Made by thecms export. This folder is replaced on every export.\n');
   for (const [path, contents] of files) {
     const target = join(outDir, path);
