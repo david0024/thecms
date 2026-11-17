@@ -6,7 +6,7 @@
  * taken is left as it is and named in the report, so running an import twice,
  * or into a site someone has started, loses no work.
  */
-import { MEDIA_MAX_BYTES, type MenuNode } from '../core/index.ts';
+import { MEDIA_MAX_BYTES, type MenuNode, reservedSlugs } from '../core/index.ts';
 import type { Store } from '../site/store.ts';
 import type { ImportPlan } from './wxr.ts';
 
@@ -27,6 +27,8 @@ export interface ImportReport {
 }
 
 const TIMEOUT_MS = 30_000;
+/** An export file larger than this is refused by the editor. WordPress splits its exports long before. */
+export const IMPORT_MAX_BYTES = 64 * 1024 * 1024;
 
 /** Fetches over the network, refusing what could not be an image before reading it all. */
 export const fetchImage: FetchImage = async (url) => {
@@ -96,8 +98,26 @@ export async function runImport(store: Store, plan: ImportPlan, options: ImportO
   let pages = 0;
   let posts = 0;
   let drafts = 0;
+
+  // Content types the owner asked for, added beside whatever the site already has. They come
+  // first, so a type the site refuses (a page already lives at its address) is known before its entries.
+  const added: typeof plan.types = [];
+  for (const type of plan.types) {
+    const site = store.site();
+    if (!site.types.some((t) => t.id === type.id)) {
+      try {
+        store.setSite({ ...site, types: [...site.types, type] });
+      } catch (error) {
+        notes.push(`The content type "${type.name}" was not added, and its entries were not imported: ${error instanceof Error ? error.message : String(error)}.`);
+        continue;
+      }
+    }
+    added.push(type);
+  }
+
+  const reserved = new Set(reservedSlugs(store.site()));
   for (const { publish, ...page } of plan.pages) {
-    if (store.draft(page.slug)) {
+    if (store.draft(page.slug) || reserved.has(page.slug)) {
       kept.push(`the page "${page.title}"`);
       continue;
     }
@@ -116,23 +136,17 @@ export async function runImport(store: Store, plan: ImportPlan, options: ImportO
     else drafts++;
     posts++;
   }
-  // Content types the owner asked for: added beside whatever the site already has.
   let entries = 0;
-  if (plan.types.length) {
-    const site = store.site();
-    const have = new Set(site.types.map((t) => t.id));
-    store.setSite({ ...site, types: [...site.types, ...plan.types.filter((t) => !have.has(t.id))] });
-    for (const type of plan.types) {
-      for (const { publish, ...entry } of plan.entries[type.id] ?? []) {
-        if (store.entryDraft(type.id, entry.slug)) {
-          kept.push(`"${entry.title}" (${type.name})`);
-          continue;
-        }
-        const saved = store.saveEntry(type.id, repoint(entry, src));
-        if (publish) store.publishEntry(type.id, saved.slug);
-        else drafts++;
-        entries++;
+  for (const type of added) {
+    for (const { publish, ...entry } of plan.entries[type.id] ?? []) {
+      if (store.entryDraft(type.id, entry.slug)) {
+        kept.push(`"${entry.title}" (${type.name})`);
+        continue;
       }
+      const saved = store.saveEntry(type.id, repoint(entry, src));
+      if (publish) store.publishEntry(type.id, saved.slug);
+      else drafts++;
+      entries++;
     }
   }
   if (kept.length) notes.push(`Already in this site under the same address, and left as they were: ${kept.slice(0, 10).join(', ')}${kept.length > 10 ? ` and ${kept.length - 10} more` : ''}.`);

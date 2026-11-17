@@ -42,6 +42,7 @@ import ContentList from './ContentList.svelte';
 import ContentTypes from './ContentTypes.svelte';
 import EntryFieldsForm from './EntryFieldsForm.svelte';
 import ImageField from './ImageField.svelte';
+import ImportScreen from './ImportScreen.svelte';
 import MediaLibrary from './MediaLibrary.svelte';
 import Fields from './Fields.svelte';
 import { t } from './messages.ts';
@@ -55,7 +56,7 @@ let site = $state.raw<State | null>(null);
 let page = $state.raw<Doc | null>(null);
 let kind = $state<Kind>('page');
 /** Which section of the admin is showing: a list, or the builder with one page or post open. */
-let view = $state<'pages' | 'media' | 'types' | 'edit' | `list:${string}`>('pages');
+let view = $state<'pages' | 'media' | 'types' | 'import' | 'edit' | `list:${string}`>('pages');
 let selected = $state<string | null>(null);
 let tab = $state<'content' | 'style'>('content');
 let saving = $state<'saved' | 'saving' | 'unsaved' | 'error'>('saved');
@@ -384,6 +385,16 @@ async function saveTypes(next: ContentType[]): Promise<string> {
   }
 }
 
+/** The site was changed by something other than this screen (an import): read it again. */
+async function reload(): Promise<void> {
+  try {
+    site = await api.state();
+    await draw();
+  } catch (error) {
+    fail(error);
+  }
+}
+
 async function toggleSite(): Promise<void> {
   siteMode = !siteMode;
   themeMode = false;
@@ -453,6 +464,7 @@ onMount(() => {
       <button type="button" onclick={() => panel('site')} data-nav="settings">{t.nav.settings}</button>
       <button type="button" onclick={() => panel('theme')} data-nav="theme">{t.nav.theme}</button>
       <button type="button" aria-current={view === 'types' ? 'page' : undefined} onclick={() => (view = 'types')} data-nav="types">{t.ctypes.heading}</button>
+      <button type="button" aria-current={view === 'import' ? 'page' : undefined} onclick={() => (view = 'import')} data-nav="import">{t.nav.import}</button>
     </nav>
 
     {#if view === 'pages'}
@@ -468,6 +480,8 @@ onMount(() => {
       {/if}
     {:else if view === 'media'}
       <MediaLibrary />
+    {:else if view === 'import'}
+      <ImportScreen ondone={reload} />
     {/if}
     {#if failure && view !== 'edit'}<p class="bad toast" role="alert">{failure}</p>{/if}
 

@@ -40,3 +40,4 @@ jobs:
           npm install --no-save --no-package-lock playwright
           npx playwright install --with-deps chromium
           node e2e/editor.cjs
+          node e2e/import.cjs

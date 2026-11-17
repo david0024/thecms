@@ -119,7 +119,6 @@ like any other.
 
 ## Known gaps
 
-- Import runs from the command line only; the editor has no upload for it.
 - Large JPEGs are stored as they are; the editor's shrinking (ADR 0005) runs
   in a browser.
 - Old addresses with non-Latin letters or a query (`?p=12`) get no redirect.

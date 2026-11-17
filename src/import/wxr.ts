@@ -62,6 +62,8 @@ export interface ImportPlan {
   images: string[];
   /** Old addresses that changed, and where each one leads now. */
   redirects: { from: string; to: string }[];
+  /** Kinds of entry a plugin or theme added that were not brought, for a screen that offers them. */
+  others: { type: string; count: number }[];
   /** What the owner should know, in sentences. */
   notes: string[];
 }
@@ -489,11 +491,11 @@ export function planImport(xml: string, today: string, options: { /** WordPress 
     notes.push(
       type === 'wp_block'
         ? `${count(n, 'reusable block')} (patterns) not imported; where a page used one, that part is missing.`
-        : `${count(n, 'entry', 'entries')} of the kind "${type}" not imported: they belong to a plugin or theme of the old site. If they are content you want (a portfolio, a team), run the import again with --types=${type} to bring them as a content type.`,
+        : `${count(n, 'entry', 'entries')} of the kind "${type}" not imported: they belong to a plugin or theme of the old site. If they are content you want (a portfolio, a team), bring them as a content type: tick them on the import screen, or run the import again with --types=${type} on the command line.`,
     );
   }
   if (items.some((i) => i.type === 'page' && i.parent !== '0' && live(i))) notes.push('Pages that sat under other pages now sit at the top level (/services/web/ became /web/). Their old addresses lead to the new ones.');
 
   const language = textOf(channel, 'language');
-  return { site: { name, language, url: /^https?:\/\//i.test(base) ? base : '' }, pages, posts, types, entries, menu, images: [...images], redirects, notes };
+  return { site: { name, language, url: /^https?:\/\//i.test(base) ? base : '' }, pages, posts, types, entries, menu, images: [...images], redirects, others: [...other].filter(([type]) => type !== 'wp_block').map(([type, n]) => ({ type, count: n })), notes };
 }

@@ -26,6 +26,7 @@ The decisions behind this, each with its reason:
 - [ADR 0009 — Importing a WordPress site](docs/adr/0009-wordpress-import.md)
 - [ADR 0010 — Content types](docs/adr/0010-content-types.md)
 - [ADR 0011 — A block that lists entries](docs/adr/0011-the-entries-block.md)
+- [ADR 0012 — Importing from the admin](docs/adr/0012-import-from-the-admin.md)
 
 ## Where it stands
 
@@ -47,6 +48,7 @@ theme, publish, and export the site as static files.
 | Content types: the owner adds kinds of entry (projects, team, events) with their own fields, list and address; posts are one of them | done |
 | A block that lists entries of a type on any page (latest posts, a few projects) | done |
 | WordPress import: pages, posts, images, menu, links rewritten, old addresses kept alive, a report of what did not come over | done |
+| Import from the admin: choose the file, see what would come over and what would not, then run it | done |
 | Modules (isolated plugins) | planned |
 
 ## Try it
@@ -68,7 +70,9 @@ type looks by default, and download the result as a file. A theme is published
 separately from pages, with **Publish theme**. `export` writes what is published; serve `dist` with any static file
 server.
 
-To bring a WordPress site: in WordPress choose Tools, Export, All content, then
+To bring a WordPress site: in WordPress choose Tools, Export, All content. Then open
+**Import** in the admin and choose the file; it shows what would come over before
+anything is written. Or, from the command line:
 
 ```sh
 bun run cms import site.db export.xml   # a new site.db from the export
