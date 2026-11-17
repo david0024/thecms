@@ -8,6 +8,8 @@ export type Doc = Page | Post;
 export interface PageInfo {
   slug: string;
   title: string;
+  /** Asked to be in the automatic menu. Posts have no such wish. */
+  inMenu?: boolean;
   published: boolean;
   changed: boolean;
 }

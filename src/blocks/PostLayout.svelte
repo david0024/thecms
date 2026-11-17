@@ -1,6 +1,6 @@
 <script lang="ts">
 /** A blog post: its date, categories, title and cover, then its blocks. */
-import type { Post, Site } from '../core/index.ts';
+import type { MenuLink, Post, Site } from '../core/index.ts';
 import { blogPath, categoryPath } from '../core/index.ts';
 import BlockView from './BlockView.svelte';
 import Shell from './Shell.svelte';
@@ -11,7 +11,7 @@ let {
   post,
   menu,
   editing = false,
-}: { site: Site; post: Post; menu: { title: string; href: string }[]; editing?: boolean } = $props();
+}: { site: Site; post: Post; menu: MenuLink[]; editing?: boolean } = $props();
 </script>
 
 <Shell {site} {menu} current={blogPath()} {editing}>

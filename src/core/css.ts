@@ -64,9 +64,10 @@ export function themeCss(theme: Theme): string {
       css += rule(`.b-${type}.v-${variant}`, declarations(style, theme));
     }
   }
-  const { header, footer } = theme.layout;
+  const { header, footer, menu } = theme.layout;
   css += rule('.site-header', join(HEADER_LAYOUT[header.arrangement], header.sticky ? STICKY : '', declarations(header.style, theme)));
   css += rule('.site-footer', join(FOOTER_LAYOUT[footer.arrangement], declarations(footer.style, theme)));
+  css += rule('.site-header .sub', declarations(menu.style, theme));
   return css;
 }
 

@@ -1,5 +1,6 @@
 /** A page and the site it belongs to, as documents. */
 import { type Block, blocksText, cleanImage, cleanLink, type ImageValue, type LinkValue, normalizeBlocks } from './blocks.ts';
+import { type MenuNode, normalizeMenu } from './menu.ts';
 import { type Issue, isObject, safeHref, slugify, str } from './util.ts';
 
 export interface Page {
@@ -25,6 +26,8 @@ export interface Site {
   footer: string;
   /** Links in the footer: a privacy page, a social profile. */
   footerLinks: LinkValue[];
+  /** The menu as the owner arranged it; null while the site makes one from its pages (ADR 0008). */
+  menu: MenuNode[] | null;
   /** What the blog is called in the menu and at the top of its list. */
   blogTitle: string;
 }
@@ -64,6 +67,7 @@ export function normalizeSite(input: unknown): Site {
       .slice(0, MAX_FOOTER_LINKS)
       .map(cleanLink)
       .filter((link): link is LinkValue => link !== null),
+    menu: normalizeMenu(raw.menu),
     blogTitle: str(raw.blogTitle, 60).trim() || 'Blog',
   };
 }

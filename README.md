@@ -22,6 +22,7 @@ The decisions behind this, each with its reason:
 - [ADR 0005 — Images, formatting and dragging](docs/adr/0005-images-formatting-dragging.md)
 - [ADR 0006 — The header and footer](docs/adr/0006-header-and-footer.md)
 - [ADR 0007 — The blog](docs/adr/0007-the-blog.md)
+- [ADR 0008 — The menu](docs/adr/0008-the-menu.md)
 
 ## Where it stands
 
@@ -38,7 +39,7 @@ theme, publish, and export the site as static files.
 | Images uploaded and kept with the site; headings, lists and links from a bar on the page; blocks moved by dragging | done |
 | Header and footer: logo, button and links from the site, layout from the theme | done |
 | Blog: posts, categories, paged list, Atom feed | done |
-| Menu builder (sub-menus, mega menu, a menu for phones) | next |
+| Menu builder: sub-menus, wide menus with columns, a folded menu on phones, all without script | done |
 | WordPress import | planned |
 | Modules (isolated plugins) | planned |
 

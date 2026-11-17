@@ -1,6 +1,6 @@
 <script lang="ts">
 /** A list of posts: the blog's front page, a later page of it, or one category. */
-import type { Post, Site } from '../core/index.ts';
+import type { MenuLink, Post, Site } from '../core/index.ts';
 import { blogPath, categoryPath, postExcerpt, postPath } from '../core/index.ts';
 import Shell from './Shell.svelte';
 import { dateText, wordsFor } from './words.ts';
@@ -14,7 +14,7 @@ let {
   older = '',
 }: {
   site: Site;
-  menu: { title: string; href: string }[];
+  menu: MenuLink[];
   heading: string;
   posts: Post[];
   /** The address of the page with newer posts, when there is one. */

@@ -52,7 +52,7 @@ describe('the layout of the header and footer is part of the theme', () => {
   test('two themes that lay the header out differently draw the same markup', () => {
     const site = normalizeSite(DEMO_SITE);
     const page = normalizePage(DEMO_PAGES[0]).page;
-    const menu = DEMO_PAGES.map((p) => ({ title: p.title, href: `/${p.slug}` }));
+    const menu = DEMO_PAGES.map((p) => ({ title: p.title, href: `/${p.slug}`, children: [] }));
     expect(themeOf(studio).layout).not.toEqual(themeOf(plain).layout);
     expect(renderParts(site, themeOf(studio), page, menu).body).toBe(renderParts(site, themeOf(plain), page, menu).body);
   });

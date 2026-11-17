@@ -5,6 +5,7 @@
  */
 const en = {
   mainMenu: 'Main',
+  menu: 'Menu',
   footerMenu: 'Footer',
   notFound: 'Page not found',
   newer: 'Newer posts',
@@ -20,6 +21,7 @@ const WORDS: Record<string, Words> = {
   en,
   ro: {
     mainMenu: 'Principal',
+    menu: 'Meniu',
     footerMenu: 'Subsol',
     notFound: 'Pagina nu a fost găsită',
     newer: 'Articole mai noi',

@@ -314,6 +314,36 @@ const assert = (condition, message) => {
     await canvas.locator('.site-header img.site-logo').waitFor();
     assert((await canvas.locator('.site-logo').getAttribute('alt')) === 'Atelier Nord', 'the logo takes the place of the name, and is read out as the name');
     if (shots) await page.screenshot({ path: join(shots, 'site-settings.png') });
+
+    // The menu builder: take the menu over, add an item that opens a wide panel of two columns, move it up.
+    await page.locator('[data-menu-customise]').click();
+    const top = page.locator('[data-menu-level="1"] > li');
+    const made = await top.count();
+    assert(made >= 4, `taking the menu over starts from the one the site had (${made} items)`);
+    await page.locator('[data-menu-add="1"]').click();
+    const workshop = top.nth(made);
+    await workshop.locator('[data-menu-label]').first().fill('Workshop');
+    await workshop.locator('[data-menu-sub]').click();
+    const first = workshop.locator('[data-menu-level="2"] > li').first();
+    await first.locator('[data-menu-label]').first().fill('Tables');
+    await first.locator('[data-menu-target]').first().selectOption('page:about');
+    await first.locator('[data-menu-sub]').click();
+    const oak = first.locator('[data-menu-level="3"] > li').first();
+    await oak.locator('[data-menu-label]').fill('Oak');
+    await oak.locator('[data-menu-target]').selectOption('url');
+    await oak.locator('[data-menu-href]').fill('/contact/#oak');
+    await workshop.locator('[data-menu-add="2"]').click();
+    const second = workshop.locator('[data-menu-level="2"] > li').nth(1);
+    await second.locator('[data-menu-target]').first().selectOption('page:contact');
+    await workshop.getByRole('button', { name: 'Move up' }).first().click();
+    const wide = canvas.locator('.menu > li.mega');
+    await wide.locator('summary', { hasText: 'Workshop' }).waitFor();
+    assert((await canvas.locator('.menu > li').nth(made - 1).getAttribute('class')) === 'mega', 'the new item sits where it was moved to');
+    await wide.locator('summary').click();
+    await wide.locator('.col a', { hasText: 'Oak' }).waitFor();
+    const columns = await wide.locator('.col-title').allInnerTexts();
+    assert(columns.join('|') === 'Tables|Contact', `sub-items with links of their own become columns; one without a label takes its page's title (${columns.join('|')})`);
+    if (shots) await page.screenshot({ path: join(shots, 'menu-builder.png') });
     await page.locator('[data-site-mode]').click();
     await page.getByRole('button', { name: 'Publish' }).click();
     await page.getByText('Published', { exact: true }).waitFor();
@@ -368,7 +398,7 @@ const assert = (condition, message) => {
   const css = readFileSync(join(out, 'assets/site.css'), 'utf8');
   assert(css.includes('--t-color-background:#12110f'), 'the export uses the theme chosen in the editor');
   assert(css.includes('--t-color-primary:#ff0066') && css.includes('.b-services{background-color:var(--t-color-brand)}'), 'the export carries the theme as it was built');
-  assert(!/evil|display:none/.test(css), 'no refused theme value reached the stylesheet');
+  assert(!/evil|body\{display:none/.test(css), 'no refused theme value reached the stylesheet');
   const prices = readFileSync(join(out, 'preturi-si-comenzi/index.html'), 'utf8');
   assert(prices.includes('<h1>A headline that says what you do</h1>'), 'the new page is exported at its own address');
   assert(prices.includes('<h2>Our prices</h2><ul><li>Oak table</li><li>Walnut shelf</li></ul>'), 'the heading and the list are in the export');
@@ -393,6 +423,47 @@ const assert = (condition, message) => {
   const feed = readFileSync(join(out, 'blog/feed.xml'), 'utf8');
   assert(feed.includes('<link href="https://example.com/blog/winter-opening-hours/"/>') && feed.includes('<updated>2026-12-01T00:00:00Z</updated>'), 'the feed carries the post with its full address');
   assert(readFileSync(join(out, 'sitemap.xml'), 'utf8').includes('<loc>https://example.com/blog/category/news/</loc>'), 'the sitemap lists the blog too');
+
+  // The exported menu, in a browser with scripts switched off: wide, then as narrow as a phone.
+  assert(home.includes('<summary>Workshop</summary>') && home.includes('<a href="/contact/#oak">Oak</a>') && !home.includes('<script'), 'the menu is in every page as plain markup');
+  const types = { html: 'text/html; charset=utf-8', css: 'text/css', xml: 'application/xml', png: 'image/png', webp: 'image/webp', txt: 'text/plain' };
+  const files = require('node:http').createServer((request, response) => {
+    const path = join(out, decodeURIComponent(new URL(request.url, 'http://x').pathname).replace(/\/$/, '/index.html'));
+    try {
+      response.writeHead(200, { 'content-type': types[path.split('.').pop()] ?? 'application/octet-stream' }).end(readFileSync(path));
+    } catch {
+      response.writeHead(404).end();
+    }
+  });
+  await new Promise((resolve) => files.listen(4399, '127.0.0.1', resolve));
+  const visitor = await chromium.launch();
+  try {
+    const context = await visitor.newContext({ javaScriptEnabled: false, viewport: { width: 1280, height: 800 }, deviceScaleFactor: shots ? 2 : 1 });
+    const site = await context.newPage();
+    await site.goto('http://127.0.0.1:4399/');
+    const panel = site.locator('.menu > li.mega .sub');
+    assert(!(await panel.isVisible()) && !(await site.locator('.menu-button').isVisible()), 'on a wide screen the menu is laid out, its panel closed, and there is no menu button');
+    await site.locator('summary', { hasText: 'Workshop' }).click();
+    assert(await panel.locator('a', { hasText: 'Oak' }).isVisible(), 'a click opens the panel, without script');
+    const widths = await site.evaluate(() => [document.querySelector('.mega .sub').getBoundingClientRect().width, document.querySelector('.site-in').getBoundingClientRect().width]);
+    assert(Math.abs(widths[0] - widths[1]) < 2, `the wide panel spans the header (${widths.join(' / ')})`);
+    if (shots) await site.screenshot({ path: join(shots, 'menu-wide.png') });
+    await site.mouse.click(640, 700);
+    assert(!(await panel.isVisible()), 'a click anywhere else closes it');
+    await site.setViewportSize({ width: 390, height: 800 });
+    assert(!(await site.locator('.menu').isVisible()) && (await site.locator('.menu-button').isVisible()), 'on a phone the menu is folded behind a button');
+    await site.locator('.menu-button').click();
+    await site.locator('summary', { hasText: 'Workshop' }).click();
+    assert(await panel.locator('a', { hasText: 'Oak' }).isVisible(), 'the button unfolds it, and an item opens in place');
+    const wider = await site.evaluate(() => [...document.querySelectorAll('body *')].filter((el) => el.getBoundingClientRect().right > innerWidth + 1).map((el) => `${el.tagName.toLowerCase()}.${el.className}`).slice(0, 5));
+    assert(wider.length === 0 && (await site.evaluate(() => document.documentElement.scrollWidth)) <= 390, `nothing is wider than the phone ${wider.join(' ')}`);
+    if (shots) await site.screenshot({ path: join(shots, 'menu-phone.png') });
+    await site.locator('.sub a', { hasText: 'Oak' }).click();
+    assert(site.url().endsWith('/contact/#oak'), 'and its links lead where they say');
+  } finally {
+    await visitor.close();
+    files.close();
+  }
   rmSync(dir, { recursive: true, force: true });
   console.log('\nThe editor works end to end.');
 })().catch((error) => {

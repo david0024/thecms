@@ -1,6 +1,6 @@
 <script lang="ts">
 /** A page: its blocks, inside what every page shares. */
-import type { Page, Site } from '../core/index.ts';
+import type { MenuLink, Page, Site } from '../core/index.ts';
 import { pagePath } from '../core/index.ts';
 import BlockView from './BlockView.svelte';
 import Shell from './Shell.svelte';
@@ -10,7 +10,7 @@ let {
   page,
   menu,
   editing = false,
-}: { site: Site; page: Page; menu: { title: string; href: string }[]; editing?: boolean } = $props();
+}: { site: Site; page: Page; menu: MenuLink[]; editing?: boolean } = $props();
 </script>
 
 <Shell {site} {menu} current={pagePath(page.slug)} {editing}>
