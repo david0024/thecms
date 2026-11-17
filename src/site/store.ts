@@ -23,11 +23,13 @@ import {
   newestFirst,
   normalizePage,
   normalizePost,
+  normalizeRedirects,
   normalizeSite,
   type Page,
   type Post,
   parseTheme,
   postImageSources,
+  type Redirect,
   RESERVED_SLUGS,
   type Site,
   str,
@@ -102,6 +104,17 @@ export class Store {
     const site = normalizeSite(input);
     this.setMeta('site', site);
     return site;
+  }
+
+  /** Old addresses that lead to new ones (ADR 0009). The export writes a small page for each. */
+  redirects(): Redirect[] {
+    return normalizeRedirects(this.getMeta('redirects'));
+  }
+
+  setRedirects(input: unknown): Redirect[] {
+    const redirects = normalizeRedirects(input);
+    this.setMeta('redirects', redirects);
+    return redirects;
   }
 
   private readTheme(key: string): Theme | null {

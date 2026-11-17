@@ -11,6 +11,7 @@ export * from './menu.ts';
 export * from './navigation.ts';
 export * from './page.ts';
 export * from './post.ts';
+export * from './redirect.ts';
 export * from './richtext.ts';
 export * from './style.ts';
 export * from './theme.ts';

@@ -27,6 +27,13 @@ jobs:
           grep -q '<h1>Solid wood furniture, made to measure</h1>' "$RUNNER_TEMP/out/index.html"
           grep -q -- '--t-color-primary:#2563eb' "$RUNNER_TEMP/out/assets/site.css"
           test -f "$RUNNER_TEMP/out/about/index.html"
+      # A WordPress export brought in and published, checked by the files.
+      - name: Import a WordPress export
+        run: |
+          bun run cms import "$RUNNER_TEMP/wp.db" test/fixtures/wordpress.xml --no-images
+          bun run cms export "$RUNNER_TEMP/wp.db" "$RUNNER_TEMP/wp"
+          grep -q 'First <strong>post</strong>' "$RUNNER_TEMP/wp/blog/hello-world/index.html"
+          grep -q 'url=/blog/hello-world/' "$RUNNER_TEMP/wp/2024/01/hello-world/index.html"
       # The editor in a real browser, from the first click to the exported files.
       - name: Editor end to end
         run: |
