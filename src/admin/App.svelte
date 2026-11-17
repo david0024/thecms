@@ -33,7 +33,9 @@ import {
   slugify,
 } from '../core/index.ts';
 import { api, type Doc, type Kind, type State } from './api.ts';
+import ContentList from './ContentList.svelte';
 import ImageField from './ImageField.svelte';
+import MediaLibrary from './MediaLibrary.svelte';
 import Fields from './Fields.svelte';
 import { t } from './messages.ts';
 import { setPath } from './paths.ts';
@@ -45,12 +47,12 @@ let site = $state.raw<State | null>(null);
 /** What is open in the editor: a page or a blog post. */
 let page = $state.raw<Doc | null>(null);
 let kind = $state<Kind>('page');
-let newKind = $state<Kind>('page');
+/** Which section of the admin is showing: a list, or the builder with one page or post open. */
+let view = $state<'pages' | 'posts' | 'media' | 'edit'>('pages');
 let selected = $state<string | null>(null);
 let tab = $state<'content' | 'style'>('content');
 let saving = $state<'saved' | 'saving' | 'unsaved' | 'error'>('saved');
 let failure = $state('');
-let newTitle = $state<string | null>(null);
 let themeMode = $state(false);
 let siteMode = $state(false);
 let past = $state.raw<Block[][]>([]);
@@ -251,8 +253,20 @@ async function open(slug: string, next: Kind = 'page'): Promise<void> {
   }
 }
 
-async function createPage(): Promise<void> {
-  const title = (newTitle ?? '').trim();
+/** Chosen from a list: opened in the builder. */
+async function edit(slug: string, next: Kind): Promise<void> {
+  await open(slug, next);
+  view = 'edit';
+}
+
+/** A section that lives on the page itself: the builder, with that panel open. */
+async function panel(which: 'site' | 'theme'): Promise<void> {
+  view = 'edit';
+  if (which === 'site' && !siteMode) await toggleSite();
+  if (which === 'theme' && !themeMode) await toggleTheme();
+}
+
+async function createPage(title: string, newKind: Kind): Promise<void> {
   const slug = slugify(title);
   if (!site || !title || !slug) return;
   try {
@@ -260,8 +274,7 @@ async function createPage(): Promise<void> {
     const fresh = newKind === 'post' ? ({ slug, title, blocks: [] } as unknown as Post) : { slug, title, description: '', inMenu: true, blocks: [] };
     const { pages, posts } = await api.save(fresh, true, newKind);
     site = { ...site, pages, posts };
-    newTitle = null;
-    await open(slug, newKind);
+    await edit(slug, newKind);
   } catch (error) {
     fail(error);
   }
@@ -274,6 +287,7 @@ async function removePage(): Promise<void> {
     saving = 'saved';
     const { pages, posts } = await api.remove(page.slug, kind);
     site = { ...site, pages, posts };
+    view = kind === 'post' ? 'posts' : 'pages';
     await open('');
   } catch (error) {
     fail(error);
@@ -402,9 +416,31 @@ onMount(() => {
 {:else if !site || !page}
   <p class="notice">{failure || '…'}</p>
 {:else}
-  <div class="editor">
-    <header class="bar">
+  <div class="editor admin" class:building={view === 'edit'}>
+    <!-- Like a page builder elsewhere, the builder takes the whole window: the page needs the width. -->
+    <nav class="rail" aria-label={t.nav.label} hidden={view === 'edit'}>
       <strong>{site.site.name}</strong>
+      <button type="button" aria-current={view === 'pages' ? 'page' : undefined} onclick={() => (view = 'pages')} data-nav="pages">{t.nav.pages}</button>
+      <button type="button" aria-current={view === 'posts' ? 'page' : undefined} onclick={() => (view = 'posts')} data-nav="posts">{t.nav.posts}</button>
+      <button type="button" aria-current={view === 'media' ? 'page' : undefined} onclick={() => (view = 'media')} data-nav="media">{t.nav.media}</button>
+      <button type="button" onclick={() => panel('site')} data-nav="settings">{t.nav.settings}</button>
+      <button type="button" onclick={() => panel('theme')} data-nav="theme">{t.nav.theme}</button>
+    </nav>
+
+    {#if view === 'pages'}
+      <ContentList kind="page" items={site.pages} onopen={(slug) => edit(slug, 'page')} oncreate={(title) => createPage(title, 'page')} />
+    {:else if view === 'posts'}
+      <ContentList kind="post" items={site.posts} onopen={(slug) => edit(slug, 'post')} oncreate={(title) => createPage(title, 'post')} />
+    {:else if view === 'media'}
+      <MediaLibrary />
+    {/if}
+    {#if failure && view !== 'edit'}<p class="bad toast" role="alert">{failure}</p>{/if}
+
+    <!-- The builder stays in the page while a list shows, so the canvas is ready when a page is chosen. -->
+    <div class="builder" hidden={view !== 'edit'}>
+    <header class="bar">
+      <button type="button" class="quiet" onclick={() => (view = kind === 'post' ? 'posts' : 'pages')} data-back>← {kind === 'post' ? t.nav.posts : t.nav.pages}</button>
+      <strong class="doc">{page.title}</strong>
       <button type="button" onclick={undo} disabled={past.length === 0} title={t.bar.undo} aria-label={t.bar.undo}>↶</button>
       <button type="button" onclick={redo} disabled={future.length === 0} title={t.bar.redo} aria-label={t.bar.redo}>↷</button>
       <span class="status" data-state={saving} role="status">{failure && saving === 'error' ? `${t.bar.error}: ${failure}` : t.bar[saving]}</span>
@@ -425,44 +461,6 @@ onMount(() => {
     </header>
 
     <aside class="left">
-      <h2>{t.app.pages}</h2>
-      <ul class="pages">
-        {#each site.pages as p (p.slug)}
-          <li>
-            <button type="button" class:current={kind === 'page' && p.slug === page.slug} onclick={() => open(p.slug)}>
-              {p.title}{#if !p.published || p.changed}<em title={p.published ? t.bar.changed : t.bar.draft}> •</em>{/if}
-            </button>
-          </li>
-        {/each}
-      </ul>
-      {#if newTitle === null}
-        <button type="button" onclick={() => { newKind = 'page'; newTitle = ''; }}>+ {t.app.newPage}</button>
-        <h2>{t.posts.heading}</h2>
-        <ul class="pages" data-posts>
-          {#each site.posts as p (p.slug)}
-            <li>
-              <button type="button" class:current={kind === 'post' && p.slug === page.slug} onclick={() => open(p.slug, 'post')}>
-                {p.title}{#if !p.published || p.changed}<em title={p.published ? t.bar.changed : t.bar.draft}> •</em>{/if}
-                <small>{p.date}</small>
-              </button>
-            </li>
-          {/each}
-        </ul>
-        <button type="button" onclick={() => { newKind = 'post'; newTitle = ''; }} data-new-post>+ {t.posts.newPost}</button>
-      {:else}
-        <form
-          onsubmit={(e) => {
-            e.preventDefault();
-            createPage();
-          }}
-        >
-          <!-- svelte-ignore a11y_autofocus -->
-          <input type="text" placeholder={t.app.pageTitle} bind:value={newTitle} maxlength="200" autofocus />
-          <button type="submit" class="primary" disabled={!slugify(newTitle)}>{t.app.create}</button>
-          <button type="button" class="quiet" onclick={() => (newTitle = null)}>{t.app.cancel}</button>
-        </form>
-      {/if}
-
       <h2>{t.app.blocks}</h2>
       <ul class="library">
         {#each BLOCK_TYPES as type (type)}
@@ -577,6 +575,7 @@ onMount(() => {
       {/if}
       {#if failure && saving !== 'error'}<p class="bad" role="alert">{failure}</p>{/if}
     </aside>
+    </div>
   </div>
 {/if}
 
@@ -585,7 +584,19 @@ onMount(() => {
   :global(body) { font: 14px/1.45 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; color: #1c1b22; background: #f3f2f7; }
   :global(*) { box-sizing: border-box; }
   .notice { margin: 4rem auto; max-width: 30rem; text-align: center; }
-  .editor { display: grid; height: 100vh; grid-template: 'bar bar bar' auto 'left canvas right' 1fr / 14rem 1fr 19rem; }
+  .admin { display: grid; height: 100vh; grid-template-columns: 11rem 1fr; }
+  .admin.building { grid-template-columns: 1fr; }
+  .rail[hidden] { display: none; }
+  .rail { display: flex; flex-direction: column; gap: 0.25rem; padding: 0.9rem 0.6rem; background: #1c1b22; color: #fff; }
+  .rail strong { padding: 0 0.5rem 0.8rem; overflow-wrap: anywhere; }
+  :global(.editor .rail button) { border-color: transparent; background: none; color: #d9d7e6; text-align: start; }
+  :global(.editor .rail button:hover:not(:disabled)) { border-color: transparent; background: #2e2c3a; }
+  :global(.editor .rail button[aria-current='page']) { background: #6d5dfc; color: #fff; font-weight: 600; }
+  :global(.editor .screen) { overflow-y: auto; padding: 1.5rem 2rem; }
+  .toast { position: fixed; inset-block-end: 1rem; inset-inline-end: 1rem; padding: 0.5rem 0.8rem; background: #fff; border: 1px solid #b3261e; border-radius: 6px; }
+  .builder { display: grid; min-width: 0; height: 100vh; grid-template: 'bar bar bar' auto 'left canvas right' 1fr / 14rem 1fr 19rem; }
+  .builder[hidden] { display: none; }
+  .doc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 16rem; }
   .bar { grid-area: bar; display: flex; align-items: center; gap: 0.6rem; padding: 0.5rem 0.9rem; background: #fff; border-bottom: 1px solid #dddbe6; }
   .grow { flex: 1; }
   .sep { width: 1px; align-self: stretch; background: #dddbe6; }
@@ -606,14 +617,10 @@ onMount(() => {
   :global(.editor button.primary) { background: #6d5dfc; border-color: #6d5dfc; color: #fff; font-weight: 600; }
   :global(.editor button.quiet) { border-color: transparent; color: #6a6880; }
   :global(.editor button.danger) { color: #b3261e; margin-top: 1rem; }
-  .pages button, .library button { width: 100%; text-align: start; }
-  .pages button.current { border-color: #6d5dfc; background: #f1efff; font-weight: 600; }
-  .pages em { color: #c77700; font-style: normal; }
-  .pages small { color: #6a6880; font-weight: 400; }
+  .library button { width: 100%; text-align: start; }
   .tabs { display: flex; gap: 0.25rem; margin-bottom: 0.8rem; }
   .tabs button { flex: 1; }
   .tabs button[aria-selected='true'] { background: #f1efff; border-color: #6d5dfc; font-weight: 600; }
-  form { display: grid; gap: 0.35rem; margin-bottom: 0.6rem; }
   :global(.editor .field) { display: block; margin-bottom: 0.7rem; }
   :global(.editor label > span, .editor legend) { display: block; margin-bottom: 0.2rem; font-size: 12.5px; color: #4b4960; }
   :global(.editor input[type='text'], .editor input[type='url'], .editor input[type='date'], .editor textarea, .editor select) { width: 100%; padding: 0.4rem 0.5rem; border: 1px solid #cfccdc; border-radius: 6px; background: #fff; color: inherit; font: inherit; }

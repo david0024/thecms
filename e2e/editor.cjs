@@ -47,6 +47,11 @@ const assert = (condition, message) => {
     page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
     await page.goto(url);
     const canvas = page.frameLocator('iframe');
+    // The admin opens on the list of pages; choosing one opens the builder.
+    await page.locator('[data-list="page"] [data-open=""]').waitFor();
+    assert((await page.locator('[data-list="page"] tbody tr').count()) >= 2, 'the admin opens on the list of pages');
+    assert(!(await page.locator('iframe').isVisible()), 'the builder is not shown until a page is chosen');
+    await page.locator('[data-open=""]').click();
     await canvas.locator('h1').waitFor();
     assert((await canvas.locator('h1').innerText()).includes('Solid wood'), 'the canvas shows the real home page');
     const saved = () => page.locator('.status[data-state="saved"]').waitFor();
@@ -166,6 +171,7 @@ const assert = (condition, message) => {
     await saved();
 
     // A new page.
+    await page.locator('[data-back]').click();
     await page.getByRole('button', { name: '+ New page' }).click();
     await page.getByPlaceholder('Page title').fill('Prețuri și comenzi');
     await page.getByRole('button', { name: 'Create' }).click();
@@ -349,7 +355,10 @@ const assert = (condition, message) => {
     await page.getByText('Published', { exact: true }).waitFor();
 
     // A blog post: the same editor, with a date, categories and a summary.
-    await page.locator('[data-new-post]').click();
+    await page.locator('[data-back]').click();
+    await page.locator('[data-nav="posts"]').click();
+    assert((await page.locator('[data-list="post"] tbody tr').count()) === 2, 'the posts have a section of their own');
+    await page.locator('[data-new="post"]').click();
     await page.getByPlaceholder('Page title').fill('Winter opening hours');
     await page.getByRole('button', { name: 'Create' }).click();
     await canvas.locator('article.post h1').waitFor();
@@ -372,7 +381,21 @@ const assert = (condition, message) => {
     await page.getByText('Published', { exact: true }).waitFor();
 
     // Back to the home page and publish it too.
-    await page.getByRole('button', { name: /^Home/ }).click();
+    await page.locator('[data-back]').click();
+    assert((await page.locator('[data-list="post"] tr', { hasText: 'Winter opening hours' }).innerText()).includes('Published'), 'leaving the builder goes back to the list the post came from');
+    await page.locator('[data-nav="media"]').click();
+    await page.locator('[data-list="media"] [data-media-item]').first().waitFor();
+    await page.waitForFunction(() => [...document.querySelectorAll('[data-list="media"] img')].every((img) => img.naturalWidth > 0));
+    assert((await page.locator('[data-list="media"] [data-media-item]').count()) === 2, 'the media section shows every image the site holds');
+    await page.locator('[data-list="media"] [data-media-item]', { hasText: 'logo.png' }).getByRole('button').click();
+    assert((await page.locator('[data-list="media"] [role="alert"]').innerText()).includes('used on'), 'an image still in use is not deleted from there either');
+    assert(errors.length === 1, `the refusal is the only error in the console (${errors.join(' | ')})`);
+    errors.length = 0;
+    if (shots) await page.screenshot({ path: join(shots, 'admin-media.png') });
+    await page.locator('[data-nav="pages"]').click();
+    assert((await page.locator('[data-list="page"] tr', { hasText: 'Prețuri și comenzi' }).innerText()).includes('/preturi-si-comenzi/'), 'a list shows each page with its address and state');
+    if (shots) await page.screenshot({ path: join(shots, 'admin-pages.png') });
+    await page.locator('[data-open=""]').click();
     await canvas.locator('.b-text').waitFor();
     await page.getByRole('button', { name: 'Publish' }).click();
     await page.getByText('Published', { exact: true }).waitFor();

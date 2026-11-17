@@ -4,6 +4,8 @@
  */
 export const en = {
   app: { pages: 'Pages', blocks: 'Add a block', blocksHint: 'Click to add, or drag onto the page.', tooDeep: 'Groups nest at most four deep; it cannot go there.', newPage: 'New page', pageTitle: 'Page title', create: 'Create', cancel: 'Cancel', home: 'Home page' },
+  nav: { pages: 'Pages', posts: 'Posts', media: 'Media', settings: 'Menu and settings', theme: 'Theme', label: 'Sections', back: 'All' },
+  list: { address: 'Address', status: 'Status' },
   bar: {
     undo: 'Undo',
     redo: 'Redo',
