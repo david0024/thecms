@@ -106,10 +106,12 @@ export async function buildSite(
 
   // The structure first, the theme after it: where both set the same thing, the theme wins.
   files.set(STYLESHEET.slice(1), `${await Bun.file(BASE_CSS).text()}${themeCss(theme)}`);
-  for (const p of pages) page(pagePath(p.slug), renderPage(site, theme, p, menu));
+  // What a block that lists entries shows: only what is published.
+  const listable = Object.fromEntries(types.map(({ type, posts: own }) => [type.id, { type, entries: own }]));
+  for (const p of pages) page(pagePath(p.slug), renderPage(site, theme, p, menu, listable));
 
   for (const { type, posts: own } of types) {
-    for (const post of own) page(entryPath(type, post.slug), renderPost(site, theme, post, menu, type));
+    for (const post of own) page(entryPath(type, post.slug), renderPost(site, theme, post, menu, type, listable));
     const lists = [
       { heading: type.name, path: (n: number) => listPath(type, n), posts: own },
       ...categoriesOf(own).map((c) => ({ heading: c.name, path: (n: number) => typeCategoryPath(type, c.name, n), posts: c.posts })),

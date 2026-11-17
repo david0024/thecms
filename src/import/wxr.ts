@@ -11,6 +11,9 @@ import {
   type Block,
   blogPath,
   categoryPath,
+  type ContentType,
+  entryPath,
+  normalizeTypes,
   isDate,
   MENU_DEPTH,
   MENU_MAX_ITEMS,
@@ -49,6 +52,10 @@ export interface ImportPlan {
   site: { name: string; language: string; url: string };
   pages: PlannedPage[];
   posts: PlannedPost[];
+  /** Content types to add to the site, for the kinds of entry the owner asked to bring (ADR 0009 d10). */
+  types: ContentType[];
+  /** The entries of those types, by the type's name. */
+  entries: Record<string, PlannedPost[]>;
   /** null: no menu was found, and the site makes one from its pages. */
   menu: MenuNode[] | null;
   /** Images the content shows that lived on the old site, by full address. */
@@ -136,7 +143,7 @@ function unique(wanted: string, taken: Set<string>): string {
 }
 
 /** Reads the file and decides what this site would get from it. Throws when it is not a WordPress export. */
-export function planImport(xml: string, today: string): ImportPlan {
+export function planImport(xml: string, today: string, options: { /** WordPress post types to bring as content types (`portfolio`). */ types?: string[] } = {}): ImportPlan {
   const rss = parseXml(xml);
   const channel = child(rss, 'channel');
   if (rss.name !== 'rss' || !channel || !child(channel, 'wp:wxr_version')) {
@@ -167,12 +174,25 @@ export function planImport(xml: string, today: string): ImportPlan {
   const pageItems = items.filter((i) => i.type === 'page' && live(i)).sort((a, b) => a.order - b.order);
   const postItems = items.filter((i) => i.type === 'post' && live(i));
   const published = (item: Item): boolean => item.status === 'publish' && !item.password;
+  // Kinds of entry a plugin or theme added. Which of them are content and which are a plugin's
+  // own records cannot be told from the file, so only the ones the owner names are brought.
+  const title = (slug: string): string => slug.replace(/[-_]+/g, ' ').replace(/^./, (c) => c.toUpperCase());
+  const types = normalizeTypes(
+    [...new Set(options.types ?? [])]
+      .filter((name) => !['page', 'post', 'attachment', 'nav_menu_item'].includes(name) && items.some((i) => i.type === name && live(i)))
+      .map((name) => ({ id: name, name: title(name), singular: title(name), path: name })),
+  );
+  const typeOf = new Map<string, ContentType>();
+  for (const name of options.types ?? []) {
+    const type = types.find((t) => t.id === slugify(name));
+    if (type) typeOf.set(name, type);
+  }
 
   const paths = new Map<string, string>();
   const pathById = new Map<string, string>();
   const pageSlugs = new Map<Item, string>();
   const postSlugs = new Map<Item, string>();
-  const takenPages = new Set<string>(RESERVED_SLUGS);
+  const takenPages = new Set<string>([...RESERVED_SLUGS, ...types.map((t) => t.path)]);
   const takenPosts = new Set<string>();
   const remember = (item: Item, path: string): void => {
     pathById.set(item.id, path);
@@ -205,6 +225,17 @@ export function planImport(xml: string, today: string): ImportPlan {
     const slug = unique(slugify(item.name) || slugify(item.title) || `post-${item.id}`, takenPosts);
     postSlugs.set(item, slug);
     remember(item, postPath(slug));
+  }
+
+  const entrySlugs = new Map<Item, string>();
+  const takenEntries = new Map<string, Set<string>>();
+  for (const item of items) {
+    const type = typeOf.get(item.type);
+    if (!type || !live(item)) continue;
+    if (!takenEntries.has(type.id)) takenEntries.set(type.id, new Set());
+    const slug = unique(slugify(item.name) || slugify(item.title) || `entry-${item.id}`, takenEntries.get(type.id) as Set<string>);
+    entrySlugs.set(item, slug);
+    remember(item, entryPath(type, slug));
   }
 
   // Content, with its links and images pointed at this site.
@@ -279,23 +310,31 @@ export function planImport(xml: string, today: string): ImportPlan {
     });
   }
   const tags = new Set<string>();
-  const posts: PlannedPost[] = [];
-  for (const [item, slug] of postSlugs) {
-    const title = item.title || 'Untitled';
-    for (const c of item.categories) if (c.domain === 'post_tag') tags.add(c.nicename);
+  const asEntry = (item: Item, slug: string, categories: boolean): PlannedPost => {
+    const heading = item.title || 'Untitled';
     const thumb = attachments.get(item.meta.get('_thumbnail_id') ?? '');
-    const ctx = contextFor(title);
-    posts.push({
+    const ctx = contextFor(heading);
+    return {
       slug,
-      title,
+      title: heading,
       description: description(item),
       date: isDate(item.date) ? item.date : today,
       excerpt: plainText(parseHtml(item.excerpt)).slice(0, 400),
       cover: thumb ? { src: ctx.image(thumb.src), alt: thumb.alt } : null,
-      categories: item.categories.filter((c) => c.domain === 'category' && c.nicename !== 'uncategorized').map((c) => c.name),
+      categories: categories ? item.categories.filter((c) => c.domain === 'category' && c.nicename !== 'uncategorized').map((c) => c.name) : [],
       blocks: htmlToBlocks(item.content, ctx),
       publish: publishOf(item),
-    });
+    };
+  };
+  const posts: PlannedPost[] = [];
+  for (const [item, slug] of postSlugs) {
+    for (const c of item.categories) if (c.domain === 'post_tag') tags.add(c.nicename);
+    posts.push(asEntry(item, slug, true));
+  }
+  const entries: Record<string, PlannedPost[]> = {};
+  for (const [item, slug] of entrySlugs) {
+    const type = typeOf.get(item.type) as ContentType;
+    (entries[type.id] ??= []).push(asEntry(item, slug, false));
   }
 
   const anyPostPublished = posts.some((p) => p.publish);
@@ -305,10 +344,14 @@ export function planImport(xml: string, today: string): ImportPlan {
       title: name,
       description: '',
       inMenu: true,
-      blocks: [{ id: newId(), type: 'hero', content: { title: name, subtitle: tagline, action: anyPostPublished ? { label: 'Read the blog', href: blogPath() } : null } }],
+      blocks: [
+        { id: newId(), type: 'hero', content: { title: name, subtitle: tagline } },
+        // What the old front page showed: the latest posts.
+        ...(anyPostPublished ? [{ id: newId(), type: 'entries' as const, content: { title: 'Latest posts', source: 'posts', count: 6, more: 'See all' } }] : []),
+      ],
       publish: true,
     });
-    notes.push('The old site had no page set as its front page (it showed the latest posts there), so a simple home page was made. Open it in the editor and make it yours.');
+    notes.push('The old site had no page set as its front page (it showed the latest posts there), so a home page was made that lists the latest posts. Open it in the editor and make it yours.');
   }
 
   // The menu.
@@ -419,7 +462,7 @@ export function planImport(xml: string, today: string): ImportPlan {
     const from = url.pathname.endsWith('/') || /\.html?$/.test(url.pathname) ? url.pathname : `${url.pathname}/`;
     if (from !== to) redirects.push({ from, to });
   };
-  for (const item of [...pageSlugs.keys(), ...postSlugs.keys()]) if (published(item)) moved(item);
+  for (const item of [...pageSlugs.keys(), ...postSlugs.keys(), ...entrySlugs.keys()]) if (published(item)) moved(item);
   if (postsPage) moved(postsPage);
   const usedCategories = new Set(posts.flatMap((p) => (p.publish ? p.categories : [])));
   for (const c of childrenOf(channel, 'wp:category')) {
@@ -441,16 +484,16 @@ export function planImport(xml: string, today: string): ImportPlan {
   if (comments) notes.push(`${count(comments, 'comment')} not imported: a site here has no comments.`);
   if (tags.size) notes.push(`${count(tags.size, 'tag')} not imported: posts here are grouped by category only.`);
   const other = new Map<string, number>();
-  for (const item of items) if (!HOUSEKEEPING.has(item.type) && live(item)) other.set(item.type, (other.get(item.type) ?? 0) + 1);
+  for (const item of items) if (!HOUSEKEEPING.has(item.type) && !typeOf.has(item.type) && live(item)) other.set(item.type, (other.get(item.type) ?? 0) + 1);
   for (const [type, n] of other) {
     notes.push(
       type === 'wp_block'
         ? `${count(n, 'reusable block')} (patterns) not imported; where a page used one, that part is missing.`
-        : `${count(n, 'entry', 'entries')} of the kind "${type}" not imported: they belong to a plugin or theme of the old site.`,
+        : `${count(n, 'entry', 'entries')} of the kind "${type}" not imported: they belong to a plugin or theme of the old site. If they are content you want (a portfolio, a team), run the import again with --types=${type} to bring them as a content type.`,
     );
   }
   if (items.some((i) => i.type === 'page' && i.parent !== '0' && live(i))) notes.push('Pages that sat under other pages now sit at the top level (/services/web/ became /web/). Their old addresses lead to the new ones.');
 
   const language = textOf(channel, 'language');
-  return { site: { name, language, url: /^https?:\/\//i.test(base) ? base : '' }, pages, posts, menu, images: [...images], redirects, notes };
+  return { site: { name, language, url: /^https?:\/\//i.test(base) ? base : '' }, pages, posts, types, entries, menu, images: [...images], redirects, notes };
 }

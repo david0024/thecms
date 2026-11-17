@@ -13,6 +13,7 @@
 import { readdir } from 'node:fs/promises';
 import { compile } from 'svelte/compiler';
 import { MEDIA_MAX_BYTES, MEDIA_PREFIX, normalizePage, contentTypes, listPath, type MenuList, normalizePost, parseTheme, POSTS_TYPE, reservedSlugs, type Theme, themeCss } from '../core/index.ts';
+import type { EntryLists } from '../blocks/editing.ts';
 import { type MenuItem, menuOf, renderParts, renderPostParts } from './document.ts';
 import type { Store } from './store.ts';
 
@@ -135,6 +136,8 @@ export async function startEditor(store: Store, options: { port?: number; listen
         .map((type): MenuList => ({ id: type.id, title: type.name, href: listPath(type) })),
     );
   };
+  // What a block that lists entries shows in the editor: the drafts, so a post just written is there.
+  const entryLists = (): EntryLists => Object.fromEntries(contentTypes(store.site()).map((type) => [type.id, { type, entries: store.draftEntries(type.id) }]));
   /** Every list the admin shows: the pages, and each content type's entries by the type's name. */
   const lists = (): { pages: ReturnType<Store['pages']>; posts: ReturnType<Store['posts']>; entries: Record<string, ReturnType<Store['entries']>> } => ({
     pages: store.pages(),
@@ -182,7 +185,7 @@ export async function startEditor(store: Store, options: { port?: number; listen
           store.publishEntry(type.id, String(body.slug ?? ''));
           return json(lists());
         case 'POST /api/render':
-          return json(renderPostParts(store.site(), theme(), normalizePost(body.page, new Date().toISOString().slice(0, 10), type).post, menu(), true, type));
+          return json(renderPostParts(store.site(), theme(), normalizePost(body.page, new Date().toISOString().slice(0, 10), type).post, menu(), true, type, entryLists()));
       }
     }
     switch (route) {
@@ -209,7 +212,7 @@ export async function startEditor(store: Store, options: { port?: number; listen
       case 'POST /api/render': {
         // Drawn from what the admin holds, cleaned first: the canvas shows what would be saved.
         const { page } = normalizePage(body.page);
-        return json(renderParts(store.site(), theme(), page, menu(), true));
+        return json(renderParts(store.site(), theme(), page, menu(), true, entryLists()));
       }
       case 'PUT /api/theme':
         store.setTheme(body.theme);

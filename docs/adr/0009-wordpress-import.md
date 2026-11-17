@@ -100,13 +100,22 @@ Into an existing site, settings are left alone and a page or post whose
 address is taken is skipped and named. Running an import twice changes
 nothing the second time.
 
+### d10. A plugin's kinds of entry come only when named
+
+The file holds custom post types, but it cannot say which are content (a
+portfolio) and which are a plugin's own records (a form definition, a
+template). So none is brought by default; each is counted in the report with
+the way to bring it: `--types=portfolio`. A named type becomes a content type
+(ADR 0010) with its entries, and their links and old addresses are handled
+like any other.
+
 ## Dropped, and why
 
 - **Authors, comments, tags.** The site has none of them yet.
 - **Featured images on pages, sticky posts, post formats.** No place to put
   them.
-- **Front page shows latest posts.** There is no latest-posts block yet; such
-  a site gets a simple home page that links to the blog.
+- **Front page shows latest posts.** Such a site gets a home page with a
+  block that lists the latest posts (ADR 0011).
 
 ## Known gaps
 

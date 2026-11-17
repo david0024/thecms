@@ -11,13 +11,17 @@
  */
 import { normalizeRichText, paragraphs, type RichText, richTextPlain } from './richtext.ts';
 import { type BlockStyle, isTokenName, normalizeStyle } from './style.ts';
-import { type Issue, isId, isObject, newId, safeHref, safeSrc, str } from './util.ts';
+import { POSTS_TYPE } from './types.ts';
+import { type Issue, isId, isObject, newId, safeHref, safeSrc, slugify, str } from './util.ts';
 
 export type Field =
   | { kind: 'text'; max?: number; multiline?: boolean }
   | { kind: 'richtext' }
   | { kind: 'image' }
   | { kind: 'link' }
+  /** The name of a content type: where a block that lists entries takes them from. */
+  | { kind: 'source' }
+  | { kind: 'number'; min: number; max: number }
   | { kind: 'list'; max: number; item: Record<string, Field> };
 
 export interface ImageValue {
@@ -82,6 +86,10 @@ export const BLOCKS = {
     fields: { title: text(200), text: multiline(600), email: text(254), phone: text(40), address: multiline(300) },
     create: () => ({ title: 'Get in touch' }),
   },
+  entries: {
+    fields: { title: text(200), source: { kind: 'source' }, count: { kind: 'number', min: 1, max: 24 }, more: text(80) },
+    create: () => ({ title: 'Latest posts', source: POSTS_TYPE, count: 3, more: 'See all' }),
+  },
   group: {
     container: true,
     fields: {},
@@ -141,6 +149,12 @@ function cleanField(field: Field, raw: unknown): unknown {
       return cleanImage(raw);
     case 'link':
       return cleanLink(raw);
+    case 'source':
+      return slugify(raw) || POSTS_TYPE;
+    case 'number': {
+      const n = Math.round(Number(raw));
+      return Number.isFinite(n) ? Math.min(field.max, Math.max(field.min, n)) : field.min;
+    }
     case 'list':
       return Array.isArray(raw)
         ? raw.slice(0, field.max).map((item) => cleanFields(field.item, isObject(item) ? item : {}))

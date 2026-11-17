@@ -3,6 +3,7 @@
 import type { ContentType, MenuLink, Post, Site } from '../core/index.ts';
 import { listPath, postsType, typeCategoryPath } from '../core/index.ts';
 import EntryFields from './EntryFields.svelte';
+import type { EntryLists } from './editing.ts';
 import BlockView from './BlockView.svelte';
 import Shell from './Shell.svelte';
 import { dateText } from './words.ts';
@@ -13,11 +14,12 @@ let {
   menu,
   editing = false,
   type,
-}: { site: Site; post: Post; menu: MenuLink[]; editing?: boolean; type?: ContentType } = $props();
+  lists = {},
+}: { site: Site; post: Post; menu: MenuLink[]; editing?: boolean; type?: ContentType; lists?: EntryLists } = $props();
 const kind = $derived(type ?? postsType(site.blogTitle));
 </script>
 
-<Shell {site} {menu} current={listPath(kind)} {editing}>
+<Shell {site} {menu} current={listPath(kind)} {editing} {lists}>
   <article class="post">
     <header class="b post-head">
       <div class="b-in">

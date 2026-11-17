@@ -16,6 +16,8 @@ export type FetchImage = (url: string) => Promise<Uint8Array>;
 export interface ImportReport {
   pages: number;
   posts: number;
+  /** Entries of the content types the import added. */
+  entries: number;
   /** Of those, how many were left unpublished. */
   drafts: number;
   images: number;
@@ -114,6 +116,25 @@ export async function runImport(store: Store, plan: ImportPlan, options: ImportO
     else drafts++;
     posts++;
   }
+  // Content types the owner asked for: added beside whatever the site already has.
+  let entries = 0;
+  if (plan.types.length) {
+    const site = store.site();
+    const have = new Set(site.types.map((t) => t.id));
+    store.setSite({ ...site, types: [...site.types, ...plan.types.filter((t) => !have.has(t.id))] });
+    for (const type of plan.types) {
+      for (const { publish, ...entry } of plan.entries[type.id] ?? []) {
+        if (store.entryDraft(type.id, entry.slug)) {
+          kept.push(`"${entry.title}" (${type.name})`);
+          continue;
+        }
+        const saved = store.saveEntry(type.id, repoint(entry, src));
+        if (publish) store.publishEntry(type.id, saved.slug);
+        else drafts++;
+        entries++;
+      }
+    }
+  }
   if (kept.length) notes.push(`Already in this site under the same address, and left as they were: ${kept.slice(0, 10).join(', ')}${kept.length > 10 ? ` and ${kept.length - 10} more` : ''}.`);
 
   let menu: MenuNode[] | null = null;
@@ -126,5 +147,5 @@ export async function runImport(store: Store, plan: ImportPlan, options: ImportO
   const before = store.redirects();
   const redirects = store.setRedirects([...before, ...plan.redirects]).length - before.length;
 
-  return { pages, posts, drafts, images: stored.size, redirects, menu: menu !== null, notes };
+  return { pages, posts, entries, drafts, images: stored.size, redirects, menu: menu !== null, notes };
 }

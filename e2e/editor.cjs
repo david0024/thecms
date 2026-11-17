@@ -416,6 +416,20 @@ const assert = (condition, message) => {
     await page.getByText('Published', { exact: true }).waitFor();
     await page.locator('[data-back]').click();
     assert((await page.locator('[data-list="projects"] tr', { hasText: 'A kitchen in oak' }).innerText()).includes('/projects/a-kitchen-in-oak/'), 'the type has a section of its own, listing its entries');
+    // A block that lists entries, on a page: it holds which type and how many, and the page shows what there is.
+    await page.locator('[data-nav="pages"]').click();
+    await page.locator('[data-open="preturi-si-comenzi"]').click();
+    await canvas.locator('h1').waitFor();
+    await page.locator('[data-add="entries"]').click();
+    await canvas.locator('.b-entries h3 a', { hasText: 'Winter opening hours' }).waitFor();
+    await page.locator('[data-field-source]').selectOption('projects');
+    await canvas.locator('.b-entries h3 a', { hasText: 'A kitchen in oak' }).waitFor();
+    assert((await canvas.locator('.b-entries h3 a').count()) === 1, 'a list block shows the entries of the type chosen for it');
+    await saved();
+    if (shots) await page.screenshot({ path: join(shots, 'editor-entries-block.png') });
+    await page.getByRole('button', { name: 'Publish' }).click();
+    await page.getByText('Published', { exact: true }).waitFor();
+    await page.locator('[data-back]').click();
     await page.locator('[data-nav="media"]').click();
     await page.locator('[data-list="media"] [data-media-item]').first().waitFor();
     await page.waitForFunction(() => [...document.querySelectorAll('[data-list="media"] img')].every((img) => img.naturalWidth > 0));
@@ -459,6 +473,7 @@ const assert = (condition, message) => {
   assert(project.includes('<dt>Client</dt>') && project.includes('The Popescu family'), 'an entry of the new type is exported at its own address, with its field');
   assert(readFileSync(join(out, 'projects/index.html'), 'utf8').includes('href="/projects/a-kitchen-in-oak/"'), 'the type has a list on the site');
   const prices = readFileSync(join(out, 'preturi-si-comenzi/index.html'), 'utf8');
+  assert(/b-entries.*href="\/projects\/a-kitchen-in-oak\/"/s.test(prices), 'the list block is exported with the published entries of its type');
   assert(prices.includes('<h1>A headline that says what you do</h1>'), 'the new page is exported at its own address');
   assert(prices.includes('<h2>Our prices</h2><ul><li>Oak table</li><li>Walnut shelf</li></ul>'), 'the heading and the list are in the export');
   assert(/<strong>Ask ?<\/strong>/.test(prices) && /<a href="\/contact\/">offer<\/a>/.test(prices) && !prices.includes('javascript:'), 'so are the bold word and the link, and not the refused one');

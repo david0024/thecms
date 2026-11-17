@@ -194,9 +194,42 @@ describe('a WordPress export as a plan', () => {
   test('a site that showed its posts on the front gets a home page, and is told', () => {
     const p = planImport(WXR.replace('<link>https://old.example/</link>', '<link>https://old.example/home/</link>'), '2026-11-17');
     expect(p.pages.map((x) => x.slug)).toEqual(['', 'home', 'about', 'web', 'secret']);
-    expect(p.pages[0]?.blocks).toHaveLength(1);
-    expect(p.pages[0]?.blocks[0]).toMatchObject({ type: 'hero', content: { title: 'Atelier & Co', subtitle: 'Things made of wood', action: { href: '/blog/' } } });
+    expect(p.pages[0]?.blocks.map((b) => b.type)).toEqual(['hero', 'entries']);
+    expect(p.pages[0]?.blocks[0]).toMatchObject({ content: { title: 'Atelier & Co', subtitle: 'Things made of wood' } });
+    // What the old front page showed.
+    expect(p.pages[0]?.blocks[1]).toMatchObject({ content: { source: 'posts', count: 6 } });
     expect(p.notes[0]).toContain('no page set as its front page');
+  });
+});
+
+describe('kinds of entry a plugin added', () => {
+  test('are left out and named, with the way to bring them', () => {
+    const p = plan();
+    expect(p.types).toEqual([]);
+    expect(p.notes.join('\n')).toContain('run the import again with --types=product');
+  });
+
+  test('the ones the owner names come as content types, with their entries, links and old addresses', () => {
+    const p = planImport(WXR, '2026-11-17', { types: ['product', 'revision', 'page', 'nothing-like-this'] });
+    expect(p.types.map((t) => [t.id, t.name, t.path])).toEqual([['product', 'Product', 'product']]);
+    expect(p.entries.product).toEqual([expect.objectContaining({ slug: 'chair', title: 'Chair', publish: true, categories: [] })]);
+    expect(p.notes.join('\n')).not.toContain('"product"');
+    // The address did not change, so nothing needs to lead to it.
+    expect(p.redirects.some((r) => r.to.startsWith('/product/'))).toBe(false);
+  });
+
+  test('carried out, the site has the type and its entries; a second run adds nothing', async () => {
+    const store = new Store(':memory:');
+    store.setTheme(plain);
+    const p = planImport(WXR, '2026-11-17', { types: ['product'] });
+    const first = await runImport(store, p, { fetchImage: null, fresh: true });
+    expect(first.entries).toBe(1);
+    expect(store.site().types.map((t) => t.id)).toEqual(['product']);
+    expect(store.publishedEntries('product').map((e) => e.title)).toEqual(['Chair']);
+    const again = await runImport(store, p, { fetchImage: null, fresh: false });
+    expect(again).toMatchObject({ entries: 0 });
+    expect(store.site().types).toHaveLength(1);
+    store.close();
   });
 });
 

@@ -15,7 +15,7 @@
 import type { Snippet } from 'svelte';
 import type { MenuLink, Site } from '../core/index.ts';
 import { holdsCurrent, isLink, isMega } from '../core/index.ts';
-import { marker, setEditing } from './editing.ts';
+import { type EntryLists, marker, setEditing, setLists } from './editing.ts';
 import { wordsFor } from './words.ts';
 
 let {
@@ -23,10 +23,13 @@ let {
   menu,
   current,
   editing = false,
+  lists = {},
   children,
-}: { site: Site; menu: MenuLink[]; /** The address of this page, to mark it in the menu. */ current: string; editing?: boolean; children: Snippet } = $props();
+}: { site: Site; menu: MenuLink[]; /** What a block that lists entries can list. */ lists?: EntryLists; /** The address of this page, to mark it in the menu. */ current: string; editing?: boolean; children: Snippet } = $props();
 // svelte-ignore state_referenced_locally
 setEditing(editing);
+// svelte-ignore state_referenced_locally
+setLists(lists, site.language);
 const mark = marker();
 const words = $derived(wordsFor(site.language));
 const footerLinks = $derived(site.footerLinks.filter(isLink));
