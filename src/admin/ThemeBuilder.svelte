@@ -92,7 +92,7 @@ const removeVariant = (variant: string): boolean =>
     delete d.blocks[blockType]?.variants?.[variant];
   });
 
-const setLayoutStyle = (part: 'header' | 'footer', style: BlockStyle): boolean =>
+const setLayoutStyle = (part: 'header' | 'footer' | 'menu', style: BlockStyle): boolean =>
   apply((d) => {
     if (Object.keys(style).length) d.layout[part].style = style;
     else delete d.layout[part].style;
@@ -258,6 +258,10 @@ const hex6 = (value: string): string => (/^#[0-9a-f]{6}$/i.test(value) ? value :
   </label>
   <div data-layout-style="header">
     <StyleEditor style={theme.layout.header.style} {theme} onstyle={(style) => setLayoutStyle('header', style)} defaultLabel={t.theme.unset} />
+  </div>
+  <h3>{t.menu.panel}</h3>
+  <div data-layout-style="menu">
+    <StyleEditor style={theme.layout.menu.style} {theme} onstyle={(style) => setLayoutStyle('menu', style)} defaultLabel={t.theme.unset} />
   </div>
   <h3>{t.layout.footer}</h3>
   <label class="field">

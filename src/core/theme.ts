@@ -39,9 +39,11 @@ export type FooterArrangement = (typeof FOOTER_ARRANGEMENTS)[number];
 export interface ThemeLayout {
   header: { arrangement: HeaderArrangement; /** Stays at the top of the screen while the page scrolls. */ sticky: boolean; style?: BlockStyle };
   footer: { arrangement: FooterArrangement; style?: BlockStyle };
+  /** The panel a menu item opens (ADR 0008). */
+  menu: { style?: BlockStyle };
 }
 
-export const DEFAULT_LAYOUT: ThemeLayout = { header: { arrangement: 'inline', sticky: false }, footer: { arrangement: 'inline' } };
+export const DEFAULT_LAYOUT: ThemeLayout = { header: { arrangement: 'inline', sticky: false }, footer: { arrangement: 'inline' }, menu: {} };
 
 export interface Theme {
   spec: typeof THEME_SPEC;
@@ -162,9 +164,9 @@ export function parseTheme(input: unknown): { theme: Theme | null; issues: Issue
   if (input.layout !== undefined && !isObject(input.layout)) issues.push({ path: 'layout', message: 'a layout is an object' });
   const rawLayout = isObject(input.layout) ? input.layout : {};
   for (const key of Object.keys(rawLayout)) {
-    if (key !== 'header' && key !== 'footer') issues.push({ path: `layout.${key}`, message: 'not a part of the layout (header, footer)' });
+    if (key !== 'header' && key !== 'footer' && key !== 'menu') issues.push({ path: `layout.${key}`, message: 'not a part of the layout (header, footer, menu)' });
   }
-  for (const part of ['header', 'footer'] as const) {
+  for (const part of ['header', 'footer', 'menu'] as const) {
     const raw = rawLayout[part];
     if (raw === undefined) continue;
     const at = `layout.${part}`;
@@ -172,10 +174,10 @@ export function parseTheme(input: unknown): { theme: Theme | null; issues: Issue
       issues.push({ path: at, message: 'an object' });
       continue;
     }
-    const allowed: readonly string[] = part === 'header' ? HEADER_ARRANGEMENTS : FOOTER_ARRANGEMENTS;
+    const allowed: readonly string[] = part === 'header' ? HEADER_ARRANGEMENTS : part === 'footer' ? FOOTER_ARRANGEMENTS : [];
     if (raw.arrangement !== undefined) {
-      if (typeof raw.arrangement === 'string' && allowed.includes(raw.arrangement)) theme.layout[part].arrangement = raw.arrangement as never;
-      else issues.push({ path: `${at}.arrangement`, message: `one of: ${allowed.join(', ')}` });
+      if (part !== 'menu' && typeof raw.arrangement === 'string' && allowed.includes(raw.arrangement)) theme.layout[part].arrangement = raw.arrangement as never;
+      else issues.push({ path: `${at}.arrangement`, message: allowed.length ? `one of: ${allowed.join(', ')}` : 'the menu has no arrangement' });
     }
     if (part === 'header' && raw.sticky !== undefined) {
       if (typeof raw.sticky === 'boolean') theme.layout.header.sticky = raw.sticky;

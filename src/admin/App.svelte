@@ -489,7 +489,7 @@ onMount(() => {
     <aside class="right">
       {#if siteMode}
         <h2>{t.site.heading}</h2>
-        <SitePanel site={site.site} onchange={editSite} />
+        <SitePanel site={site.site} pages={site.pages} hasPosts={site.posts.length > 0} onchange={editSite} />
       {:else if themeMode}
         <h2>{t.theme.heading}</h2>
         <ThemeBuilder theme={site.theme} onchange={editTheme} />
@@ -561,8 +561,8 @@ onMount(() => {
             <ImageField label={t.posts.cover} value={post.cover} onchange={(cover) => change({ ...post, cover: cover.src ? cover : null }, { step: false })} />
           </div>
         {:else}
-          <label class="check">
-            <input type="checkbox" checked={page.inMenu} onchange={(e) => page && 'inMenu' in page && change({ ...page, inMenu: e.currentTarget.checked }, { step: false })} />
+          <label class="check" class:off={site.site.menu !== null} title={site.site.menu !== null ? t.inspector.inMenuOff : undefined}>
+            <input type="checkbox" disabled={site.site.menu !== null} checked={page.inMenu} onchange={(e) => page && 'inMenu' in page && change({ ...page, inMenu: e.currentTarget.checked }, { step: false })} />
             <span>{t.inspector.inMenu}</span>
           </label>
         {/if}
@@ -632,4 +632,5 @@ onMount(() => {
   .inline select { width: auto; }
   .check { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.8rem; }
   .check span { margin: 0; }
+  .check.off { opacity: 0.55; }
 </style>

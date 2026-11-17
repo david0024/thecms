@@ -10,14 +10,16 @@ import PostLayout from '../blocks/PostLayout.svelte';
 import {
   type Block,
   blocksCss,
-  blogPath,
   FEED_PATH,
+  type MenuLink,
+  type MenuPage,
   type Page,
   pageDescription,
   pagePath,
   type Post,
   postDescription,
   postPath,
+  resolveMenu,
   type Site,
   type Theme,
 } from '../core/index.ts';
@@ -25,16 +27,10 @@ import {
 const esc = (v: string): string =>
   v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-export interface MenuItem {
-  title: string;
-  href: string;
-}
+export type MenuItem = MenuLink;
 
-/** The menu: the pages that asked to be in it, then the blog when it has posts. */
-export function menuOf(site: Site, pages: { title: string; slug: string; inMenu?: boolean }[], hasPosts: boolean): MenuItem[] {
-  const items = pages.filter((p) => p.inMenu !== false).map((p) => ({ title: p.title, href: pagePath(p.slug) }));
-  return hasPosts ? [...items, { title: site.blogTitle, href: blogPath() }] : items;
-}
+/** The menu these pages get: the one the owner arranged, or the pages in order and then the blog. */
+export const menuOf = (site: Site, pages: MenuPage[], hasPosts: boolean): MenuItem[] => resolveMenu(site, pages, hasPosts);
 
 export const STYLESHEET = '/assets/site.css';
 

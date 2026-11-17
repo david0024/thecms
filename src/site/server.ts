@@ -128,7 +128,7 @@ export async function startEditor(store: Store, options: { port?: number; listen
   const menu = (): MenuItem[] =>
     menuOf(
       store.site(),
-      store.pages().map((p) => ({ title: p.title, slug: p.slug, inMenu: store.draft(p.slug)?.inMenu !== false })),
+      store.pages(),
       store.posts().length > 0,
     );
   const lists = (): { pages: ReturnType<Store['pages']>; posts: ReturnType<Store['posts']> } => ({ pages: store.pages(), posts: store.posts() });

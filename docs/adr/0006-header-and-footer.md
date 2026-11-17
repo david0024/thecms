@@ -75,11 +75,7 @@ the public page.
 
 ## Not yet
 
-- **A menu for small screens.** The menu wraps onto more lines; there is no
-  button that opens it. A static page has no script, so this is a CSS-only
-  disclosure and needs its own care for keyboard and screen-reader users.
-- **Menu order and sub-menus.** The menu is the pages, in the order they were
-  made.
+- ~~A menu for small screens, menu order and sub-menus.~~ Done in ADR 0008.
 - **Several footer columns**, a logo with the name beside it, a favicon.
 - **Page templates** (a landing page without header, a page with a sidebar).
 

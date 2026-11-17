@@ -178,16 +178,14 @@ export class Store {
   }
 
   /** Every page, in menu order, with whether its draft differs from what is published. */
-  pages(): { slug: string; title: string; published: boolean; changed: boolean }[] {
+  pages(): { slug: string; title: string; inMenu: boolean; published: boolean; changed: boolean }[] {
     return this.db
       .query<{ slug: string; draft: string; published: string | null }, []>('SELECT slug, draft, published FROM pages ORDER BY position, slug')
       .all()
-      .map((row) => ({
-        slug: row.slug,
-        title: normalizePage(JSON.parse(row.draft)).page.title,
-        published: row.published !== null,
-        changed: row.published !== row.draft,
-      }));
+      .map((row) => {
+        const { title, inMenu } = normalizePage(JSON.parse(row.draft)).page;
+        return { slug: row.slug, title, inMenu, published: row.published !== null, changed: row.published !== row.draft };
+      });
   }
 
   deletePage(slug: string): void {

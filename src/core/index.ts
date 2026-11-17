@@ -7,6 +7,8 @@ export * from './blocks.ts';
 export * from './content.ts';
 export * from './css.ts';
 export * from './media.ts';
+export * from './menu.ts';
+export * from './navigation.ts';
 export * from './page.ts';
 export * from './post.ts';
 export * from './richtext.ts';
