@@ -60,3 +60,18 @@ img{max-width:100%;height:auto;display:block}
 
 .contact{font-style:normal}
 .group{display:grid;gap:var(--b-gap)}
+
+/* The blog: a post's head, and the list of posts. */
+.post-head{--b-width:var(--t-width-narrow);padding-bottom:0}
+.post-meta{display:flex;flex-wrap:wrap;gap:var(--t-space-xs) var(--t-space-sm);font-size:var(--t-size-sm);color:var(--t-color-muted)}
+.post-meta a{color:inherit}
+.post-cover{width:100%;border-radius:var(--t-radius-md);margin-top:var(--t-space-md)}
+.posts{list-style:none;margin:var(--t-space-md) 0 0;padding:0;display:grid;gap:var(--t-space-lg)}
+.post-card img{width:100%;aspect-ratio:2;object-fit:cover;border-radius:var(--t-radius-md);margin-bottom:var(--t-space-sm)}
+.post-card h2{font-size:var(--t-size-xl)}
+.post-card h2 a{color:inherit;text-decoration:none}
+.post-card h2 a:hover{text-decoration:underline}
+.post-card>:last-child{margin-bottom:0}
+.blog{--b-width:var(--t-width-narrow)}
+.pager{display:flex;justify-content:space-between;gap:var(--t-space-md);margin-top:var(--t-space-lg)}
+.pager [rel=next]{margin-inline-start:auto}

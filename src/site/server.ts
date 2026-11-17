@@ -12,8 +12,8 @@
  */
 import { readdir } from 'node:fs/promises';
 import { compile } from 'svelte/compiler';
-import { MEDIA_MAX_BYTES, MEDIA_PREFIX, normalizePage, parseTheme, type Theme, themeCss } from '../core/index.ts';
-import { renderParts } from './document.ts';
+import { MEDIA_MAX_BYTES, MEDIA_PREFIX, normalizePage, normalizePost, parseTheme, RESERVED_SLUGS, type Theme, themeCss } from '../core/index.ts';
+import { type MenuItem, menuOf, renderParts, renderPostParts } from './document.ts';
 import type { Store } from './store.ts';
 
 const ADMIN = new URL('../admin/', import.meta.url);
@@ -124,11 +124,15 @@ export async function startEditor(store: Store, options: { port?: number; listen
     if (!current) throw new Error('this site has no theme yet');
     return current;
   };
-  const menu = (): { title: string; slug: string }[] =>
-    store.pages().map((p) => ({ title: p.title, slug: p.slug, inMenu: store.draft(p.slug)?.inMenu !== false }))
-      .filter((p) => p.inMenu)
-      .map(({ title, slug }) => ({ title, slug }));
-  const state = (): unknown => ({ site: store.site(), theme: theme(), themeChanged: store.themeChanged(), themes, pages: store.pages() });
+  // The menu as the editor shows it: from the drafts, with the blog as soon as there is a post.
+  const menu = (): MenuItem[] =>
+    menuOf(
+      store.site(),
+      store.pages().map((p) => ({ title: p.title, slug: p.slug, inMenu: store.draft(p.slug)?.inMenu !== false })),
+      store.posts().length > 0,
+    );
+  const lists = (): { pages: ReturnType<Store['pages']>; posts: ReturnType<Store['posts']> } => ({ pages: store.pages(), posts: store.posts() });
+  const state = (): unknown => ({ site: store.site(), theme: theme(), themeChanged: store.themeChanged(), themes, ...lists() });
 
   async function api(request: Request, url: URL): Promise<Response> {
     if (url.pathname === '/api/media') {
@@ -147,6 +151,29 @@ export async function startEditor(store: Store, options: { port?: number; listen
     const body = request.method === 'GET' || request.method === 'DELETE' ? {} : ((await request.json()) as Record<string, unknown>);
     const slug = url.searchParams.get('slug') ?? '';
     const route = `${request.method} ${url.pathname}`;
+    // A post is edited through the same calls as a page, said to be one by `kind`.
+    if ((url.searchParams.get('kind') ?? body.kind) === 'post') {
+      switch (route) {
+        case 'GET /api/page': {
+          const post = store.postDraft(slug);
+          return post ? json({ page: post }) : json({ error: 'no such post' }, 404);
+        }
+        case 'PUT /api/page': {
+          const { post, issues } = normalizePost(body.page);
+          if (!post.title || !post.slug) return json({ error: 'a post has a title', issues }, 400);
+          if (body.create === true && store.postDraft(post.slug)) return json({ error: 'a post with this address already exists' }, 409);
+          return json({ page: store.savePost(body.page), issues, ...lists() });
+        }
+        case 'DELETE /api/page':
+          store.deletePost(slug);
+          return json(lists());
+        case 'POST /api/publish':
+          store.publishPost(String(body.slug ?? ''));
+          return json(lists());
+        case 'POST /api/render':
+          return json(renderPostParts(store.site(), theme(), normalizePost(body.page, new Date().toISOString().slice(0, 10)).post, menu(), true));
+      }
+    }
     switch (route) {
       case 'GET /api/state':
         return json(state());
@@ -159,14 +186,15 @@ export async function startEditor(store: Store, options: { port?: number; listen
         if (!page.title) return json({ error: 'a page has a title', issues }, 400);
         // A new page may not silently replace an existing one.
         if (body.create === true && store.draft(page.slug)) return json({ error: 'a page with this address already exists' }, 409);
-        return json({ page: store.savePage(page), issues, pages: store.pages() });
+        if (RESERVED_SLUGS.includes(page.slug)) return json({ error: `the address "/${page.slug}/" is used by the site itself; choose another title` }, 409);
+        return json({ page: store.savePage(page), issues, ...lists() });
       }
       case 'DELETE /api/page':
         store.deletePage(slug);
-        return json({ pages: store.pages() });
+        return json(lists());
       case 'POST /api/publish':
         store.publish(String(body.slug ?? ''));
-        return json({ pages: store.pages() });
+        return json(lists());
       case 'POST /api/render': {
         // Drawn from what the admin holds, cleaned first: the canvas shows what would be saved.
         const { page } = normalizePage(body.page);

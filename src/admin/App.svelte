@@ -23,6 +23,7 @@ import {
   moveTo,
   nudge,
   type Page,
+  type Post,
   type Site,
   type Theme,
   parentIdOf,
@@ -31,7 +32,8 @@ import {
   resetToTheme,
   slugify,
 } from '../core/index.ts';
-import { api, type State } from './api.ts';
+import { api, type Doc, type Kind, type State } from './api.ts';
+import ImageField from './ImageField.svelte';
 import Fields from './Fields.svelte';
 import { t } from './messages.ts';
 import { setPath } from './paths.ts';
@@ -40,7 +42,10 @@ import StylePanel from './StylePanel.svelte';
 import ThemeBuilder from './ThemeBuilder.svelte';
 
 let site = $state.raw<State | null>(null);
-let page = $state.raw<Page | null>(null);
+/** What is open in the editor: a page or a blog post. */
+let page = $state.raw<Doc | null>(null);
+let kind = $state<Kind>('page');
+let newKind = $state<Kind>('page');
 let selected = $state<string | null>(null);
 let tab = $state<'content' | 'style'>('content');
 let saving = $state<'saved' | 'saving' | 'unsaved' | 'error'>('saved');
@@ -63,7 +68,7 @@ let typing = { key: '', at: 0 };
 
 const block = $derived(page && selected ? findById(page.blocks, selected) : null);
 const def = $derived(block ? (BLOCKS[block.type] as BlockDef) : null);
-const info = $derived(site?.pages.find((p) => p.slug === page?.slug));
+const info = $derived((kind === 'post' ? site?.posts : site?.pages)?.find((p) => p.slug === page?.slug));
 const freeOnPage = $derived(page ? countFreeValues(page.blocks) : 0);
 
 const fail = (error: unknown): void => {
@@ -73,7 +78,7 @@ const fail = (error: unknown): void => {
 async function draw(): Promise<void> {
   if (!page || !frameReady || !frame?.contentWindow) return;
   try {
-    const { body, css } = await api.render(page);
+    const { body, css } = await api.render(page, kind);
     frame.contentWindow.postMessage(
       { type: 'render', body, css, selected, themeVersion, labels: { types: t.types, fields: t.fields, empty: t.empty, actions: t.actions, format: t.format } },
       location.origin,
@@ -95,8 +100,8 @@ async function save(): Promise<void> {
   const sent = page;
   saving = 'saving';
   try {
-    const { pages } = await api.save(sent);
-    site = { ...site, pages };
+    const { pages, posts } = await api.save(sent, false, kind);
+    site = { ...site, pages, posts };
     // Something may have changed while the request was out; then it is not saved yet.
     saving = page === sent ? 'saved' : 'unsaved';
     failure = '';
@@ -107,7 +112,7 @@ async function save(): Promise<void> {
 }
 
 /** Every change to the page goes through here. */
-function change(next: Page, options: { redraw?: boolean; step?: boolean } = {}): void {
+function change(next: Doc, options: { redraw?: boolean; step?: boolean } = {}): void {
   if (!page) return;
   if (options.step !== false) {
     past = [...past.slice(-99), page.blocks];
@@ -230,10 +235,12 @@ function onFrameMessage(event: MessageEvent): void {
   }
 }
 
-async function open(slug: string): Promise<void> {
+async function open(slug: string, next: Kind = 'page'): Promise<void> {
   try {
     if (saving !== 'saved') await save();
-    page = (await api.page(slug)).page;
+    const opened = (await api.page(slug, next)).page;
+    kind = next;
+    page = opened;
     selected = null;
     past = [];
     future = [];
@@ -249,22 +256,24 @@ async function createPage(): Promise<void> {
   const slug = slugify(title);
   if (!site || !title || !slug) return;
   try {
-    const { pages } = await api.save({ slug, title, description: '', inMenu: true, blocks: [] }, true);
-    site = { ...site, pages };
+    // A post without a date is dated today by the server.
+    const fresh = newKind === 'post' ? ({ slug, title, blocks: [] } as unknown as Post) : { slug, title, description: '', inMenu: true, blocks: [] };
+    const { pages, posts } = await api.save(fresh, true, newKind);
+    site = { ...site, pages, posts };
     newTitle = null;
-    await open(slug);
+    await open(slug, newKind);
   } catch (error) {
     fail(error);
   }
 }
 
 async function removePage(): Promise<void> {
-  if (!site || !page || page.slug === '') return;
+  if (!site || !page || (kind === 'page' && page.slug === '')) return;
   try {
     clearTimeout(saveTimer);
     saving = 'saved';
-    const { pages } = await api.remove(page.slug);
-    site = { ...site, pages };
+    const { pages, posts } = await api.remove(page.slug, kind);
+    site = { ...site, pages, posts };
     await open('');
   } catch (error) {
     fail(error);
@@ -276,8 +285,8 @@ async function publish(): Promise<void> {
   try {
     await save();
     if (saving !== 'saved') return;
-    const { pages } = await api.publish(page.slug);
-    site = { ...site, pages };
+    const { pages, posts } = await api.publish(page.slug, kind);
+    site = { ...site, pages, posts };
   } catch (error) {
     fail(error);
   }
@@ -420,14 +429,26 @@ onMount(() => {
       <ul class="pages">
         {#each site.pages as p (p.slug)}
           <li>
-            <button type="button" class:current={p.slug === page.slug} onclick={() => open(p.slug)}>
+            <button type="button" class:current={kind === 'page' && p.slug === page.slug} onclick={() => open(p.slug)}>
               {p.title}{#if !p.published || p.changed}<em title={p.published ? t.bar.changed : t.bar.draft}> •</em>{/if}
             </button>
           </li>
         {/each}
       </ul>
       {#if newTitle === null}
-        <button type="button" onclick={() => (newTitle = '')}>+ {t.app.newPage}</button>
+        <button type="button" onclick={() => { newKind = 'page'; newTitle = ''; }}>+ {t.app.newPage}</button>
+        <h2>{t.posts.heading}</h2>
+        <ul class="pages" data-posts>
+          {#each site.posts as p (p.slug)}
+            <li>
+              <button type="button" class:current={kind === 'post' && p.slug === page.slug} onclick={() => open(p.slug, 'post')}>
+                {p.title}{#if !p.published || p.changed}<em title={p.published ? t.bar.changed : t.bar.draft}> •</em>{/if}
+                <small>{p.date}</small>
+              </button>
+            </li>
+          {/each}
+        </ul>
+        <button type="button" onclick={() => { newKind = 'post'; newTitle = ''; }} data-new-post>+ {t.posts.newPost}</button>
       {:else}
         <form
           onsubmit={(e) => {
@@ -505,7 +526,7 @@ onMount(() => {
           {/key}
         {/if}
       {:else}
-        <h2>{t.inspector.page}</h2>
+        <h2>{kind === 'post' ? t.posts.post : t.inspector.page}</h2>
         <label class="field">
           <span>{t.inspector.title}</span>
           <input type="text" maxlength="200" value={page.title} oninput={(e) => page && e.currentTarget.value.trim() && change({ ...page, title: e.currentTarget.value }, { step: false })} />
@@ -515,17 +536,43 @@ onMount(() => {
           <textarea rows="3" maxlength="300" value={page.description} oninput={(e) => page && change({ ...page, description: e.currentTarget.value }, { step: false, redraw: false })}></textarea>
           <small>{t.inspector.descriptionHint}</small>
         </label>
-        <label class="check">
-          <input type="checkbox" checked={page.inMenu} onchange={(e) => page && change({ ...page, inMenu: e.currentTarget.checked }, { step: false })} />
-          <span>{t.inspector.inMenu}</span>
-        </label>
+        {#if 'date' in page}
+          {@const post = page}
+          <label class="field">
+            <span>{t.posts.date}</span>
+            <input type="date" value={post.date} onchange={(e) => e.currentTarget.value && change({ ...post, date: e.currentTarget.value }, { step: false })} data-post-date />
+          </label>
+          <label class="field">
+            <span>{t.posts.categories}</span>
+            <input
+              type="text"
+              value={post.categories.join(', ')}
+              onchange={(e) => change({ ...post, categories: e.currentTarget.value.split(',').map((c) => c.trim()).filter(Boolean) }, { step: false })}
+              data-post-categories
+            />
+            <small>{t.posts.categoriesHint}</small>
+          </label>
+          <label class="field">
+            <span>{t.posts.excerpt}</span>
+            <textarea rows="3" maxlength="400" value={post.excerpt} oninput={(e) => change({ ...post, excerpt: e.currentTarget.value }, { step: false, redraw: false })} data-post-excerpt></textarea>
+            <small>{t.posts.excerptHint}</small>
+          </label>
+          <div class="field">
+            <ImageField label={t.posts.cover} value={post.cover} onchange={(cover) => change({ ...post, cover: cover.src ? cover : null }, { step: false })} />
+          </div>
+        {:else}
+          <label class="check">
+            <input type="checkbox" checked={page.inMenu} onchange={(e) => page && 'inMenu' in page && change({ ...page, inMenu: e.currentTarget.checked }, { step: false })} />
+            <span>{t.inspector.inMenu}</span>
+          </label>
+        {/if}
         {#if freeOnPage > 0}
           <p class="hint">{t.style.free(freeOnPage)}</p>
           <button type="button" onclick={() => page && setBlocks(resetToTheme(page.blocks))}>{t.style.resetPage}</button>
         {/if}
         <p class="hint">{t.inspector.nothing}</p>
-        {#if page.slug !== ''}
-          <button type="button" class="danger" onclick={removePage}>{t.inspector.deletePage}</button>
+        {#if kind === 'post' || page.slug !== ''}
+          <button type="button" class="danger" onclick={removePage}>{kind === 'post' ? t.posts.deletePost : t.inspector.deletePage}</button>
         {/if}
       {/if}
       {#if failure && saving !== 'error'}<p class="bad" role="alert">{failure}</p>{/if}
@@ -562,13 +609,14 @@ onMount(() => {
   .pages button, .library button { width: 100%; text-align: start; }
   .pages button.current { border-color: #6d5dfc; background: #f1efff; font-weight: 600; }
   .pages em { color: #c77700; font-style: normal; }
+  .pages small { color: #6a6880; font-weight: 400; }
   .tabs { display: flex; gap: 0.25rem; margin-bottom: 0.8rem; }
   .tabs button { flex: 1; }
   .tabs button[aria-selected='true'] { background: #f1efff; border-color: #6d5dfc; font-weight: 600; }
   form { display: grid; gap: 0.35rem; margin-bottom: 0.6rem; }
   :global(.editor .field) { display: block; margin-bottom: 0.7rem; }
   :global(.editor label > span, .editor legend) { display: block; margin-bottom: 0.2rem; font-size: 12.5px; color: #4b4960; }
-  :global(.editor input[type='text'], .editor input[type='url'], .editor textarea, .editor select) { width: 100%; padding: 0.4rem 0.5rem; border: 1px solid #cfccdc; border-radius: 6px; background: #fff; color: inherit; font: inherit; }
+  :global(.editor input[type='text'], .editor input[type='url'], .editor input[type='date'], .editor textarea, .editor select) { width: 100%; padding: 0.4rem 0.5rem; border: 1px solid #cfccdc; border-radius: 6px; background: #fff; color: inherit; font: inherit; }
   :global(.editor input[aria-invalid='true']) { border-color: #b3261e; }
   :global(.editor textarea) { resize: vertical; }
   :global(.editor fieldset) { margin: 0; padding: 0.6rem; border: 1px solid #e4e2ee; border-radius: 6px; }

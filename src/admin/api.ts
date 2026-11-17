@@ -1,11 +1,22 @@
 /** The admin's calls to the editing server. The token comes from the address the CLI printed. */
-import type { Page, Site, Theme } from '../core/index.ts';
+import type { Page, Post, Site, Theme } from '../core/index.ts';
+
+/** What is being edited: a page or a blog post. Both are made of blocks. */
+export type Kind = 'page' | 'post';
+export type Doc = Page | Post;
 
 export interface PageInfo {
   slug: string;
   title: string;
   published: boolean;
   changed: boolean;
+}
+export interface PostInfo extends PageInfo {
+  date: string;
+}
+interface Lists {
+  pages: PageInfo[];
+  posts: PostInfo[];
 }
 export interface State {
   site: Site;
@@ -14,6 +25,7 @@ export interface State {
   themeChanged: boolean;
   themes: Theme[];
   pages: PageInfo[];
+  posts: PostInfo[];
 }
 
 export interface MediaItem {
@@ -40,11 +52,11 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
 export const api = {
   hasToken: token !== '',
   state: () => call<State>('GET', '/api/state'),
-  page: (slug: string) => call<{ page: Page }>('GET', `/api/page?slug=${encodeURIComponent(slug)}`),
-  save: (page: Page, create = false) => call<{ page: Page; pages: PageInfo[] }>('PUT', '/api/page', { page, create }),
-  remove: (slug: string) => call<{ pages: PageInfo[] }>('DELETE', `/api/page?slug=${encodeURIComponent(slug)}`),
-  publish: (slug: string) => call<{ pages: PageInfo[] }>('POST', '/api/publish', { slug }),
-  render: (page: Page) => call<{ body: string; css: string }>('POST', '/api/render', { page }),
+  page: (slug: string, kind: Kind = 'page') => call<{ page: Doc }>('GET', `/api/page?kind=${kind}&slug=${encodeURIComponent(slug)}`),
+  save: (page: Doc, create = false, kind: Kind = 'page') => call<{ page: Doc } & Lists>('PUT', '/api/page', { page, create, kind }),
+  remove: (slug: string, kind: Kind = 'page') => call<Lists>('DELETE', `/api/page?kind=${kind}&slug=${encodeURIComponent(slug)}`),
+  publish: (slug: string, kind: Kind = 'page') => call<Lists>('POST', '/api/publish', { slug, kind }),
+  render: (page: Doc, kind: Kind = 'page') => call<{ body: string; css: string }>('POST', '/api/render', { page, kind }),
   setSite: (site: Site) => call<State>('PUT', '/api/site', { site }),
   setTheme: (theme: Theme) => call<State>('PUT', '/api/theme', { theme }),
   publishTheme: () => call<State>('POST', '/api/theme/publish', {}),

@@ -20,10 +20,15 @@ import {
   type MediaExt,
   mediaNameOf,
   mediaPath,
+  newestFirst,
   normalizePage,
+  normalizePost,
   normalizeSite,
   type Page,
+  type Post,
   parseTheme,
+  postImageSources,
+  RESERVED_SLUGS,
   type Site,
   str,
   type Theme,
@@ -45,6 +50,13 @@ CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS pages (
   slug TEXT PRIMARY KEY,
   position INTEGER NOT NULL,
+  draft TEXT NOT NULL,
+  published TEXT,
+  published_at TEXT,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS posts (
+  slug TEXT PRIMARY KEY,
   draft TEXT NOT NULL,
   published TEXT,
   published_at TEXT,
@@ -140,6 +152,7 @@ export class Store {
   savePage(input: unknown): Page {
     const { page } = normalizePage(input);
     if (!page.title) throw new Error('a page has a title');
+    if (RESERVED_SLUGS.includes(page.slug)) throw new Error(`the address "/${page.slug}/" is used by the site itself; choose another`);
     const now = new Date().toISOString();
     const next = this.db.query<{ n: number }, []>('SELECT COALESCE(MAX(position), 0) + 1 AS n FROM pages').get();
     this.db
@@ -190,6 +203,54 @@ export class Store {
       .map((row) => normalizePage(JSON.parse(row.published)).page);
   }
 
+  /** Saves a post's draft. Like a page, what is published is left as it is. A post with no valid date is dated today. */
+  savePost(input: unknown): Post {
+    const { post } = normalizePost(input, new Date().toISOString().slice(0, 10));
+    if (!post.title) throw new Error('a post has a title');
+    if (!post.slug) throw new Error('a post has an address');
+    this.db
+      .query(
+        `INSERT INTO posts (slug, draft, updated_at) VALUES (?, ?, ?)
+         ON CONFLICT(slug) DO UPDATE SET draft = excluded.draft, updated_at = excluded.updated_at`,
+      )
+      .run(post.slug, JSON.stringify(post), new Date().toISOString());
+    return post;
+  }
+
+  publishPost(slug: string): void {
+    const done = this.db.query('UPDATE posts SET published = draft, published_at = ? WHERE slug = ?').run(new Date().toISOString(), slug);
+    if (done.changes === 0) throw new Error(`no post "${slug}"`);
+  }
+
+  postDraft(slug: string): Post | null {
+    const row = this.db.query<{ draft: string }, [string]>('SELECT draft FROM posts WHERE slug = ?').get(slug);
+    return row ? normalizePost(JSON.parse(row.draft)).post : null;
+  }
+
+  /** Every post, newest first by its draft's date, with whether its draft differs from what is published. */
+  posts(): { slug: string; title: string; date: string; published: boolean; changed: boolean }[] {
+    return this.db
+      .query<{ draft: string; published: string | null }, []>('SELECT draft, published FROM posts')
+      .all()
+      .map((row) => ({ post: normalizePost(JSON.parse(row.draft)).post, published: row.published !== null, changed: row.published !== row.draft }))
+      .sort((a, b) => (a.post.date === b.post.date ? a.post.slug.localeCompare(b.post.slug) : a.post.date < b.post.date ? 1 : -1))
+      .map(({ post, published, changed }) => ({ slug: post.slug, title: post.title, date: post.date, published, changed }));
+  }
+
+  deletePost(slug: string): void {
+    this.db.query('DELETE FROM posts WHERE slug = ?').run(slug);
+  }
+
+  /** Every published post, newest first. */
+  publishedPosts(): Post[] {
+    return newestFirst(
+      this.db
+        .query<{ published: string }, []>('SELECT published FROM posts WHERE published IS NOT NULL')
+        .all()
+        .map((row) => normalizePost(JSON.parse(row.published)).post),
+    );
+  }
+
   /**
    * Stores an image and returns where a page points to show it. The name is
    * the hash of the bytes, so the same picture uploaded twice is stored once
@@ -227,6 +288,10 @@ export class Store {
     for (const row of rows) {
       const copies = [row.draft, row.published].filter((c): c is string => c !== null).map((c) => normalizePage(JSON.parse(c)).page);
       if (copies.some((page) => imageSources(page.blocks).some((src) => mediaNameOf(src) === name))) titles.push((copies[0] as Page).title);
+    }
+    for (const row of this.db.query<{ draft: string; published: string | null }, []>('SELECT draft, published FROM posts ORDER BY slug').all()) {
+      const copies = [row.draft, row.published].filter((c): c is string => c !== null).map((c) => normalizePost(JSON.parse(c)).post);
+      if (copies.some((post) => postImageSources(post).some((src) => mediaNameOf(src) === name))) titles.push((copies[0] as Post).title);
     }
     return titles;
   }

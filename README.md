@@ -21,6 +21,7 @@ The decisions behind this, each with its reason:
 - [ADR 0004 — The theme builder](docs/adr/0004-the-theme-builder.md)
 - [ADR 0005 — Images, formatting and dragging](docs/adr/0005-images-formatting-dragging.md)
 - [ADR 0006 — The header and footer](docs/adr/0006-header-and-footer.md)
+- [ADR 0007 — The blog](docs/adr/0007-the-blog.md)
 
 ## Where it stands
 
@@ -36,7 +37,8 @@ theme, publish, and export the site as static files.
 | Theme builder: tokens, block defaults and variants, themes as files | done |
 | Images uploaded and kept with the site; headings, lists and links from a bar on the page; blocks moved by dragging | done |
 | Header and footer: logo, button and links from the site, layout from the theme | done |
-| Blog (posts, categories, feed) | next |
+| Blog: posts, categories, paged list, Atom feed | done |
+| Menu builder (sub-menus, mega menu, a menu for phones) | next |
 | WordPress import | planned |
 | Modules (isolated plugins) | planned |
 
