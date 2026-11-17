@@ -40,6 +40,7 @@ theme, publish, and export the site as static files.
 | Images uploaded and kept with the site; headings, lists and links from a bar on the page; blocks moved by dragging | done |
 | Header and footer: logo, button and links from the site, layout from the theme | done |
 | Blog: posts, categories, paged list, Atom feed | done |
+| Admin with sections: pages, posts, media, menu and settings, theme | done |
 | Menu builder: sub-menus, wide menus with columns, a folded menu on phones, all without script | done |
 | WordPress import: pages, posts, images, menu, links rewritten, old addresses kept alive, a report of what did not come over | done |
 | Modules (isolated plugins) | planned |
@@ -55,7 +56,8 @@ bun run cms edit site.db              # the visual editor; open the address it p
 bun run cms export site.db dist       # the published site as static files
 ```
 
-In the editor, click any text on the page and type. Add blocks from the left,
+The admin opens on the list of pages, with sections for posts, media, the menu
+and settings, and the theme. Choose a page to open it in the builder. There, click any text on the page and type. Add blocks from the left,
 style the selected block on the right, then Publish. **Edit theme** opens the
 theme builder: change the colours, typefaces and spacing, set how each block
 type looks by default, and download the result as a file. A theme is published
