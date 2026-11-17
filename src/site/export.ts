@@ -19,6 +19,8 @@ import {
   postExcerpt,
   postImageSources,
   postPath,
+  type Redirect,
+  redirectFile,
   type Site,
   type Theme,
   themeCss,
@@ -80,6 +82,7 @@ export async function buildSite(
   pages: Page[],
   media: MediaSource = () => null,
   allPosts: Post[] = [],
+  redirects: Redirect[] = [],
 ): Promise<Map<string, string | Uint8Array>> {
   const files = new Map<string, string | Uint8Array>();
   const posts = newestFirst(allPosts);
@@ -126,6 +129,19 @@ export async function buildSite(
     files.set(src.slice(1), bytes);
   }
 
+  // An old address is kept only where nothing lives now and what it leads to is published.
+  for (const { from, to } of redirects) {
+    const file = redirectFile(from);
+    if (files.has(file) || !paths.includes(to.split('#')[0] as string)) continue;
+    const href = xml(to);
+    files.set(
+      file,
+      `<!doctype html><html lang="${xml(site.language)}"><head><meta charset="utf-8"><title>${xml(site.name)}</title>` +
+        `<link rel="canonical" href="${xml(site.url)}${href}"><meta name="robots" content="noindex"><meta http-equiv="refresh" content="0; url=${href}"></head>` +
+        `<body><p><a href="${href}">${xml(site.name)}</a></p></body></html>\n`,
+    );
+  }
+
   files.set(
     '404.html',
     renderPage(site, theme, { slug: '404', title: wordsFor(site.language).notFound, description: '', inMenu: false, blocks: [] }, menu),
@@ -159,7 +175,7 @@ export async function exportSite(store: Store, outDir: string): Promise<string[]
   }
   await rm(outDir, { recursive: true, force: true });
 
-  const files = await buildSite(store.site(), theme, pages, (name) => store.mediaFile(name)?.bytes ?? null, store.publishedPosts());
+  const files = await buildSite(store.site(), theme, pages, (name) => store.mediaFile(name)?.bytes ?? null, store.publishedPosts(), store.redirects());
   files.set(MARKER, 'Made by thecms export. This folder is replaced on every export.\n');
   for (const [path, contents] of files) {
     const target = join(outDir, path);

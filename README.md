@@ -23,6 +23,7 @@ The decisions behind this, each with its reason:
 - [ADR 0006 — The header and footer](docs/adr/0006-header-and-footer.md)
 - [ADR 0007 — The blog](docs/adr/0007-the-blog.md)
 - [ADR 0008 — The menu](docs/adr/0008-the-menu.md)
+- [ADR 0009 — Importing a WordPress site](docs/adr/0009-wordpress-import.md)
 
 ## Where it stands
 
@@ -40,7 +41,7 @@ theme, publish, and export the site as static files.
 | Header and footer: logo, button and links from the site, layout from the theme | done |
 | Blog: posts, categories, paged list, Atom feed | done |
 | Menu builder: sub-menus, wide menus with columns, a folded menu on phones, all without script | done |
-| WordPress import | planned |
+| WordPress import: pages, posts, images, menu, links rewritten, old addresses kept alive, a report of what did not come over | done |
 | Modules (isolated plugins) | planned |
 
 ## Try it
@@ -60,6 +61,15 @@ theme builder: change the colours, typefaces and spacing, set how each block
 type looks by default, and download the result as a file. A theme is published
 separately from pages, with **Publish theme**. `export` writes what is published; serve `dist` with any static file
 server.
+
+To bring a WordPress site: in WordPress choose Tools, Export, All content, then
+
+```sh
+bun run cms import site.db export.xml   # a new site.db from the export
+```
+
+It copies the images, rewrites links, keeps old addresses working, and prints
+what could not come over (forms, shortcodes, comments).
 
 The address `edit` prints carries a key. The editor answers only on your own
 computer and only to that key.
