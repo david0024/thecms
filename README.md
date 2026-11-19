@@ -29,6 +29,7 @@ The decisions behind this, each with its reason:
 - [ADR 0012 — Importing from the admin](docs/adr/0012-import-from-the-admin.md)
 - [ADR 0013 — One store, three databases](docs/adr/0013-sqlite-postgres-mysql.md)
 - [ADR 0015 — A page for each content type](docs/adr/0015-a-page-for-each-content-type.md)
+- [ADR 0016 — A category that is a section of its own](docs/adr/0016-categories-as-sections.md)
 
 ## Where it stands
 
@@ -53,6 +54,7 @@ theme, publish, and export the site as static files.
 | Each content type's page designed in the builder, with the entry's parts placed in it | done |
 | WordPress import: pages, posts, images, menu, links rewritten, old addresses kept alive, a report of what did not come over | done |
 | Import from the admin: choose the file, see what would come over and what would not, then run it | done |
+| A WordPress category kept as a section of its own: its posts become entries of a new content type | done |
 | Modules (isolated plugins) | planned |
 
 ## Try it
@@ -95,7 +97,7 @@ anything is written. Or, from the command line:
 bun run cms import site.db export.xml   # a new site.db from the export
 ```
 
-Add `--types=portfolio,team` to bring a plugin's kinds of entry as content types.
+Add `--types=portfolio,team` to bring a plugin's kinds of entry as content types, and `--categories=projects` to make the posts of a category a content type of their own (ADR 0016).
 
 It copies the images, rewrites links, keeps old addresses working, and prints
 what could not come over (forms, shortcodes, comments).

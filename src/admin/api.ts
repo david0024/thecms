@@ -6,6 +6,8 @@ export type { ImportPreview, ImportProgress };
 export interface ImportChoices {
   /** Kinds of entry to bring as content types. */
   types: string[];
+  /** Categories of posts to bring as content types of their own. */
+  categories: string[];
   images: boolean;
   /** Take the site's name, language, address and menu from the old site. */
   settings: boolean;
@@ -93,9 +95,13 @@ export const api = {
   publishTheme: () => call<State>('POST', '/api/theme/publish', {}),
   media: () => call<{ media: MediaItem[] }>('GET', '/api/media'),
   removeMedia: (name: string) => call<{ media: MediaItem[] }>('DELETE', `/api/media?name=${encodeURIComponent(name)}`),
-  importPlan: (file: Blob, types: string[]) => send<ImportPreview>(`/api/import/plan?types=${encodeURIComponent(types.join(','))}`, file),
+  importPlan: (file: Blob, types: string[], categories: string[]) =>
+    send<ImportPreview>(`/api/import/plan?types=${encodeURIComponent(types.join(','))}&categories=${encodeURIComponent(categories.join(','))}`, file),
   importRun: (file: Blob, choices: ImportChoices) =>
-    send<ImportProgress>(`/api/import/run?types=${encodeURIComponent(choices.types.join(','))}&images=${choices.images ? 1 : 0}&settings=${choices.settings ? 1 : 0}`, file),
+    send<ImportProgress>(
+      `/api/import/run?types=${encodeURIComponent(choices.types.join(','))}&categories=${encodeURIComponent(choices.categories.join(','))}&images=${choices.images ? 1 : 0}&settings=${choices.settings ? 1 : 0}`,
+      file,
+    ),
   importProgress: () => call<ImportProgress>('GET', '/api/import'),
   importForget: () => call<ImportProgress>('DELETE', '/api/import'),
   /** The body is the file itself; the server reads what it is from its bytes. */

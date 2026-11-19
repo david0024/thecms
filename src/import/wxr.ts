@@ -13,6 +13,7 @@ import {
   categoryPath,
   type ContentType,
   entryPath,
+  listPath,
   normalizeTypes,
   isDate,
   MENU_DEPTH,
@@ -64,6 +65,8 @@ export interface ImportPlan {
   redirects: { from: string; to: string }[];
   /** Kinds of entry a plugin or theme added that were not brought, for a screen that offers them. */
   others: { type: string; count: number }[];
+  /** The categories posts were filed under, each of which could become a content type of its own (ADR 0016). */
+  categories: { nicename: string; name: string; count: number }[];
   /** What the owner should know, in sentences. */
   notes: string[];
 }
@@ -145,7 +148,16 @@ function unique(wanted: string, taken: Set<string>): string {
 }
 
 /** Reads the file and decides what this site would get from it. Throws when it is not a WordPress export. */
-export function planImport(xml: string, today: string, options: { /** WordPress post types to bring as content types (`portfolio`). */ types?: string[] } = {}): ImportPlan {
+export function planImport(
+  xml: string,
+  today: string,
+  options: {
+    /** WordPress post types to bring as content types (`portfolio`). */
+    types?: string[];
+    /** Categories whose posts become a content type of their own (`projects`), by the category's address name (ADR 0016). */
+    categories?: string[];
+  } = {},
+): ImportPlan {
   const rss = parseXml(xml);
   const channel = child(rss, 'channel');
   if (rss.name !== 'rss' || !channel || !child(channel, 'wp:wxr_version')) {
@@ -179,16 +191,43 @@ export function planImport(xml: string, today: string, options: { /** WordPress 
   // Kinds of entry a plugin or theme added. Which of them are content and which are a plugin's
   // own records cannot be told from the file, so only the ones the owner names are brought.
   const title = (slug: string): string => slug.replace(/[-_]+/g, ' ').replace(/^./, (c) => c.toUpperCase());
-  const types = normalizeTypes(
-    [...new Set(options.types ?? [])]
-      .filter((name) => !['page', 'post', 'attachment', 'nav_menu_item'].includes(name) && items.some((i) => i.type === name && live(i)))
-      .map((name) => ({ id: name, name: title(name), singular: title(name), path: name })),
-  );
+  // The categories posts were filed under. One the owner names stops being a category and becomes
+  // a content type: a blog that kept its projects as posts in "Projects" gets a Projects section.
+  const postCategories = new Map<string, { nicename: string; name: string; count: number }>();
+  for (const item of postItems) {
+    for (const c of item.categories) {
+      if (c.domain !== 'category' || !c.nicename || c.nicename === 'uncategorized') continue;
+      const known = postCategories.get(c.nicename) ?? { nicename: c.nicename, name: c.name || title(c.nicename), count: 0 };
+      known.count++;
+      postCategories.set(c.nicename, known);
+    }
+  }
+  const chosenPostTypes = [...new Set(options.types ?? [])].filter((name) => !['page', 'post', 'attachment', 'nav_menu_item'].includes(name) && items.some((i) => i.type === name && live(i)));
+  const chosenCategories = [...new Set(options.categories ?? [])].filter((nicename) => postCategories.has(nicename));
+  const types = normalizeTypes([
+    ...chosenPostTypes.map((name) => ({ id: name, name: title(name), singular: title(name), path: name })),
+    ...chosenCategories.map((nicename) => {
+      const { name } = postCategories.get(nicename) as { name: string };
+      // Posts keep what made them posts: a date, the newest first, and a feed.
+      return { id: nicename, name, singular: name, path: nicename, dated: true, feed: true };
+    }),
+  ]);
   const typeOf = new Map<string, ContentType>();
-  for (const name of options.types ?? []) {
-    const type = types.find((t) => t.id === slugify(name));
+  for (const name of chosenPostTypes) {
+    const type = types.find((t) => t.id === slugify(name) && t.name === title(name));
     if (type) typeOf.set(name, type);
   }
+  const typeOfCategory = new Map<string, ContentType>();
+  for (const nicename of chosenCategories) {
+    const type = types.find((t) => t.id === slugify(nicename) && t.name === postCategories.get(nicename)?.name);
+    if (type) typeOfCategory.set(nicename, type);
+  }
+  /** The type a post becomes: that of the first category it is filed under that the owner chose. */
+  const categoryTypeOf = (item: Item): ContentType | undefined => {
+    for (const c of item.categories) if (c.domain === 'category' && typeOfCategory.has(c.nicename)) return typeOfCategory.get(c.nicename);
+    return undefined;
+  };
+  const entryTypeOf = (item: Item): ContentType | undefined => typeOf.get(item.type) ?? (item.type === 'post' ? categoryTypeOf(item) : undefined);
 
   const paths = new Map<string, string>();
   const pathById = new Map<string, string>();
@@ -224,6 +263,7 @@ export function planImport(xml: string, today: string, options: { /** WordPress 
     remember(item, pagePath(slug));
   }
   for (const item of postItems) {
+    if (categoryTypeOf(item)) continue;
     const slug = unique(slugify(item.name) || slugify(item.title) || `post-${item.id}`, takenPosts);
     postSlugs.set(item, slug);
     remember(item, postPath(slug));
@@ -232,12 +272,16 @@ export function planImport(xml: string, today: string, options: { /** WordPress 
   const entrySlugs = new Map<Item, string>();
   const takenEntries = new Map<string, Set<string>>();
   for (const item of items) {
-    const type = typeOf.get(item.type);
+    const type = entryTypeOf(item);
     if (!type || !live(item)) continue;
     if (!takenEntries.has(type.id)) takenEntries.set(type.id, new Set());
     const slug = unique(slugify(item.name) || slugify(item.title) || `entry-${item.id}`, takenEntries.get(type.id) as Set<string>);
     entrySlugs.set(item, slug);
     remember(item, entryPath(type, slug));
+  }
+  for (const [nicename, type] of typeOfCategory) {
+    const url = parse(`/category/${nicename}/`, base);
+    if (url) paths.set(keyOf(url), listPath(type));
   }
 
   // Content, with its links and images pointed at this site.
@@ -334,10 +378,13 @@ export function planImport(xml: string, today: string, options: { /** WordPress 
     posts.push(asEntry(item, slug, true));
   }
   const entries: Record<string, PlannedPost[]> = {};
+  const unfiled = new Set<string>();
   for (const [item, slug] of entrySlugs) {
-    const type = typeOf.get(item.type) as ContentType;
+    const type = entryTypeOf(item) as ContentType;
     (entries[type.id] ??= []).push(asEntry(item, slug, false));
+    if (item.type === 'post' && item.categories.some((c) => c.domain === 'category' && c.nicename !== 'uncategorized' && typeOfCategory.get(c.nicename) !== type)) unfiled.add(item.title || 'Untitled');
   }
+  if (unfiled.size) notes.push(`Posts that became entries of a section of their own lost their other categories, because entries there are not grouped by category: ${list(unfiled)}.`);
 
   const anyPostPublished = posts.some((p) => p.publish);
   if (!home) {
@@ -358,13 +405,19 @@ export function planImport(xml: string, today: string, options: { /** WordPress 
 
   // The menu.
   const terms = new Map(childrenOf(channel, 'wp:category').map((c) => [textOf(c, 'wp:term_id'), decodeHtml(textOf(c, 'wp:cat_name'))]));
+  const nicenames = new Map(childrenOf(channel, 'wp:category').map((c) => [textOf(c, 'wp:term_id'), textOf(c, 'wp:category_nicename')]));
   const targetOfId = (kind: string, id: string): MenuTarget | null => {
-    if (kind === 'category') return terms.has(id) ? { kind: 'url', href: categoryPath(terms.get(id) as string) } : null;
+    if (kind === 'category') {
+      const type = typeOfCategory.get(nicenames.get(id) ?? '');
+      if (type) return { kind: 'url', href: listPath(type) };
+      return terms.has(id) ? { kind: 'url', href: categoryPath(terms.get(id) as string) } : null;
+    }
     const item = byId.get(id);
     if (!item) return null;
     if (item === postsPage) return { kind: 'blog' };
     if (pageSlugs.has(item)) return { kind: 'page', slug: pageSlugs.get(item) as string };
     if (postSlugs.has(item)) return { kind: 'url', href: postPath(postSlugs.get(item) as string) };
+    if (entrySlugs.has(item)) return { kind: 'url', href: entryPath(entryTypeOf(item) as ContentType, entrySlugs.get(item) as string) };
     return null;
   };
   const menuContext = contextFor('the menu');
@@ -469,7 +522,9 @@ export function planImport(xml: string, today: string, options: { /** WordPress 
   const usedCategories = new Set(posts.flatMap((p) => (p.publish ? p.categories : [])));
   for (const c of childrenOf(channel, 'wp:category')) {
     const title = decodeHtml(textOf(c, 'wp:cat_name'));
-    if (usedCategories.has(title) && !textOf(c, 'wp:category_parent')) redirects.push({ from: `/category/${textOf(c, 'wp:category_nicename')}/`, to: categoryPath(title) });
+    const type = typeOfCategory.get(textOf(c, 'wp:category_nicename'));
+    if (type) redirects.push({ from: `/category/${textOf(c, 'wp:category_nicename')}/`, to: listPath(type) });
+    else if (usedCategories.has(title) && !textOf(c, 'wp:category_parent')) redirects.push({ from: `/category/${textOf(c, 'wp:category_nicename')}/`, to: categoryPath(title) });
   }
 
   // What the owner should know.
@@ -497,5 +552,5 @@ export function planImport(xml: string, today: string, options: { /** WordPress 
   if (items.some((i) => i.type === 'page' && i.parent !== '0' && live(i))) notes.push('Pages that sat under other pages now sit at the top level (/services/web/ became /web/). Their old addresses lead to the new ones.');
 
   const language = textOf(channel, 'language');
-  return { site: { name, language, url: /^https?:\/\//i.test(base) ? base : '' }, pages, posts, types, entries, menu, images: [...images], redirects, others: [...other].filter(([type]) => type !== 'wp_block').map(([type, n]) => ({ type, count: n })), notes };
+  return { site: { name, language, url: /^https?:\/\//i.test(base) ? base : '' }, pages, posts, types, entries, menu, images: [...images], redirects, others: [...other].filter(([type]) => type !== 'wp_block').map(([type, n]) => ({ type, count: n })), categories: [...postCategories.values()], notes };
 }

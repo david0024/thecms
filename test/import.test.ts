@@ -367,3 +367,47 @@ describe('old addresses', () => {
     expect(files.get('was/index.html') as string).toContain('url=/about/');
   });
 });
+
+describe('a category that is a section of its own (ADR 0016)', () => {
+  const chosen = (categories: string[], xml = WXR) => planImport(xml, '2026-11-17', { categories });
+
+  test('the categories posts were filed under are offered, with how many posts each holds', () => {
+    expect(plan().categories).toEqual([{ nicename: 'news', name: 'News', count: 1 }]);
+  });
+
+  test('a chosen category becomes a dated type; its posts leave the blog and become its entries', () => {
+    const p = chosen(['news', 'uncategorized', 'nothing-like-this']);
+    expect(p.types.map((t) => [t.id, t.name, t.path, t.dated, t.feed, t.categories])).toEqual([['news', 'News', 'news', true, true, false]]);
+    expect(p.entries.news).toEqual([expect.objectContaining({ slug: 'hello-world', date: '2024-01-15', categories: [] })]);
+    expect(p.posts.map((post) => post.slug)).toEqual(['post-11']);
+    // The list of categories stays the same, so a screen can offer to undo the choice.
+    expect(p.categories).toEqual(plan().categories);
+  });
+
+  test('links, the menu and old addresses lead to the new section', () => {
+    const p = chosen(['news']);
+    expect(JSON.stringify(p.pages[0])).toContain('"href":"/news/hello-world/#more"');
+    expect((p.menu ?? []).map((m) => m.target)).toContainEqual({ kind: 'url', href: '/news/' });
+    expect(p.redirects).toContainEqual({ from: '/2024/01/hello-world/', to: '/news/hello-world/' });
+    expect(p.redirects).toContainEqual({ from: '/category/news/', to: '/news/' });
+    expect(p.redirects.some((r) => r.to.startsWith('/blog/category/'))).toBe(false);
+    const linked = chosen(['news'], WXR.replace('href="https://old.example/about/"', 'href="https://old.example/category/news/"'));
+    expect(JSON.stringify(linked.pages[0])).toContain('"href":"/news/"');
+  });
+
+  test("a post's other categories are named as lost", () => {
+    const twice = WXR.replace('<category domain="category" nicename="news"><![CDATA[News]]></category>', '<category domain="category" nicename="news"><![CDATA[News]]></category><category domain="category" nicename="events"><![CDATA[Events]]></category>');
+    expect(chosen(['news'], twice).notes.join('\n')).toContain('lost their other categories');
+    expect(chosen(['news']).notes.join('\n')).not.toContain('lost their other categories');
+  });
+
+  test('carried out, the site has the section and its entries', async () => {
+    const store = await Store.open(':memory:');
+    await store.setTheme(plain);
+    const report = await runImport(store, chosen(['news']), { fetchImage: null, fresh: true });
+    expect(report).toMatchObject({ posts: 1, entries: 1 });
+    expect((await store.site()).types.map((t) => [t.id, t.dated])).toEqual([['news', true]]);
+    expect((await store.publishedEntries('news')).map((e) => e.title)).toEqual(['Hello world']);
+    await store.close();
+  });
+});

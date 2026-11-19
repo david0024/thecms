@@ -13,6 +13,7 @@ let { ondone }: { /** The site changed: read it again. */ ondone: () => Promise<
 let file = $state.raw<File | null>(null);
 let preview = $state.raw<ImportPreview | null>(null);
 let chosen = $state<string[]>([]);
+let sections = $state<string[]>([]);
 let images = $state(true);
 let settings = $state(false);
 let progress = $state.raw<ImportProgress>({ status: 'idle' });
@@ -33,19 +34,25 @@ const attempt = async (work: () => Promise<void>): Promise<void> => {
 
 const read = (): Promise<void> =>
   attempt(async () => {
-    if (file) preview = await api.importPlan(file, chosen);
+    if (file) preview = await api.importPlan(file, chosen, sections);
   });
 
 function choose(event: Event): void {
   file = (event.currentTarget as HTMLInputElement).files?.[0] ?? null;
   preview = null;
   chosen = [];
+  sections = [];
   progress = { status: 'idle' };
   void read();
 }
 
 function toggle(type: string, on: boolean): void {
   chosen = on ? [...chosen, type] : chosen.filter((name) => name !== type);
+  void read();
+}
+
+function section(nicename: string, on: boolean): void {
+  sections = on ? [...sections, nicename] : sections.filter((name) => name !== nicename);
   void read();
 }
 
@@ -60,7 +67,7 @@ async function watch(): Promise<void> {
 const run = (): Promise<void> =>
   attempt(async () => {
     if (!file) return;
-    progress = await api.importRun(file, { types: chosen, images, settings });
+    progress = await api.importRun(file, { types: chosen, categories: sections, images, settings });
     await watch();
   });
 
@@ -127,6 +134,14 @@ onMount(() =>
           <p class="hint">{t.imp.othersHint}</p>
           {#each [...chosen.map((type) => ({ type, count: preview?.types.find((p) => p.id === type)?.count ?? 0 })), ...preview.others.filter((o) => !chosen.includes(o.type))] as other (other.type)}
             <label class="check"><input type="checkbox" checked={chosen.includes(other.type)} onchange={(e) => toggle(other.type, e.currentTarget.checked)} disabled={busy} data-import-type={other.type} /> {other.type} <span class="quiet">({t.ctypes.entries(other.count)})</span></label>
+          {/each}
+        {/if}
+
+        {#if preview.categories.length}
+          <h3>{t.imp.sections}</h3>
+          <p class="hint">{t.imp.sectionsHint}</p>
+          {#each preview.categories as category (category.nicename)}
+            <label class="check"><input type="checkbox" checked={sections.includes(category.nicename)} onchange={(e) => section(category.nicename, e.currentTarget.checked)} disabled={busy} data-import-category={category.nicename} /> {category.name} <span class="quiet">({t.imp.postCount(category.count)})</span></label>
           {/each}
         {/if}
 
