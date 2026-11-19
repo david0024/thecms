@@ -1,10 +1,16 @@
 <script lang="ts">
-/** One entry of a content type (a blog post, a project): what its type asks for, its title and cover, then its blocks. */
-import type { ContentType, MenuLink, Post, Site } from '../core/index.ts';
+/**
+ * One entry of a content type (a blog post, a project). By default: what its
+ * type asks for, its title and cover, then its blocks. A type that has its
+ * own page (ADR 0015) draws that page instead, with the entry's parts where
+ * the page puts them.
+ */
+import type { Block, ContentType, MenuLink, Post, Site } from '../core/index.ts';
 import { listPath, postsType, typeCategoryPath } from '../core/index.ts';
 import EntryFields from './EntryFields.svelte';
-import type { EntryLists } from './editing.ts';
+import { type EntryLists, setEntry } from './editing.ts';
 import BlockView from './BlockView.svelte';
+import Frozen from './Frozen.svelte';
 import Shell from './Shell.svelte';
 import { dateText } from './words.ts';
 
@@ -15,26 +21,51 @@ let {
   editing = false,
   type,
   lists = {},
-}: { site: Site; post: Post; menu: MenuLink[]; editing?: boolean; type?: ContentType; lists?: EntryLists } = $props();
+  template = null,
+  designing = false,
+}: {
+  site: Site;
+  post: Post;
+  menu: MenuLink[];
+  editing?: boolean;
+  type?: ContentType;
+  lists?: EntryLists;
+  /** The type's own page, when it has one. */
+  template?: Block[] | null;
+  /** The editor is changing the type's page, not this entry. */
+  designing?: boolean;
+} = $props();
 const kind = $derived(type ?? postsType(site.blogTitle));
+// Read once: a page is drawn for one entry and one type.
+// svelte-ignore state_referenced_locally
+setEntry({ post, type: type ?? postsType(site.blogTitle), language: site.language, editing: editing ? (designing ? 'template' : 'entry') : null });
 </script>
 
 <Shell {site} {menu} current={listPath(kind)} {editing} {lists}>
   <article class="post">
-    <header class="b post-head">
-      <div class="b-in">
-        {#if kind.dated || post.categories.length}
-          <p class="post-meta">
-            {#if kind.dated}<time datetime={post.date}>{dateText(post.date, site.language)}</time>{/if}
-            {#each post.categories as name}<a href={typeCategoryPath(kind, name)}>{name}</a>{/each}
-          </p>
-        {/if}
-        <h1>{post.title}</h1>
-        {#if post.cover}<img class="post-cover" src={post.cover.src} alt={post.cover.alt} />{/if}
-        <EntryFields type={kind} {post} language={site.language} />
-      </div>
-    </header>
-    {#each post.blocks as block (block.id)}<BlockView {block} />{/each}
-    {#if editing && post.blocks.length === 0}<div class="cms-empty" data-empty="page"></div>{/if}
+    {#if template}
+      {#if editing && !designing}
+        <Frozen>{#each template as block (block.id)}<BlockView {block} />{/each}</Frozen>
+      {:else}
+        {#each template as block (block.id)}<BlockView {block} />{/each}
+        {#if editing && template.length === 0}<div class="cms-empty" data-empty="page"></div>{/if}
+      {/if}
+    {:else}
+      <header class="b post-head">
+        <div class="b-in">
+          {#if kind.dated || post.categories.length}
+            <p class="post-meta">
+              {#if kind.dated}<time datetime={post.date}>{dateText(post.date, site.language)}</time>{/if}
+              {#each post.categories as name}<a href={typeCategoryPath(kind, name)}>{name}</a>{/each}
+            </p>
+          {/if}
+          <h1>{post.title}</h1>
+          {#if post.cover}<img class="post-cover" src={post.cover.src} alt={post.cover.alt} />{/if}
+          <EntryFields type={kind} {post} language={site.language} />
+        </div>
+      </header>
+      {#each post.blocks as block (block.id)}<BlockView {block} />{/each}
+      {#if editing && post.blocks.length === 0}<div class="cms-empty" data-empty="page"></div>{/if}
+    {/if}
   </article>
 </Shell>

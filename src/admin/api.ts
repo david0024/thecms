@@ -26,7 +26,14 @@ export interface PageInfo {
 export interface PostInfo extends PageInfo {
   date: string;
 }
+/** A content type's own page (ADR 0015): whether it has one, and whether visitors see what is being worked on. */
+export interface TemplateInfo {
+  custom: boolean;
+  published: boolean;
+  changed: boolean;
+}
 interface Lists {
+  templates: Record<string, TemplateInfo>;
   pages: PageInfo[];
   posts: PostInfo[];
   /** Each content type's entries, by the type's name. */
@@ -38,6 +45,7 @@ export interface State {
   /** The theme being worked on differs from the published one. */
   themeChanged: boolean;
   themes: Theme[];
+  templates: Record<string, TemplateInfo>;
   pages: PageInfo[];
   posts: PostInfo[];
   entries: Record<string, PostInfo[]>;

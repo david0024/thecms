@@ -7,7 +7,22 @@
 import { type ContentType, contentTypes, POSTS_TYPE, type Site, slugify, TYPE_FIELD_KINDS, type TypeField, type TypeFieldKind } from '../core/index.ts';
 import { t } from './messages.ts';
 
-let { site, counts, onsave }: { site: Site; counts: Record<string, number>; /** Resolves to a reason when the site refuses. */ onsave: (types: ContentType[]) => Promise<string> } = $props();
+let {
+  site,
+  counts,
+  templates = {},
+  onsave,
+  ondesign,
+}: {
+  site: Site;
+  counts: Record<string, number>;
+  /** Which types have a page of their own (ADR 0015). */
+  templates?: Record<string, { custom: boolean }>;
+  /** Resolves to a reason when the site refuses. */
+  onsave: (types: ContentType[]) => Promise<string>;
+  /** Opens the page a type shows its entries in. */
+  ondesign: (id: string) => void;
+} = $props();
 
 /** The type being made or changed, as it is being typed; null while the list shows. */
 let draft = $state<ContentType | null>(null);
@@ -49,7 +64,7 @@ async function remove(): Promise<void> {
     <p class="hint intro">{t.ctypes.intro}</p>
     <table>
       <thead>
-        <tr><th>{t.inspector.title}</th><th>{t.list.address}</th><th></th></tr>
+        <tr><th>{t.inspector.title}</th><th>{t.list.address}</th><th></th><th></th></tr>
       </thead>
       <tbody>
         {#each contentTypes(site) as type (type.id)}
@@ -59,6 +74,7 @@ async function remove(): Promise<void> {
             </td>
             <td class="quiet">/{type.path}/</td>
             <td class="quiet">{type.id === POSTS_TYPE ? t.ctypes.builtIn : t.ctypes.entries(counts[type.id] ?? 0)}</td>
+            <td class="end"><button type="button" onclick={() => ondesign(type.id)} data-design={type.id}>{t.design.open}</button>{#if templates[type.id]?.custom}<small>{t.design.custom}</small>{/if}</td>
           </tr>
         {/each}
       </tbody>
@@ -122,6 +138,8 @@ async function remove(): Promise<void> {
   th { font-size: 12px; letter-spacing: 0.05em; text-transform: uppercase; color: #6a6880; font-weight: 600; }
   tr:last-child td { border-bottom: 0; }
   td.quiet { color: #6a6880; }
+  td.end { text-align: end; white-space: nowrap; }
+  td.end small { display: block; color: #6a6880; }
   .open { border: 0 !important; padding: 0 !important; background: none !important; font-weight: 600 !important; color: #4a3bd6 !important; }
   .type { max-width: 34rem; padding: 1.2rem; background: #fff; border: 1px solid #dddbe6; border-radius: 8px; }
   .check { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.4rem; }

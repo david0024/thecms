@@ -23,6 +23,11 @@ export interface ServicesContent {
   items: { title: string; text: string }[];
 }
 /** A block that lists entries of a content type: the latest posts, a few projects. What it lists is looked up when the page is drawn. */
+/** A part of the entry being shown (ADR 0014): one of `ENTRY_PARTS`, or `field:<key>`. */
+export interface EntryContent {
+  part: string;
+}
+
 export interface EntriesContent {
   title: string;
   /** A content type's name. One the site does not have lists nothing. */

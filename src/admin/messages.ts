@@ -6,6 +6,15 @@ export const en = {
   app: { pages: 'Pages', blocks: 'Add a block', blocksHint: 'Click to add, or drag onto the page.', tooDeep: 'Groups nest at most four deep; it cannot go there.', newPage: 'New page', pageTitle: 'Page title', create: 'Create', cancel: 'Cancel', home: 'Home page' },
   nav: { pages: 'Pages', posts: 'Posts', media: 'Media', settings: 'Menu and settings', theme: 'Theme', label: 'Sections', back: 'All', import: 'Import' },
   list: { address: 'Address', status: 'Status' },
+  design: {
+    heading: (singular: string): string => `The page of each ${singular.toLowerCase()}`,
+    intro: (name: string): string => `Every entry of ${name} is shown in this page. Add any block around it; "Part of the entry" places the title, the date, a field or the entry's own blocks. The page shows your newest entry as an example.`,
+    reset: 'Go back to the default page',
+    resetHint: 'Visitors keep the page they see until you publish.',
+    open: 'Design its page',
+    custom: 'Own page',
+  },
+  parts: { header: 'Title, date, cover and fields', title: 'Title', meta: 'Date and categories', cover: 'Cover image', fields: 'All fields', body: "The entry's own blocks" } as Record<string, string>,
   imp: {
     heading: 'Import from WordPress',
     intro: 'Bring a WordPress site here: its pages, posts, images and menu. In WordPress, go to Tools, then Export, choose "All content" and download the file. Then choose that file here. Nothing is written until you have seen what would come over.',
@@ -218,8 +227,9 @@ export const en = {
     upload: 'Upload a theme file',
     notATheme: 'This file is not a valid theme.',
   },
-  types: { hero: 'Hero', text: 'Text', image: 'Image', services: 'Services', contact: 'Contact', entries: 'List of entries', group: 'Group' } as Record<string, string>,
+  types: { hero: 'Hero', text: 'Text', image: 'Image', services: 'Services', contact: 'Contact', entries: 'List of entries', entry: 'Part of the entry', group: 'Group' } as Record<string, string>,
   fields: {
+    part: 'What it shows',
     eyebrow: 'Small line above the title',
     source: 'What to list',
     count: 'How many',

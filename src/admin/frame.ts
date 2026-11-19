@@ -43,6 +43,7 @@ const style = document.createElement('style');
 style.textContent = `
 [data-b]{position:relative;cursor:default}
 [data-b]:hover:not(:has([data-b]:hover)){outline:1px dashed #6d5dfc;outline-offset:-1px}
+[data-frozen] [data-b]:not([data-live] [data-b]):hover{outline:none}
 [data-b].cms-selected{outline:2px solid #6d5dfc!important;outline-offset:-2px}
 /* While editing, a header that would stay on screen does not: it would cover the block being worked on. */
 .site-header{position:static!important}
@@ -74,7 +75,21 @@ a{cursor:default}
 `;
 document.head.append(style);
 
-const blockOf = (node: EventTarget | null): HTMLElement | null => (node instanceof Element ? node.closest<HTMLElement>('[data-b]') : null);
+/**
+ * Whether a block is one the editor is changing. On a content type's page
+ * (ADR 0015) some blocks are drawn only for context: the type's page around an
+ * entry being typed into (inside `data-frozen`, with the entry's own blocks in
+ * `data-live`), or an example entry inside the page being designed.
+ */
+const live = (block: Element): boolean => !block.closest('[data-frozen],[data-live]')?.hasAttribute('data-frozen');
+/** The nearest block around a node that the editor is changing. */
+const editable = (node: Element | null): HTMLElement | null => {
+  let block = node?.closest<HTMLElement>('[data-b]') ?? null;
+  while (block && !live(block)) block = block.parentElement?.closest<HTMLElement>('[data-b]') ?? null;
+  return block;
+};
+const blockOf = (node: EventTarget | null): HTMLElement | null => (node instanceof Element ? editable(node) : null);
+const parentBlock = (block: HTMLElement): HTMLElement | null => editable(block.parentElement);
 
 function toolbar(block: HTMLElement): HTMLElement {
   const bar = document.createElement('div');
@@ -463,7 +478,7 @@ document.body.append(dropMark);
 
 /** The blocks directly inside a container, or at the top of the page. */
 const childBlocks = (parent: HTMLElement | null): HTMLElement[] =>
-  [...(parent ?? root).querySelectorAll<HTMLElement>('[data-b]')].filter((b) => (b.parentElement?.closest<HTMLElement>('[data-b]') ?? null) === parent);
+  [...(parent ?? root).querySelectorAll<HTMLElement>('[data-b]')].filter((b) => live(b) && parentBlock(b) === parent);
 
 function findPlace(x: number, y: number): Place | null {
   const moved = dragging ? root.querySelector<HTMLElement>(`[data-b="${CSS.escape(dragging)}"]`) : null;
@@ -495,7 +510,7 @@ function findPlace(x: number, y: number): Place | null {
     const edge = Math.min(20, rect.height / 4);
     if (y > rect.top + edge && y < rect.bottom - edge) return among(over);
   }
-  const parent = over.parentElement?.closest<HTMLElement>('[data-b]') ?? null;
+  const parent = parentBlock(over);
   const after = y > rect.top + rect.height / 2;
   const index = childBlocks(parent).filter((b) => b !== moved).indexOf(over) + (after ? 1 : 0);
   return { parent: parent?.dataset.b ?? null, index, box: line(rect, after), into: false };

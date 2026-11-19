@@ -11,8 +11,9 @@ let {
   content,
   prefix = '',
   sources = [],
+  parts = [],
   onchange,
-}: { fields: Record<string, Field>; content: unknown; prefix?: string; /** The content types a block can list. */ sources?: { id: string; name: string }[]; onchange: (path: string, value: unknown) => void } = $props();
+}: { fields: Record<string, Field>; content: unknown; prefix?: string; /** The content types a block can list. */ sources?: { id: string; name: string }[]; /** The parts of an entry a type's page can show. */ parts?: { id: string; name: string }[]; onchange: (path: string, value: unknown) => void } = $props();
 
 const at = (name: string): string => (prefix ? `${prefix}.${name}` : name);
 const text = (name: string): string => (getPath(content, name) as string | undefined) ?? '';
@@ -38,6 +39,14 @@ const input = (e: Event): string => (e.currentTarget as HTMLInputElement | HTMLT
         <select value={text(name)} onchange={(e) => onchange(at(name), e.currentTarget.value)} data-field-source>
           {#each sources as source}<option value={source.id}>{source.name}</option>{/each}
           {#if !sources.some((s) => s.id === text(name))}<option value={text(name)}>{text(name)}</option>{/if}
+        </select>
+      </label>
+    {:else if field.kind === 'part'}
+      <label>
+        <span>{t.fields[name] ?? name}</span>
+        <select value={text(name)} onchange={(e) => onchange(at(name), e.currentTarget.value)} data-field-part>
+          {#each parts as part}<option value={part.id}>{part.name}</option>{/each}
+          {#if !parts.some((p) => p.id === text(name))}<option value={text(name)}>{text(name)}</option>{/if}
         </select>
       </label>
     {:else if field.kind === 'number'}

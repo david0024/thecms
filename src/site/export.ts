@@ -5,6 +5,7 @@
 import { mkdir, readdir, rm } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import {
+  type Block,
   categoriesOf,
   type ContentType,
   contentTypes,
@@ -88,6 +89,8 @@ export async function buildSite(
   /** Published entries: the posts alone, or every type's by the type's name. */
   entries: Post[] | Record<string, Post[]> = [],
   redirects: Redirect[] = [],
+  /** Each type's own page (ADR 0015), by the type's name; a type without one uses the default page. */
+  templates: Record<string, Block[] | null> = {},
 ): Promise<Map<string, string | Uint8Array>> {
   const files = new Map<string, string | Uint8Array>();
   const byType = Array.isArray(entries) ? { [POSTS_TYPE]: entries } : entries;
@@ -111,7 +114,7 @@ export async function buildSite(
   for (const p of pages) page(pagePath(p.slug), renderPage(site, theme, p, menu, listable));
 
   for (const { type, posts: own } of types) {
-    for (const post of own) page(entryPath(type, post.slug), renderPost(site, theme, post, menu, type, listable));
+    for (const post of own) page(entryPath(type, post.slug), renderPost(site, theme, post, menu, type, listable, templates[type.id] ?? null));
     const lists = [
       { heading: type.name, path: (n: number) => listPath(type, n), posts: own },
       ...categoriesOf(own).map((c) => ({ heading: c.name, path: (n: number) => typeCategoryPath(type, c.name, n), posts: c.posts })),
@@ -130,6 +133,7 @@ export async function buildSite(
   const shown: [string, string][] = [
     ...pages.flatMap((p) => imageSources(p.blocks).map((src): [string, string] => [`the page "${p.title}"`, src])),
     ...posts.flatMap((p) => postImageSources(p).map((src): [string, string] => [`the entry "${p.title}"`, src])),
+    ...types.flatMap(({ type }) => imageSources(templates[type.id] ?? []).map((src): [string, string] => [`the page of "${type.name}"`, src])),
   ];
   if (site.logo) shown.push(['the header', site.logo.src]);
   for (const [where, src] of shown) {
@@ -189,8 +193,12 @@ export async function exportSite(store: Store, outDir: string): Promise<string[]
 
   const site = await store.site();
   const entries: Record<string, Post[]> = {};
-  for (const type of contentTypes(site)) entries[type.id] = await store.publishedEntries(type.id);
-  const files = await buildSite(site, theme, pages, async (name) => (await store.mediaFile(name))?.bytes ?? null, entries, await store.redirects());
+  const templates: Record<string, Block[] | null> = {};
+  for (const type of contentTypes(site)) {
+    entries[type.id] = await store.publishedEntries(type.id);
+    templates[type.id] = await store.publishedTemplate(type.id);
+  }
+  const files = await buildSite(site, theme, pages, async (name) => (await store.mediaFile(name))?.bytes ?? null, entries, await store.redirects(), templates);
   files.set(MARKER, 'Made by thecms export. This folder is replaced on every export.\n');
   for (const [path, contents] of files) {
     const target = join(outDir, path);

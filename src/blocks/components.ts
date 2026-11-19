@@ -7,6 +7,7 @@ import type { Component } from 'svelte';
 import type { Block, BlockType } from '../core/index.ts';
 import Contact from './Contact.svelte';
 import Entries from './Entries.svelte';
+import Entry from './Entry.svelte';
 import Group from './Group.svelte';
 import Hero from './Hero.svelte';
 import Image from './Image.svelte';
@@ -20,5 +21,6 @@ export const COMPONENTS: Record<BlockType, Component<{ block: Block }>> = {
   services: Services,
   contact: Contact,
   entries: Entries,
+  entry: Entry,
   group: Group,
 };
