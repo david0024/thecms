@@ -84,7 +84,7 @@ export function renderPostParts(
   post: Post,
   menu: MenuItem[],
   editing = false,
-  type: ContentType = postsType(site.blogTitle),
+  type: ContentType = postsType(),
   lists: EntryLists = {},
   /** The type's own page (ADR 0015); null draws the default one. */
   template: Block[] | null = null,
@@ -162,7 +162,7 @@ export function renderPost(
   theme: Theme,
   post: Post,
   menu: MenuItem[],
-  type: ContentType = postsType(site.blogTitle),
+  type: ContentType = postsType(),
   lists: EntryLists = {},
   template: Block[] | null = null,
   alternates: Alternate[] = [],
@@ -189,7 +189,7 @@ export function renderBlogList(
   site: Site,
   list: { heading: string; path: string; posts: Post[]; newer?: string; older?: string },
   menu: MenuItem[],
-  type: ContentType = postsType(site.blogTitle),
+  type: ContentType = postsType(),
   alternates: Alternate[] = [],
 ): string {
   const body = clean(render(BlogLayout, { props: { site, menu, heading: list.heading, posts: list.posts, newer: list.newer, older: list.older, type }, context: withAlternates(alternates) }).body);

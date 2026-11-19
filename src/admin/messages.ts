@@ -124,7 +124,6 @@ export const en = {
     kinds: { text: 'Short text', longtext: 'Long text', date: 'Date', image: 'Image', link: 'Link' } as Record<string, string>,
     save: 'Save',
     remove: 'Delete this content type',
-    builtIn: 'Always there. Rename it in Menu and settings.',
     entries: { one: '1 entry', other: '{count} entries' } as Plural,
     newEntry: 'New {singular}',
     noEntries: 'Nothing here yet.',
@@ -195,7 +194,7 @@ export const en = {
   },
   menu: {
     title: 'Menu',
-    automatic: 'The menu is made from your pages, in order, with the blog at the end. Arrange it yourself to reorder it, rename items, or add sub-menus.',
+    automatic: 'The menu is made from your pages, in order, with your content types at the end. Arrange it yourself to reorder it, rename items, or add sub-menus.',
     customise: 'Arrange the menu myself',
     reset: 'Back to the automatic menu',
     label: 'What it says',

@@ -44,7 +44,7 @@ const site = normalizeSite({
   footerLinks: [{ label: 'Privacy', href: '/privacy/' }],
   action: { label: 'Ask', href: '/contact/' },
   translations: { ro: { footer: 'Făcut de mână', action: { label: 'Întreabă', href: '/ro/contact/' } } },
-  menu: [node('a', { kind: 'page', slug: '' }), node('b', { kind: 'page', slug: 'about' }, 'Who we are'), node('c', { kind: 'blog' }), node('d', { kind: 'url', href: 'https://x.example' }, 'Shop'), node('e', { kind: 'none' }, 'More', [node('f', { kind: 'page', slug: 'contact' })])],
+  menu: [node('a', { kind: 'page', slug: '' }), node('b', { kind: 'page', slug: 'about' }, 'Who we are'), node('c', { kind: 'type', id: 'posts' }), node('d', { kind: 'url', href: 'https://x.example' }, 'Shop'), node('e', { kind: 'none' }, 'More', [node('f', { kind: 'page', slug: 'contact' })])],
 });
 const page = (slug: string, title: string) => normalizePage({ slug, title, blocks: [{ id: 'b_text', type: 'text', content: { body: [{ type: 'p', text: title }] } }] }).page;
 const pages = [page('', 'Home'), page('about', 'About'), page('contact', 'Contact'), page('ro', 'Acasă'), page('ro/about', 'Despre'), page('pt-br', 'Início')];

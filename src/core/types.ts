@@ -3,8 +3,9 @@
  *
  * A type is a name, an address and a few choices: whether its entries are
  * dated, grouped by category, offered as a feed, and which extra fields each
- * one carries. "Posts" is a type that is always there. An owner adds others
- * (projects, team, events) without a plugin.
+ * one carries. None is built in (ADR 0025): a blog, products, articles or a
+ * vlog are all types the owner names, shapes and may remove. A new site starts
+ * with a blog as an example.
  *
  * An entry of any type is the same document: a title, blocks, and the fields
  * its type asks for. So the editor, the store and the export treat every type
@@ -39,16 +40,17 @@ export interface ContentType {
   fields: TypeField[];
 }
 
+/** The blog a new site starts with, and the type a site made before ADR 0025 kept its posts in. */
 export const POSTS_TYPE = 'posts';
-/** Where posts live. */
+/** Where that blog lives. */
 export const BLOG_SLUG = 'blog';
 /** Addresses the site itself uses, whatever types it has. */
-export const RESERVED_SLUGS: readonly string[] = [BLOG_SLUG, 'media', 'assets'];
+export const RESERVED_SLUGS: readonly string[] = ['media', 'assets'];
 
 export const MAX_TYPES = 12;
 export const MAX_TYPE_FIELDS = 12;
 
-/** The type every site has. Its name is the site's to choose (`site.blogTitle`). */
+/** The blog: dated, with categories and a feed. A type like any other, which the owner may rename or remove. */
 export const postsType = (name = 'Blog'): ContentType => ({
   id: POSTS_TYPE,
   name,
@@ -85,7 +87,7 @@ function cleanFields(input: unknown): TypeField[] {
  */
 export function normalizeTypes(input: unknown): ContentType[] {
   const out: ContentType[] = [];
-  const ids = new Set<string>([POSTS_TYPE, 'page', 'post']);
+  const ids = new Set<string>(['page', 'post']);
   const paths = new Set<string>(RESERVED_SLUGS);
   for (const raw of Array.isArray(input) ? input : []) {
     if (!isObject(raw) || out.length >= MAX_TYPES) continue;

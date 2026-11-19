@@ -301,7 +301,7 @@ export class Store {
     }
     const left = slugs.find((slug) => slug.includes('/') && !site.languages.some((language) => slug.startsWith(`${prefixOf(language)}/`)));
     if (left) throw new Error(`"/${left}/" is still in ${languageName(left.split('/')[0] as string)}; delete the pages of a language before removing it`);
-    const kept = new Set([POSTS_TYPE, ...site.types.map((t) => t.id)]);
+    const kept = new Set([...site.types.map((t) => t.id)]);
     const orphans = (await this.rows<{ type: string; n: number | string }>('SELECT type, COUNT(*) AS n FROM entries GROUP BY type')).filter((row) => !kept.has(row.type));
     const first = orphans[0];
     if (first) {

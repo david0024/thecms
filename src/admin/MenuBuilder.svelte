@@ -1,13 +1,13 @@
 <script lang="ts">
 /**
  * The menu builder (ADR 0008). The menu is a short tree: top items, the items
- * under one, and the links under those. An item points at a page or the blog
+ * under one, and the links under those. An item points at a page or a list of entries
  * by name, at another address, or at nothing (a heading that only opens).
  *
  * Until the owner arranges it, the site makes the menu from its pages; this
  * shows that one and offers to take it over.
  */
-import { automaticMenu, contentTypes, MENU_DEPTH, MENU_MAX_ITEMS, type MenuList, type MenuNode, type MenuTarget, newId, POSTS_TYPE, type Site } from '../core/index.ts';
+import { automaticMenu, contentTypes, MENU_DEPTH, MENU_MAX_ITEMS, type MenuList, type MenuNode, type MenuTarget, newId, type Site } from '../core/index.ts';
 import type { PageInfo } from './api.ts';
 import Self from './MenuBuilder.svelte';
 import { t } from './messages.ts';
@@ -45,7 +45,6 @@ const types = $derived(site.types);
 function choose(i: number, value: string): void {
   if (value.startsWith('page:')) patch(i, { target: { kind: 'page', slug: value.slice(5) } });
   else if (value.startsWith('type:')) patch(i, { target: { kind: 'type', id: value.slice(5) } });
-  else if (value === 'blog') patch(i, { target: { kind: 'blog' } });
   else if (value === 'url') patch(i, { target: { kind: 'url', href: '' } });
   else patch(i, { target: { kind: 'none' } });
 }
@@ -53,14 +52,12 @@ function choose(i: number, value: string): void {
 const fallback = (target: MenuTarget): string =>
   target.kind === 'page'
     ? (pages.find((p) => p.slug === target.slug)?.title ?? '')
-    : target.kind === 'blog'
-      ? site.blogTitle
-      : target.kind === 'type'
-        ? (contentTypes(site).find((type) => type.id === target.id)?.name ?? '')
-        : '';
+    : target.kind === 'type'
+      ? (contentTypes(site).find((type) => type.id === target.id)?.name ?? '')
+      : '';
 /** Points at a list with nothing in it yet: not drawn until it has an entry. */
 const empty = (target: MenuTarget): boolean =>
-  (target.kind === 'blog' && !lists.some((l) => l.id === POSTS_TYPE)) || (target.kind === 'type' && !lists.some((l) => l.id === target.id));
+  target.kind === 'type' && !lists.some((l) => l.id === target.id);
 const missing = (target: MenuTarget): boolean => target.kind === 'page' && !pages.some((p) => p.slug === target.slug);
 </script>
 
@@ -89,7 +86,6 @@ const missing = (target: MenuTarget): boolean => target.kind === 'page' && !page
           <option value="none">{t.menu.heading}</option>
           {#each pages as p}<option value={`page:${p.slug}`}>{t.menu.page}: {p.title}</option>{/each}
           {#if node.target.kind === 'page' && missing(node.target)}<option value={`page:${node.target.slug}`}>{t.menu.gone}</option>{/if}
-          <option value="blog">{site.blogTitle}</option>
           {#each types as type}<option value={`type:${type.id}`}>{type.name}</option>{/each}
           <option value="url">{t.menu.url}</option>
         </select>

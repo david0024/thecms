@@ -5,7 +5,7 @@ import { buildSite } from '../src/site/export.ts';
 import plain from '../themes/plain.json';
 
 const theme = parseTheme(plain).theme as Theme;
-const site = normalizeSite({ name: 'S', types: [{ name: 'Projects' }] });
+const site = normalizeSite({ name: 'S', types: [{ name: 'Projects' }, postsType()] });
 const projects = site.types[0] as ContentType;
 const post = (title: string, date: string, over: Record<string, unknown> = {}): Post => normalizePost({ title, date, blocks: [], ...over }).post;
 const list = (content: Record<string, unknown>) => normalizeBlocks([{ type: 'entries', content }]).blocks;

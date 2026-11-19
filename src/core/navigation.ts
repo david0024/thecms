@@ -9,7 +9,7 @@
 import type { MenuNode } from './menu.ts';
 import { MENU_DEPTH } from './menu.ts';
 import { pagePath, type Site } from './page.ts';
-import { blogPath } from './post.ts';
+import { listPath } from './post.ts';
 import { POSTS_TYPE } from './types.ts';
 
 export interface MenuLink {
@@ -35,8 +35,11 @@ export interface MenuList {
 /** `true` is "the blog has posts", as it was said before there were other types. */
 export type MenuLists = boolean | MenuList[];
 
-const listsOf = (site: Site, lists: MenuLists): MenuList[] =>
-  Array.isArray(lists) ? lists : lists ? [{ id: POSTS_TYPE, title: site.blogTitle, href: blogPath() }] : [];
+const listsOf = (site: Site, lists: MenuLists): MenuList[] => {
+  if (Array.isArray(lists)) return lists;
+  const blog = site.types.find((t) => t.id === POSTS_TYPE);
+  return lists && blog ? [{ id: blog.id, title: blog.name, href: listPath(blog) }] : [];
+};
 
 /** The menu a site has before its owner arranges one: its pages in order, then the blog and the other lists. */
 export function automaticMenu(site: Site, pages: MenuPage[], lists: MenuLists): MenuNode[] {
@@ -44,11 +47,7 @@ export function automaticMenu(site: Site, pages: MenuPage[], lists: MenuLists): 
     .filter((p) => p.inMenu !== false)
     .map((p) => ({ id: `auto-${p.slug || 'home'}`, label: '', target: { kind: 'page', slug: p.slug }, children: [] }));
   for (const list of listsOf(site, lists)) {
-    items.push(
-      list.id === POSTS_TYPE
-        ? { id: 'auto-blog', label: '', target: { kind: 'blog' }, children: [] }
-        : { id: `auto-type-${list.id}`, label: '', target: { kind: 'type', id: list.id }, children: [] },
-    );
+    items.push({ id: `auto-type-${list.id}`, label: '', target: { kind: 'type', id: list.id }, children: [] });
   }
   return items;
 }
@@ -66,9 +65,9 @@ export function resolveMenu(site: Site, pages: MenuPage[], lists: MenuLists): Me
         if (!page) return [];
         href = pagePath(page.slug);
         fallback = page.title;
-      } else if (node.target.kind === 'blog' || node.target.kind === 'type') {
+      } else if (node.target.kind === 'type') {
         // A list with nothing in it yet is not somewhere to send a visitor.
-        const list = byId.get(node.target.kind === 'blog' ? POSTS_TYPE : node.target.id);
+        const list = byId.get(node.target.id);
         if (!list) return [];
         href = list.href;
         fallback = list.title;

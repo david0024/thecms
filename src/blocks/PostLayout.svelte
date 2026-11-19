@@ -35,10 +35,10 @@ let {
   /** The editor is changing the type's page, not this entry. */
   designing?: boolean;
 } = $props();
-const kind = $derived(type ?? postsType(site.blogTitle));
+const kind = $derived(type ?? postsType());
 // Read once: a page is drawn for one entry and one type.
 // svelte-ignore state_referenced_locally
-setEntry({ post, type: type ?? postsType(site.blogTitle), language: site.language, editing: editing ? (designing ? 'template' : 'entry') : null });
+setEntry({ post, type: type ?? postsType(), language: site.language, editing: editing ? (designing ? 'template' : 'entry') : null });
 </script>
 
 <Shell {site} {menu} current={listPath(kind)} {editing} {lists}>

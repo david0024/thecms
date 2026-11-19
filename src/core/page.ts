@@ -2,7 +2,7 @@
 import { type Block, blocksText, cleanImage, cleanLink, type ImageValue, type LinkValue, normalizeBlocks } from './blocks.ts';
 import { type MenuNode, normalizeMenu } from './menu.ts';
 import { pageSlug, prefixOf } from './translation.ts';
-import { type ContentType, normalizeTypes, postsType, RESERVED_SLUGS } from './types.ts';
+import { BLOG_SLUG, type ContentType, normalizeTypes, POSTS_TYPE, postsType, RESERVED_SLUGS } from './types.ts';
 import { type Issue, isObject, safeHref, slugify, str } from './util.ts';
 
 export interface Page {
@@ -32,8 +32,6 @@ export interface Site {
   footerLinks: LinkValue[];
   /** The menu as the owner arranged it; null while the site makes one from its pages (ADR 0008). */
   menu: MenuNode[] | null;
-  /** What the blog is called in the menu and at the top of its list. */
-  blogTitle: string;
   /** The content types the owner added. Posts are always there and are not listed here (ADR 0010). */
   types: ContentType[];
   /** Where the site's forms send what visitors write (ADR 0019): the address of this site's form service. Empty: no form is drawn. */
@@ -105,8 +103,7 @@ export function normalizeSite(input: unknown): Site {
     footer: str(raw.footer, 300).trim(),
     footerLinks: cleanFooterLinks(raw.footerLinks),
     menu: normalizeMenu(raw.menu),
-    blogTitle: str(raw.blogTitle, 60).trim() || 'Blog',
-    types: normalizeTypes(raw.types),
+    types: siteTypes(raw),
     forms: cleanFormsAddress(raw.forms),
     ...siteLanguages(raw),
     keepMessages: Number.isInteger(raw.keepMessages) && (raw.keepMessages as number) >= 1 && (raw.keepMessages as number) <= 3650 ? (raw.keepMessages as number) : KEEP_MESSAGES_DAYS,
@@ -134,8 +131,21 @@ function siteLanguages(raw: Record<string, unknown>): Pick<Site, 'languages' | '
   return { languages, translations };
 }
 
-/** Every content type the site has: posts first, then the owner's. */
-export const contentTypes = (site: Site): ContentType[] => [postsType(site.blogTitle), ...site.types];
+/**
+ * The site's types. Before ADR 0025 the blog was built in, named by
+ * `blogTitle` and not listed: such a site gets it listed, as a type of its
+ * own, and nothing about its addresses changes. A site saved since lists
+ * every type it has, so a blog the owner removed stays removed.
+ */
+function siteTypes(raw: Record<string, unknown>): ContentType[] {
+  const types = normalizeTypes(raw.types);
+  const before = !Array.isArray(raw.types) || 'blogTitle' in raw;
+  if (!before || types.some((t) => t.id === POSTS_TYPE || t.path === BLOG_SLUG)) return types;
+  return normalizeTypes([postsType(str(raw.blogTitle, 60).trim() || 'Blog'), ...types]);
+}
+
+/** Every content type the site has, in the owner's order. */
+export const contentTypes = (site: Site): ContentType[] => site.types;
 
 export const typeById = (site: Site, id: string): ContentType | undefined => contentTypes(site).find((t) => t.id === id);
 

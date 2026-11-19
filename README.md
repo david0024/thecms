@@ -38,6 +38,7 @@ The decisions behind this, each with its reason:
 - [ADR 0022 — Accounts](docs/adr/0022-accounts.md)
 - [ADR 0023 — Installation](docs/adr/0023-installation.md)
 - [ADR 0024 — The same page in more than one language](docs/adr/0024-languages.md)
+- [ADR 0025 — No built-in blog: every content type is the owner's](docs/adr/0025-no-built-in-type.md)
 
 ## Where it stands
 
@@ -55,7 +56,7 @@ theme, publish, and export the site as static files.
 | Theme builder: tokens, block defaults and variants, themes as files | done |
 | Images uploaded and kept with the site; headings, lists and links from a bar on the page; blocks moved by dragging | done |
 | Header and footer: logo, button and links from the site, layout from the theme | done |
-| Blog: posts, categories, tags, paged lists, Atom feed | done |
+| Content types the owner defines (a blog is only an example): entries at `/<type>/<entry>/`, categories, tags, paged lists, Atom feed | done |
 | Admin with sections: pages, posts, media, menu and settings, theme | done |
 | Menu builder: sub-menus, wide menus with columns, a folded menu on phones, all without script | done |
 | Content types: the owner adds kinds of entry (projects, team, events) with their own fields, list and address; posts are one of them | done |

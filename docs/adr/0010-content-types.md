@@ -23,6 +23,8 @@ Types are kept in the site's settings, beside the menu.
 
 ### d2. Posts are a type that is always there
 
+> Replaced by ADR 0025: no type is built in; the blog is an example the owner may rename or delete.
+
 Someone coming from WordPress looks for "Posts" and finds it. It is not in
 the owner's list of types, it cannot be removed, and it keeps its address
 (`/blog/`) and its name from the site's settings. Everything else treats it
