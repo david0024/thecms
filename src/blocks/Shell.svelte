@@ -12,11 +12,11 @@
  * <details>: a click, a tap or the keyboard opens it. On a narrow screen the
  * whole menu folds behind a checkbox and its label.
  */
-import type { Snippet } from 'svelte';
-import type { MenuLink, Site } from '../core/index.ts';
+import { getContext, type Snippet } from 'svelte';
+import type { Alternate, MenuLink, Site } from '../core/index.ts';
 import { holdsCurrent, isLink, isMega } from '../core/index.ts';
 import { type EntryLists, marker, setEditing, setLists, setSite } from './editing.ts';
-import { wordsFor } from './words.ts';
+import { ALTERNATES, wordsFor } from './words.ts';
 
 let {
   site,
@@ -35,11 +35,14 @@ setSite(site, current);
 const mark = marker();
 const words = $derived(wordsFor(site.language));
 const footerLinks = $derived(site.footerLinks.filter(isLink));
+/** The same page in the site's other languages; none when it has one. */
+const others: Alternate[] = getContext(ALTERNATES) ?? [];
+const home = others.find((a) => a.current)?.home ?? '/';
 </script>
 
 <header class="site-header" data-site={mark('header')}>
   <div class="site-in">
-    <a class="site-name" href="/">
+    <a class="site-name" href={home}>
       {#if site.logo}<img class="site-logo" src={site.logo.src} alt={site.logo.alt || site.name} />{:else}{site.name}{/if}
     </a>
     {#if menu.length > 1 || isLink(site.action)}
@@ -80,6 +83,11 @@ const footerLinks = $derived(site.footerLinks.filter(isLink));
         {/if}
         {#if isLink(site.action)}<a class="button" href={site.action.href}>{site.action.label}</a>{/if}
       </div>
+    {/if}
+    {#if others.length > 1}
+      <nav class="site-languages" aria-label={words.languages}>
+        {#each others as other}<a href={other.href} hreflang={other.language} lang={other.language} aria-current={other.current ? 'true' : undefined}>{other.name}</a>{/each}
+      </nav>
     {/if}
   </div>
 </header>

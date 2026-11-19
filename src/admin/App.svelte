@@ -37,6 +37,8 @@ import {
   removeById,
   resetToTheme,
   slugify,
+  slugIn,
+  pagesIn,
 } from '../core/index.ts';
 import { api, type Doc, type Kind, type State } from './api.ts';
 import ContentList from './ContentList.svelte';
@@ -304,6 +306,20 @@ async function createPage(title: string, newKind: Kind): Promise<void> {
   }
 }
 
+/** A page's translation (ADR 0024): a copy of it under the language, to be written over in that language. */
+async function translatePage(slug: string, language: string): Promise<void> {
+  if (!site) return;
+  try {
+    const { page: original } = await api.page(slug);
+    const copy = { ...(original as Page), slug: slugIn(site.site, language, slug) };
+    const { pages, posts, entries, templates } = await api.save(copy, true, 'page');
+    site = { ...site, pages, posts, entries, templates };
+    await edit(copy.slug, 'page');
+  } catch (error) {
+    fail(error);
+  }
+}
+
 async function removePage(): Promise<void> {
   if (!site || !page || (kind === 'page' && page.slug === '')) return;
   try {
@@ -379,6 +395,8 @@ function editSite(next: Site): void {
       await draw();
     } catch (error) {
       fail(error);
+      // What was refused is not kept on the screen either: the panel shows what is saved.
+      if (site) site = { ...site, site: (await api.state()).site };
     }
   }, 250);
 }
@@ -507,7 +525,7 @@ onMount(() => {
     </nav>
 
     {#if view === 'pages'}
-      <ContentList kind="page" items={site.pages} onopen={(slug) => edit(slug, 'page')} oncreate={(title) => createPage(title, 'page')} />
+      <ContentList kind="page" items={site.pages} site={site.site} onopen={(slug) => edit(slug, 'page')} oncreate={(title) => createPage(title, 'page')} ontranslate={translatePage} />
     {:else if view === 'types'}
       <ContentTypes site={site.site} counts={Object.fromEntries(types.map((ty) => [ty.id, site?.entries[ty.id]?.length ?? 0]))} templates={site.templates} onsave={saveTypes} ondesign={(id) => edit(id, `template:${id}`)} />
     {:else if view.startsWith('list:')}
@@ -581,7 +599,7 @@ onMount(() => {
     <aside class="right">
       {#if siteMode}
         <h2>{t.site.heading}</h2>
-        <SitePanel site={site.site} pages={site.pages} lists={menuLists} languages={site.languages} onchange={editSite} onadminlanguage={setAdminLanguage} />
+        <SitePanel site={site.site} pages={pagesIn(site.site, site.site.language, site.pages)} lists={menuLists} languages={site.languages} onchange={editSite} onadminlanguage={setAdminLanguage} />
       {:else if themeMode}
         <h2>{t.theme.heading}</h2>
         <ThemeBuilder theme={site.theme} onchange={editTheme} />

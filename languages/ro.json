@@ -56,6 +56,8 @@
   "admin.people.copied": "Copiat",
   "admin.list.address": "Adresă",
   "admin.list.status": "Stare",
+  "admin.list.translations": "Traduceri",
+  "admin.list.translate": "Tradu în {language}",
   "admin.design.heading": "Pagina fiecărei intrări: {singular}",
   "admin.design.intro": "Fiecare intrare din {name} apare în această pagină. Adaugă orice bloc în jurul ei; „Parte din intrare” așază titlul, data, un câmp sau blocurile intrării. Pagina arată, ca exemplu, cea mai nouă intrare.",
   "admin.design.reset": "Revino la pagina implicită",
@@ -191,6 +193,10 @@
   "admin.site.formsAddress": "Adresa serviciului de formulare (https://forms.example.com)",
   "admin.site.formsHint": "Unde trimit formularele de contact ce scriu vizitatorii: comanda thecms forms, pornită unde o pot ajunge vizitatorii. Dacă o lași goală, formularele nu apar pe site.",
   "admin.site.keep": "Păstrează mesajele (zile)",
+  "admin.site.otherLanguages": "Celelalte limbi ale site-ului",
+  "admin.site.otherLanguagesHint": "Fiecare pagină poate fi apoi tradusă în ele din lista paginilor; o traducere stă sub limba ei, ca /en/despre/. Articolele și intrările rămân deocamdată în limba principală.",
+  "admin.site.inLanguage": "În {language}",
+  "admin.site.inLanguageHint": "Meniul îl urmează pe cel principal, cu fiecare pagină în această limbă. Linkurile din subsol sunt cele principale.",
   "admin.menu.title": "Meniu",
   "admin.menu.automatic": "Meniul se face din pagini, în ordine, cu blogul la sfârșit. Aranjează-l tu ca să schimbi ordinea, numele sau să adaugi submeniuri.",
   "admin.menu.customise": "Aranjez eu meniul",
@@ -359,5 +365,6 @@
   "site.feed": "Flux",
   "site.formName": "Nume",
   "site.formEmail": "Email",
-  "site.formMessage": "Mesaj"
+  "site.formMessage": "Mesaj",
+  "site.languages": "Limbi"
 }

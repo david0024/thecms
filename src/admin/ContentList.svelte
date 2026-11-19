@@ -3,7 +3,7 @@
  * One section of the admin: every page, or every post, as a list. Choosing
  * one opens it in the builder; the list itself changes nothing.
  */
-import { type ContentType, entryPath, pagePath, POSTS_TYPE, slugify } from '../core/index.ts';
+import { type ContentType, entryPath, languageName, pagePath, pagesIn, POSTS_TYPE, prefixOf, type Site, slugIn, slugify } from '../core/index.ts';
 import type { Kind, PageInfo, PostInfo } from './api.ts';
 import { say, t } from './messages.ts';
 
@@ -13,7 +13,24 @@ let {
   items,
   onopen,
   oncreate,
-}: { kind: Kind; /** The content type listed; none for pages. */ type?: ContentType; items: (PageInfo | PostInfo)[]; onopen: (slug: string) => void; oncreate: (title: string) => void } = $props();
+  site,
+  ontranslate,
+}: {
+  kind: Kind;
+  /** The content type listed; none for pages. */
+  type?: ContentType;
+  items: (PageInfo | PostInfo)[];
+  onopen: (slug: string) => void;
+  oncreate: (title: string) => void;
+  /** For pages: the site, whose other languages each page can be translated into (ADR 0024). */
+  site?: Site;
+  ontranslate?: (slug: string, language: string) => void;
+} = $props();
+
+const others = $derived(!type && site ? site.languages : []);
+/** Pages are listed in the main language; their translations sit beside them. */
+const shown = $derived(!type && site ? pagesIn(site, site.language, items) : items);
+const bySlug = $derived(new Map(items.map((item) => [item.slug, item])));
 
 /** Posts keep the name the rest of the admin knows them by. */
 const mark = $derived(kind === POSTS_TYPE ? 'post' : kind);
@@ -59,15 +76,29 @@ const status = (item: PageInfo): string => (!item.published ? t.bar.draft : item
           <th>{t.list.address}</th>
           {#if type?.dated}<th>{t.posts.date}</th>{/if}
           <th>{t.list.status}</th>
+          {#if others.length}<th>{t.list.translations}</th>{/if}
         </tr>
       </thead>
       <tbody>
-        {#each items as item (item.slug)}
+        {#each shown as item (item.slug)}
           <tr>
             <td><button type="button" class="open" onclick={() => onopen(item.slug)} data-open={item.slug}>{item.title}</button></td>
             <td class="quiet">{type ? entryPath(type, item.slug) : pagePath(item.slug)}</td>
             {#if type?.dated}<td class="quiet">{'date' in item ? item.date : ''}</td>{/if}
             <td class="quiet" class:live={item.published && !item.changed}>{status(item)}</td>
+            {#if site && others.length}
+              <td class="translations">
+                {#each others as language (language)}
+                  {@const slug = slugIn(site, language, item.slug)}
+                  {@const translation = bySlug.get(slug)}
+                  {#if translation}
+                    <button type="button" class="chip" title={`${languageName(language)}: ${translation.title} (${status(translation)})`} onclick={() => onopen(slug)} data-open={slug}>{prefixOf(language)}</button>
+                  {:else}
+                    <button type="button" class="chip quiet" title={say(t.list.translate, { language: languageName(language) })} onclick={() => ontranslate?.(item.slug, language)} data-translate={slug}>+ {prefixOf(language)}</button>
+                  {/if}
+                {/each}
+              </td>
+            {/if}
           </tr>
         {/each}
       </tbody>
@@ -88,4 +119,6 @@ const status = (item: PageInfo): string => (!item.published ? t.bar.draft : item
   td.live { color: #1b7a43; }
   .open { border: 0 !important; padding: 0 !important; background: none !important; font-weight: 600 !important; color: #4a3bd6 !important; text-align: start; }
   .open:hover { text-decoration: underline; }
+  .translations { display: flex; gap: 0.3rem; flex-wrap: wrap; }
+  .chip { padding: 0.1rem 0.45rem !important; font-size: 12px; text-transform: uppercase; }
 </style>

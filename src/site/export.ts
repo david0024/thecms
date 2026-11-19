@@ -30,9 +30,11 @@ import {
   type Site,
   type Theme,
   themeCss,
+  alternates,
+  pagesIn,
 } from '../core/index.ts';
 import { wordsFor } from '../blocks/words.ts';
-import { menuOf, renderBlogList, renderPage, renderPost, STYLESHEET } from './document.ts';
+import { menuOf, pageSetting, renderBlogList, renderPage, renderPost, STYLESHEET } from './document.ts';
 import { BASE_CSS } from './shipped.ts';
 import type { Store } from './store.ts';
 
@@ -100,7 +102,10 @@ export async function buildSite(
     .filter((t) => t.posts.length > 0);
   const posts = types.flatMap((t) => t.posts);
   // A type with nothing published has no list, and so no place in the menu.
-  const menu = menuOf(site, pages, types.map(({ type }): MenuList => ({ id: type.id, title: type.name, href: listPath(type) })));
+  const lists = types.map(({ type }): MenuList => ({ id: type.id, title: type.name, href: listPath(type) }));
+  // Posts and entries are in the main language (ADR 0024): their menu is its menu, and the switcher leads to each language's home.
+  const menu = menuOf(site, pagesIn(site, site.language, pages), lists);
+  const homes = alternates(site, null, pages);
   /** Every address a visitor can open, for the sitemap. */
   const paths: string[] = [];
   const page = (path: string, html: string): void => {
@@ -112,10 +117,13 @@ export async function buildSite(
   files.set(STYLESHEET.slice(1), `${BASE_CSS}${themeCss(theme)}`);
   // What a block that lists entries shows: only what is published.
   const listable = Object.fromEntries(types.map(({ type, posts: own }) => [type.id, { type, entries: own }]));
-  for (const p of pages) page(pagePath(p.slug), renderPage(site, theme, p, menu, listable));
+  for (const p of pages) {
+    const setting = pageSetting(site, p.slug, pages, lists);
+    page(pagePath(p.slug), renderPage(setting.site, theme, p, setting.menu, listable, setting.alternates));
+  }
 
   for (const { type, posts: own } of types) {
-    for (const post of own) page(entryPath(type, post.slug), renderPost(site, theme, post, menu, type, listable, templates[type.id] ?? null));
+    for (const post of own) page(entryPath(type, post.slug), renderPost(site, theme, post, menu, type, listable, templates[type.id] ?? null, homes));
     const lists = [
       { heading: type.name, path: (n: number) => listPath(type, n), posts: own },
       ...categoriesOf(own).map((c) => ({ heading: c.name, path: (n: number) => typeCategoryPath(type, c.name, n), posts: c.posts })),
@@ -125,7 +133,7 @@ export async function buildSite(
       const cut = paginate(list.posts);
       cut.forEach((some, i) => {
         const path = list.path(i + 1);
-        page(path, renderBlogList(site, { heading: list.heading, path, posts: some, newer: i > 0 ? list.path(i) : '', older: i < cut.length - 1 ? list.path(i + 2) : '' }, menu, type));
+        page(path, renderBlogList(site, { heading: list.heading, path, posts: some, newer: i > 0 ? list.path(i) : '', older: i < cut.length - 1 ? list.path(i + 2) : '' }, menu, type, homes));
       });
     }
     // A feed names every entry by its full address, so it needs the site's own.

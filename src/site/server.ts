@@ -16,11 +16,11 @@
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { compile } from 'svelte/compiler';
-import { type ContentType, DISPLAY_NAME, type LanguagePack, defaultTemplate, MEDIA_MAX_BYTES, MEDIA_PREFIX, normalizePage, type Page, type Post, contentTypes, listPath, type MenuList, normalizePost, parseTheme, POSTS_TYPE, reservedSlugs, type Theme, themeCss } from '../core/index.ts';
+import { type ContentType, DISPLAY_NAME, type LanguagePack, defaultTemplate, MEDIA_MAX_BYTES, MEDIA_PREFIX, normalizePage, type Page, type Post, contentTypes, listPath, type MenuList, normalizePost, parseTheme, pagesIn, POSTS_TYPE, reservedSlugs, slugProblem, type Theme, themeCss } from '../core/index.ts';
 import type { EntryLists } from '../blocks/editing.ts';
 import { type FetchImage, fetchImage as fetchOverNetwork, IMPORT_MAX_BYTES, type ImportReport, runImport } from '../import/run.ts';
 import { type ImportPlan, planImport } from '../import/wxr.ts';
-import { type MenuItem, menuOf, renderParts, renderPostParts } from './document.ts';
+import { type MenuItem, menuOf, pageSetting, renderParts, renderPostParts } from './document.ts';
 import { languages, packFor } from './languages.ts';
 import { accounts, cleanPublicAddress, ownerOnly, shown } from './accounts.ts';
 import { BUILT_ADMIN } from './built-admin.ts';
@@ -211,16 +211,16 @@ export async function startEditor(
     return out;
   };
   // The menu as the editor shows it: from the drafts, with each content type as soon as it has an entry.
+  const menuLists = async (): Promise<MenuList[]> => {
+    const entries = await allEntries();
+    return contentTypes(await store.site())
+      .filter((type) => (entries[type.id]?.length ?? 0) > 0)
+      .map((type): MenuList => ({ id: type.id, title: type.name, href: listPath(type) }));
+  };
+  /** The main language's menu: entries are in it (ADR 0024). */
   const menu = async (): Promise<MenuItem[]> => {
     const site = await store.site();
-    const entries = await allEntries();
-    return menuOf(
-      site,
-      await store.pages(),
-      contentTypes(site)
-        .filter((type) => (entries[type.id]?.length ?? 0) > 0)
-        .map((type): MenuList => ({ id: type.id, title: type.name, href: listPath(type) })),
-    );
+    return menuOf(site, pagesIn(site, site.language, await store.pages()), await menuLists());
   };
   // What a block that lists entries shows in the editor: the drafts, so a post just written is there.
   const entryLists = async (): Promise<EntryLists> => {
@@ -401,7 +401,9 @@ export async function startEditor(
         if (!page.title) return json({ error: 'a page has a title', issues }, 400);
         // A new page may not silently replace an existing one.
         if (body.create === true && (await store.draft(page.slug))) return json({ error: 'a page with this address already exists' }, 409);
-        if (reservedSlugs(await store.site()).includes(page.slug)) return json({ error: `the address "/${page.slug}/" is used by the site itself; choose another title` }, 409);
+        const site = await store.site();
+        const problem = slugProblem(site, page.slug, reservedSlugs(site));
+        if (problem) return json({ error: problem }, 409);
         return json({ page: await store.savePage(page), issues, ...(await lists()) });
       }
       case 'DELETE /api/page':
@@ -413,7 +415,9 @@ export async function startEditor(
       case 'POST /api/render': {
         // Drawn from what the admin holds, cleaned first: the canvas shows what would be saved.
         const { page } = normalizePage(body.page);
-        return json(renderParts(await store.site(), await theme(), page, await menu(), true, await entryLists()));
+        // Drawn in its own language, with that language's menu and words (ADR 0024).
+        const setting = pageSetting(await store.site(), page.slug, await store.pages(), await menuLists());
+        return json(renderParts(setting.site, await theme(), page, setting.menu, true, await entryLists(), setting.alternates));
       }
       case 'PUT /api/theme':
         await store.setTheme(body.theme);
