@@ -22,7 +22,7 @@ export type Field =
   /** The name of a content type: where a block that lists entries takes them from. */
   | { kind: 'source' }
   | { kind: 'number'; min: number; max: number }
-  /** Which part of an entry a block of an entry's page shows (ADR 0014): its title, its date, one of its fields. */
+  /** Which part of an entry a block of an entry's page shows (ADR 0015): its title, its date, one of its fields. */
   | { kind: 'part' }
   | { kind: 'list'; max: number; item: Record<string, Field> };
 
@@ -88,11 +88,64 @@ export const BLOCKS = {
     fields: { title: text(200), text: multiline(600), email: text(254), phone: text(40), address: multiline(300) },
     create: () => ({ title: 'Get in touch' }),
   },
+  gallery: {
+    fields: {
+      title: text(200),
+      intro: multiline(600),
+      images: { kind: 'list', max: 48, item: { image: { kind: 'image' }, caption: text(300) } },
+    },
+    create: () => ({ title: 'Our work', images: [] }),
+  },
+  faq: {
+    fields: {
+      title: text(200),
+      intro: multiline(600),
+      items: { kind: 'list', max: 40, item: { question: text(300), answer: multiline(3000) } },
+    },
+    create: () => ({
+      title: 'Questions people ask',
+      items: [
+        { question: 'A question people ask often?', answer: 'The answer, in a few sentences.' },
+        { question: 'Another question?', answer: 'Its answer.' },
+      ],
+    }),
+  },
+  testimonials: {
+    fields: {
+      title: text(200),
+      items: { kind: 'list', max: 24, item: { quote: multiline(1000), name: text(120), role: text(120), photo: { kind: 'image' } } },
+    },
+    create: () => ({
+      title: 'What clients say',
+      items: [
+        { quote: 'What a client said about working with you, in their words.', name: 'A client', role: 'Their company' },
+        { quote: 'Another client, another sentence.', name: 'Another client', role: '' },
+      ],
+    }),
+  },
+  pricing: {
+    fields: {
+      title: text(200),
+      intro: multiline(600),
+      plans: {
+        kind: 'list',
+        max: 6,
+        item: { name: text(120), price: text(40), period: text(40), text: multiline(600), features: multiline(2000), action: { kind: 'link' } },
+      },
+    },
+    create: () => ({
+      title: 'Prices',
+      plans: [
+        { name: 'Basic', price: '€100', period: 'per month', features: 'What is included\nAnother thing' },
+        { name: 'Full', price: '€200', period: 'per month', features: 'Everything in Basic\nOne more thing' },
+      ],
+    }),
+  },
   entries: {
     fields: { title: text(200), source: { kind: 'source' }, count: { kind: 'number', min: 1, max: 24 }, more: text(80) },
     create: () => ({ title: 'Latest posts', source: POSTS_TYPE, count: 3, more: 'See all' }),
   },
-  /** A part of the entry being shown, on the page a content type designs for its entries (ADR 0014). Draws nothing anywhere else. */
+  /** A part of the entry being shown, on the page a content type designs for its entries (ADR 0015). Draws nothing anywhere else. */
   entry: {
     fields: { part: { kind: 'part' } },
     create: () => ({ part: 'header' }),

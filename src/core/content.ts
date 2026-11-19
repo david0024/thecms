@@ -23,7 +23,7 @@ export interface ServicesContent {
   items: { title: string; text: string }[];
 }
 /** A block that lists entries of a content type: the latest posts, a few projects. What it lists is looked up when the page is drawn. */
-/** A part of the entry being shown (ADR 0014): one of `ENTRY_PARTS`, or `field:<key>`. */
+/** A part of the entry being shown (ADR 0015): one of `ENTRY_PARTS`, or `field:<key>`. */
 export interface EntryContent {
   part: string;
 }
@@ -35,6 +35,26 @@ export interface EntriesContent {
   count: number;
   /** The words of the link to the whole list; empty for no link. */
   more: string;
+}
+export interface GalleryContent {
+  title: string;
+  intro: string;
+  images: { image: ImageValue | null; caption: string }[];
+}
+export interface FaqContent {
+  title: string;
+  intro: string;
+  items: { question: string; answer: string }[];
+}
+export interface TestimonialsContent {
+  title: string;
+  items: { quote: string; name: string; role: string; photo: ImageValue | null }[];
+}
+export interface PricingContent {
+  title: string;
+  intro: string;
+  /** `features` is one feature a line. */
+  plans: { name: string; price: string; period: string; text: string; features: string; action: LinkValue | null }[];
 }
 export interface ContactContent {
   title: string;

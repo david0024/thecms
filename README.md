@@ -30,6 +30,7 @@ The decisions behind this, each with its reason:
 - [ADR 0013 — One store, three databases](docs/adr/0013-sqlite-postgres-mysql.md)
 - [ADR 0015 — A page for each content type](docs/adr/0015-a-page-for-each-content-type.md)
 - [ADR 0016 — A category that is a section of its own](docs/adr/0016-categories-as-sections.md)
+- [ADR 0017 — Gallery, questions, testimonials, prices](docs/adr/0017-more-blocks.md)
 
 ## Where it stands
 
@@ -39,6 +40,7 @@ theme, publish, and export the site as static files.
 | | |
 |---|---|
 | Page model, block types, themes as data | done |
+| Blocks: hero, text, image, services, contact details, gallery, questions and answers, testimonials, prices, a list of entries, groups | done |
 | SQLite store, draft and published kept apart | done |
 | The same site on Postgres or MySQL, chosen by the address | done |
 | Static export with sitemap and robots.txt | done |

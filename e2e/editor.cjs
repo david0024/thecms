@@ -425,6 +425,15 @@ const assert = (condition, message) => {
     await page.locator('[data-field-source]').selectOption('projects');
     await canvas.locator('.b-entries h3 a', { hasText: 'A kitchen in oak' }).waitFor();
     assert((await canvas.locator('.b-entries h3 a').count()) === 1, 'a list block shows the entries of the type chosen for it');
+    // Questions and answers: open in the editor, typed into on the page, and a new one added from the panel.
+    await page.locator('[data-add="faq"]').click();
+    await canvas.locator('.b-faq [data-edit="items.0.question"]').click();
+    await page.keyboard.press('End');
+    await page.keyboard.type(' Typed here');
+    await canvas.locator('.b-faq h3', { hasText: 'Typed here' }).waitFor();
+    await page.locator('.field fieldset').getByRole('button', { name: 'Add' }).click();
+    await canvas.locator('.b-faq [data-edit="items.2.question"]').waitFor();
+    assert((await canvas.locator('.b-faq details').count()) === 0, 'questions and answers are all open in the editor, each one typed into on the page');
     await saved();
     if (shots) await page.screenshot({ path: join(shots, 'editor-entries-block.png') });
     await page.getByRole('button', { name: 'Publish' }).click();
