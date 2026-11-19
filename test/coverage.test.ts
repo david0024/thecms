@@ -8,7 +8,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { compile } from 'svelte/compiler';
-import { check, counts, fromBrowser, fromLcov, report, toLcov } from '../tools/coverage.ts';
+import { check, componentLines, counts, fromBrowser, fromLcov, report, toLcov } from '../tools/coverage.ts';
 
 let dir: string;
 beforeAll(async () => {
@@ -112,5 +112,22 @@ describe('the gate itself', () => {
     expect(said.join('\n')).toContain('1 of 3 lines');
     expect(await Bun.file(join(root, 'cov', 'all.lcov')).text()).toContain('SF:src/a.ts');
     expect(check(join(root, 'cov'), {}, root, () => {})).toEqual(['src/b.ts is measured by no test']);
+  });
+});
+
+describe('what bun test counts in a component', () => {
+  test('is read back to the lines of the .svelte file', async () => {
+    const path = join(dir, 'src', 'Two.svelte');
+    const component = '<script>\n  let { a, b } = $props();\n</script>\n\n{#if a}\n  <p>{a}</p>\n{:else}\n  <p>{b}</p>\n{/if}\n';
+    await writeFile(path, component);
+    const map = componentLines(component, path);
+    const compiledYes = [...map].find(([, from]) => from.includes(6))?.[0];
+    const compiledNo = [...map].find(([, from]) => from.includes(8))?.[0];
+    expect(compiledYes && compiledNo).toBeTruthy();
+    const lcov = `SF:${path}\nDA:${compiledYes},1\nDA:${compiledNo},0\nend_of_record\n`;
+    const file = fromLcov(lcov, dir).get('src/Two.svelte');
+    expect(file?.get(6)).toBe(true);
+    expect(file?.get(8)).toBe(false);
+    expect(Math.max(...(file?.keys() ?? []))).toBeLessThanOrEqual(9);
   });
 });

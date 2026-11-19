@@ -18,7 +18,8 @@
 import { Glob } from 'bun';
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve } from 'node:path';
-import { eachMapping, originalPositionFor, TraceMap } from '@jridgewell/trace-mapping';
+import { decodedMappings, eachMapping, originalPositionFor, TraceMap } from '@jridgewell/trace-mapping';
+import { compileForServer } from './svelte-plugin.ts';
 
 /** Source line numbers each file has code on, and whether a test ran it. */
 export type Lines = Map<string, Map<number, boolean>>;
@@ -44,18 +45,35 @@ const mark = (lines: Lines, file: string, line: number, ran: boolean): void => {
   found.set(line, (found.get(line) ?? false) || ran);
 };
 
+/**
+ * The component lines each line of a Svelte component's server code came from.
+ * `bun test` counts a component in the lines of the code the compiler made of
+ * it, not in the component's own, so they are read back through its map.
+ */
+export function componentLines(source: string, path: string): Map<number, number[]> {
+  const found = new Map<number, number[]>();
+  decodedMappings(new TraceMap(compileForServer(source, path).map as never)).forEach((segments, at) => {
+    const from = [...new Set(segments.filter((s) => s.length >= 4).map((s) => (s[2] as number) + 1))];
+    if (from.length) found.set(at + 1, from);
+  });
+  return found;
+}
+
 /** The lines an lcov file (from `bun test`) says each file has, and which ran. */
 export function fromLcov(text: string, root: string, lines: Lines = new Map()): Lines {
   let file = '';
+  let component: Map<number, number[]> | null = null;
   for (const row of text.split('\n')) {
     if (row.startsWith('SF:')) {
       file = relative(root, resolve(root, row.slice(3).trim()));
+      const path = resolve(root, file);
+      component = file.endsWith('.svelte') && existsSync(path) ? componentLines(readFileSync(path, 'utf8'), path) : null;
       // A file with nothing to run, only types, is still measured.
       if (!lines.has(file)) lines.set(file, new Map());
-    }
-    else if (row.startsWith('DA:') && file) {
+    } else if (row.startsWith('DA:') && file) {
       const [line, count] = row.slice(3).split(',').map(Number);
-      if (line) mark(lines, file, line, (count ?? 0) > 0);
+      if (!line) continue;
+      for (const at of component ? (component.get(line) ?? []) : [line]) mark(lines, file, at, (count ?? 0) > 0);
     }
   }
   return lines;
