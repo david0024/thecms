@@ -1,7 +1,7 @@
 <script lang="ts">
 /** The style tab of a selected block: its variant, its own style, and how much of that is not the theme's. */
 import { type Block, type BlockStyle, isFree, type Theme, variantsOf } from '../core/index.ts';
-import { t } from './messages.ts';
+import { say, t } from './messages.ts';
 import StyleEditor from './StyleEditor.svelte';
 
 let {
@@ -30,7 +30,7 @@ let round = $state(0);
 {#key round}<StyleEditor style={block.style} {theme} {onstyle} />{/key}
 
 {#if free > 0}
-  <p class="hint">{t.style.free(free)}</p>
+  <p class="hint">{say(t.style.free, { count: free })}</p>
   <button
     type="button"
     onclick={() => {

@@ -6,7 +6,19 @@
  */
 import { onMount } from 'svelte';
 import { api, type ImportPreview, type ImportProgress } from './api.ts';
-import { t } from './messages.ts';
+import { say, t } from './messages.ts';
+
+/** What the import brought over, in as many sentences as it needs. */
+function summary(r: { pages: number; posts: number; entries: number; drafts: number; images: number; redirects: number; menu: boolean }): string {
+  return [
+    say(t.imp.summary, { pages: r.pages, posts: r.posts, drafts: r.drafts, images: r.images }),
+    r.entries ? say(t.imp.summaryEntries, { count: r.entries }) : '',
+    r.menu ? t.imp.summaryMenu : '',
+    r.redirects ? say(t.imp.summaryRedirects, { count: r.redirects }) : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+}
 
 let { ondone }: { /** The site changed: read it again. */ ondone: () => Promise<void> } = $props();
 
@@ -96,14 +108,14 @@ onMount(() =>
   <input type="file" accept=".xml,text/xml,application/xml" bind:this={fileInput} onchange={choose} hidden data-import-file />
 
   {#if progress.status === 'running'}
-    <p data-import-running>{progress.total ? t.imp.copying(progress.done, progress.total) : t.imp.writing}</p>
+    <p data-import-running>{progress.total ? say(t.imp.copying, { done: progress.done, total: progress.total }) : t.imp.writing}</p>
     {#if progress.total}<progress value={progress.done} max={progress.total}></progress>{/if}
     <p class="hint">{t.imp.stay}</p>
   {:else if progress.status === 'done'}
     {@const report = progress.report}
     <div class="card" data-import-done>
       <h2>{t.imp.done}</h2>
-      <p>{t.imp.summary(report)}</p>
+      <p>{summary(report)}</p>
       {#if report.notes.length}
         <h3>{t.imp.notes}</h3>
         <ul class="notes">
@@ -113,13 +125,13 @@ onMount(() =>
       <button type="button" onclick={again}>{t.imp.another}</button>
     </div>
   {:else}
-    {#if progress.status === 'failed'}<p class="bad" role="alert">{t.imp.failed(progress.error)}</p>{/if}
+    {#if progress.status === 'failed'}<p class="bad" role="alert">{say(t.imp.failed, { reason: progress.error })}</p>{/if}
     <p class="intro">{t.imp.intro}</p>
     <p><button type="button" class={preview ? '' : 'primary'} onclick={() => fileInput?.click()} disabled={busy} data-import-choose>{file ? t.imp.other : t.imp.choose}</button> {#if file}<span class="quiet">{file.name}</span>{/if}</p>
     {#if file && !preview && busy}<p class="hint">{t.imp.reading}</p>{/if}
     {#if preview}
       <div class="card" data-import-preview>
-        <h2>{t.imp.found(preview.site.name)}</h2>
+        <h2>{say(t.imp.found, { name: preview.site.name })}</h2>
         {#if preview.site.url}<p class="quiet">{preview.site.url}</p>{/if}
         <ul class="counts">
           <li><strong>{preview.pages}</strong> {t.imp.pages}</li>
@@ -133,7 +145,7 @@ onMount(() =>
           <h3>{t.imp.others}</h3>
           <p class="hint">{t.imp.othersHint}</p>
           {#each [...chosen.map((type) => ({ type, count: preview?.types.find((p) => p.id === type)?.count ?? 0 })), ...preview.others.filter((o) => !chosen.includes(o.type))] as other (other.type)}
-            <label class="check"><input type="checkbox" checked={chosen.includes(other.type)} onchange={(e) => toggle(other.type, e.currentTarget.checked)} disabled={busy} data-import-type={other.type} /> {other.type} <span class="quiet">({t.ctypes.entries(other.count)})</span></label>
+            <label class="check"><input type="checkbox" checked={chosen.includes(other.type)} onchange={(e) => toggle(other.type, e.currentTarget.checked)} disabled={busy} data-import-type={other.type} /> {other.type} <span class="quiet">({say(t.ctypes.entries, { count: other.count })})</span></label>
           {/each}
         {/if}
 
@@ -141,7 +153,7 @@ onMount(() =>
           <h3>{t.imp.sections}</h3>
           <p class="hint">{t.imp.sectionsHint}</p>
           {#each preview.categories as category (category.nicename)}
-            <label class="check"><input type="checkbox" checked={sections.includes(category.nicename)} onchange={(e) => section(category.nicename, e.currentTarget.checked)} disabled={busy} data-import-category={category.nicename} /> {category.name} <span class="quiet">({t.imp.postCount(category.count)})</span></label>
+            <label class="check"><input type="checkbox" checked={sections.includes(category.nicename)} onchange={(e) => section(category.nicename, e.currentTarget.checked)} disabled={busy} data-import-category={category.nicename} /> {category.name} <span class="quiet">({say(t.imp.postCount, { count: category.count })})</span></label>
           {/each}
         {/if}
 

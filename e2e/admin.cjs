@@ -3,7 +3,8 @@
  * tests pass by. Opening it without its key, a server that fails, groups
  * nested too deep, a block's variant and its own style, copying and deleting
  * a block, deleting a page, uploading to the media library, a visitor's
- * messages exported and erased, and every kind of field an entry can have.
+ * messages exported and erased, every kind of field an entry can have, and
+ * the admin in another language.
  *
  *   node e2e/admin.cjs [folder for screenshots]
  */
@@ -256,6 +257,16 @@ function png(width, height) {
     cli('export', db, join(dir, 'out'));
     const shown = readFileSync(join(dir, 'out', 'events', 'open-day', 'index.html'), 'utf8');
     assert(shown.includes('The workshop') && shown.includes('Bring a friend.') && shown.includes('href="/contact/"') && shown.includes('datetime="2027-05-01"') && /<img[^>]+\/media\//.test(shown), 'every kind of field typed in the admin is on the published entry');
+    // The admin in another language: a pack like any other, chosen in the settings.
+    await page.locator('[data-site-mode]').click();
+    await page.locator('[data-admin-language]').selectOption('ro');
+    await page.locator('[data-nav="pages"]', { hasText: 'Pagini' }).waitFor();
+    assert((await page.locator('html').getAttribute('lang')) === 'ro', 'the admin can be in Romanian, from its language pack');
+    if (shots) await page.screenshot({ path: join(shots, 'admin-romanian.png') });
+    await page.locator('[data-nav="settings"]').click();
+    await page.locator('[data-admin-language]').selectOption('');
+    await page.locator('[data-nav="pages"]', { hasText: 'Pages' }).waitFor();
+    assert(true, 'and back in English');
     assert(errors.length === 0, `no errors in the browser ${errors.join(' | ')}`);
   } catch (error) {
     if (shots) await browser.contexts()[0]?.pages()[0]?.screenshot({ path: join(shots, 'failure.png') }).catch(() => {});

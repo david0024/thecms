@@ -6,6 +6,7 @@
 export * from './blocks.ts';
 export * from './content.ts';
 export * from './css.ts';
+export * from './language.ts';
 export * from './media.ts';
 export * from './menu.ts';
 export * from './navigation.ts';

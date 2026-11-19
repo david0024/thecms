@@ -3,6 +3,8 @@
  * export and the editor's canvas, so what the author sees while editing is
  * what a visitor gets.
  */
+// The language packs are read here, so whatever draws a page has their words (ADR 0021).
+import './languages.ts';
 import { render } from 'svelte/server';
 import BlogLayout from '../blocks/BlogLayout.svelte';
 import type { EntryLists } from '../blocks/editing.ts';

@@ -47,7 +47,7 @@ import ImportScreen from './ImportScreen.svelte';
 import MediaLibrary from './MediaLibrary.svelte';
 import Messages from './Messages.svelte';
 import Fields from './Fields.svelte';
-import { t } from './messages.ts';
+import { say, t } from './messages.ts';
 import { setPath } from './paths.ts';
 import SitePanel from './SitePanel.svelte';
 import StylePanel from './StylePanel.svelte';
@@ -380,6 +380,18 @@ function editSite(next: Site): void {
   }, 250);
 }
 
+/** The admin in another language: saved at once, then opened again, since its words are read when it starts. */
+async function setAdminLanguage(adminLanguage: string): Promise<void> {
+  if (!site) return;
+  clearTimeout(siteTimer);
+  try {
+    await api.setSite({ ...site.site, adminLanguage });
+    location.reload();
+  } catch (error) {
+    fail(error);
+  }
+}
+
 /** The content types as the owner set them. Answers with the reason when the site refuses, '' when it took them. */
 async function saveTypes(next: ContentType[]): Promise<string> {
   if (!site) return '';
@@ -546,7 +558,7 @@ onMount(() => {
     <aside class="right">
       {#if siteMode}
         <h2>{t.site.heading}</h2>
-        <SitePanel site={site.site} pages={site.pages} lists={menuLists} onchange={editSite} />
+        <SitePanel site={site.site} pages={site.pages} lists={menuLists} languages={site.languages} onchange={editSite} onadminlanguage={setAdminLanguage} />
       {:else if themeMode}
         <h2>{t.theme.heading}</h2>
         <ThemeBuilder theme={site.theme} onchange={editTheme} />
@@ -585,8 +597,8 @@ onMount(() => {
           {/key}
         {/if}
       {:else if designed}
-        <h2>{t.design.heading(designed.singular)}</h2>
-        <p class="hint">{t.design.intro(designed.name)}</p>
+        <h2>{say(t.design.heading, { singular: designed.singular.toLowerCase() })}</h2>
+        <p class="hint">{say(t.design.intro, { name: designed.name })}</p>
         {#if site.templates[designed.id]?.custom}
           <button type="button" class="danger" onclick={removePage} data-design-reset>{t.design.reset}</button>
           <small>{t.design.resetHint}</small>
@@ -648,7 +660,7 @@ onMount(() => {
           </label>
         {/if}
         {#if freeOnPage > 0}
-          <p class="hint">{t.style.free(freeOnPage)}</p>
+          <p class="hint">{say(t.style.free, { count: freeOnPage })}</p>
           <button type="button" onclick={() => page && setBlocks(resetToTheme(page.blocks))}>{t.style.resetPage}</button>
         {/if}
         <p class="hint">{t.inspector.nothing}</p>

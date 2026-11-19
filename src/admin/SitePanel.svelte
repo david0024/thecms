@@ -5,12 +5,28 @@
  * theme's (ADR 0006), so nothing here is a colour or a position.
  */
 import type { LinkValue, MenuList, Site } from '../core/index.ts';
-import type { PageInfo } from './api.ts';
+import type { LanguageInfo, PageInfo } from './api.ts';
 import ImageField from './ImageField.svelte';
 import MenuBuilder from './MenuBuilder.svelte';
-import { t } from './messages.ts';
+import { say, t } from './messages.ts';
 
-let { site, pages, lists, onchange }: { site: Site; pages: PageInfo[]; lists: MenuList[]; onchange: (site: Site) => void } = $props();
+let {
+  site,
+  pages,
+  lists,
+  languages = [],
+  onchange,
+  onadminlanguage,
+}: {
+  site: Site;
+  pages: PageInfo[];
+  lists: MenuList[];
+  languages?: LanguageInfo[];
+  onchange: (site: Site) => void;
+  /** The admin's words are read when it starts, so choosing its language saves and opens it again. */
+  onadminlanguage?: (language: string) => void;
+} = $props();
+const named = (l: LanguageInfo): string => (l.coverage < 1 ? `${l.name} (${say(t.site.partial, { count: Math.floor(l.coverage * 100) })})` : l.name);
 
 const set = (patch: Partial<Site>): void => onchange({ ...site, ...patch });
 const link = (value: LinkValue | null, patch: Partial<LinkValue>): LinkValue => ({ label: value?.label ?? '', href: value?.href ?? '', ...patch });
@@ -23,7 +39,20 @@ const setFooterLink = (i: number, patch: Partial<LinkValue>): void => set({ foot
 </label>
 <label class="field">
   <span>{t.site.language}</span>
-  <input type="text" maxlength="20" value={site.language} onchange={(e) => set({ language: e.currentTarget.value.trim() })} />
+  <input type="text" maxlength="20" value={site.language} list="cms-languages" onchange={(e) => set({ language: e.currentTarget.value.trim() })} data-site-language />
+  <datalist id="cms-languages">{#each languages as l (l.language)}<option value={l.language}>{named(l)}</option>{/each}</datalist>
+  <small>{t.site.languageHint}</small>
+</label>
+<label class="field">
+  <span>{t.site.adminLanguage}</span>
+  <select
+    value={site.adminLanguage}
+    onchange={(e) => onadminlanguage?.(e.currentTarget.value)}
+    data-admin-language
+  >
+    <option value="">{t.site.sameAsSite}</option>
+    {#each languages as l (l.language)}<option value={l.language}>{named(l)}</option>{/each}
+  </select>
 </label>
 <label class="field">
   <span>{t.site.url}</span>

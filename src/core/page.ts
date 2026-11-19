@@ -18,6 +18,8 @@ export interface Site {
   name: string;
   /** A BCP 47 tag: `en`, `ro`, `pt-BR`. */
   language: string;
+  /** The admin's language, when it is not the site's: empty means the same (ADR 0021). */
+  adminLanguage: string;
   /** `https://example.com`, no trailing slash. Empty until the owner sets it. */
   url: string;
   /** Shown in the header in place of the name. What the header looks like is the theme's (ADR 0006). */
@@ -81,6 +83,7 @@ export function normalizeSite(input: unknown): Site {
   return {
     name: str(raw.name, 120).trim() || 'My site',
     language: typeof raw.language === 'string' && LANGUAGE.test(raw.language) ? raw.language : 'en',
+    adminLanguage: typeof raw.adminLanguage === 'string' && LANGUAGE.test(raw.adminLanguage) ? raw.adminLanguage : '',
     url: /^https?:\/\//i.test(url) ? url.replace(/\/+$/, '') : '',
     logo: cleanImage(raw.logo),
     action: cleanLink(raw.action),

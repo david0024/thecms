@@ -1,9 +1,12 @@
 /**
- * The few words the site itself says to a visitor, as data (ADR 0001 d3):
- * labels the author did not write. A language is another entry of this shape;
- * a site in a language not listed here is given the English ones.
+ * The few words the site itself says to a visitor, in English, as data
+ * (ADR 0001 d3, ADR 0021): labels the author did not write. Another language
+ * is a language pack (`languages/<code>.json`) whose keys are these under
+ * `site.`. A site in a language no pack is given for says them in English.
  */
-const en = {
+import { applyPack, type Catalog, type LanguagePack } from '../core/language.ts';
+
+export const en = {
   mainMenu: 'Main',
   menu: 'Menu',
   footerMenu: 'Footer',
@@ -20,25 +23,15 @@ const en = {
 
 export type Words = typeof en;
 
-const WORDS: Record<string, Words> = {
-  en,
-  ro: {
-    mainMenu: 'Principal',
-    menu: 'Meniu',
-    footerMenu: 'Subsol',
-    notFound: 'Pagina nu a fost găsită',
-    newer: 'Articole mai noi',
-    older: 'Articole mai vechi',
-    pages: 'Pagini',
-    noPosts: 'Încă nu a fost publicat nimic.',
-    feed: 'Flux',
-    formName: 'Nume',
-    formEmail: 'Email',
-    formMessage: 'Mesaj',
-  },
-};
+/** The site's words of every language a pack was given for, by language code. */
+const WORDS = new Map<string, Words>();
 
-export const wordsFor = (language: string): Words => WORDS[language] ?? WORDS[language.split('-')[0] ?? ''] ?? en;
+/** Takes the site words of these packs; a later pack of the same language replaces the earlier one. */
+export function useSitePacks(packs: LanguagePack[]): void {
+  for (const pack of packs) WORDS.set(pack.language, (applyPack({ site: en } as unknown as Catalog, pack) as unknown as { site: Words }).site);
+}
+
+export const wordsFor = (language: string): Words => WORDS.get(language) ?? WORDS.get(language.split('-')[0] ?? '') ?? en;
 
 /** A post's day, written the way the site's language writes dates. */
 export function dateText(date: string, language: string): string {

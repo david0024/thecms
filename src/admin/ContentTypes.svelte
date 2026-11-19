@@ -5,7 +5,7 @@
  * about it is code.
  */
 import { type ContentType, contentTypes, POSTS_TYPE, type Site, slugify, TYPE_FIELD_KINDS, type TypeField, type TypeFieldKind } from '../core/index.ts';
-import { t } from './messages.ts';
+import { say, t } from './messages.ts';
 
 let {
   site,
@@ -73,7 +73,7 @@ async function remove(): Promise<void> {
               {#if type.id === POSTS_TYPE}<strong>{type.name}</strong>{:else}<button type="button" class="open" onclick={() => start(type)}>{type.name}</button>{/if}
             </td>
             <td class="quiet">/{type.path}/</td>
-            <td class="quiet">{type.id === POSTS_TYPE ? t.ctypes.builtIn : t.ctypes.entries(counts[type.id] ?? 0)}</td>
+            <td class="quiet">{type.id === POSTS_TYPE ? t.ctypes.builtIn : say(t.ctypes.entries, { count: counts[type.id] ?? 0 })}</td>
             <td class="end"><button type="button" onclick={() => ondesign(type.id)} data-design={type.id}>{t.design.open}</button>{#if templates[type.id]?.custom}<small>{t.design.custom}</small>{/if}</td>
           </tr>
         {/each}

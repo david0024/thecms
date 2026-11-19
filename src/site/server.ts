@@ -13,11 +13,12 @@
 import { mkdir, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { compile } from 'svelte/compiler';
-import { type ContentType, defaultTemplate, MEDIA_MAX_BYTES, MEDIA_PREFIX, normalizePage, type Page, type Post, contentTypes, listPath, type MenuList, normalizePost, parseTheme, POSTS_TYPE, reservedSlugs, type Theme, themeCss } from '../core/index.ts';
+import { type ContentType, type LanguagePack, defaultTemplate, MEDIA_MAX_BYTES, MEDIA_PREFIX, normalizePage, type Page, type Post, contentTypes, listPath, type MenuList, normalizePost, parseTheme, POSTS_TYPE, reservedSlugs, type Theme, themeCss } from '../core/index.ts';
 import type { EntryLists } from '../blocks/editing.ts';
 import { type FetchImage, fetchImage as fetchOverNetwork, IMPORT_MAX_BYTES, type ImportReport, runImport } from '../import/run.ts';
 import { type ImportPlan, planImport } from '../import/wxr.ts';
 import { type MenuItem, menuOf, renderParts, renderPostParts } from './document.ts';
+import { languages, packFor } from './languages.ts';
 import type { Store } from './store.ts';
 
 const ADMIN = new URL('../admin/', import.meta.url);
@@ -85,8 +86,9 @@ const text = (body: string, type: string): Response => new Response(body, { head
 const json = (data: unknown, status = 200): Response =>
   new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json; charset=utf-8', ...SECURITY } });
 
-const ADMIN_PAGE = `<!doctype html>
-<html lang="en">
+/** The admin's page, with the words of its language in it, read before the admin starts (ADR 0021). */
+const adminPage = (pack: LanguagePack | null): string => `<!doctype html>
+<html lang="${(pack?.language ?? 'en').replace(/[^A-Za-z0-9-]/g, '')}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -94,6 +96,7 @@ const ADMIN_PAGE = `<!doctype html>
 </head>
 <body>
 <div id="app"></div>
+<script type="application/json" id="cms-language">${JSON.stringify(pack).replace(/</g, '\\u003c')}</script>
 <script type="module" src="/admin/app.js"></script>
 </body>
 </html>
@@ -238,7 +241,7 @@ export async function startEditor(store: Store, options: { port?: number; listen
       new Date().toISOString().slice(0, 10),
       type,
     ).post;
-  const state = async (): Promise<unknown> => ({ site: await store.site(), theme: await theme(), themeChanged: await store.themeChanged(), themes, ...(await lists()) });
+  const state = async (): Promise<unknown> => ({ site: await store.site(), theme: await theme(), themeChanged: await store.themeChanged(), themes, languages: languages(), ...(await lists()) });
 
   /** One import at a time; it outlives the request that started it, because copying images takes minutes. */
   let importing: ImportProgress = { status: 'idle' };
@@ -421,8 +424,10 @@ export async function startEditor(store: Store, options: { port?: number; listen
       case '/':
       case '/admin':
         return new Response(null, { status: 302, headers: { location: '/admin/' } });
-      case '/admin/':
-        return html(ADMIN_PAGE);
+      case '/admin/': {
+        const site = await store.site();
+        return html(adminPage(packFor(site.adminLanguage || site.language)));
+      }
       case '/admin/app.js':
       case '/admin/frame.js':
         return text(assets.get(url.pathname.slice(7)) ?? '', 'text/javascript');
