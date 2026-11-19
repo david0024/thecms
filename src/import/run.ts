@@ -6,7 +6,7 @@
  * taken is left as it is and named in the report, so running an import twice,
  * or into a site someone has started, loses no work.
  */
-import { MEDIA_MAX_BYTES, type MenuNode, reservedSlugs } from '../core/index.ts';
+import { MEDIA_MAX_BYTES, type MenuNode, POSTS_TYPE, postsType, reservedSlugs } from '../core/index.ts';
 import type { Store } from '../site/store.ts';
 import type { ImportPlan } from './wxr.ts';
 
@@ -115,6 +115,18 @@ export async function runImport(store: Store, plan: ImportPlan, options: ImportO
     added.push(type);
   }
 
+  // The posts go in the site's posts type; where the owner removed it, it comes back for them (ADR 0025).
+  let postsKept = true;
+  const now = await store.site();
+  if (plan.posts.length > 0 && !now.types.some((t) => t.id === POSTS_TYPE)) {
+    try {
+      await store.setSite({ ...now, types: [...now.types, postsType()] });
+    } catch (error) {
+      postsKept = false;
+      notes.push(`The posts were not imported: ${error instanceof Error ? error.message : String(error)}.`);
+    }
+  }
+
   const reserved = new Set(reservedSlugs(await store.site()));
   for (const { publish, ...page } of plan.pages) {
     if ((await store.draft(page.slug)) || reserved.has(page.slug)) {
@@ -126,7 +138,7 @@ export async function runImport(store: Store, plan: ImportPlan, options: ImportO
     else drafts++;
     pages++;
   }
-  for (const { publish, ...post } of plan.posts) {
+  for (const { publish, ...post } of postsKept ? plan.posts : []) {
     if (await store.postDraft(post.slug)) {
       kept.push(`the post "${post.title}"`);
       continue;

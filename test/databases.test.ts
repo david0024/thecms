@@ -12,6 +12,7 @@ import { afterAll, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { postsType } from '../src/core/index.ts';
 import { runImport } from '../src/import/run.ts';
 import { planImport } from '../src/import/wxr.ts';
 import { exportSite } from '../src/site/export.ts';
@@ -93,7 +94,7 @@ for (const [name, address] of databases) {
     });
 
     test('entries of each type, and a type that still has entries is not removed', async () => {
-      await store.setSite({ name: 'S', types: [{ id: 'projects', name: 'Projects', singular: 'Project', path: 'projects' }] });
+      await store.setSite({ name: 'S', types: [{ id: 'projects', name: 'Projects', singular: 'Project', path: 'projects' }, postsType()] });
       await store.savePost({ slug: 'b', title: 'B', date: '2026-02-01', blocks: [] });
       await store.savePost({ slug: 'a', title: 'A', date: '2026-03-01', blocks: [] });
       await store.saveEntry('projects', { slug: 'oak', title: 'Oak', blocks: [] });
@@ -102,8 +103,13 @@ for (const [name, address] of databases) {
       expect((await store.posts()).map((p) => p.slug)).toEqual(['a', 'b']);
       expect((await store.publishedPosts()).map((p) => p.slug)).toEqual(['a']);
       expect((await store.draftEntries('projects')).map((p) => p.title)).toEqual(['Oak']);
-      await expect(store.setSite({ name: 'S', types: [] })).rejects.toThrow('"Projects" still has 1 entry');
+      await expect(store.setSite({ name: 'S', types: [postsType()] })).rejects.toThrow('"Projects" still has 1 entry');
       await store.deleteEntry('projects', 'oak');
+      await store.setSite({ name: 'S', types: [postsType()] });
+      // The blog is a type like any other (ADR 0025): it goes once its posts do.
+      await expect(store.setSite({ name: 'S', types: [] })).rejects.toThrow('"Blog" still has 2 entries');
+      await store.deletePost('a');
+      await store.deletePost('b');
       await store.setSite({ name: 'S', types: [] });
       expect((await store.site()).types).toEqual([]);
     });

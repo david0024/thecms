@@ -7,11 +7,11 @@
  * can follow the page's title, and an item whose page is gone is left out of
  * the menu instead of leading nowhere (`navigation.ts`).
  */
+import { POSTS_TYPE } from './types.ts';
 import { isId, isObject, newId, safeHref, slugify, str } from './util.ts';
 
 export type MenuTarget =
   | { kind: 'page'; slug: string }
-  | { kind: 'blog' }
   /** The list of a content type the owner added. */
   | { kind: 'type'; id: string }
   | { kind: 'url'; href: string }
@@ -33,7 +33,8 @@ export const MENU_MAX_ITEMS = 12;
 function cleanTarget(raw: unknown): MenuTarget {
   if (!isObject(raw)) return { kind: 'none' };
   if (raw.kind === 'page') return { kind: 'page', slug: slugify(raw.slug) };
-  if (raw.kind === 'blog') return { kind: 'blog' };
+  // The blog was a target of its own before ADR 0025; it is a type now.
+  if (raw.kind === 'blog') return { kind: 'type', id: POSTS_TYPE };
   if (raw.kind === 'type' && slugify(raw.id)) return { kind: 'type', id: slugify(raw.id) };
   // Kept while the address is still being typed; an item with no address is not drawn.
   if (raw.kind === 'url') return { kind: 'url', href: safeHref(raw.href) };

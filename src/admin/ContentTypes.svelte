@@ -4,7 +4,7 @@
  * besides pages. A type is made here from a name and a few choices; nothing
  * about it is code.
  */
-import { type ContentType, contentTypes, POSTS_TYPE, type Site, slugify, TYPE_FIELD_KINDS, type TypeField, type TypeFieldKind } from '../core/index.ts';
+import { type ContentType, contentTypes, type Site, slugify, TYPE_FIELD_KINDS, type TypeField, type TypeFieldKind } from '../core/index.ts';
 import { say, t } from './messages.ts';
 
 let {
@@ -70,10 +70,10 @@ async function remove(): Promise<void> {
         {#each contentTypes(site) as type (type.id)}
           <tr data-type={type.id}>
             <td>
-              {#if type.id === POSTS_TYPE}<strong>{type.name}</strong>{:else}<button type="button" class="open" onclick={() => start(type)}>{type.name}</button>{/if}
+              <button type="button" class="open" onclick={() => start(type)}>{type.name}</button>
             </td>
             <td class="quiet">/{type.path}/</td>
-            <td class="quiet">{type.id === POSTS_TYPE ? t.ctypes.builtIn : say(t.ctypes.entries, { count: counts[type.id] ?? 0 })}</td>
+            <td class="quiet">{say(t.ctypes.entries, { count: counts[type.id] ?? 0 })}</td>
             <td class="end"><button type="button" onclick={() => ondesign(type.id)} data-design={type.id}>{t.design.open}</button>{#if templates[type.id]?.custom}<small>{t.design.custom}</small>{/if}</td>
           </tr>
         {/each}

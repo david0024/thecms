@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { type Block, type ContentType, createBlock, defaultTemplate, normalizeBlocks, normalizePost, normalizeSite, parseTheme, type Post, type Theme } from '../src/core/index.ts';
+import { type Block, type ContentType, createBlock, defaultTemplate, normalizeBlocks, normalizePost, normalizeSite, parseTheme, type Post, postsType, type Theme } from '../src/core/index.ts';
 import { renderPage, renderPost, renderPostParts } from '../src/site/document.ts';
 import { buildSite, exportSite } from '../src/site/export.ts';
 import { type EditorServer, startEditor } from '../src/site/server.ts';
@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const theme = parseTheme(plain).theme as Theme;
-const site = normalizeSite({ name: 'S', types: [{ name: 'Projects', fields: [{ label: 'Client', kind: 'text' }] }] });
+const site = normalizeSite({ name: 'S', types: [{ name: 'Projects', fields: [{ label: 'Client', kind: 'text' }] }, postsType()] });
 const projects = site.types[0] as ContentType;
 const PNG = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='), (c) => c.charCodeAt(0));
 const blocks = (list: unknown[]): Block[] => normalizeBlocks(list).blocks;

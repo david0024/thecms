@@ -1,5 +1,5 @@
 /** A small site to start from: what `thecms init` writes. */
-import { paragraphs } from '../core/index.ts';
+import { paragraphs, postsType } from '../core/index.ts';
 
 export const DEMO_SITE = {
   name: 'Atelier Nord',
@@ -8,6 +8,8 @@ export const DEMO_SITE = {
   action: { label: 'Ask for a quote', href: '/contact/' },
   footer: '© Atelier Nord',
   footerLinks: [{ label: 'About', href: '/about/' }],
+  // An example the owner may rename, change or delete (ADR 0025).
+  types: [postsType()],
 };
 
 export const DEMO_PAGES = [

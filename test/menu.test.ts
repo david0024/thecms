@@ -46,7 +46,7 @@ describe('from the menu to links', () => {
   test('the automatic menu: the pages that asked to be in it, in order, then the blog when there are posts', async () => {
     expect(titles(resolveMenu(siteWith(null), pages, false))).toBe('Home→/ About→/about/');
     expect(titles(resolveMenu(siteWith(null), pages, true))).toBe('Home→/ About→/about/ Blog→/blog/');
-    expect(automaticMenu(siteWith(null), pages, true).map((n) => n.target.kind)).toEqual(['page', 'page', 'blog']);
+    expect(automaticMenu(siteWith(null), pages, true).map((n) => n.target.kind)).toEqual(['page', 'page', 'type']);
   });
 
   test('an arranged menu is drawn in its own order, with its own words, and may show a page the automatic one hides', async () => {
@@ -57,7 +57,7 @@ describe('from the menu to links', () => {
   test('an item never leads to what is not there', async () => {
     const site = siteWith([
       node('Gone', { kind: 'page', slug: 'deleted' }, [node('Under gone', { kind: 'page', slug: 'about' })]),
-      node('', { kind: 'blog' }),
+      node('', { kind: 'type', id: 'posts' }),
       node('No address yet', { kind: 'url', href: '' }),
       node('Empty heading', { kind: 'none' }),
       node('', { kind: 'url', href: '/x/' }),

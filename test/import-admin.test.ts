@@ -119,7 +119,7 @@ describe('a content type the site cannot take', () => {
     expect(report.entries).toBe(0);
     expect(report.pages).toBeGreaterThan(0);
     expect(report.notes.join('\n')).toContain('The content type "Product" was not added');
-    expect((await store.site()).types).toEqual([]);
+    expect((await store.site()).types.map((t) => t.id)).toEqual(['posts']);
     await store.close();
   });
 });

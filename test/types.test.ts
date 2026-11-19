@@ -23,7 +23,7 @@ const PROJECTS = {
   ],
 };
 const projects = normalizeTypes([PROJECTS])[0] as ContentType;
-const site = normalizeSite({ name: 'S', url: 'https://example.com', types: [PROJECTS, { name: 'Events', dated: true, feed: true }] });
+const site = normalizeSite({ name: 'S', url: 'https://example.com', types: [PROJECTS, { name: 'Events', dated: true, feed: true }, postsType()] });
 const home = { slug: '', title: 'Home', description: '', inMenu: true, blocks: [] };
 const entry = (type: ContentType, over: Record<string, unknown>): Post => normalizePost({ blocks: [], ...over }, '2026-01-01', type).post;
 const text = (files: Map<string, string | Uint8Array>, path: string): string => files.get(path) as string;
@@ -60,7 +60,8 @@ describe('a content type as a document', () => {
       { name: '' },
       'nonsense',
     ]);
-    expect(types.map((t) => [t.id, t.path])).toEqual([['team', 'team']]);
+    // Blog and Posts are names like any other (ADR 0025); a second type at one id or address is left out.
+    expect(types.map((t) => [t.id, t.path])).toEqual([['team', 'team'], ['blog', 'blog'], ['posts', 'posts']]);
     expect(normalizeTypes(Array.from({ length: 30 }, (_, i) => ({ name: `Type ${i}` })))).toHaveLength(12);
   });
 
@@ -144,7 +145,7 @@ describe('the store keeps every type', () => {
     await expect(store.savePage({ slug: 'projects', title: 'Projects' })).rejects.toThrow('used by the site itself');
     await store.savePage({ slug: 'team', title: 'Team' });
     await expect(store.setSite({ ...site, types: [...site.types, { name: 'Team' }] })).rejects.toThrow('a page already lives at "/team/"');
-    expect((await store.site()).types.map((t) => t.id)).toEqual(['projects', 'events']);
+    expect((await store.site()).types.map((t) => t.id)).toEqual(['projects', 'events', 'posts']);
   });
 
   test('a type that still has entries is not removed', async () => {

@@ -8,6 +8,7 @@
  */
 import {
   BLOG_SLUG,
+  POSTS_TYPE,
   type Block,
   blogPath,
   categoryPath,
@@ -420,7 +421,7 @@ export function planImport(
     if (kind === 'post_tag') return tagTerms.has(id) ? { kind: 'url', href: tagPath(tagTerms.get(id) as string) } : null;
     const item = byId.get(id);
     if (!item) return null;
-    if (item === postsPage) return { kind: 'blog' };
+    if (item === postsPage) return { kind: 'type', id: POSTS_TYPE };
     if (pageSlugs.has(item)) return { kind: 'page', slug: pageSlugs.get(item) as string };
     if (postSlugs.has(item)) return { kind: 'url', href: postPath(postSlugs.get(item) as string) };
     if (entrySlugs.has(item)) return { kind: 'url', href: entryPath(entryTypeOf(item) as ContentType, entrySlugs.get(item) as string) };
@@ -430,7 +431,7 @@ export function planImport(
   const targetOfUrl = (href: string): MenuTarget => {
     if (!href || href === '#') return { kind: 'none' };
     const to = menuContext.link(href);
-    if (to === blogPath()) return { kind: 'blog' };
+    if (to === blogPath()) return { kind: 'type', id: POSTS_TYPE };
     const page = pages.find((p) => pagePath(p.slug) === to);
     return page ? { kind: 'page', slug: page.slug } : { kind: 'url', href: to };
   };

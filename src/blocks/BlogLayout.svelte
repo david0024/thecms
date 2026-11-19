@@ -24,7 +24,7 @@ let {
   older?: string;
   type?: ContentType;
 } = $props();
-const kind = $derived(type ?? postsType(site.blogTitle));
+const kind = $derived(type ?? postsType());
 const words = $derived(wordsFor(site.language));
 </script>
 

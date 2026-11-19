@@ -156,7 +156,7 @@ describe('a WordPress export as a plan', () => {
     expect(menu.map((m) => [m.label, m.target, m.children.length])).toEqual([
       ['Start', { kind: 'page', slug: '' }, 0],
       ['', { kind: 'page', slug: 'about' }, 1],
-      ['Journal', { kind: 'blog' }, 0],
+      ['Journal', { kind: 'type', id: 'posts' }, 0],
       ['', { kind: 'url', href: '/blog/category/news/' }, 0],
       ['Shop', { kind: 'url', href: 'https://shop.example/' }, 0],
     ]);
@@ -174,7 +174,7 @@ describe('a WordPress export as a plan', () => {
       ['About us', { kind: 'page', slug: 'about' }],
       ['More', { kind: 'none' }],
     ]);
-    expect(menu[1]?.children[0]).toMatchObject({ label: 'News', target: { kind: 'blog' } });
+    expect(menu[1]?.children[0]).toMatchObject({ label: 'News', target: { kind: 'type', id: 'posts' } });
   });
 
   test('old addresses that changed are remembered; ones that did not are not', async () => {
@@ -229,11 +229,11 @@ describe('kinds of entry a plugin added', () => {
     const p = planImport(WXR, '2026-11-17', { types: ['product'] });
     const first = await runImport(store, p, { fetchImage: null, fresh: true });
     expect(first.entries).toBe(1);
-    expect((await store.site()).types.map((t) => t.id)).toEqual(['product']);
+    expect((await store.site()).types.map((t) => t.id)).toEqual(['posts', 'product']);
     expect((await store.publishedEntries('product')).map((e) => e.title)).toEqual(['Chair']);
     const again = await runImport(store, p, { fetchImage: null, fresh: false });
     expect(again).toMatchObject({ entries: 0 });
-    expect((await store.site()).types).toHaveLength(1);
+    expect((await store.site()).types).toHaveLength(2);
     await store.close();
   });
 });
@@ -413,8 +413,29 @@ describe('a category that is a section of its own (ADR 0016)', () => {
     await store.setTheme(plain);
     const report = await runImport(store, chosen(['news']), { fetchImage: null, fresh: true });
     expect(report).toMatchObject({ posts: 1, entries: 1 });
-    expect((await store.site()).types.map((t) => [t.id, t.dated])).toEqual([['news', true]]);
+    expect((await store.site()).types.map((t) => [t.id, t.dated])).toEqual([['posts', true], ['news', true]]);
     expect((await store.publishedEntries('news')).map((e) => e.title)).toEqual(['Hello world']);
     await store.close();
+  });
+});
+
+describe('posts on a site whose owner removed the blog (ADR 0025)', () => {
+  test('bring the type back to hold them, or are named when its address is taken', async () => {
+    const store = await Store.open(':memory:');
+    await store.setTheme(plain);
+    await store.setSite({ name: 'S', types: [] });
+    const report = await runImport(store, plan(), { fetchImage: null, fresh: false });
+    expect(report.posts).toBeGreaterThan(0);
+    expect((await store.site()).types.map((t) => t.id)).toEqual(['posts']);
+    await store.close();
+
+    const taken = await Store.open(':memory:');
+    await taken.setTheme(plain);
+    await taken.setSite({ name: 'S', types: [] });
+    await taken.savePage({ slug: 'blog', title: 'Blog', blocks: [] });
+    const refused = await runImport(taken, plan(), { fetchImage: null, fresh: false });
+    expect(refused.posts).toBe(0);
+    expect(refused.notes.join('\n')).toContain('The posts were not imported: a page already lives at "/blog/"');
+    await taken.close();
   });
 });
