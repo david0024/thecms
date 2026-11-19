@@ -18,20 +18,20 @@ let dir: string;
 let store: Store;
 beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), 'thecms-'));
-  store = new Store(join(dir, 'site.db'));
-  store.setSite(site);
-  store.setTheme(plain);
-  store.publishTheme();
-  for (const page of DEMO_PAGES) store.publish(store.savePage(page).slug);
+  store = await Store.open(join(dir, 'site.db'));
+  await store.setSite(site);
+  await store.setTheme(plain);
+  await store.publishTheme();
+  for (const page of DEMO_PAGES) await store.publish((await store.savePage(page)).slug);
 });
 afterEach(async () => {
-  store.close();
+  await store.close();
   await rm(dir, { recursive: true, force: true });
 });
 
 describe('changing the theme (ADR 0001 d7, d8)', () => {
   test('the page body is byte for byte the same; only the stylesheet changes', async () => {
-    const pages = store.published();
+    const pages = await store.published();
     const a = await buildSite(site, themeOf(plain), pages);
     const b = await buildSite(site, themeOf(studio), pages);
     for (const path of ['index.html', 'about/index.html', 'contact/index.html']) {
@@ -44,7 +44,7 @@ describe('changing the theme (ADR 0001 d7, d8)', () => {
 });
 
 describe('what a visitor receives', () => {
-  test('text an author typed is never markup', () => {
+  test('text an author typed is never markup', async () => {
     const attack = '</title><script>alert(1)</script><img src=x onerror=alert(2)>';
     const { page } = normalizePage({
       slug: 'x',
@@ -80,7 +80,7 @@ describe('what a visitor receives', () => {
   });
 
   test('a static page: no script, no request to another host, no framework marks', async () => {
-    const files = await buildSite(site, themeOf(plain), store.published());
+    const files = await buildSite(site, themeOf(plain), await store.published());
     for (const [path, contents] of files) {
       expect(`${path}: ${/<script|<!--|@import|url\(/i.test(String(contents))}`).toBe(`${path}: false`);
     }
@@ -94,27 +94,25 @@ describe('what a visitor receives', () => {
 });
 
 describe('the store', () => {
-  test('saving a draft does not change what is published', () => {
-    const before = bodyOf(renderPage(site, themeOf(plain), store.published()[0]!, []));
-    store.savePage({ ...DEMO_PAGES[0], blocks: [{ type: 'hero', content: { title: 'A new draft' } }] });
-    expect(store.draft('')!.blocks).toHaveLength(1);
-    expect(store.published()).toHaveLength(3);
+  test('saving a draft does not change what is published', async () => {
+    const before = bodyOf(renderPage(site, themeOf(plain), (await store.published())[0]!, []));
+    await store.savePage({ ...DEMO_PAGES[0], blocks: [{ type: 'hero', content: { title: 'A new draft' } }] });
+    expect((await store.draft(''))!.blocks).toHaveLength(1);
+    expect(await store.published()).toHaveLength(3);
     // Ids are assigned on save, so compare the words, not the bytes.
-    expect(bodyOf(renderPage(site, themeOf(plain), store.published()[0]!, []))).toBe(before);
-    store.publish('');
-    expect(store.published()[0]!.blocks).toHaveLength(1);
+    expect(bodyOf(renderPage(site, themeOf(plain), (await store.published())[0]!, []))).toBe(before);
+    await store.publish('');
+    expect((await store.published())[0]!.blocks).toHaveLength(1);
   });
 
-  test('an invalid theme is refused and the old one stays', () => {
-    expect(() => store.setTheme({ ...plain, tokens: { ...plain.tokens, color: { primary: 'red' } } })).toThrow(/tokens\.color/);
-    expect(store.theme()!.name).toBe('Plain');
+  test('an invalid theme is refused and the old one stays', async () => {
+    await expect(store.setTheme({ ...plain, tokens: { ...plain.tokens, color: { primary: 'red' } } })).rejects.toThrow(/tokens\.color/);
+    expect((await store.theme())!.name).toBe('Plain');
   });
 
-  test('a stored row is cleaned again when read', () => {
-    store.db
-      .query('UPDATE pages SET published = ? WHERE slug = ?')
-      .run(JSON.stringify({ slug: 'about', title: 'About', blocks: [{ type: 'carousel' }, { type: 'text', style: { color: { value: 'red;}' } } }] }), 'about');
-    const about = store.published().find((p) => p.slug === 'about')!;
+  test('a stored row is cleaned again when read', async () => {
+    await store.rawForTests('UPDATE pages SET published = ? WHERE slug = ?', [JSON.stringify({ slug: 'about', title: 'About', blocks: [{ type: 'carousel' }, { type: 'text', style: { color: { value: 'red;}' } } }] }), 'about']);
+    const about = (await store.published()).find((p) => p.slug === 'about')!;
     expect(about.blocks).toHaveLength(1);
     expect(about.blocks[0]!.style).toBeUndefined();
   });
@@ -127,7 +125,7 @@ describe('export', () => {
     expect(first).toEqual(['.thecms-export', '404.html', 'about/index.html', 'assets/site.css', 'contact/index.html', 'index.html', 'robots.txt', 'sitemap.xml']);
     expect(await Bun.file(join(out, 'about/index.html')).text()).toContain('Three people and a workshop');
 
-    store.db.query('UPDATE pages SET published = NULL WHERE slug = ?').run('about');
+    await store.rawForTests('UPDATE pages SET published = NULL WHERE slug = ?', ['about']);
     await exportSite(store, out);
     expect(await readdir(out)).not.toContain('about');
   });
@@ -140,19 +138,19 @@ describe('export', () => {
   });
 
   test('refuses to publish a site with no home page', async () => {
-    store.db.query('UPDATE pages SET published = NULL WHERE slug = ?').run('');
+    await store.rawForTests('UPDATE pages SET published = NULL WHERE slug = ?', ['']);
     expect(exportSite(store, join(dir, 'out'))).rejects.toThrow(/home page/);
   });
 });
 
-test('a button with words but no address is not drawn for visitors', () => {
+test('a button with words but no address is not drawn for visitors', async () => {
   const { page } = normalizePage({ slug: 'x', title: 'X', blocks: [{ type: 'hero', content: { title: 't', action: { label: 'Soon', href: 'javascript:1' } } }] });
   const html = renderPage({ ...site, action: null }, themeOf(plain), page, []);
   expect(html).not.toContain('Soon');
   expect(html).not.toContain('class="button"');
 });
 
-test('editor marks exist only in the editor', () => {
+test('editor marks exist only in the editor', async () => {
   const page = normalizePage(DEMO_PAGES[0]).page;
   const editing = renderParts(site, themeOf(plain), page, [], true).body;
   const visitor = renderParts(site, themeOf(plain), page, []).body;
@@ -163,12 +161,12 @@ test('editor marks exist only in the editor', () => {
 });
 
 test('a theme being worked on does not reach the export until it is published', async () => {
-  const css = async (): Promise<string> => (await buildSite(site, store.publishedTheme() as Theme, store.published())).get('assets/site.css') as string;
-  store.setTheme(studio);
-  expect(store.themeChanged()).toBe(true);
-  expect(store.theme()!.name).toBe('Studio');
+  const css = async (): Promise<string> => (await buildSite(site, await store.publishedTheme() as Theme, await store.published())).get('assets/site.css') as string;
+  await store.setTheme(studio);
+  expect(await store.themeChanged()).toBe(true);
+  expect((await store.theme())!.name).toBe('Studio');
   expect(await css()).toContain('--t-color-background:#ffffff');
-  store.publishTheme();
-  expect(store.themeChanged()).toBe(false);
+  await store.publishTheme();
+  expect(await store.themeChanged()).toBe(false);
   expect(await css()).toContain('--t-color-background:#12110f');
 });

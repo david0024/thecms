@@ -23,7 +23,7 @@ const body = (blocks: Block[]): RichNode[] => blocks.flatMap((b) => (b.type === 
 const words = (node: RichNode | undefined): string => (node && 'children' in node ? node.children.map((s) => s.text).join('') : '');
 
 describe('reading XML', () => {
-  test('elements, attributes, CDATA and entities', () => {
+  test('elements, attributes, CDATA and entities', async () => {
     const root = parseXml('<?xml version="1.0"?><!-- note --><a x="1 &amp; 2"><wp:b><![CDATA[<p>raw &amp;</p>]]></wp:b><c>Tom &amp; &#8217;Jerry&#x27;</c><d/></a>');
     expect(root.attrs.x).toBe('1 & 2');
     expect(textOf(root, 'wp:b')).toBe('<p>raw &amp;</p>');
@@ -31,20 +31,20 @@ describe('reading XML', () => {
     expect(root.children.map((c) => c.name)).toEqual(['wp:b', 'c', 'd']);
   });
 
-  test('a file that is not well formed is refused, with the line', () => {
+  test('a file that is not well formed is refused, with the line', async () => {
     expect(() => parseXml('<a>\n<b>\n</a>')).toThrow('line 3');
     expect(() => parseXml('<a><![CDATA[never')).toThrow('never closed');
     expect(() => parseXml('just words')).toThrow('no element');
   });
 
-  test('an entity the file declares is never resolved', () => {
+  test('an entity the file declares is never resolved', async () => {
     const root = parseXml('<!DOCTYPE a [<!ENTITY xxe SYSTEM "file:///etc/passwd">]><a>&xxe;</a>');
     expect(root.text).toContain('&xxe;');
   });
 });
 
 describe('reading HTML', () => {
-  test('it never throws, and unclosed or stray tags lose nothing', () => {
+  test('it never throws, and unclosed or stray tags lose nothing', async () => {
     expect(plainText(parseHtml('<p>one<p>two</div> 1 < 2 <b>three'))).toBe('onetwo 1 < 2 three');
     expect(plainText(parseHtml('<script>if (a<b) alert("</p>")</script>after<!-- gone -->'))).toBe('after');
   });
@@ -53,7 +53,7 @@ describe('reading HTML', () => {
 describe('content as blocks', () => {
   beforeEach(() => void (lost.length = 0));
 
-  test('meaning is kept, appearance is not', () => {
+  test('meaning is kept, appearance is not', async () => {
     const blocks = htmlToBlocks('<!-- wp:paragraph --><p style="color:red" class="has-large-font-size">A <strong>bold <em>move</em></strong> and <a href="/x/" onclick="evil()">a link</a></p>', ctx);
     expect(JSON.stringify(blocks)).not.toMatch(/red|large|onclick|evil/);
     expect(body(blocks)[0]).toEqual({
@@ -62,20 +62,20 @@ describe('content as blocks', () => {
     });
   });
 
-  test('headings keep their order under the page title; an image splits the text around it', () => {
+  test('headings keep their order under the page title; an image splits the text around it', async () => {
     const blocks = htmlToBlocks('<!-- wp:x --><h1>One</h1><h3>Two</h3><h6>Three</h6><p>Before <img src="https://a.example/p.png" alt="P"> after</p><p>More</p>', ctx);
     expect(blocks.map((b) => b.type)).toEqual(['text', 'image', 'text']);
     expect(body(blocks).map((n) => (n.type === 'heading' ? n.level : n.type))).toEqual([2, 3, 4, 'paragraph', 'paragraph']);
   });
 
-  test('classic content: a line break in the text is a line on the page', () => {
+  test('classic content: a line break in the text is a line on the page', async () => {
     const blocks = htmlToBlocks('First line\nSecond line\n\nNew paragraph<br>after a break', ctx);
     expect(body(blocks).map(words)).toEqual(['First line', 'Second line', 'New paragraph', 'after a break']);
     // In block content a line break in the source means nothing.
     expect(body(htmlToBlocks('<!-- wp:paragraph --><p>one\ntwo</p>', ctx)).map(words)).toEqual(['one two']);
   });
 
-  test('a script, a form and a player are left out and named; their words do not leak', () => {
+  test('a script, a form and a player are left out and named; their words do not leak', async () => {
     const blocks = htmlToBlocks('<p>Hi</p><script>steal()</script><form><input name="q"><button>Go</button></form><video src="x.mp4"></video><style>p{}</style>', ctx);
     expect(JSON.stringify(blocks)).not.toMatch(/steal|Go|mp4|p\{\}/);
     expect(lost).toEqual(['scripts', 'forms', expect.stringContaining('embedded media')]);
@@ -84,27 +84,27 @@ describe('content as blocks', () => {
     expect(lost).toEqual(['scripts']);
   });
 
-  test('a shortcode is taken out and named; words in brackets are words', () => {
+  test('a shortcode is taken out and named; words in brackets are words', async () => {
     const blocks = htmlToBlocks('Hello [sic] [contact-form-7 id="1"] and [box]inside[/box] [1]', ctx);
     expect(body(blocks).map(words)).toEqual(['Hello [sic] and inside [1]']);
     expect(lost.map((l) => l.split(': ')[1])).toEqual(['contact-form-7', 'box']);
   });
 
-  test('an address that could run script does not survive the site\'s own cleaning', () => {
-    const store = new Store(':memory:');
-    const page = store.savePage({ title: 'T', blocks: htmlToBlocks('<p><a href="javascript:alert(1)">x</a></p><img src="javascript:alert(2)">', { ...ctx, image: (src) => src }) });
+  test('an address that could run script does not survive the site\'s own cleaning', async () => {
+    const store = await Store.open(':memory:');
+    const page = await store.savePage({ title: 'T', blocks: htmlToBlocks('<p><a href="javascript:alert(1)">x</a></p><img src="javascript:alert(2)">', { ...ctx, image: (src) => src }) });
     expect(JSON.stringify(page)).not.toContain('javascript');
-    store.close();
+    await store.close();
   });
 });
 
 describe('a WordPress export as a plan', () => {
-  test('anything else is refused before a site is touched', () => {
+  test('anything else is refused before a site is touched', async () => {
     expect(() => planImport('<rss><channel><title>A feed</title></channel></rss>', '2026-01-01')).toThrow('not a WordPress export');
     expect(() => planImport('not xml at all', '2026-01-01')).toThrow();
   });
 
-  test('pages: the front page is the home page, trash stays behind, private comes as a draft', () => {
+  test('pages: the front page is the home page, trash stays behind, private comes as a draft', async () => {
     const { site, pages } = plan();
     expect(site).toEqual({ name: 'Atelier & Co', language: 'en-US', url: 'https://old.example' });
     expect(pages.map((p) => [p.slug, p.title, p.publish])).toEqual([
@@ -116,7 +116,7 @@ describe('a WordPress export as a plan', () => {
     expect(pages[1]?.description).toBe('Who we are and how we work.');
   });
 
-  test('posts: date, excerpt, categories and cover; a post with no title or date still comes', () => {
+  test('posts: date, excerpt, categories and cover; a post with no title or date still comes', async () => {
     const { posts } = plan();
     expect(posts[0]).toMatchObject({
       slug: 'hello-world',
@@ -129,14 +129,14 @@ describe('a WordPress export as a plan', () => {
     expect(posts[1]).toMatchObject({ slug: 'post-11', title: 'Untitled', date: '2026-11-17', publish: false });
   });
 
-  test('links inside the old site lead to the new addresses, whatever way they were written', () => {
+  test('links inside the old site lead to the new addresses, whatever way they were written', async () => {
     const home = JSON.stringify(plan().pages[0]);
     expect(home).toContain('"href":"/about/"');
     expect(home).toContain('"href":"/blog/hello-world/#more"');
     expect(home).toContain('"href":"https://other.example/x"');
   });
 
-  test('images: the full picture is fetched, not the resized copy; pictures elsewhere are left there', () => {
+  test('images: the full picture is fetched, not the resized copy; pictures elsewhere are left there', async () => {
     const p = plan();
     expect(p.images).toEqual(['https://old.example/wp-content/uploads/2024/01/photo.jpg', 'https://old.example/wp-content/uploads/2024/01/pic2.png']);
     expect(JSON.stringify(p.pages)).not.toMatch(/300x200|150x150/);
@@ -148,7 +148,7 @@ describe('a WordPress export as a plan', () => {
     expect(p.pages[0]?.blocks[0]).toMatchObject({ type: 'hero', content: { title: 'Atelier & Co', subtitle: 'Things made of wood' } });
   });
 
-  test('the menu: pages by name, the posts page as the blog, a category, an outside link; a trashed page is left out', () => {
+  test('the menu: pages by name, the posts page as the blog, a category, an outside link; a trashed page is left out', async () => {
     const menu = plan().menu ?? [];
     expect(menu.map((m) => [m.label, m.target, m.children.length])).toEqual([
       ['Start', { kind: 'page', slug: '' }, 0],
@@ -160,7 +160,7 @@ describe('a WordPress export as a plan', () => {
     expect(menu[1]?.children[0]).toMatchObject({ label: 'Web work', target: { kind: 'page', slug: 'web' } });
   });
 
-  test('a block theme\'s menu is read from its navigation blocks', () => {
+  test('a block theme\'s menu is read from its navigation blocks', async () => {
     const nav = `<item><title>Navigation</title><link>https://old.example/?p=50</link><content:encoded><![CDATA[<!-- wp:navigation-link {"label":"About <b>us</b>","type":"page","id":3,"url":"https://old.example/about/","kind":"post-type"} /-->
 <!-- wp:navigation-submenu {"label":"More","url":"#","kind":"custom"} -->
 <!-- wp:navigation-link {"label":"News","url":"https://old.example/blog/","kind":"custom"} /-->
@@ -174,7 +174,7 @@ describe('a WordPress export as a plan', () => {
     expect(menu[1]?.children[0]).toMatchObject({ label: 'News', target: { kind: 'blog' } });
   });
 
-  test('old addresses that changed are remembered; ones that did not are not', () => {
+  test('old addresses that changed are remembered; ones that did not are not', async () => {
     expect(plan().redirects).toEqual([
       { from: '/about/web/', to: '/web/' },
       { from: '/2024/01/hello-world/', to: '/blog/hello-world/' },
@@ -182,7 +182,7 @@ describe('a WordPress export as a plan', () => {
     ]);
   });
 
-  test('the owner is told what did not come over', () => {
+  test('the owner is told what did not come over', async () => {
     const notes = plan().notes.join('\n');
     for (const said of ['2 menus', 'latest-posts', 'column layouts', 'tables', 'contact-form-7', 'scripts', 'embedded media', '"Secret"', 'Links to files', '1 comment not', '1 tag not', '"product"', 'sit at the top level']) {
       expect(notes).toContain(said);
@@ -191,7 +191,7 @@ describe('a WordPress export as a plan', () => {
     expect(notes).not.toMatch(/not pages or posts[^\n]*"Home"/);
   });
 
-  test('a site that showed its posts on the front gets a home page, and is told', () => {
+  test('a site that showed its posts on the front gets a home page, and is told', async () => {
     const p = planImport(WXR.replace('<link>https://old.example/</link>', '<link>https://old.example/home/</link>'), '2026-11-17');
     expect(p.pages.map((x) => x.slug)).toEqual(['', 'home', 'about', 'web', 'secret']);
     expect(p.pages[0]?.blocks.map((b) => b.type)).toEqual(['hero', 'entries']);
@@ -203,13 +203,13 @@ describe('a WordPress export as a plan', () => {
 });
 
 describe('kinds of entry a plugin added', () => {
-  test('are left out and named, with the way to bring them', () => {
+  test('are left out and named, with the way to bring them', async () => {
     const p = plan();
     expect(p.types).toEqual([]);
     expect(p.notes.join('\n')).toContain('run the import again with --types=product');
   });
 
-  test('the ones the owner names come as content types, with their entries, links and old addresses', () => {
+  test('the ones the owner names come as content types, with their entries, links and old addresses', async () => {
     const p = planImport(WXR, '2026-11-17', { types: ['product', 'revision', 'page', 'nothing-like-this'] });
     expect(p.types.map((t) => [t.id, t.name, t.path])).toEqual([['product', 'Product', 'product']]);
     expect(p.entries.product).toEqual([expect.objectContaining({ slug: 'chair', title: 'Chair', publish: true, categories: [] })]);
@@ -219,17 +219,17 @@ describe('kinds of entry a plugin added', () => {
   });
 
   test('carried out, the site has the type and its entries; a second run adds nothing', async () => {
-    const store = new Store(':memory:');
-    store.setTheme(plain);
+    const store = await Store.open(':memory:');
+    await store.setTheme(plain);
     const p = planImport(WXR, '2026-11-17', { types: ['product'] });
     const first = await runImport(store, p, { fetchImage: null, fresh: true });
     expect(first.entries).toBe(1);
-    expect(store.site().types.map((t) => t.id)).toEqual(['product']);
-    expect(store.publishedEntries('product').map((e) => e.title)).toEqual(['Chair']);
+    expect((await store.site()).types.map((t) => t.id)).toEqual(['product']);
+    expect((await store.publishedEntries('product')).map((e) => e.title)).toEqual(['Chair']);
     const again = await runImport(store, p, { fetchImage: null, fresh: false });
     expect(again).toMatchObject({ entries: 0 });
-    expect(store.site().types).toHaveLength(1);
-    store.close();
+    expect((await store.site()).types).toHaveLength(1);
+    await store.close();
   });
 });
 
@@ -245,13 +245,13 @@ describe('carrying the plan out', () => {
 
   beforeEach(async () => {
     dir = await mkdtemp(join(tmpdir(), 'thecms-import-'));
-    store = new Store(join(dir, 'site.db'));
-    store.setTheme(plain);
-    store.publishTheme();
+    store = await Store.open(join(dir, 'site.db'));
+    await store.setTheme(plain);
+    await store.publishTheme();
     fetched.length = 0;
   });
   afterEach(async () => {
-    store.close();
+    await store.close();
     await rm(dir, { recursive: true, force: true });
   });
 
@@ -259,13 +259,13 @@ describe('carrying the plan out', () => {
     const report = await runImport(store, plan(), { fetchImage, fresh: true });
     expect(report).toMatchObject({ pages: 4, posts: 2, drafts: 2, images: 1, redirects: 3, menu: true });
     expect(fetched.sort()).toHaveLength(2);
-    const [stored] = store.media();
+    const [stored] = await store.media();
     expect(stored?.label).toBe('photo.jpg');
-    expect(JSON.stringify(store.draft(''))).toContain(stored?.path as string);
-    expect(store.publishedPosts()[0]?.cover?.src).toBe(stored?.path as string);
-    expect(JSON.stringify(store.draft('about'))).toContain('https://old.example/wp-content/uploads/2024/01/pic2.png');
+    expect(JSON.stringify(await store.draft(''))).toContain(stored?.path as string);
+    expect((await store.publishedPosts())[0]?.cover?.src).toBe(stored?.path as string);
+    expect(JSON.stringify(await store.draft('about'))).toContain('https://old.example/wp-content/uploads/2024/01/pic2.png');
     expect(report.notes.join('\n')).toContain('pic2.png (the old site answered 404)');
-    expect(store.mediaUsedBy(stored?.name as string)).toEqual(['Home', 'About & Team', 'Hello world']);
+    expect(await store.mediaUsedBy(stored?.name as string)).toEqual(['Home', 'About & Team', 'Hello world']);
   });
 
   test('over a real connection: an image is fetched, a missing one and one too large are refused', async () => {
@@ -290,25 +290,25 @@ describe('carrying the plan out', () => {
   test('a page that is not an image is not stored as one', async () => {
     const report = await runImport(store, plan(), { fetchImage: async () => new TextEncoder().encode('<html>Not found, but 200</html>'), fresh: true });
     expect(report.images).toBe(0);
-    expect(store.media()).toEqual([]);
+    expect(await store.media()).toEqual([]);
     expect(report.notes.join('\n')).toContain('not an image this site can show');
   });
 
   test('what was published is published, what was not is a draft; the site takes the old name, address and menu', async () => {
     await runImport(store, plan(), { fetchImage, fresh: true });
-    expect(store.published().map((p) => p.slug)).toEqual(['', 'about', 'web']);
-    expect(store.publishedPosts().map((p) => p.slug)).toEqual(['hello-world']);
-    expect(store.site()).toMatchObject({ name: 'Atelier & Co', language: 'en-US', url: 'https://old.example' });
-    expect(store.site().menu).toHaveLength(5);
+    expect((await store.published()).map((p) => p.slug)).toEqual(['', 'about', 'web']);
+    expect((await store.publishedPosts()).map((p) => p.slug)).toEqual(['hello-world']);
+    expect(await store.site()).toMatchObject({ name: 'Atelier & Co', language: 'en-US', url: 'https://old.example' });
+    expect((await store.site()).menu).toHaveLength(5);
   });
 
   test('importing again, or into a site already begun, replaces nothing', async () => {
-    store.setSite({ name: 'Mine' });
-    store.savePage({ slug: 'about', title: 'My own about page', blocks: [] });
+    await store.setSite({ name: 'Mine' });
+    await store.savePage({ slug: 'about', title: 'My own about page', blocks: [] });
     const first = await runImport(store, plan(), { fetchImage: null, fresh: false });
     expect(first).toMatchObject({ pages: 3, images: 0, menu: false });
-    expect(store.draft('about')?.title).toBe('My own about page');
-    expect(store.site()).toMatchObject({ name: 'Mine', menu: null });
+    expect((await store.draft('about'))?.title).toBe('My own about page');
+    expect(await store.site()).toMatchObject({ name: 'Mine', menu: null });
     expect(first.notes.join('\n')).toMatch(/2 images were not copied[\s\S]*the page "About & Team"/);
     const again = await runImport(store, plan(), { fetchImage: null, fresh: false });
     expect(again).toMatchObject({ pages: 0, posts: 0, redirects: 0 });
@@ -330,7 +330,7 @@ describe('carrying the plan out', () => {
 });
 
 describe('old addresses', () => {
-  test('only a path a file can safely be written at is kept', () => {
+  test('only a path a file can safely be written at is kept', async () => {
     const cleaned = normalizeRedirects([
       { from: '/old', to: '/new/' },
       { from: '/old/', to: '/other/' },

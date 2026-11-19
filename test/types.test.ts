@@ -29,7 +29,7 @@ const entry = (type: ContentType, over: Record<string, unknown>): Post => normal
 const text = (files: Map<string, string | Uint8Array>, path: string): string => files.get(path) as string;
 
 describe('a content type as a document', () => {
-  test('a type is a name, an address and a few choices; the rest is worked out', () => {
+  test('a type is a name, an address and a few choices; the rest is worked out', async () => {
     expect(projects).toEqual({
       id: 'projects',
       name: 'Projects',
@@ -48,7 +48,7 @@ describe('a content type as a document', () => {
     });
   });
 
-  test('two types never answer at one address, and none takes the site\'s own', () => {
+  test('two types never answer at one address, and none takes the site\'s own', async () => {
     const types = normalizeTypes([
       { name: 'Team' },
       { name: 'People', path: 'team' },
@@ -64,7 +64,7 @@ describe('a content type as a document', () => {
     expect(normalizeTypes(Array.from({ length: 30 }, (_, i) => ({ name: `Type ${i}` })))).toHaveLength(12);
   });
 
-  test('a feed needs dates; a field keeps its key when it is renamed; a field of an unknown kind is short text', () => {
+  test('a feed needs dates; a field keeps its key when it is renamed; a field of an unknown kind is short text', async () => {
     expect(normalizeTypes([{ name: 'A', feed: true }])[0]?.feed).toBe(false);
     expect(normalizeTypes([{ name: 'A', feed: true, dated: true }])[0]?.feed).toBe(true);
     const fields = normalizeTypes([{ name: 'A', fields: [{ key: 'client', label: 'Customer' }, { label: 'Customer' }, { label: 'Client', kind: 'script' }] }])[0]?.fields;
@@ -74,7 +74,7 @@ describe('a content type as a document', () => {
     ]);
   });
 
-  test('posts are always the first type, named as the site names its blog', () => {
+  test('posts are always the first type, named as the site names its blog', async () => {
     expect(contentTypes(normalizeSite({ blogTitle: 'Journal', types: [PROJECTS] })).map((t) => [t.id, t.name, t.path])).toEqual([
       ['posts', 'Journal', 'blog'],
       ['projects', 'Projects', 'projects'],
@@ -83,7 +83,7 @@ describe('a content type as a document', () => {
 });
 
 describe('an entry of a type', () => {
-  test('it holds what its type asks for, each value checked as its kind, and nothing else', () => {
+  test('it holds what its type asks for, each value checked as its kind, and nothing else', async () => {
     const cleaned = entry(projects, {
       title: 'A kitchen',
       categories: ['Homes'],
@@ -100,7 +100,7 @@ describe('an entry of a type', () => {
     expect(cleaned.categories).toEqual(['Homes']);
   });
 
-  test('a type without categories keeps none; a post has no extra fields', () => {
+  test('a type without categories keeps none; a post has no extra fields', async () => {
     const events = normalizeTypes([{ name: 'Events', dated: true }])[0] as ContentType;
     expect(entry(events, { title: 'E', categories: ['News'] }).categories).toEqual([]);
     expect(entry(postsType(), { title: 'P', fields: { client: 'x' } }).fields).toEqual({});
@@ -109,57 +109,57 @@ describe('an entry of a type', () => {
 
 describe('the store keeps every type', () => {
   let store: Store;
-  beforeEach(() => {
-    store = new Store(':memory:');
-    store.setSite(site);
+  beforeEach(async () => {
+    store = await Store.open(':memory:');
+    await store.setSite(site);
   });
-  afterEach(() => store.close());
+  afterEach(async () => await store.close());
 
-  test('entries of two types may share an address word; each type lists its own', () => {
-    store.saveEntry('projects', { title: 'Opening' });
-    store.saveEntry('events', { title: 'Opening', date: '2026-03-01' });
-    store.savePost({ title: 'Opening' });
-    expect(store.entries('projects').map((e) => e.slug)).toEqual(['opening']);
-    expect(store.entries('events')).toHaveLength(1);
-    expect(store.posts()).toHaveLength(1);
-    store.deleteEntry('projects', 'opening');
-    expect(store.entries('projects')).toEqual([]);
-    expect(store.entries('events')).toHaveLength(1);
-  });
-
-  test('a type that is not dated lists by title; a dated one, newest first', () => {
-    for (const title of ['Zebra', 'apple', 'Mango']) store.saveEntry('projects', { title });
-    expect(store.entries('projects').map((e) => e.title)).toEqual(['apple', 'Mango', 'Zebra']);
-    store.saveEntry('events', { title: 'Old', date: '2025-01-01' });
-    store.saveEntry('events', { title: 'New', date: '2026-01-01' });
-    expect(store.entries('events').map((e) => e.title)).toEqual(['New', 'Old']);
+  test('entries of two types may share an address word; each type lists its own', async () => {
+    await store.saveEntry('projects', { title: 'Opening' });
+    await store.saveEntry('events', { title: 'Opening', date: '2026-03-01' });
+    await store.savePost({ title: 'Opening' });
+    expect((await store.entries('projects')).map((e) => e.slug)).toEqual(['opening']);
+    expect(await store.entries('events')).toHaveLength(1);
+    expect(await store.posts()).toHaveLength(1);
+    await store.deleteEntry('projects', 'opening');
+    expect(await store.entries('projects')).toEqual([]);
+    expect(await store.entries('events')).toHaveLength(1);
   });
 
-  test('an entry of a type the site does not have is an error, not a silent post', () => {
-    expect(() => store.saveEntry('recipes', { title: 'Soup' })).toThrow('no content type "recipes"');
-    expect(() => store.entries('recipes')).toThrow();
+  test('a type that is not dated lists by title; a dated one, newest first', async () => {
+    for (const title of ['Zebra', 'apple', 'Mango']) await store.saveEntry('projects', { title });
+    expect((await store.entries('projects')).map((e) => e.title)).toEqual(['apple', 'Mango', 'Zebra']);
+    await store.saveEntry('events', { title: 'Old', date: '2025-01-01' });
+    await store.saveEntry('events', { title: 'New', date: '2026-01-01' });
+    expect((await store.entries('events')).map((e) => e.title)).toEqual(['New', 'Old']);
   });
 
-  test('a page and a type cannot share an address, whichever comes first', () => {
-    expect(() => store.savePage({ slug: 'projects', title: 'Projects' })).toThrow('used by the site itself');
-    store.savePage({ slug: 'team', title: 'Team' });
-    expect(() => store.setSite({ ...site, types: [...site.types, { name: 'Team' }] })).toThrow('a page already lives at "/team/"');
-    expect(store.site().types.map((t) => t.id)).toEqual(['projects', 'events']);
+  test('an entry of a type the site does not have is an error, not a silent post', async () => {
+    await expect(store.saveEntry('recipes', { title: 'Soup' })).rejects.toThrow('no content type "recipes"');
+    await expect(store.entries('recipes')).rejects.toThrow();
   });
 
-  test('a type that still has entries is not removed', () => {
-    store.saveEntry('projects', { title: 'A kitchen' });
-    expect(() => store.setSite({ ...site, types: [] })).toThrow('"Projects" still has 1 entry');
-    store.deleteEntry('projects', 'a-kitchen');
-    expect(store.setSite({ ...site, types: [] }).types).toEqual([]);
+  test('a page and a type cannot share an address, whichever comes first', async () => {
+    await expect(store.savePage({ slug: 'projects', title: 'Projects' })).rejects.toThrow('used by the site itself');
+    await store.savePage({ slug: 'team', title: 'Team' });
+    await expect(store.setSite({ ...site, types: [...site.types, { name: 'Team' }] })).rejects.toThrow('a page already lives at "/team/"');
+    expect((await store.site()).types.map((t) => t.id)).toEqual(['projects', 'events']);
+  });
+
+  test('a type that still has entries is not removed', async () => {
+    await store.saveEntry('projects', { title: 'A kitchen' });
+    await expect(store.setSite({ ...site, types: [] })).rejects.toThrow('"Projects" still has 1 entry');
+    await store.deleteEntry('projects', 'a-kitchen');
+    expect((await store.setSite({ ...site, types: [] })).types).toEqual([]);
   });
 
   test('an image in a field counts as used', async () => {
     const png = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='), (c) => c.charCodeAt(0));
-    const image = store.addMedia(png, 'plan.png');
-    store.saveEntry('projects', { title: 'A kitchen', fields: { plan: { src: image.path, alt: 'The plan' } } });
-    expect(store.mediaUsedBy(image.name)).toEqual(['A kitchen']);
-    expect(() => store.deleteMedia(image.name)).toThrow('A kitchen');
+    const image = await store.addMedia(png, 'plan.png');
+    await store.saveEntry('projects', { title: 'A kitchen', fields: { plan: { src: image.path, alt: 'The plan' } } });
+    expect(await store.mediaUsedBy(image.name)).toEqual(['A kitchen']);
+    await expect(store.deleteMedia(image.name)).rejects.toThrow('A kitchen');
   });
 });
 
@@ -168,7 +168,7 @@ describe('a site made before there were content types', () => {
   beforeEach(async () => void (dir = await mkdtemp(join(tmpdir(), 'thecms-types-'))));
   afterEach(() => rm(dir, { recursive: true, force: true }));
 
-  test('its posts are still its posts', () => {
+  test('its posts are still its posts', async () => {
     const path = join(dir, 'old.db');
     const old = new Database(path, { create: true });
     old.exec('CREATE TABLE posts (slug TEXT PRIMARY KEY, draft TEXT NOT NULL, published TEXT, published_at TEXT, updated_at TEXT NOT NULL)');
@@ -177,10 +177,10 @@ describe('a site made before there were content types', () => {
     old.query('INSERT INTO posts VALUES (?, ?, NULL, NULL, ?)').run('draft', JSON.stringify({ slug: 'draft', title: 'Draft', blocks: [] }), '2025-05-06');
     old.close();
     for (let opened = 0; opened < 2; opened++) {
-      const store = new Store(path);
-      expect(store.posts().map((p) => [p.slug, p.published])).toEqual([['hello', true], ['draft', false]]);
-      expect(store.publishedPosts().map((p) => p.title)).toEqual(['Hello']);
-      store.close();
+      const store = await Store.open(path);
+      expect((await store.posts()).map((p) => [p.slug, p.published])).toEqual([['hello', true], ['draft', false]]);
+      expect((await store.publishedPosts()).map((p) => p.title)).toEqual(['Hello']);
+      await store.close();
     }
   });
 });
@@ -245,15 +245,15 @@ describe('the editing API', () => {
   const call = (path: string, init: RequestInit = {}): Promise<Response> =>
     editor.fetch(new Request(`http://127.0.0.1:${editor.port}${path}`, { ...init, headers: { 'x-thecms-token': editor.token, host: `127.0.0.1:${editor.port}`, 'content-type': 'application/json' } }));
   beforeEach(async () => {
-    store = new Store(':memory:');
-    store.setSite(site);
-    store.setTheme(plain);
-    store.savePage(home);
+    store = await Store.open(':memory:');
+    await store.setSite(site);
+    await store.setTheme(plain);
+    await store.savePage(home);
     editor = await startEditor(store, { listen: false });
   });
-  afterEach(() => {
+  afterEach(async () => {
     editor.stop();
-    store.close();
+    await store.close();
   });
 
   test('an entry of any type is made, drawn and published through the same calls as a page', async () => {
@@ -268,14 +268,14 @@ describe('the editing API', () => {
     expect(drawn.body).toContain('<dt>Client</dt>');
     expect(drawn.body).toContain('<a href="/projects/" aria-current="page">Projects</a>');
     await call('/api/publish', { method: 'POST', body: JSON.stringify({ kind: 'projects', slug: 'a-kitchen' }) });
-    expect(store.publishedEntries('projects').map((e) => e.title)).toEqual(['A kitchen']);
+    expect((await store.publishedEntries('projects')).map((e) => e.title)).toEqual(['A kitchen']);
     expect((await call('/api/page', { method: 'PUT', body: JSON.stringify({ kind: 'projects', create: true, page: { title: 'A kitchen' } }) })).status).toBe(409);
   });
 
   test('a type the site does not have is refused; a page may not take a type\'s address; a type in use is not removed', async () => {
     expect((await call('/api/page', { method: 'PUT', body: JSON.stringify({ kind: 'recipes', create: true, page: { title: 'Soup' } }) })).status).toBe(400);
     expect((await call('/api/page', { method: 'PUT', body: JSON.stringify({ create: true, page: { title: 'Projects' } }) })).status).toBe(409);
-    store.saveEntry('projects', { title: 'A kitchen' });
+    await store.saveEntry('projects', { title: 'A kitchen' });
     const refused = await call('/api/site', { method: 'PUT', body: JSON.stringify({ site: { ...site, types: [] } }) });
     expect(refused.status).toBe(400);
     expect(((await refused.json()) as { error: string }).error).toContain('still has 1 entry');

@@ -80,7 +80,7 @@ export async function runImport(store: Store, plan: ImportPlan, options: ImportO
     await inTurns(plan.images, 4, async (url) => {
       try {
         const label = decodeURIComponent(new URL(url).pathname.split('/').pop() ?? '');
-        stored.set(url, store.addMedia(await fetchOne(url), label).path);
+        stored.set(url, (await store.addMedia(await fetchOne(url), label)).path);
       } catch (error) {
         failed.push(`${url} (${error instanceof Error ? error.message : String(error)})`);
       }
@@ -103,10 +103,10 @@ export async function runImport(store: Store, plan: ImportPlan, options: ImportO
   // first, so a type the site refuses (a page already lives at its address) is known before its entries.
   const added: typeof plan.types = [];
   for (const type of plan.types) {
-    const site = store.site();
+    const site = await store.site();
     if (!site.types.some((t) => t.id === type.id)) {
       try {
-        store.setSite({ ...site, types: [...site.types, type] });
+        await store.setSite({ ...site, types: [...site.types, type] });
       } catch (error) {
         notes.push(`The content type "${type.name}" was not added, and its entries were not imported: ${error instanceof Error ? error.message : String(error)}.`);
         continue;
@@ -115,36 +115,36 @@ export async function runImport(store: Store, plan: ImportPlan, options: ImportO
     added.push(type);
   }
 
-  const reserved = new Set(reservedSlugs(store.site()));
+  const reserved = new Set(reservedSlugs(await store.site()));
   for (const { publish, ...page } of plan.pages) {
-    if (store.draft(page.slug) || reserved.has(page.slug)) {
+    if ((await store.draft(page.slug)) || reserved.has(page.slug)) {
       kept.push(`the page "${page.title}"`);
       continue;
     }
-    const saved = store.savePage(repoint(page, src));
-    if (publish) store.publish(saved.slug);
+    const saved = await store.savePage(repoint(page, src));
+    if (publish) await store.publish(saved.slug);
     else drafts++;
     pages++;
   }
   for (const { publish, ...post } of plan.posts) {
-    if (store.postDraft(post.slug)) {
+    if (await store.postDraft(post.slug)) {
       kept.push(`the post "${post.title}"`);
       continue;
     }
-    const saved = store.savePost(repoint(post, src));
-    if (publish) store.publishPost(saved.slug);
+    const saved = await store.savePost(repoint(post, src));
+    if (publish) await store.publishPost(saved.slug);
     else drafts++;
     posts++;
   }
   let entries = 0;
   for (const type of added) {
     for (const { publish, ...entry } of plan.entries[type.id] ?? []) {
-      if (store.entryDraft(type.id, entry.slug)) {
+      if (await store.entryDraft(type.id, entry.slug)) {
         kept.push(`"${entry.title}" (${type.name})`);
         continue;
       }
-      const saved = store.saveEntry(type.id, repoint(entry, src));
-      if (publish) store.publishEntry(type.id, saved.slug);
+      const saved = await store.saveEntry(type.id, repoint(entry, src));
+      if (publish) await store.publishEntry(type.id, saved.slug);
       else drafts++;
       entries++;
     }
@@ -154,12 +154,12 @@ export async function runImport(store: Store, plan: ImportPlan, options: ImportO
   let menu: MenuNode[] | null = null;
   if (options.fresh) {
     menu = plan.menu;
-    store.setSite({ ...store.site(), ...plan.site, menu });
+    await store.setSite({ ...(await store.site()), ...plan.site, menu });
   } else if (plan.menu) {
     notes.push('The site already had its settings, so its name, address and menu were left alone.');
   }
-  const before = store.redirects();
-  const redirects = store.setRedirects([...before, ...plan.redirects]).length - before.length;
+  const before = await store.redirects();
+  const redirects = (await store.setRedirects([...before, ...plan.redirects])).length - before.length;
 
   return { pages, posts, entries, drafts, images: stored.size, redirects, menu: menu !== null, notes };
 }

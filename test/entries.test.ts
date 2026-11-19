@@ -13,7 +13,7 @@ const page = (content: Record<string, unknown>, slug = '') => ({ slug, title: 'H
 const posts = [post('First', '2026-01-01'), post('Second', '2026-02-01', { excerpt: 'About <i>the</i> second.' }), post('Third', '2026-03-01'), post('Fourth', '2026-04-01')];
 
 describe('a block that lists entries', () => {
-  test('holds which type and how many, never the entries themselves', () => {
+  test('holds which type and how many, never the entries themselves', async () => {
     expect(createBlock('entries').content).toEqual({ title: 'Latest posts', source: 'posts', count: 3, more: 'See all' });
     expect(list({ source: 'Projects!', count: 400, entries: [{ title: 'smuggled' }] })[0]?.content).toEqual({ title: '', source: 'projects', count: 24, more: '' });
     expect(list({ count: 'many' })[0]?.content).toMatchObject({ source: 'posts', count: 1 });
@@ -56,7 +56,7 @@ describe('a block that lists entries', () => {
     }
   });
 
-  test('in the editor the author is told why it is empty, and sees drafts once there are some', () => {
+  test('in the editor the author is told why it is empty, and sees drafts once there are some', async () => {
     const empty = renderParts(site, theme, page({ source: 'projects', count: 3 }), [], true, {}).body;
     expect(empty).toContain('Nothing has been posted yet.');
     const filled = renderParts(site, theme, page({ source: 'projects', count: 3 }), [], true, { projects: { type: projects, entries: [post('A draft', '2026-01-01')] } }).body;

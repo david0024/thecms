@@ -27,6 +27,7 @@ The decisions behind this, each with its reason:
 - [ADR 0010 — Content types](docs/adr/0010-content-types.md)
 - [ADR 0011 — A block that lists entries](docs/adr/0011-the-entries-block.md)
 - [ADR 0012 — Importing from the admin](docs/adr/0012-import-from-the-admin.md)
+- [ADR 0013 — One store, three databases](docs/adr/0013-sqlite-postgres-mysql.md)
 
 ## Where it stands
 
@@ -37,6 +38,7 @@ theme, publish, and export the site as static files.
 |---|---|
 | Page model, block types, themes as data | done |
 | SQLite store, draft and published kept apart | done |
+| The same site on Postgres or MySQL, chosen by the address | done |
 | Static export with sitemap and robots.txt | done |
 | Visual editor: add, move, remove, type on the page, style with theme tokens | done |
 | Theme builder: tokens, block defaults and variants, themes as files | done |
@@ -61,6 +63,19 @@ bun run cms init site.db              # a sample site, in one file
 bun run cms edit site.db              # the visual editor; open the address it prints
 bun run cms export site.db dist       # the published site as static files
 ```
+
+`site.db` can be a Postgres or MySQL address instead of a file, and every
+command takes it the same way (ADR 0013):
+
+```sh
+bun run cms init postgres://user:pass@localhost:5432/mysite
+bun run cms edit mysql://user:pass@localhost:3306/mysite
+```
+
+MySQL 8.4 must allow `mysql_native_password` for the site's user for now
+(`--mysql-native-password=ON`); Postgres needs nothing special. To run the
+store's tests on them too, set `THECMS_TEST_POSTGRES` and `THECMS_TEST_MYSQL`
+to the address of an empty database each.
 
 The admin opens on the list of pages, with sections for posts, media, the menu
 and settings, and the theme. Choose a page to open it in the builder. There, click any text on the page and type. Add blocks from the left,
@@ -97,7 +112,7 @@ node e2e/editor.cjs        # the editor in a real browser, start to exported fil
 ```
 src/core/     documents and their rules; pure TypeScript, no database, no framework
 src/blocks/   one Svelte 5 component per block type, and the shared layout CSS
-src/site/     the SQLite store, the static export, the editing server, the command line
+src/site/     the store (SQLite, Postgres or MySQL), the static export, the editing server, the command line
 src/admin/    the editor: a Svelte 5 app and the script that runs inside the canvas
 themes/       themes, as JSON
 docs/adr/     decisions, with their reasons

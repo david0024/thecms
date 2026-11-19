@@ -156,31 +156,43 @@ export async function startEditor(store: Store, options: { port?: number; listen
   const token = crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, '');
   let port = options.port ?? 4321;
 
-  const theme = (): Theme => {
-    const current = store.theme();
+  const theme = async (): Promise<Theme> => {
+    const current = await store.theme();
     if (!current) throw new Error('this site has no theme yet');
     return current;
   };
+  type Listed = Awaited<ReturnType<Store['entries']>>;
+  /** Each content type's entries, by the type's name. */
+  const allEntries = async (): Promise<Record<string, Listed>> => {
+    const out: Record<string, Listed> = {};
+    for (const type of contentTypes(await store.site())) out[type.id] = await store.entries(type.id);
+    return out;
+  };
   // The menu as the editor shows it: from the drafts, with each content type as soon as it has an entry.
-  const menu = (): MenuItem[] => {
-    const site = store.site();
+  const menu = async (): Promise<MenuItem[]> => {
+    const site = await store.site();
+    const entries = await allEntries();
     return menuOf(
       site,
-      store.pages(),
+      await store.pages(),
       contentTypes(site)
-        .filter((type) => store.entries(type.id).length > 0)
+        .filter((type) => (entries[type.id]?.length ?? 0) > 0)
         .map((type): MenuList => ({ id: type.id, title: type.name, href: listPath(type) })),
     );
   };
   // What a block that lists entries shows in the editor: the drafts, so a post just written is there.
-  const entryLists = (): EntryLists => Object.fromEntries(contentTypes(store.site()).map((type) => [type.id, { type, entries: store.draftEntries(type.id) }]));
+  const entryLists = async (): Promise<EntryLists> => {
+    const out: EntryLists = {};
+    for (const type of contentTypes(await store.site())) out[type.id] = { type, entries: await store.draftEntries(type.id) };
+    return out;
+  };
   /** Every list the admin shows: the pages, and each content type's entries by the type's name. */
-  const lists = (): { pages: ReturnType<Store['pages']>; posts: ReturnType<Store['posts']>; entries: Record<string, ReturnType<Store['entries']>> } => ({
-    pages: store.pages(),
-    posts: store.posts(),
-    entries: Object.fromEntries(contentTypes(store.site()).map((type) => [type.id, store.entries(type.id)])),
+  const lists = async (): Promise<{ pages: Awaited<ReturnType<Store['pages']>>; posts: Listed; entries: Record<string, Listed> }> => ({
+    pages: await store.pages(),
+    posts: await store.posts(),
+    entries: await allEntries(),
   });
-  const state = (): unknown => ({ site: store.site(), theme: theme(), themeChanged: store.themeChanged(), themes, ...lists() });
+  const state = async (): Promise<unknown> => ({ site: await store.site(), theme: await theme(), themeChanged: await store.themeChanged(), themes, ...(await lists()) });
 
   /** One import at a time; it outlives the request that started it, because copying images takes minutes. */
   let importing: ImportProgress = { status: 'idle' };
@@ -221,16 +233,16 @@ export async function startEditor(store: Store, options: { port?: number; listen
   async function api(request: Request, url: URL): Promise<Response> {
     if (url.pathname.startsWith('/api/import')) return importApi(request, url);
     if (url.pathname === '/api/media') {
-      if (request.method === 'GET') return json({ media: store.media() });
+      if (request.method === 'GET') return json({ media: await store.media() });
       if (request.method === 'DELETE') {
-        store.deleteMedia(url.searchParams.get('name') ?? '');
-        return json({ media: store.media() });
+        await store.deleteMedia(url.searchParams.get('name') ?? '');
+        return json({ media: await store.media() });
       }
       if (request.method === 'POST') {
         // The body is the file itself. What it is, is read from its bytes.
         if (Number(request.headers.get('content-length') ?? 0) > MEDIA_MAX_BYTES) return json({ error: 'the image is too large' }, 413);
-        const item = store.addMedia(new Uint8Array(await request.arrayBuffer()), url.searchParams.get('label'));
-        return json({ item, media: store.media() });
+        const item = await store.addMedia(new Uint8Array(await request.arrayBuffer()), url.searchParams.get('label'));
+        return json({ item, media: await store.media() });
       }
     }
     const body = request.method === 'GET' || request.method === 'DELETE' ? {} : ((await request.json()) as Record<string, unknown>);
@@ -239,63 +251,63 @@ export async function startEditor(store: Store, options: { port?: number; listen
     // An entry of a content type is edited through the same calls as a page; `kind` names its type.
     const asked = String(url.searchParams.get('kind') ?? body.kind ?? 'page');
     if (asked !== 'page') {
-      const type = store.type(asked === 'post' ? POSTS_TYPE : asked);
+      const type = await store.type(asked === 'post' ? POSTS_TYPE : asked);
       switch (route) {
         case 'GET /api/page': {
-          const post = store.entryDraft(type.id, slug);
+          const post = await store.entryDraft(type.id, slug);
           return post ? json({ page: post }) : json({ error: 'no such entry' }, 404);
         }
         case 'PUT /api/page': {
           const { post, issues } = normalizePost(body.page, undefined, type);
           if (!post.title || !post.slug) return json({ error: 'an entry has a title', issues }, 400);
-          if (body.create === true && store.entryDraft(type.id, post.slug)) return json({ error: 'an entry with this address already exists' }, 409);
-          return json({ page: store.saveEntry(type.id, body.page), issues, ...lists() });
+          if (body.create === true && (await store.entryDraft(type.id, post.slug))) return json({ error: 'an entry with this address already exists' }, 409);
+          return json({ page: await store.saveEntry(type.id, body.page), issues, ...(await lists()) });
         }
         case 'DELETE /api/page':
-          store.deleteEntry(type.id, slug);
-          return json(lists());
+          await store.deleteEntry(type.id, slug);
+          return json(await lists());
         case 'POST /api/publish':
-          store.publishEntry(type.id, String(body.slug ?? ''));
-          return json(lists());
+          await store.publishEntry(type.id, String(body.slug ?? ''));
+          return json(await lists());
         case 'POST /api/render':
-          return json(renderPostParts(store.site(), theme(), normalizePost(body.page, new Date().toISOString().slice(0, 10), type).post, menu(), true, type, entryLists()));
+          return json(renderPostParts(await store.site(), await theme(), normalizePost(body.page, new Date().toISOString().slice(0, 10), type).post, await menu(), true, type, await entryLists()));
       }
     }
     switch (route) {
       case 'GET /api/state':
-        return json(state());
+        return json(await state());
       case 'GET /api/page': {
-        const page = store.draft(slug);
+        const page = await store.draft(slug);
         return page ? json({ page }) : json({ error: 'no such page' }, 404);
       }
       case 'PUT /api/page': {
         const { page, issues } = normalizePage(body.page);
         if (!page.title) return json({ error: 'a page has a title', issues }, 400);
         // A new page may not silently replace an existing one.
-        if (body.create === true && store.draft(page.slug)) return json({ error: 'a page with this address already exists' }, 409);
-        if (reservedSlugs(store.site()).includes(page.slug)) return json({ error: `the address "/${page.slug}/" is used by the site itself; choose another title` }, 409);
-        return json({ page: store.savePage(page), issues, ...lists() });
+        if (body.create === true && (await store.draft(page.slug))) return json({ error: 'a page with this address already exists' }, 409);
+        if (reservedSlugs(await store.site()).includes(page.slug)) return json({ error: `the address "/${page.slug}/" is used by the site itself; choose another title` }, 409);
+        return json({ page: await store.savePage(page), issues, ...(await lists()) });
       }
       case 'DELETE /api/page':
-        store.deletePage(slug);
-        return json(lists());
+        await store.deletePage(slug);
+        return json(await lists());
       case 'POST /api/publish':
-        store.publish(String(body.slug ?? ''));
-        return json(lists());
+        await store.publish(String(body.slug ?? ''));
+        return json(await lists());
       case 'POST /api/render': {
         // Drawn from what the admin holds, cleaned first: the canvas shows what would be saved.
         const { page } = normalizePage(body.page);
-        return json(renderParts(store.site(), theme(), page, menu(), true, entryLists()));
+        return json(renderParts(await store.site(), await theme(), page, await menu(), true, await entryLists()));
       }
       case 'PUT /api/theme':
-        store.setTheme(body.theme);
-        return json(state());
+        await store.setTheme(body.theme);
+        return json(await state());
       case 'POST /api/theme/publish':
-        store.publishTheme();
-        return json(state());
+        await store.publishTheme();
+        return json(await state());
       case 'PUT /api/site':
-        store.setSite(body.site);
-        return json(state());
+        await store.setSite(body.site);
+        return json(await state());
       default:
         return json({ error: 'not found' }, 404);
     }
@@ -320,7 +332,7 @@ export async function startEditor(store: Store, options: { port?: number; listen
     if (request.method !== 'GET') return json({ error: 'not found' }, 404);
     if (url.pathname.startsWith(MEDIA_PREFIX)) {
       // An <img> cannot carry the token, so a stored image is read without it. Its name is the hash of its bytes.
-      const file = store.mediaFile(url.pathname.slice(MEDIA_PREFIX.length));
+      const file = await store.mediaFile(url.pathname.slice(MEDIA_PREFIX.length));
       return file ? new Response(file.bytes as Uint8Array<ArrayBuffer>, { headers: { 'content-type': file.type, ...SECURITY } }) : json({ error: 'not found' }, 404);
     }
     switch (url.pathname) {
@@ -333,10 +345,10 @@ export async function startEditor(store: Store, options: { port?: number; listen
       case '/admin/frame.js':
         return text(assets.get(url.pathname.slice(7)) ?? '', 'text/javascript');
       case '/preview':
-        return html(previewPage(store.site().language));
+        return html(previewPage((await store.site()).language));
       case '/assets/site.css':
         // The structure first, the theme after it: where both set the same thing, the theme wins.
-        return text(`${baseCss}${themeCss(theme())}`, 'text/css');
+        return text(`${baseCss}${themeCss(await theme())}`, 'text/css');
       default:
         return json({ error: 'not found' }, 404);
     }

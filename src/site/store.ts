@@ -1,6 +1,9 @@
 /**
- * A site is one SQLite file (ADR 0001 d9): its settings, its theme, its pages
- * and the images on them. Copying the file is a backup.
+ * A site's settings, theme, pages, entries and images (ADR 0001 d9, ADR 0013).
+ * By default it is one SQLite file, and copying the file is a backup. The same
+ * store runs on Postgres or MySQL when it is given their address: the SQL here
+ * is what the three share, and where they differ (an upsert, a column type) it
+ * is said once, in a `Dialect`.
  *
  * A page, and the theme, each keep a working draft and, apart from it, a frozen
  * copy of what was last published. Visitors and the export only ever see the copy, so saving a
@@ -9,8 +12,12 @@
  *
  * Everything is cleaned by the core on the way in and again on the way out:
  * a row written before a rule was tightened is read under today's rules.
+ *
+ * Who may do what is not decided here, nor by the database (no row-level
+ * security): the three databases must be equally safe, so that rule lives in
+ * the application, in one place, in front of this store.
  */
-import { Database } from 'bun:sqlite';
+import { SQL } from 'bun';
 import {
   imageExt,
   imageSources,
@@ -51,67 +58,156 @@ export interface MediaItem {
   label: string;
 }
 
-const SCHEMA = `
-CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS pages (
-  slug TEXT PRIMARY KEY,
-  position INTEGER NOT NULL,
-  draft TEXT NOT NULL,
-  published TEXT,
-  published_at TEXT,
-  updated_at TEXT NOT NULL
-);
-CREATE TABLE IF NOT EXISTS entries (
-  type TEXT NOT NULL,
-  slug TEXT NOT NULL,
-  draft TEXT NOT NULL,
-  published TEXT,
-  published_at TEXT,
-  updated_at TEXT NOT NULL,
-  PRIMARY KEY (type, slug)
-);
-CREATE TABLE IF NOT EXISTS media (
-  name TEXT PRIMARY KEY,
-  label TEXT NOT NULL,
-  size INTEGER NOT NULL,
-  bytes BLOB NOT NULL,
-  created_at TEXT NOT NULL
-);`;
+export type DatabaseKind = 'sqlite' | 'postgres' | 'mysql';
+
+/** What differs between the three databases. Everything else is written once. */
+interface Dialect {
+  kind: DatabaseKind;
+  schema: string[];
+  /** `?` placeholders as this database wants them. */
+  params: (query: string) => string;
+  /** Insert, or when the key is taken set these columns. */
+  upsert: (table: string, columns: string[], key: string[], update: string[]) => string;
+  /** Insert, or do nothing when the key is taken. */
+  insertNew: (table: string, columns: string[]) => string;
+  /** The meta table's key column: a reserved word in MySQL. */
+  key: string;
+}
+
+const marks = (columns: string[]): string => columns.map(() => '?').join(', ');
+
+const SQLITE: Dialect = {
+  kind: 'sqlite',
+  // As files made before ADR 0013 have them: a site made then opens unchanged.
+  schema: [
+    'CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS pages (slug TEXT PRIMARY KEY, position INTEGER NOT NULL, draft TEXT NOT NULL, published TEXT, published_at TEXT, updated_at TEXT NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS entries (type TEXT NOT NULL, slug TEXT NOT NULL, draft TEXT NOT NULL, published TEXT, published_at TEXT, updated_at TEXT NOT NULL, PRIMARY KEY (type, slug))',
+    'CREATE TABLE IF NOT EXISTS media (name TEXT PRIMARY KEY, label TEXT NOT NULL, size INTEGER NOT NULL, bytes BLOB NOT NULL, created_at TEXT NOT NULL)',
+  ],
+  params: (query) => query,
+  upsert: (table, columns, key, update) =>
+    `INSERT INTO ${table} (${columns.join(', ')}) VALUES (${marks(columns)}) ON CONFLICT (${key.join(', ')}) DO UPDATE SET ${update.map((c) => `${c} = excluded.${c}`).join(', ')}`,
+  insertNew: (table, columns) => `INSERT INTO ${table} (${columns.join(', ')}) VALUES (${marks(columns)}) ON CONFLICT DO NOTHING`,
+  key: 'key',
+};
+
+// An address or a name is at most 255 characters here; the core cuts them far shorter.
+const POSTGRES: Dialect = {
+  ...SQLITE,
+  kind: 'postgres',
+  schema: [
+    'CREATE TABLE IF NOT EXISTS meta (key VARCHAR(255) PRIMARY KEY, value TEXT NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS pages (slug VARCHAR(255) PRIMARY KEY, position INTEGER NOT NULL, draft TEXT NOT NULL, published TEXT, published_at VARCHAR(40), updated_at VARCHAR(40) NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS entries (type VARCHAR(255) NOT NULL, slug VARCHAR(255) NOT NULL, draft TEXT NOT NULL, published TEXT, published_at VARCHAR(40), updated_at VARCHAR(40) NOT NULL, PRIMARY KEY (type, slug))',
+    'CREATE TABLE IF NOT EXISTS media (name VARCHAR(255) PRIMARY KEY, label TEXT NOT NULL, size INTEGER NOT NULL, bytes BYTEA NOT NULL, created_at VARCHAR(40) NOT NULL)',
+  ],
+  params: (query) => {
+    let n = 0;
+    return query.replace(/\?/g, () => `$${++n}`);
+  },
+};
+
+// Binary collation: an address compares as its bytes, as it does in the other two.
+const MYSQL_TABLE = 'ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin';
+const MYSQL: Dialect = {
+  kind: 'mysql',
+  schema: [
+    `CREATE TABLE IF NOT EXISTS meta (\`key\` VARCHAR(255) PRIMARY KEY, value LONGTEXT NOT NULL) ${MYSQL_TABLE}`,
+    `CREATE TABLE IF NOT EXISTS pages (slug VARCHAR(255) PRIMARY KEY, position INTEGER NOT NULL, draft LONGTEXT NOT NULL, published LONGTEXT, published_at VARCHAR(40), updated_at VARCHAR(40) NOT NULL) ${MYSQL_TABLE}`,
+    `CREATE TABLE IF NOT EXISTS entries (type VARCHAR(255) NOT NULL, slug VARCHAR(255) NOT NULL, draft LONGTEXT NOT NULL, published LONGTEXT, published_at VARCHAR(40), updated_at VARCHAR(40) NOT NULL, PRIMARY KEY (type, slug)) ${MYSQL_TABLE}`,
+    `CREATE TABLE IF NOT EXISTS media (name VARCHAR(255) PRIMARY KEY, label TEXT NOT NULL, size INTEGER NOT NULL, bytes LONGBLOB NOT NULL, created_at VARCHAR(40) NOT NULL) ${MYSQL_TABLE}`,
+  ],
+  params: (query) => query,
+  upsert: (table, columns, _key, update) =>
+    `INSERT INTO ${table} (${columns.join(', ')}) VALUES (${marks(columns)}) ON DUPLICATE KEY UPDATE ${update.map((c) => `${c} = VALUES(${c})`).join(', ')}`,
+  insertNew: (table, columns) => `INSERT IGNORE INTO ${table} (${columns.join(', ')}) VALUES (${marks(columns)})`,
+  key: '`key`',
+};
+
+const DIALECTS: Record<DatabaseKind, Dialect> = { sqlite: SQLITE, postgres: POSTGRES, mysql: MYSQL };
+
+/** Which database an address names. A plain path is a SQLite file, as it always was; `postgres://` and `mysql://` are servers. */
+export function databaseKind(address: string): DatabaseKind {
+  if (/^postgres(ql)?:\/\//i.test(address)) return 'postgres';
+  if (/^(mysql|mariadb):\/\//i.test(address)) return 'mysql';
+  return 'sqlite';
+}
+
+/** An address as it may be shown: the password left out. */
+export function shownAddress(address: string): string {
+  return databaseKind(address) === 'sqlite' ? address : address.replace(/\/\/([^:/@]*):[^@/]*@/, '//$1:***@');
+}
+
+type Row = Record<string, unknown>;
 
 export class Store {
-  readonly db: Database;
+  readonly kind: DatabaseKind;
+  private readonly dialect: Dialect;
 
-  constructor(path: string) {
-    this.db = new Database(path, { create: true, strict: true });
-    this.db.exec('PRAGMA journal_mode = WAL;');
-    this.db.exec(SCHEMA);
-    // A site made before there were content types kept its posts in a table of their own (ADR 0010).
-    if (this.db.query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'posts'").get()) {
-      this.db.transaction(() => {
-        this.db.exec(`INSERT OR IGNORE INTO entries (type, slug, draft, published, published_at, updated_at)
+  private constructor(private readonly sql: SQL, kind: DatabaseKind) {
+    this.kind = kind;
+    this.dialect = DIALECTS[kind];
+  }
+
+  /** Opens a site's database, creating its tables when they are not there. */
+  static async open(address: string): Promise<Store> {
+    const kind = databaseKind(address);
+    const sql =
+      kind === 'sqlite'
+        ? new SQL({ adapter: 'sqlite', filename: address.replace(/^sqlite:\/\//i, ''), create: true } as unknown as ConstructorParameters<typeof SQL>[0])
+        : new SQL(address.replace(/^mariadb:/i, 'mysql:'));
+    const store = new Store(sql, kind);
+    await store.prepare();
+    return store;
+  }
+
+  private async prepare(): Promise<void> {
+    if (this.kind === 'sqlite') await this.sql.unsafe('PRAGMA journal_mode = WAL');
+    for (const statement of this.dialect.schema) await this.sql.unsafe(statement);
+    // A site made before there were content types kept its posts in a table of their own (ADR 0010). Only SQLite files are that old.
+    if (this.kind === 'sqlite' && (await this.rows("SELECT 1 AS found FROM sqlite_master WHERE type = 'table' AND name = 'posts'")).length) {
+      await this.sql.begin(async (tx) => {
+        await tx.unsafe(`INSERT OR IGNORE INTO entries (type, slug, draft, published, published_at, updated_at)
           SELECT '${POSTS_TYPE}', slug, draft, published, published_at, updated_at FROM posts`);
-        this.db.exec('DROP TABLE posts');
-      })();
+        await tx.unsafe('DROP TABLE posts');
+      });
     }
   }
 
-  close(): void {
-    this.db.close();
+  async close(): Promise<void> {
+    await this.sql.close();
   }
 
-  private getMeta(key: string): unknown {
-    const row = this.db.query<{ value: string }, [string]>('SELECT value FROM meta WHERE key = ?').get(key);
+  /** Every row a query returns. Written with `?`; the dialect turns that into what the database wants. */
+  private async rows<T = Row>(query: string, params: unknown[] = []): Promise<T[]> {
+    return [...((await this.sql.unsafe(this.dialect.params(query), params)) as T[])];
+  }
+
+  private async row<T = Row>(query: string, params: unknown[] = []): Promise<T | null> {
+    return (await this.rows<T>(query, params))[0] ?? null;
+  }
+
+  private async run(query: string, params: unknown[] = []): Promise<void> {
+    await this.sql.unsafe(this.dialect.params(query), params);
+  }
+
+  private async getMeta(key: string): Promise<unknown> {
+    const row = await this.row<{ value: string }>(`SELECT value FROM meta WHERE ${this.dialect.key} = ?`, [key]);
     return row ? JSON.parse(row.value) : null;
   }
 
-  private setMeta(key: string, value: unknown): void {
-    this.db
-      .query('INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
-      .run(key, JSON.stringify(value));
+  private async setMeta(key: string, value: unknown): Promise<void> {
+    await this.run(this.dialect.upsert('meta', [this.dialect.key, 'value'], [this.dialect.key], ['value']), [key, JSON.stringify(value)]);
   }
 
-  site(): Site {
-    return normalizeSite(this.getMeta('site'));
+  /** Nothing was ever saved here: no settings, no page, no entry. A new site starts from this. */
+  async isEmpty(): Promise<boolean> {
+    return !(await this.row(`SELECT 1 AS found FROM meta WHERE ${this.dialect.key} = ?`, ['site'])) && !(await this.row('SELECT 1 AS found FROM pages')) && !(await this.row('SELECT 1 AS found FROM entries'));
+  }
+
+  async site(): Promise<Site> {
+    return normalizeSite(await this.getMeta('site'));
   }
 
   /**
@@ -119,34 +215,36 @@ export class Store {
    * page, and one that still has entries may not be removed: either would
    * leave something at an address nobody chose.
    */
-  setSite(input: unknown): Site {
+  async setSite(input: unknown): Promise<Site> {
     const site = normalizeSite(input);
     for (const type of site.types) {
-      if (this.draft(type.path)) throw new Error(`a page already lives at "/${type.path}/"; give the content type "${type.name}" another address`);
+      if (await this.draft(type.path)) throw new Error(`a page already lives at "/${type.path}/"; give the content type "${type.name}" another address`);
     }
     const kept = new Set([POSTS_TYPE, ...site.types.map((t) => t.id)]);
-    const orphans = this.db.query<{ type: string; n: number }, []>('SELECT type, COUNT(*) AS n FROM entries GROUP BY type').all().filter((row) => !kept.has(row.type));
-    if (orphans.length) {
-      const gone = this.site().types.find((t) => t.id === orphans[0]?.type);
-      throw new Error(`"${gone?.name ?? orphans[0]?.type}" still has ${orphans[0]?.n === 1 ? '1 entry' : `${orphans[0]?.n} entries`}; delete what it holds before removing the content type`);
+    const orphans = (await this.rows<{ type: string; n: number | string }>('SELECT type, COUNT(*) AS n FROM entries GROUP BY type')).filter((row) => !kept.has(row.type));
+    const first = orphans[0];
+    if (first) {
+      const n = Number(first.n);
+      const gone = (await this.site()).types.find((t) => t.id === first.type);
+      throw new Error(`"${gone?.name ?? first.type}" still has ${n === 1 ? '1 entry' : `${n} entries`}; delete what it holds before removing the content type`);
     }
-    this.setMeta('site', site);
+    await this.setMeta('site', site);
     return site;
   }
 
   /** Old addresses that lead to new ones (ADR 0009). The export writes a small page for each. */
-  redirects(): Redirect[] {
-    return normalizeRedirects(this.getMeta('redirects'));
+  async redirects(): Promise<Redirect[]> {
+    return normalizeRedirects(await this.getMeta('redirects'));
   }
 
-  setRedirects(input: unknown): Redirect[] {
+  async setRedirects(input: unknown): Promise<Redirect[]> {
     const redirects = normalizeRedirects(input);
-    this.setMeta('redirects', redirects);
+    await this.setMeta('redirects', redirects);
     return redirects;
   }
 
-  private readTheme(key: string): Theme | null {
-    const raw = this.getMeta(key);
+  private async readTheme(key: string): Promise<Theme | null> {
+    const raw = await this.getMeta(key);
     if (raw === null) return null;
     const { theme, issues } = parseTheme(raw);
     // A stored theme that no longer passes is an error, not a silent default.
@@ -159,129 +257,124 @@ export class Store {
    * a draft and a published copy, so trying a colour never repaints the live
    * site. Null when none was ever set.
    */
-  theme(): Theme | null {
+  theme(): Promise<Theme | null> {
     return this.readTheme('theme');
   }
 
   /** The theme visitors see: what the export uses. Null until one is published. */
-  publishedTheme(): Theme | null {
+  publishedTheme(): Promise<Theme | null> {
     return this.readTheme('theme:published');
   }
 
   /** Replaces the theme being worked on. Refuses a document with any issue and says which. */
-  setTheme(input: unknown): Theme {
+  async setTheme(input: unknown): Promise<Theme> {
     const { theme, issues } = parseTheme(input);
     if (!theme) throw new Error(`not a valid theme: ${issues.map((i) => `${i.path}: ${i.message}`).join('; ')}`);
-    this.setMeta('theme', theme);
+    await this.setMeta('theme', theme);
     return theme;
   }
 
   /** Freezes the theme being worked on as the one visitors see. */
-  publishTheme(): Theme {
-    const theme = this.theme();
+  async publishTheme(): Promise<Theme> {
+    const theme = await this.theme();
     if (!theme) throw new Error('this site has no theme yet');
-    this.setMeta('theme:published', theme);
+    await this.setMeta('theme:published', theme);
     return theme;
   }
 
   /** Whether the theme being worked on differs from the published one. */
-  themeChanged(): boolean {
-    return JSON.stringify(this.theme()) !== JSON.stringify(this.publishedTheme());
+  async themeChanged(): Promise<boolean> {
+    return JSON.stringify(await this.theme()) !== JSON.stringify(await this.publishedTheme());
   }
 
   /** Saves a page's draft. The published copy, if any, is left as it is. */
-  savePage(input: unknown): Page {
+  async savePage(input: unknown): Promise<Page> {
     const { page } = normalizePage(input);
     if (!page.title) throw new Error('a page has a title');
-    if (reservedSlugs(this.site()).includes(page.slug)) throw new Error(`the address "/${page.slug}/" is used by the site itself; choose another`);
-    const now = new Date().toISOString();
-    const next = this.db.query<{ n: number }, []>('SELECT COALESCE(MAX(position), 0) + 1 AS n FROM pages').get();
-    this.db
-      .query(
-        `INSERT INTO pages (slug, position, draft, updated_at) VALUES (?, ?, ?, ?)
-         ON CONFLICT(slug) DO UPDATE SET draft = excluded.draft, updated_at = excluded.updated_at`,
-      )
-      .run(page.slug, next?.n ?? 1, JSON.stringify(page), now);
+    if (reservedSlugs(await this.site()).includes(page.slug)) throw new Error(`the address "/${page.slug}/" is used by the site itself; choose another`);
+    const next = await this.row<{ n: number | string }>('SELECT COALESCE(MAX(position), 0) + 1 AS n FROM pages');
+    await this.run(this.dialect.upsert('pages', ['slug', 'position', 'draft', 'updated_at'], ['slug'], ['draft', 'updated_at']), [
+      page.slug,
+      Number(next?.n ?? 1),
+      JSON.stringify(page),
+      new Date().toISOString(),
+    ]);
     return page;
   }
 
   /** Freezes the current draft as what visitors see. */
-  publish(slug: string): void {
-    const done = this.db
-      .query('UPDATE pages SET published = draft, published_at = ? WHERE slug = ?')
-      .run(new Date().toISOString(), slug);
-    if (done.changes === 0) throw new Error(`no page "${slug}"`);
+  async publish(slug: string): Promise<void> {
+    // Asked before, not counted after: MySQL counts a row that already held these values as unchanged.
+    if (!(await this.row('SELECT 1 AS found FROM pages WHERE slug = ?', [slug]))) throw new Error(`no page "${slug}"`);
+    await this.run('UPDATE pages SET published = draft, published_at = ? WHERE slug = ?', [new Date().toISOString(), slug]);
   }
 
-  draft(slug: string): Page | null {
-    const row = this.db.query<{ draft: string }, [string]>('SELECT draft FROM pages WHERE slug = ?').get(slug);
+  async draft(slug: string): Promise<Page | null> {
+    const row = await this.row<{ draft: string }>('SELECT draft FROM pages WHERE slug = ?', [slug]);
     return row ? normalizePage(JSON.parse(row.draft)).page : null;
   }
 
   /** Every page, in menu order, with whether its draft differs from what is published. */
-  pages(): { slug: string; title: string; inMenu: boolean; published: boolean; changed: boolean }[] {
-    return this.db
-      .query<{ slug: string; draft: string; published: string | null }, []>('SELECT slug, draft, published FROM pages ORDER BY position, slug')
-      .all()
-      .map((row) => {
-        const { title, inMenu } = normalizePage(JSON.parse(row.draft)).page;
-        return { slug: row.slug, title, inMenu, published: row.published !== null, changed: row.published !== row.draft };
-      });
+  async pages(): Promise<{ slug: string; title: string; inMenu: boolean; published: boolean; changed: boolean }[]> {
+    return (await this.rows<{ slug: string; draft: string; published: string | null }>('SELECT slug, draft, published FROM pages ORDER BY position, slug')).map((row) => {
+      const { title, inMenu } = normalizePage(JSON.parse(row.draft)).page;
+      return { slug: row.slug, title, inMenu, published: row.published !== null, changed: row.published !== row.draft };
+    });
   }
 
-  deletePage(slug: string): void {
+  async deletePage(slug: string): Promise<void> {
     if (slug === '') throw new Error('the home page cannot be deleted');
-    this.db.query('DELETE FROM pages WHERE slug = ?').run(slug);
+    await this.run('DELETE FROM pages WHERE slug = ?', [slug]);
   }
 
   /** Every published page, in menu order. */
-  published(): Page[] {
-    return this.db
-      .query<{ published: string }, []>('SELECT published FROM pages WHERE published IS NOT NULL ORDER BY position, slug')
-      .all()
-      .map((row) => normalizePage(JSON.parse(row.published)).page);
+  async published(): Promise<Page[]> {
+    return (await this.rows<{ published: string }>('SELECT published FROM pages WHERE published IS NOT NULL ORDER BY position, slug')).map(
+      (row) => normalizePage(JSON.parse(row.published)).page,
+    );
   }
 
   /** A content type of this site, by name. Asking for one it does not have is an error, not an empty list. */
-  type(id: string): ContentType {
-    const type = typeById(this.site(), id);
+  async type(id: string): Promise<ContentType> {
+    const type = typeById(await this.site(), id);
     if (!type) throw new Error(`this site has no content type "${id}"`);
     return type;
   }
 
   /** Saves an entry's draft. Like a page, what is published is left as it is. An entry with no valid date is dated today. */
-  saveEntry(typeId: string, input: unknown): Post {
-    const type = this.type(typeId);
+  async saveEntry(typeId: string, input: unknown): Promise<Post> {
+    const type = await this.type(typeId);
     const { post } = normalizePost(input, new Date().toISOString().slice(0, 10), type);
     if (!post.title) throw new Error('an entry has a title');
     if (!post.slug) throw new Error('an entry has an address');
-    this.db
-      .query(
-        `INSERT INTO entries (type, slug, draft, updated_at) VALUES (?, ?, ?, ?)
-         ON CONFLICT(type, slug) DO UPDATE SET draft = excluded.draft, updated_at = excluded.updated_at`,
-      )
-      .run(type.id, post.slug, JSON.stringify(post), new Date().toISOString());
+    await this.run(this.dialect.upsert('entries', ['type', 'slug', 'draft', 'updated_at'], ['type', 'slug'], ['draft', 'updated_at']), [
+      type.id,
+      post.slug,
+      JSON.stringify(post),
+      new Date().toISOString(),
+    ]);
     return post;
   }
 
-  publishEntry(typeId: string, slug: string): void {
-    const done = this.db.query('UPDATE entries SET published = draft, published_at = ? WHERE type = ? AND slug = ?').run(new Date().toISOString(), typeId, slug);
-    if (done.changes === 0) throw new Error(`no entry "${slug}"`);
+  async publishEntry(typeId: string, slug: string): Promise<void> {
+    if (!(await this.row('SELECT 1 AS found FROM entries WHERE type = ? AND slug = ?', [typeId, slug]))) throw new Error(`no entry "${slug}"`);
+    await this.run('UPDATE entries SET published = draft, published_at = ? WHERE type = ? AND slug = ?', [new Date().toISOString(), typeId, slug]);
   }
 
-  entryDraft(typeId: string, slug: string): Post | null {
-    const type = this.type(typeId);
-    const row = this.db.query<{ draft: string }, [string, string]>('SELECT draft FROM entries WHERE type = ? AND slug = ?').get(typeId, slug);
+  async entryDraft(typeId: string, slug: string): Promise<Post | null> {
+    const type = await this.type(typeId);
+    const row = await this.row<{ draft: string }>('SELECT draft FROM entries WHERE type = ? AND slug = ?', [typeId, slug]);
     return row ? normalizePost(JSON.parse(row.draft), undefined, type).post : null;
   }
 
   /** Every entry of a type, in the order its list shows them, with whether its draft differs from what is published. */
-  entries(typeId: string): { slug: string; title: string; date: string; published: boolean; changed: boolean }[] {
-    const type = this.type(typeId);
-    const rows = this.db
-      .query<{ draft: string; published: string | null }, [string]>('SELECT draft, published FROM entries WHERE type = ?')
-      .all(typeId)
-      .map((row) => ({ post: normalizePost(JSON.parse(row.draft), undefined, type).post, published: row.published !== null, changed: row.published !== row.draft }));
+  async entries(typeId: string): Promise<{ slug: string; title: string; date: string; published: boolean; changed: boolean }[]> {
+    const type = await this.type(typeId);
+    const rows = (await this.rows<{ draft: string; published: string | null }>('SELECT draft, published FROM entries WHERE type = ?', [typeId])).map((row) => ({
+      post: normalizePost(JSON.parse(row.draft), undefined, type).post,
+      published: row.published !== null,
+      changed: row.published !== row.draft,
+    }));
     const state = new Map(rows.map((row) => [row.post.slug, row]));
     return listed(type, rows.map((row) => row.post)).map((post) => {
       const { published, changed } = state.get(post.slug) as { published: boolean; changed: boolean };
@@ -290,50 +383,40 @@ export class Store {
   }
 
   /** Every entry of a type as the author last left it, in the order its list shows them: what the editor's canvas lists. */
-  draftEntries(typeId: string): Post[] {
-    const type = this.type(typeId);
-    return listed(
-      type,
-      this.db
-        .query<{ draft: string }, [string]>('SELECT draft FROM entries WHERE type = ?')
-        .all(typeId)
-        .map((row) => normalizePost(JSON.parse(row.draft), undefined, type).post),
-    );
+  async draftEntries(typeId: string): Promise<Post[]> {
+    const type = await this.type(typeId);
+    const rows = await this.rows<{ draft: string }>('SELECT draft FROM entries WHERE type = ?', [typeId]);
+    return listed(type, rows.map((row) => normalizePost(JSON.parse(row.draft), undefined, type).post));
   }
 
-  deleteEntry(typeId: string, slug: string): void {
-    this.db.query('DELETE FROM entries WHERE type = ? AND slug = ?').run(typeId, slug);
+  async deleteEntry(typeId: string, slug: string): Promise<void> {
+    await this.run('DELETE FROM entries WHERE type = ? AND slug = ?', [typeId, slug]);
   }
 
   /** Every published entry of a type, in the order its list shows them. */
-  publishedEntries(typeId: string): Post[] {
-    const type = this.type(typeId);
-    return listed(
-      type,
-      this.db
-        .query<{ published: string }, [string]>('SELECT published FROM entries WHERE type = ? AND published IS NOT NULL')
-        .all(typeId)
-        .map((row) => normalizePost(JSON.parse(row.published), undefined, type).post),
-    );
+  async publishedEntries(typeId: string): Promise<Post[]> {
+    const type = await this.type(typeId);
+    const rows = await this.rows<{ published: string }>('SELECT published FROM entries WHERE type = ? AND published IS NOT NULL', [typeId]);
+    return listed(type, rows.map((row) => normalizePost(JSON.parse(row.published), undefined, type).post));
   }
 
   // Posts are the content type every site has; these say so by name.
-  savePost(input: unknown): Post {
+  savePost(input: unknown): Promise<Post> {
     return this.saveEntry(POSTS_TYPE, input);
   }
-  publishPost(slug: string): void {
-    this.publishEntry(POSTS_TYPE, slug);
+  publishPost(slug: string): Promise<void> {
+    return this.publishEntry(POSTS_TYPE, slug);
   }
-  postDraft(slug: string): Post | null {
+  postDraft(slug: string): Promise<Post | null> {
     return this.entryDraft(POSTS_TYPE, slug);
   }
-  posts(): { slug: string; title: string; date: string; published: boolean; changed: boolean }[] {
+  posts(): Promise<{ slug: string; title: string; date: string; published: boolean; changed: boolean }[]> {
     return this.entries(POSTS_TYPE);
   }
-  deletePost(slug: string): void {
-    this.deleteEntry(POSTS_TYPE, slug);
+  deletePost(slug: string): Promise<void> {
+    return this.deleteEntry(POSTS_TYPE, slug);
   }
-  publishedPosts(): Post[] {
+  publishedPosts(): Promise<Post[]> {
     return this.publishedEntries(POSTS_TYPE);
   }
 
@@ -342,41 +425,42 @@ export class Store {
    * the hash of the bytes, so the same picture uploaded twice is stored once
    * and a name never comes to mean another picture.
    */
-  addMedia(bytes: Uint8Array, label: unknown = ''): MediaItem {
+  async addMedia(bytes: Uint8Array, label: unknown = ''): Promise<MediaItem> {
     if (bytes.length > MEDIA_MAX_BYTES) throw new Error(`an image is at most ${MEDIA_MAX_BYTES / 1024 / 1024} MB`);
     const ext = imageExt(bytes);
     if (!ext) throw new Error('not an image this site can show (PNG, JPEG, GIF, WebP or AVIF)');
     const name = `${new Bun.CryptoHasher('sha256').update(bytes).digest('hex').slice(0, 32)}.${ext}`;
-    this.db
-      .query('INSERT INTO media (name, label, size, bytes, created_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(name) DO NOTHING')
-      .run(name, str(label, 200).trim(), bytes.length, bytes, new Date().toISOString());
-    return this.media().find((m) => m.name === name) as MediaItem;
+    await this.run(this.dialect.insertNew('media', ['name', 'label', 'size', 'bytes', 'created_at']), [name, str(label, 200).trim(), bytes.length, bytes, new Date().toISOString()]);
+    return (await this.media()).find((m) => m.name === name) as MediaItem;
   }
 
   /** Every stored image, newest first. */
-  media(): MediaItem[] {
-    return this.db
-      .query<{ name: string; label: string; size: number }, []>('SELECT name, label, size FROM media ORDER BY created_at DESC, name')
-      .all()
-      .map((row) => ({ ...row, path: mediaPath(row.name), type: MEDIA_TYPES[row.name.split('.').pop() as MediaExt] }));
+  async media(): Promise<MediaItem[]> {
+    return (await this.rows<{ name: string; label: string; size: number | string }>('SELECT name, label, size FROM media ORDER BY created_at DESC, name')).map((row) => ({
+      name: row.name,
+      label: row.label,
+      size: Number(row.size),
+      path: mediaPath(row.name),
+      type: MEDIA_TYPES[row.name.split('.').pop() as MediaExt],
+    }));
   }
 
-  mediaFile(name: string): { type: string; bytes: Uint8Array } | null {
+  async mediaFile(name: string): Promise<{ type: string; bytes: Uint8Array } | null> {
     if (!isMediaName(name)) return null;
-    const row = this.db.query<{ bytes: Uint8Array }, [string]>('SELECT bytes FROM media WHERE name = ?').get(name);
-    return row ? { type: MEDIA_TYPES[name.split('.').pop() as MediaExt], bytes: row.bytes } : null;
+    const row = await this.row<{ bytes: Uint8Array }>('SELECT bytes FROM media WHERE name = ?', [name]);
+    return row ? { type: MEDIA_TYPES[name.split('.').pop() as MediaExt], bytes: new Uint8Array(row.bytes) } : null;
   }
 
   /** Where this image is shown: the titles of pages (draft or published), and the header when it is the logo. */
-  mediaUsedBy(name: string): string[] {
-    const rows = this.db.query<{ draft: string; published: string | null }, []>('SELECT draft, published FROM pages ORDER BY position, slug').all();
-    const titles: string[] = mediaNameOf(this.site().logo?.src ?? '') === name ? ['the header (logo)'] : [];
-    for (const row of rows) {
+  async mediaUsedBy(name: string): Promise<string[]> {
+    const site = await this.site();
+    const titles: string[] = mediaNameOf(site.logo?.src ?? '') === name ? ['the header (logo)'] : [];
+    for (const row of await this.rows<{ draft: string; published: string | null }>('SELECT draft, published FROM pages ORDER BY position, slug')) {
       const copies = [row.draft, row.published].filter((c): c is string => c !== null).map((c) => normalizePage(JSON.parse(c)).page);
       if (copies.some((page) => imageSources(page.blocks).some((src) => mediaNameOf(src) === name))) titles.push((copies[0] as Page).title);
     }
-    const types = new Map(contentTypes(this.site()).map((t) => [t.id, t]));
-    for (const row of this.db.query<{ type: string; draft: string; published: string | null }, []>('SELECT type, draft, published FROM entries ORDER BY type, slug').all()) {
+    const types = new Map(contentTypes(site).map((t) => [t.id, t]));
+    for (const row of await this.rows<{ type: string; draft: string; published: string | null }>('SELECT type, draft, published FROM entries ORDER BY type, slug')) {
       const copies = [row.draft, row.published].filter((c): c is string => c !== null).map((c) => normalizePost(JSON.parse(c), undefined, types.get(row.type)).post);
       if (copies.some((post) => postImageSources(post).some((src) => mediaNameOf(src) === name))) titles.push((copies[0] as Post).title);
     }
@@ -384,9 +468,14 @@ export class Store {
   }
 
   /** Deletes an image nothing shows. One that a page still shows is refused, with the page named. */
-  deleteMedia(name: string): void {
-    const used = this.mediaUsedBy(name);
+  async deleteMedia(name: string): Promise<void> {
+    const used = await this.mediaUsedBy(name);
     if (used.length) throw new Error(`this image is used on: ${used.join(', ')}`);
-    this.db.query('DELETE FROM media WHERE name = ?').run(name);
+    await this.run('DELETE FROM media WHERE name = ?', [name]);
+  }
+
+  /** Runs a query as it is written, for a test that needs to put a row in a state the store never would. */
+  async rawForTests(query: string, params: unknown[] = []): Promise<void> {
+    await this.run(query, params);
   }
 }
