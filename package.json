@@ -13,7 +13,7 @@
     "typecheck": "svelte-check --tsconfig ./tsconfig.json --fail-on-warnings",
     "check": "bun run typecheck && bun test",
     "cms": "bun src/site/cli.ts",
-    "coverage": "bun tools/coverage.ts coverage --lines=95 --file=55"
+    "coverage": "bun tools/coverage.ts coverage --lines=97 --file=85"
   },
   "dependencies": {
     "svelte": "^5.57.3"

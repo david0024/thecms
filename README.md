@@ -134,7 +134,7 @@ measured by no test.
 
 ```sh
 bun test --coverage --coverage-reporter=lcov --coverage-dir=coverage
-for t in editor import templates forms; do THECMS_COVERAGE=coverage node e2e/$t.cjs; done
+for t in editor import templates forms admin; do THECMS_COVERAGE=coverage node e2e/$t.cjs; done
 bun run coverage           # the table, coverage/all.lcov, and the gate
 ```
 
