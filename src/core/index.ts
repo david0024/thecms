@@ -9,6 +9,7 @@ export * from './css.ts';
 export * from './language.ts';
 export * from './media.ts';
 export * from './menu.ts';
+export * from './name.ts';
 export * from './navigation.ts';
 export * from './page.ts';
 export * from './post.ts';

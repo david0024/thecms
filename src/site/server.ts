@@ -7,8 +7,11 @@
  * open can send requests to localhost. So every API call must carry a token
  * that only the admin page was given, must name this server as its host (a
  * page that points its own domain at 127.0.0.1 does not), and must not come
- * from another origin. Accounts and sign-in arrive with the hosted server;
- * until then nothing here is reachable without the token.
+ * from another origin.
+ *
+ * Given a public address (`thecms serve`), it is a server others reach, and
+ * it has accounts instead (ADR 0022, src/site/accounts.ts): a session cookie,
+ * a header no other site's page can send, and calls only the owner may make.
  */
 import { mkdir, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -19,7 +22,8 @@ import { type FetchImage, fetchImage as fetchOverNetwork, IMPORT_MAX_BYTES, type
 import { type ImportPlan, planImport } from '../import/wxr.ts';
 import { type MenuItem, menuOf, renderParts, renderPostParts } from './document.ts';
 import { languages, packFor } from './languages.ts';
-import type { Store } from './store.ts';
+import { accounts, cleanPublicAddress, ownerOnly, shown } from './accounts.ts';
+import type { Store, User } from './store.ts';
 
 const ADMIN = new URL('../admin/', import.meta.url);
 const THEMES = new URL('../../themes/', import.meta.url);
@@ -127,6 +131,8 @@ function sameToken(given: string | null, token: string): boolean {
 export interface EditorServer {
   /** The address to open, token included. */
   url: string;
+  /** With accounts and no owner yet: the one-time link that makes the first owner. */
+  setupUrl: string;
   token: string;
   port: number;
   /** One request, answered without a network: what the tests call. */
@@ -171,12 +177,29 @@ const preview = (plan: ImportPlan): ImportPreview => ({
   notes: plan.notes,
 });
 
-export async function startEditor(store: Store, options: { port?: number; listen?: boolean; /** How an import fetches images; the tests give their own. */ fetchImage?: FetchImage } = {}): Promise<EditorServer> {
+export async function startEditor(
+  store: Store,
+  options: {
+    port?: number;
+    listen?: boolean;
+    /** How an import fetches images; the tests give their own. */
+    fetchImage?: FetchImage;
+    /** The admin's public address, `https://cms.example.com`: with it, people sign in with accounts (ADR 0022). */
+    public?: string;
+    /** Where to listen; this machine unless said otherwise. */
+    hostname?: string;
+  } = {},
+): Promise<EditorServer> {
   const assets = await buildAdmin();
   const themes = await bundledThemes();
   const baseCss = await Bun.file(BASE_CSS).text();
   const token = crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, '');
   let port = options.port ?? 4321;
+  const publicAddress = options.public ? cleanPublicAddress(options.public) : '';
+  if (options.public && !publicAddress) throw new Error('the public address is https://, with nothing after the host (http:// only on this machine)');
+  const people = publicAddress ? accounts(store, publicAddress) : null;
+  /** On one's own computer, whoever has the key is the owner. */
+  const LOCAL_OWNER: User = { id: 'local', email: '', name: '', role: 'owner', active: true, createdAt: '' };
 
   const theme = async (): Promise<Theme> => {
     const current = await store.theme();
@@ -241,7 +264,16 @@ export async function startEditor(store: Store, options: { port?: number; listen
       new Date().toISOString().slice(0, 10),
       type,
     ).post;
-  const state = async (): Promise<unknown> => ({ site: await store.site(), theme: await theme(), themeChanged: await store.themeChanged(), themes, languages: languages(), ...(await lists()) });
+  const state = async (me: User): Promise<unknown> => ({
+    site: await store.site(),
+    theme: await theme(),
+    themeChanged: await store.themeChanged(),
+    themes,
+    languages: languages(),
+    me: shown(me),
+    accounts: people !== null,
+    ...(await lists()),
+  });
 
   /** One import at a time; it outlives the request that started it, because copying images takes minutes. */
   let importing: ImportProgress = { status: 'idle' };
@@ -279,7 +311,7 @@ export async function startEditor(store: Store, options: { port?: number; listen
     return json(importing, 202);
   }
 
-  async function api(request: Request, url: URL): Promise<Response> {
+  async function api(request: Request, url: URL, me: User): Promise<Response> {
     if (url.pathname.startsWith('/api/import')) return importApi(request, url);
     if (url.pathname === '/api/messages') {
       const email = url.searchParams.get('email') ?? '';
@@ -313,6 +345,8 @@ export async function startEditor(store: Store, options: { port?: number; listen
     const asked = String(url.searchParams.get('kind') ?? body.kind ?? 'page');
     // A type's own page (ADR 0015) is edited through the same calls, as `template:<type>`.
     if (asked.startsWith('template:')) {
+      // How a type's page looks is the owner's; an editor sees it around what they write.
+      if (me.role !== 'owner' && route !== 'GET /api/page' && route !== 'POST /api/render') return json({ error: 'only the owner may change this' }, 403);
       const type = await store.type(asked.slice(9));
       switch (route) {
         case 'GET /api/page':
@@ -360,7 +394,7 @@ export async function startEditor(store: Store, options: { port?: number; listen
     }
     switch (route) {
       case 'GET /api/state':
-        return json(await state());
+        return json(await state(me));
       case 'GET /api/page': {
         const page = await store.draft(slug);
         return page ? json({ page }) : json({ error: 'no such page' }, 404);
@@ -386,13 +420,13 @@ export async function startEditor(store: Store, options: { port?: number; listen
       }
       case 'PUT /api/theme':
         await store.setTheme(body.theme);
-        return json(await state());
+        return json(await state(me));
       case 'POST /api/theme/publish':
         await store.publishTheme();
-        return json(await state());
+        return json(await state(me));
       case 'PUT /api/site':
         await store.setSite(body.site);
-        return json(await state());
+        return json(await state(me));
       default:
         return json({ error: 'not found' }, 404);
     }
@@ -402,14 +436,26 @@ export async function startEditor(store: Store, options: { port?: number; listen
     const url = new URL(request.url);
     // A page that points its own domain at 127.0.0.1 arrives with its own host name.
     const host = request.headers.get('host') ?? url.host;
-    if (host !== `127.0.0.1:${port}` && host !== `localhost:${port}`) return json({ error: 'wrong host' }, 403);
+    if (people ? host !== new URL(publicAddress).host : host !== `127.0.0.1:${port}` && host !== `localhost:${port}`) return json({ error: 'wrong host' }, 403);
 
     if (url.pathname.startsWith('/api/')) {
       const origin = request.headers.get('origin');
-      if (origin && origin !== `http://${host}`) return json({ error: 'wrong origin' }, 403);
-      if (!sameToken(request.headers.get('x-thecms-token'), token)) return json({ error: 'no token' }, 401);
+      if (origin && origin !== (people ? publicAddress : `http://${host}`)) return json({ error: 'wrong origin' }, 403);
+      // Each request knows its own person: two people's calls can be answered at once.
+      let me = LOCAL_OWNER;
       try {
-        return await api(request, url);
+        if (people) {
+          // A page of another site cannot send this header without asking first, and nothing here answers that question.
+          if (request.headers.get('x-thecms-request') !== '1') return json({ error: 'not a call from the admin' }, 403);
+          const open = await people.open(request, url);
+          if (open) return open;
+          const user = await people.user(request);
+          if (!user) return json({ error: 'sign in first', signIn: true }, 401);
+          me = user;
+        } else if (!sameToken(request.headers.get('x-thecms-token'), token)) return json({ error: 'no token' }, 401);
+        if (ownerOnly(request.method, url.pathname) && me.role !== 'owner') return json({ error: 'only the owner may do this' }, 403);
+        if (url.pathname.startsWith('/api/users')) return people ? await people.people(request, url, me) : json({ error: 'accounts are for a served admin' }, 404);
+        return await api(request, url, me);
       } catch (error) {
         return json({ error: error instanceof Error ? error.message : String(error) }, 400);
       }
@@ -441,10 +487,11 @@ export async function startEditor(store: Store, options: { port?: number; listen
     }
   }
 
-  const server = options.listen === false ? null : Bun.serve({ hostname: '127.0.0.1', port, fetch: handle, maxRequestBodySize: IMPORT_MAX_BYTES + 1024 * 1024 });
+  const server = options.listen === false ? null : Bun.serve({ hostname: options.hostname ?? '127.0.0.1', port, fetch: handle, maxRequestBodySize: IMPORT_MAX_BYTES + 1024 * 1024 });
   if (server?.port) port = server.port;
   return {
-    url: `http://127.0.0.1:${port}/admin/#token=${token}`,
+    url: people ? `${publicAddress}/admin/` : `http://127.0.0.1:${port}/admin/#token=${token}`,
+    setupUrl: people ? await people.setupLink() : '',
     token,
     port,
     fetch: handle,

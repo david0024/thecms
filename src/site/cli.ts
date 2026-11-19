@@ -8,6 +8,10 @@
  *   thecms export <site.db> <folder>      write the published site as static files
  *   thecms import <site.db> <export.xml>  bring in a WordPress site (add --no-images to skip copying images)
  *   thecms forms <site.db> [port]         receive what visitors send through the site's forms (ADR 0019)
+ *   thecms serve <site.db> --public=https://cms.example.com [--port=4321] [--host=127.0.0.1]
+ *                                         the editor for others to reach, with accounts (ADR 0022)
+ *   thecms reset-link <site.db> <email> --public=https://cms.example.com
+ *                                         a one-time link to choose a new password, for an owner locked out
  */
 import { existsSync } from 'node:fs';
 import { DEMO_PAGES, DEMO_POSTS, DEMO_SITE } from './demo.ts';
@@ -16,6 +20,7 @@ import { planImport } from '../import/wxr.ts';
 import { exportSite } from './export.ts';
 import { startForms } from './forms.ts';
 import { smtpMailer } from './mail.ts';
+import { cleanPublicAddress } from './accounts.ts';
 import { startEditor } from './server.ts';
 import { databaseKind, shownAddress, Store } from './store.ts';
 
@@ -98,6 +103,34 @@ export async function main(args: string[]): Promise<{ stop: () => void } | undef
     );
     return forms;
   }
+  const option = (name: string): string => flags.find((f) => f.startsWith(`--${name}=`))?.slice(name.length + 3) ?? '';
+  if (command === 'serve' && dbPath) {
+    if (missing()) throw new Error(`${shown} does not exist`);
+    if (!option('public')) throw new Error('give the address people will open, like --public=https://cms.example.com');
+    const store = await Store.open(dbPath);
+    const editor = await startEditor(store, { public: option('public'), port: option('port') ? Number(option('port')) : 4321, hostname: option('host') || '127.0.0.1' });
+    console.log(
+      `Serving the editor of ${shown} on port ${editor.port}, for ${editor.url}\n\n` +
+        (editor.setupUrl
+          ? `Nobody has an account yet. Open this link within the hour to make the owner's account; it works once. Started again, the editor prints a new one.\n\n  ${editor.setupUrl}\n`
+          : 'Sign in there with your account.\n'),
+    );
+    return editor;
+  }
+  if (command === 'reset-link' && dbPath && extra) {
+    if (missing()) throw new Error(`${shown} does not exist`);
+    const address = cleanPublicAddress(option('public'));
+    if (!address) throw new Error('give the address of the admin, like --public=https://cms.example.com');
+    const store = await Store.open(dbPath);
+    try {
+      const user = (await store.users()).find((u) => u.email === extra.trim().toLowerCase());
+      if (!user) throw new Error(`nobody has an account with ${extra}`);
+      console.log(`Open this link within 3 days to choose a new password for ${user.email}; it works once:\n\n  ${address}/admin/#link=${await store.makeLink(user.active ? 'reset' : 'invite', user.id, 72)}`);
+    } finally {
+      await store.close();
+    }
+    return undefined;
+  }
   if ((command === 'theme' || command === 'export') && dbPath && extra) {
     if (missing()) throw new Error(`${shown} does not exist`);
     const store = await Store.open(dbPath);
@@ -114,7 +147,7 @@ export async function main(args: string[]): Promise<{ stop: () => void } | undef
     }
     return;
   }
-  console.log('A site is a SQLite file (site.db) or a database address (postgres://... or mysql://...).\n\nUsage:\n  thecms init <site.db>\n  thecms edit <site.db> [port]\n  thecms theme <site.db> <theme.json>\n  thecms export <site.db> <folder>\n  thecms forms <site.db> [port]\n  thecms import <site.db> <export.xml> [--no-images] [--types=portfolio,team] [--categories=projects]');
+  console.log('A site is a SQLite file (site.db) or a database address (postgres://... or mysql://...).\n\nUsage:\n  thecms init <site.db>\n  thecms edit <site.db> [port]\n  thecms theme <site.db> <theme.json>\n  thecms export <site.db> <folder>\n  thecms forms <site.db> [port]\n  thecms serve <site.db> --public=https://cms.example.com [--port=4321] [--host=127.0.0.1]\n  thecms reset-link <site.db> <email> --public=https://cms.example.com\n  thecms import <site.db> <export.xml> [--no-images] [--types=portfolio,team] [--categories=projects]');
   process.exitCode = command ? 1 : 0;
   return undefined;
 }

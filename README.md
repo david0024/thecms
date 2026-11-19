@@ -35,6 +35,7 @@ The decisions behind this, each with its reason:
 - [ADR 0019 — The contact form and the site's form service](docs/adr/0019-the-contact-form.md)
 - [ADR 0020 — The core is AGPL-3.0-or-later](docs/adr/0020-licence-agpl.md)
 - [ADR 0021 — Language packs](docs/adr/0021-language-packs.md)
+- [ADR 0022 — Accounts](docs/adr/0022-accounts.md)
 
 ## Where it stands
 
@@ -63,6 +64,7 @@ theme, publish, and export the site as static files.
 | A WordPress category kept as a section of its own: its posts become entries of a new content type | done |
 | Contact form with consent, a small form service of the site's own, email to the owner, messages kept for a set time, exported or erased on request | done |
 | Language packs: the admin and the site's words in one JSON file a language, checked against English; Romanian ships complete | done |
+| Accounts for a served editor: the first owner from a one-time link, editors invited by the owner, an editor writes content and nothing else | done |
 | Modules (isolated plugins) | planned |
 
 ## Try it
@@ -121,6 +123,18 @@ what could not come over (forms, shortcodes, comments).
 The address `edit` prints carries a key. The editor answers only on your own
 computer and only to that key.
 
+To let a client edit their site from anywhere, serve the editor at an address
+of its own, behind a server that holds the certificate (ADR 0022):
+
+```sh
+bun run cms serve site.db --public=https://cms.example.com   # listens on 127.0.0.1:4321
+```
+
+While the site has no owner it prints a link that works once, for an hour: open
+it and make the owner's account. The owner invites others from **People**; an
+editor writes and publishes pages, posts and entries, and the rest stays with
+the owner. Locked out: `bun run cms reset-link site.db you@example.com --public=https://cms.example.com`.
+
 ## Develop
 
 ```sh
@@ -136,7 +150,7 @@ measured by no test.
 
 ```sh
 bun test --coverage --coverage-reporter=lcov --coverage-dir=coverage
-for t in editor import templates forms admin; do THECMS_COVERAGE=coverage node e2e/$t.cjs; done
+for t in editor import templates forms admin accounts; do THECMS_COVERAGE=coverage node e2e/$t.cjs; done
 bun run coverage           # the table, coverage/all.lcov, and the gate
 ```
 
