@@ -14,6 +14,8 @@ import { readdir } from 'node:fs/promises';
 import { compile } from 'svelte/compiler';
 import { MEDIA_MAX_BYTES, MEDIA_PREFIX, normalizePage, contentTypes, listPath, type MenuList, normalizePost, parseTheme, POSTS_TYPE, reservedSlugs, type Theme, themeCss } from '../core/index.ts';
 import type { EntryLists } from '../blocks/editing.ts';
+import { type FetchImage, fetchImage as fetchOverNetwork, IMPORT_MAX_BYTES, type ImportReport, runImport } from '../import/run.ts';
+import { type ImportPlan, planImport } from '../import/wxr.ts';
 import { type MenuItem, menuOf, renderParts, renderPostParts } from './document.ts';
 import type { Store } from './store.ts';
 
@@ -113,7 +115,41 @@ export interface EditorServer {
   stop: () => void;
 }
 
-export async function startEditor(store: Store, options: { port?: number; listen?: boolean } = {}): Promise<EditorServer> {
+/** What an export file would bring, counted, for the owner to look at before anything is written. */
+export interface ImportPreview {
+  site: { name: string; url: string };
+  pages: number;
+  posts: number;
+  /** The kinds of entry asked for, as content types. */
+  types: { id: string; name: string; count: number }[];
+  /** Kinds a plugin or theme added that could be brought as content types. */
+  others: { type: string; count: number }[];
+  images: number;
+  redirects: number;
+  menu: boolean;
+  notes: string[];
+}
+
+/** Where an import started from the admin has got to. */
+export type ImportProgress =
+  | { status: 'idle' }
+  | { status: 'running'; done: number; total: number }
+  | { status: 'done'; report: ImportReport }
+  | { status: 'failed'; error: string };
+
+const preview = (plan: ImportPlan): ImportPreview => ({
+  site: { name: plan.site.name, url: plan.site.url },
+  pages: plan.pages.length,
+  posts: plan.posts.length,
+  types: plan.types.map((type) => ({ id: type.id, name: type.name, count: plan.entries[type.id]?.length ?? 0 })),
+  others: plan.others,
+  images: plan.images.length,
+  redirects: plan.redirects.length,
+  menu: plan.menu !== null,
+  notes: plan.notes,
+});
+
+export async function startEditor(store: Store, options: { port?: number; listen?: boolean; /** How an import fetches images; the tests give their own. */ fetchImage?: FetchImage } = {}): Promise<EditorServer> {
   const assets = await buildAdmin();
   const themes = await bundledThemes();
   const baseCss = await Bun.file(BASE_CSS).text();
@@ -146,7 +182,44 @@ export async function startEditor(store: Store, options: { port?: number; listen
   });
   const state = (): unknown => ({ site: store.site(), theme: theme(), themeChanged: store.themeChanged(), themes, ...lists() });
 
+  /** One import at a time; it outlives the request that started it, because copying images takes minutes. */
+  let importing: ImportProgress = { status: 'idle' };
+
+  async function importApi(request: Request, url: URL): Promise<Response> {
+    if (request.method === 'GET' && url.pathname === '/api/import') return json(importing);
+    if (request.method === 'DELETE' && url.pathname === '/api/import') {
+      // The report was read: forget it, so the screen starts clean. A running import is not stopped.
+      if (importing.status !== 'running') importing = { status: 'idle' };
+      return json(importing);
+    }
+    if (request.method !== 'POST') return json({ error: 'not found' }, 404);
+    if (Number(request.headers.get('content-length') ?? 0) > IMPORT_MAX_BYTES) return json({ error: 'the export file is too large' }, 413);
+    // The body is the export file itself. It is read and understood before anything is written.
+    const types = (url.searchParams.get('types') ?? '').split(',').map((name) => name.trim()).filter(Boolean);
+    const plan = planImport(await request.text(), new Date().toISOString().slice(0, 10), { types });
+    if (url.pathname === '/api/import/plan') return json(preview(plan));
+    if (url.pathname !== '/api/import/run') return json({ error: 'not found' }, 404);
+    if (importing.status === 'running') return json({ error: 'an import is already running' }, 409);
+    importing = { status: 'running', done: 0, total: plan.images.length };
+    void runImport(store, plan, {
+      fetchImage: url.searchParams.get('images') === '0' ? null : (options.fetchImage ?? fetchOverNetwork),
+      fresh: url.searchParams.get('settings') === '1',
+      onImage: (done, total) => {
+        importing = { status: 'running', done, total };
+      },
+    }).then(
+      (report) => {
+        importing = { status: 'done', report };
+      },
+      (error: unknown) => {
+        importing = { status: 'failed', error: error instanceof Error ? error.message : String(error) };
+      },
+    );
+    return json(importing, 202);
+  }
+
   async function api(request: Request, url: URL): Promise<Response> {
+    if (url.pathname.startsWith('/api/import')) return importApi(request, url);
     if (url.pathname === '/api/media') {
       if (request.method === 'GET') return json({ media: store.media() });
       if (request.method === 'DELETE') {
@@ -269,7 +342,7 @@ export async function startEditor(store: Store, options: { port?: number; listen
     }
   }
 
-  const server = options.listen === false ? null : Bun.serve({ hostname: '127.0.0.1', port, fetch: handle, maxRequestBodySize: MEDIA_MAX_BYTES + 1024 * 1024 });
+  const server = options.listen === false ? null : Bun.serve({ hostname: '127.0.0.1', port, fetch: handle, maxRequestBodySize: IMPORT_MAX_BYTES + 1024 * 1024 });
   if (server?.port) port = server.port;
   return {
     url: `http://127.0.0.1:${port}/admin/#token=${token}`,

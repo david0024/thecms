@@ -1,0 +1,166 @@
+<script lang="ts">
+/**
+ * Bringing in a WordPress site from the admin (ADR 0012). The file is read
+ * first and nothing is written: the owner sees what would come over and what
+ * would not, chooses, and only then starts it.
+ */
+import { onMount } from 'svelte';
+import { api, type ImportPreview, type ImportProgress } from './api.ts';
+import { t } from './messages.ts';
+
+let { ondone }: { /** The site changed: read it again. */ ondone: () => Promise<void> } = $props();
+
+let file = $state.raw<File | null>(null);
+let preview = $state.raw<ImportPreview | null>(null);
+let chosen = $state<string[]>([]);
+let images = $state(true);
+let settings = $state(false);
+let progress = $state.raw<ImportProgress>({ status: 'idle' });
+let busy = $state(false);
+let problem = $state('');
+let fileInput: HTMLInputElement | undefined = $state();
+
+const attempt = async (work: () => Promise<void>): Promise<void> => {
+  problem = '';
+  busy = true;
+  try {
+    await work();
+  } catch (error) {
+    problem = error instanceof Error ? error.message : String(error);
+  }
+  busy = false;
+};
+
+const read = (): Promise<void> =>
+  attempt(async () => {
+    if (file) preview = await api.importPlan(file, chosen);
+  });
+
+function choose(event: Event): void {
+  file = (event.currentTarget as HTMLInputElement).files?.[0] ?? null;
+  preview = null;
+  chosen = [];
+  progress = { status: 'idle' };
+  void read();
+}
+
+function toggle(type: string, on: boolean): void {
+  chosen = on ? [...chosen, type] : chosen.filter((name) => name !== type);
+  void read();
+}
+
+async function watch(): Promise<void> {
+  while (progress.status === 'running') {
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    progress = await api.importProgress();
+  }
+  if (progress.status === 'done') await ondone();
+}
+
+const run = (): Promise<void> =>
+  attempt(async () => {
+    if (!file) return;
+    progress = await api.importRun(file, { types: chosen, images, settings });
+    await watch();
+  });
+
+function again(): void {
+  void api.importForget();
+  file = null;
+  preview = null;
+  progress = { status: 'idle' };
+  if (fileInput) fileInput.value = '';
+}
+
+// An import started before this screen was left is still running, or has finished.
+onMount(() =>
+  void attempt(async () => {
+    progress = await api.importProgress();
+    await watch();
+  }),
+);
+</script>
+
+<section class="screen" data-list="import">
+  <header>
+    <h1>{t.imp.heading}</h1>
+  </header>
+  {#if problem}<p class="bad" role="alert">{problem}</p>{/if}
+  <input type="file" accept=".xml,text/xml,application/xml" bind:this={fileInput} onchange={choose} hidden data-import-file />
+
+  {#if progress.status === 'running'}
+    <p data-import-running>{progress.total ? t.imp.copying(progress.done, progress.total) : t.imp.writing}</p>
+    {#if progress.total}<progress value={progress.done} max={progress.total}></progress>{/if}
+    <p class="hint">{t.imp.stay}</p>
+  {:else if progress.status === 'done'}
+    {@const report = progress.report}
+    <div class="card" data-import-done>
+      <h2>{t.imp.done}</h2>
+      <p>{t.imp.summary(report)}</p>
+      {#if report.notes.length}
+        <h3>{t.imp.notes}</h3>
+        <ul class="notes">
+          {#each report.notes as note}<li>{note}</li>{/each}
+        </ul>
+      {/if}
+      <button type="button" onclick={again}>{t.imp.another}</button>
+    </div>
+  {:else}
+    {#if progress.status === 'failed'}<p class="bad" role="alert">{t.imp.failed(progress.error)}</p>{/if}
+    <p class="intro">{t.imp.intro}</p>
+    <p><button type="button" class={preview ? '' : 'primary'} onclick={() => fileInput?.click()} disabled={busy} data-import-choose>{file ? t.imp.other : t.imp.choose}</button> {#if file}<span class="quiet">{file.name}</span>{/if}</p>
+    {#if file && !preview && busy}<p class="hint">{t.imp.reading}</p>{/if}
+    {#if preview}
+      <div class="card" data-import-preview>
+        <h2>{t.imp.found(preview.site.name)}</h2>
+        {#if preview.site.url}<p class="quiet">{preview.site.url}</p>{/if}
+        <ul class="counts">
+          <li><strong>{preview.pages}</strong> {t.imp.pages}</li>
+          <li><strong>{preview.posts}</strong> {t.imp.posts}</li>
+          {#each preview.types as type (type.id)}<li><strong>{type.count}</strong> {type.name}</li>{/each}
+          <li><strong>{preview.images}</strong> {t.imp.images}</li>
+          <li><strong>{preview.redirects}</strong> {t.imp.redirects}</li>
+        </ul>
+
+        {#if preview.others.length || chosen.length}
+          <h3>{t.imp.others}</h3>
+          <p class="hint">{t.imp.othersHint}</p>
+          {#each [...chosen.map((type) => ({ type, count: preview?.types.find((p) => p.id === type)?.count ?? 0 })), ...preview.others.filter((o) => !chosen.includes(o.type))] as other (other.type)}
+            <label class="check"><input type="checkbox" checked={chosen.includes(other.type)} onchange={(e) => toggle(other.type, e.currentTarget.checked)} disabled={busy} data-import-type={other.type} /> {other.type} <span class="quiet">({t.ctypes.entries(other.count)})</span></label>
+          {/each}
+        {/if}
+
+        <h3>{t.imp.choices}</h3>
+        <label class="check"><input type="checkbox" bind:checked={images} data-import-images /> {t.imp.copyImages}</label>
+        <p class="hint">{t.imp.copyImagesHint}</p>
+        <label class="check"><input type="checkbox" bind:checked={settings} data-import-settings /> {t.imp.settings}</label>
+        <p class="hint">{preview.menu ? t.imp.settingsHint : t.imp.settingsNoMenu}</p>
+
+        {#if preview.notes.length}
+          <h3>{t.imp.notes}</h3>
+          <ul class="notes">
+            {#each preview.notes as note}<li>{note}</li>{/each}
+          </ul>
+        {/if}
+        <p class="hint">{t.imp.safe}</p>
+        <button type="button" class="primary" onclick={run} disabled={busy} data-import-run>{t.imp.run}</button>
+      </div>
+    {/if}
+  {/if}
+</section>
+
+<style>
+  header { margin-bottom: 1rem; }
+  h1 { margin: 0; font-size: 1.4rem; }
+  h2 { margin: 0 0 0.3rem; font-size: 1.1rem; }
+  h3 { margin: 1.2rem 0 0.3rem; font-size: 0.95rem; }
+  .intro { max-width: 46rem; }
+  .card { max-width: 46rem; padding: 1.2rem 1.4rem; background: #fff; border: 1px solid #dddbe6; border-radius: 8px; }
+  .counts { list-style: none; margin: 0.8rem 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.5rem 1.6rem; }
+  .counts strong { font-size: 1.2rem; }
+  .notes { margin: 0; padding-inline-start: 1.2rem; display: grid; gap: 0.4rem; white-space: pre-line; }
+  .check { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.4rem; }
+  .quiet { color: #6a6880; }
+  progress { width: min(100%, 30rem); }
+  button.primary { margin-top: 1rem; }
+</style>

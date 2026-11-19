@@ -1,5 +1,15 @@
 /** The admin's calls to the editing server. The token comes from the address the CLI printed. */
 import type { Page, Post, Site, Theme } from '../core/index.ts';
+import type { ImportPreview, ImportProgress } from '../site/server.ts';
+
+export type { ImportPreview, ImportProgress };
+export interface ImportChoices {
+  /** Kinds of entry to bring as content types. */
+  types: string[];
+  images: boolean;
+  /** Take the site's name, language, address and menu from the old site. */
+  settings: boolean;
+}
 
 /** What is being edited: `page`, or the name of a content type (`posts`, `projects`). All are made of blocks. */
 export type Kind = string;
@@ -54,6 +64,14 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
   return data;
 }
 
+/** A file as the whole body of a call. */
+async function send<T>(path: string, file: Blob): Promise<T> {
+  const response = await fetch(path, { method: 'POST', headers: { 'x-thecms-token': token, 'content-type': 'application/octet-stream' }, body: file });
+  const data = (await response.json()) as T & { error?: string };
+  if (!response.ok) throw new Error(data.error ?? `request failed (${response.status})`);
+  return data;
+}
+
 export const api = {
   hasToken: token !== '',
   state: () => call<State>('GET', '/api/state'),
@@ -67,6 +85,11 @@ export const api = {
   publishTheme: () => call<State>('POST', '/api/theme/publish', {}),
   media: () => call<{ media: MediaItem[] }>('GET', '/api/media'),
   removeMedia: (name: string) => call<{ media: MediaItem[] }>('DELETE', `/api/media?name=${encodeURIComponent(name)}`),
+  importPlan: (file: Blob, types: string[]) => send<ImportPreview>(`/api/import/plan?types=${encodeURIComponent(types.join(','))}`, file),
+  importRun: (file: Blob, choices: ImportChoices) =>
+    send<ImportProgress>(`/api/import/run?types=${encodeURIComponent(choices.types.join(','))}&images=${choices.images ? 1 : 0}&settings=${choices.settings ? 1 : 0}`, file),
+  importProgress: () => call<ImportProgress>('GET', '/api/import'),
+  importForget: () => call<ImportProgress>('DELETE', '/api/import'),
   /** The body is the file itself; the server reads what it is from its bytes. */
   async upload(file: Blob, label: string): Promise<{ item: MediaItem; media: MediaItem[] }> {
     const response = await fetch(`/api/media?label=${encodeURIComponent(label)}`, {

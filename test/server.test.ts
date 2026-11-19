@@ -37,7 +37,9 @@ const call = (path: string, init: { method?: string; body?: unknown; headers?: R
 
 describe('who may call the editing API', () => {
   test('no token, a wrong token, or a token of another length: refused', async () => {
-    for (const token of ['', 'x', `${editor.token.slice(0, -1)}0`, `${editor.token}0`]) {
+    // The last character is changed to one it is not: a token ending in 0 would otherwise be left as it is.
+    const off = `${editor.token.slice(0, -1)}${editor.token.endsWith('0') ? '1' : '0'}`;
+    for (const token of ['', 'x', off, `${editor.token}0`]) {
       const response = await call('/api/state', { headers: { 'x-thecms-token': token } });
       expect(response.status).toBe(401);
     }
