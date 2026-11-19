@@ -72,6 +72,10 @@ kept in mind from the first line.
 
 ### d5. Licence: GPL-3.0-or-later for the core
 
+> **Superseded by ADR 0020** (2026-11-19): the core is AGPL-3.0-or-later.
+> Themes, language packs and the client/SDK are MIT. The text below is kept as
+> the earlier reasoning.
+
 *Why GPL:* the audience comes from a GPL world and reads it as a sign of trust.
 The owner judged that AGPL would make part of that audience refuse the platform
 outright. The accepted cost: others may host the product without contributing
