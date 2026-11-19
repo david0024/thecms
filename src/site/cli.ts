@@ -21,7 +21,8 @@ import { databaseKind, shownAddress, Store } from './store.ts';
 
 const PLAIN = new URL('../../themes/plain.json', import.meta.url);
 
-async function main(args: string[]): Promise<void> {
+/** Runs one command. A command that starts a server gives it back, so a test can stop it. */
+export async function main(args: string[]): Promise<{ stop: () => void } | undefined> {
   const flags = args.filter((a) => a.startsWith('--'));
   const [command, dbPath, extra] = args.filter((a) => !a.startsWith('--'));
   // A site is a SQLite file by default, or a database server's address (ADR 0013). Its password is never printed.
@@ -47,7 +48,7 @@ async function main(args: string[]): Promise<void> {
     if (missing()) throw new Error(`${shown} does not exist`);
     const editor = await startEditor(await Store.open(dbPath), extra ? { port: Number(extra) } : {});
     console.log(`Editing ${shown}. Open this address (it carries the key to the editor):\n\n  ${editor.url}\n\nPress Ctrl+C to stop.`);
-    return;
+    return editor;
   }
   if (command === 'import' && dbPath && extra) {
     if (!existsSync(extra)) throw new Error(`${extra} does not exist`);
@@ -95,7 +96,7 @@ async function main(args: string[]): Promise<void> {
 ` +
         'Put the public address of this service in Site settings, then export the site again.',
     );
-    return;
+    return forms;
   }
   if ((command === 'theme' || command === 'export') && dbPath && extra) {
     if (missing()) throw new Error(`${shown} does not exist`);
@@ -115,9 +116,12 @@ async function main(args: string[]): Promise<void> {
   }
   console.log('A site is a SQLite file (site.db) or a database address (postgres://... or mysql://...).\n\nUsage:\n  thecms init <site.db>\n  thecms edit <site.db> [port]\n  thecms theme <site.db> <theme.json>\n  thecms export <site.db> <folder>\n  thecms forms <site.db> [port]\n  thecms import <site.db> <export.xml> [--no-images] [--types=portfolio,team] [--categories=projects]');
   process.exitCode = command ? 1 : 0;
+  return undefined;
 }
 
-main(Bun.argv.slice(2)).catch((error: unknown) => {
-  console.error(`thecms: ${error instanceof Error ? error.message : String(error)}`);
-  process.exitCode = 1;
-});
+if (import.meta.main) {
+  main(Bun.argv.slice(2)).catch((error: unknown) => {
+    console.error(`thecms: ${error instanceof Error ? error.message : String(error)}`);
+    process.exitCode = 1;
+  });
+}

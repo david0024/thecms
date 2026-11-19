@@ -6,6 +6,7 @@
  *   node e2e/forms.cjs [folder for screenshots]
  */
 const { chromium } = require('playwright');
+const coverage = require('./coverage.cjs');
 const { spawn, execFileSync } = require('node:child_process');
 const { createServer } = require('node:http');
 const { mkdtempSync, readFileSync, rmSync, existsSync, statSync } = require('node:fs');
@@ -65,7 +66,7 @@ const started = (child, pattern) =>
   const forms = spawn('bun', ['src/site/cli.ts', 'forms', db, String(FORMS_PORT)], { cwd: root });
   await started(forms, /Receiving forms/);
 
-  const browser = await chromium.launch();
+  const browser = await coverage.launch(chromium, 'forms');
   let editor;
   try {
     const page = await browser.newPage({ viewport: { width: 1200, height: 900 } });

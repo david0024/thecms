@@ -127,6 +127,17 @@ bun test                   # tests only
 node e2e/editor.cjs        # the editor in a real browser, start to exported files (needs Playwright)
 ```
 
+Coverage is counted over the whole source tree: the unit tests, and what the
+browser ran in the end-to-end tests, traced back to the source lines. CI fails
+when it drops under the floor in `package.json`, or when a source file is
+measured by no test.
+
+```sh
+bun test --coverage --coverage-reporter=lcov --coverage-dir=coverage
+for t in editor import templates forms; do THECMS_COVERAGE=coverage node e2e/$t.cjs; done
+bun run coverage           # the table, coverage/all.lcov, and the gate
+```
+
 ```
 src/core/     documents and their rules; pure TypeScript, no database, no framework
 src/blocks/   one Svelte 5 component per block type, and the shared layout CSS

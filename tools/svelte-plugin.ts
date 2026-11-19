@@ -7,12 +7,15 @@
 import { plugin } from 'bun';
 import { compile } from 'svelte/compiler';
 
+/** A component as the server runs it. tools/coverage.ts compiles it the same way, to read `bun test`'s lines back to the component's. */
+export const compileForServer = (source: string, path: string) => compile(source, { filename: path, generate: 'server', dev: false }).js;
+
 plugin({
   name: 'svelte-server',
   setup(build) {
     build.onLoad({ filter: /\.svelte$/ }, async ({ path }) => {
       const source = await Bun.file(path).text();
-      const { js } = compile(source, { filename: path, generate: 'server', dev: false });
+      const js = compileForServer(source, path);
       return { contents: js.code, loader: 'js' };
     });
   },
