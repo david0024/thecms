@@ -16,6 +16,9 @@
  *                                         a one-time link to choose a new password, for an owner locked out
  *   thecms setup-link <site.db> --public=https://cms.example.com
  *                                         a new link for the first owner, while there is none
+ *   thecms extension <site.db> install <file> [--yes]
+ *                                         what an extension asks for, and with --yes, installed (ADR 0026)
+ *   thecms extension <site.db> list | on|off|remove <name>
  *   thecms update [--check]               the newest release, in place of this program
  *   thecms version
  */
@@ -30,6 +33,8 @@ import { cleanPublicAddress } from './accounts.ts';
 import { startEditor } from './server.ts';
 import { DEFAULT_THEME } from './shipped.ts';
 import { databaseKind, shownAddress, Store } from './store.ts';
+import { type ExtensionOffer, extensionHost } from './extensions.ts';
+import { startRunner } from './extension-runner.ts';
 import { update } from './update.ts';
 import { VERSION } from './version.ts';
 import { NAME } from '../core/index.ts';
@@ -49,6 +54,9 @@ Usage:
   ${NAME} export <site.db> <folder>
   ${NAME} forms <site.db> [port]
   ${NAME} import <site.db> <export.xml> [--no-images] [--types=portfolio,team] [--categories=projects]
+  ${NAME} extension <site.db> list
+  ${NAME} extension <site.db> install <file> [--yes]
+  ${NAME} extension <site.db> on|off|remove <name>
   ${NAME} update [--check]
   ${NAME} version
 
@@ -65,6 +73,19 @@ async function fill(store: Store): Promise<boolean> {
   return true;
 }
 
+
+/** What an extension asks for, said before it is installed. */
+export function describeOffer(offer: ExtensionOffer): string {
+  const { manifest, asks } = offer;
+  const lines = [`${manifest.displayName} ${manifest.version}${manifest.publisher ? ` by ${manifest.publisher}` : ''}${offer.replaces ? ` (replaces ${offer.replaces})` : ''}`];
+  if (manifest.description) lines.push(manifest.description);
+  lines.push(`SHA-256 ${offer.sha256}`, 'It asks to:');
+  if (asks.collections.length) lines.push(`  keep its own ${asks.collections.join(', ')}`);
+  if (asks.secrets.length) lines.push(`  hold secrets: ${asks.secrets.join(', ')}`);
+  lines.push(asks.egress.length ? `  call ${asks.egress.join(', ')}` : '  call nothing outside this program');
+  for (const point of asks.points) lines.push(`  offer "${point.action}" on ${point.on === 'page' ? 'a page' : 'a block'} in the editor`);
+  return lines.join('\n');
+}
 
 /** Runs one command. A command that starts a server gives it back, so a test can stop it. */
 export async function main(args: string[]): Promise<{ stop: () => void } | undefined> {
@@ -98,6 +119,37 @@ export async function main(args: string[]): Promise<{ stop: () => void } | undef
     if (made) console.log(`Created ${shown} with ${DEMO_PAGES.length} pages and ${DEMO_POSTS.length} blog posts.`);
     else if (ifNew) console.log(`${shown} already holds a site; it was left as it is.`);
     else throw new Error(`${shown} already holds a site`);
+    return;
+  }
+  if (command === 'extension' && dbPath && extra) {
+    if (missing()) throw new Error(`${shown} does not exist`);
+    const store = await Store.open(dbPath);
+    const host = extensionHost(store);
+    try {
+      const what = words[3] ?? '';
+      if (extra === 'list') {
+        const all = await store.extensions();
+        console.log(all.length ? all.map((e) => `${e.manifest.name} ${e.manifest.version}${e.enabled ? '' : ' (off)'}`).join('\n') : 'No extensions are installed.');
+      } else if (extra === 'install' && what) {
+        const text = await Bun.file(what).text();
+        const offer = await host.offer(text);
+        console.log(describeOffer(offer));
+        if (!flags.includes('--yes')) {
+          console.log('Nothing was installed. Run this again with --yes to accept what it asks for.');
+          return;
+        }
+        await host.install(text, offer.sha256);
+        console.log(`Installed ${offer.manifest.displayName} ${offer.manifest.version}.`);
+      } else if ((extra === 'remove' || extra === 'on' || extra === 'off') && what) {
+        if (!(await store.extension(what))) throw new Error(`no extension "${what}" is installed`);
+        if (extra === 'remove') await host.uninstall(what);
+        else await host.enable(what, extra === 'on');
+        console.log(extra === 'remove' ? `Removed ${what} and what it kept.` : `${what} is ${extra}.`);
+      } else throw new Error(`unknown: extension ${extra}; see ${NAME} help`);
+    } finally {
+      host.close();
+      await store.close();
+    }
     return;
   }
   if (command === 'version') {
@@ -224,7 +276,8 @@ export async function main(args: string[]): Promise<{ stop: () => void } | undef
   return undefined;
 }
 
-if (import.meta.main) {
+if (import.meta.main && Bun.argv[2] === '__extension-runner') startRunner();
+else if (import.meta.main) {
   main(Bun.argv.slice(2)).catch((error: unknown) => {
     console.error(`${NAME}: ${error instanceof Error ? error.message : String(error)}`);
     process.exitCode = 1;

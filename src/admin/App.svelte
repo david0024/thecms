@@ -39,9 +39,13 @@ import {
   slugify,
   slugIn,
   pagesIn,
+  languageName,
 } from '../core/index.ts';
 import { api, type Doc, type Kind, type State } from './api.ts';
 import ContentList from './ContentList.svelte';
+import Extensions from './Extensions.svelte';
+import ExtensionScreen from './ExtensionScreen.svelte';
+import ExtensionTools from './ExtensionTools.svelte';
 import ContentTypes from './ContentTypes.svelte';
 import EntryFieldsForm from './EntryFieldsForm.svelte';
 import ImageField from './ImageField.svelte';
@@ -61,7 +65,7 @@ let site = $state.raw<State | null>(null);
 let page = $state.raw<Doc | null>(null);
 let kind = $state<Kind>('page');
 /** Which section of the admin is showing: a list, or the builder with one page or post open. */
-let view = $state<'pages' | 'media' | 'messages' | 'people' | 'types' | 'import' | 'edit' | `list:${string}`>('pages');
+let view = $state<'pages' | 'media' | 'messages' | 'people' | 'types' | 'import' | 'extensions' | 'edit' | `list:${string}` | `ext:${string}`>('pages');
 let selected = $state<string | null>(null);
 let tab = $state<'content' | 'style'>('content');
 let saving = $state<'saved' | 'saving' | 'unsaved' | 'error'>('saved');
@@ -99,6 +103,33 @@ const home = $derived<typeof view>(designing ? 'types' : kind === 'page' ? 'page
 /** An editor writes and publishes content; the site, the theme and the people are the owner's (ADR 0022). */
 const owner = $derived(site?.me.role === 'owner');
 const freeOnPage = $derived(page ? countFreeValues(page.blocks) : 0);
+
+/** The site's languages, as a question of an extension offers them. */
+const siteLanguages = $derived(site ? [site.site.language, ...site.site.languages].map((language) => ({ language, name: languageName(language) })) : []);
+
+/** An extension's answer on the block being edited: put in its place, as one step to undo. */
+async function runOnBlock(name: string, action: string, ask: Record<string, string>): Promise<void> {
+  if (!page || !block) return;
+  const id = block.id;
+  try {
+    const { block: next } = await api.runOnBlock(name, action, block, page.slug, ask);
+    failure = '';
+    patch(id, () => next);
+  } catch (error) {
+    fail(error);
+  }
+}
+/** An extension's answer on the page: its title, description and blocks, as one step to undo. */
+async function runOnPage(name: string, action: string, ask: Record<string, string>): Promise<void> {
+  if (!page) return;
+  try {
+    const { page: next } = await api.runOnPage(name, action, page, ask);
+    failure = '';
+    change({ ...page, title: next.title || page.title, description: next.description, blocks: next.blocks });
+  } catch (error) {
+    fail(error);
+  }
+}
 
 const fail = (error: unknown): void => {
   failure = error instanceof Error ? error.message : String(error);
@@ -513,6 +544,7 @@ onMount(() => {
         <button type="button" onclick={() => panel('theme')} data-nav="theme">{t.nav.theme}</button>
         <button type="button" aria-current={view === 'types' ? 'page' : undefined} onclick={() => (view = 'types')} data-nav="types">{t.ctypes.heading}</button>
         <button type="button" aria-current={view === 'import' ? 'page' : undefined} onclick={() => (view = 'import')} data-nav="import">{t.nav.import}</button>
+        <button type="button" aria-current={view === 'extensions' || view.startsWith('ext:') ? 'page' : undefined} onclick={() => (view = 'extensions')} data-nav="extensions">{t.ext.heading}</button>
         {#if site.accounts}
           <button type="button" aria-current={view === 'people' ? 'page' : undefined} onclick={() => (view = 'people')} data-nav="people">{t.nav.people}</button>
         {/if}
@@ -543,6 +575,16 @@ onMount(() => {
       <ImportScreen ondone={reload} />
     {:else if view === 'people'}
       <People />
+    {:else if view === 'extensions'}
+      <Extensions extensions={site.extensions} onchange={(next) => site && (site = { ...site, extensions: next })} onopen={(name, collection) => (view = `ext:${name}/${collection}`)} />
+    {:else if view.startsWith('ext:')}
+      {@const [name, collection] = view.slice(4).split('/')}
+      {@const extension = site.extensions.find((e) => e.name === name)}
+      {@const shownView = extension?.views?.find((v) => v.collection === collection)}
+      {@const of = extension?.collections?.find((c) => c.name === collection)}
+      {#if extension && shownView && of}
+        {#key view}<ExtensionScreen {extension} view={shownView} collection={of} />{/key}
+      {/if}
     {/if}
     {#if failure && view !== 'edit'}<p class="bad toast" role="alert">{failure}</p>{/if}
 
@@ -619,6 +661,7 @@ onMount(() => {
               onchange={(path, value) => patch(block.id, (b) => ({ ...b, content: setPath(b.content, path, value) }))}
             />
           {/key}
+          <ExtensionTools extensions={site.extensions} on="block" languages={siteLanguages} onrun={runOnBlock} />
         {:else}
           {#key block.id}
             <StylePanel
@@ -705,6 +748,7 @@ onMount(() => {
           <button type="button" onclick={() => page && setBlocks(resetToTheme(page.blocks))}>{t.style.resetPage}</button>
         {/if}
         <p class="hint">{t.inspector.nothing}</p>
+        <ExtensionTools extensions={site.extensions} on="page" languages={siteLanguages} onrun={runOnPage} />
         {#if type || page.slug !== ''}
           <button type="button" class="danger" onclick={removePage}>{!type ? t.inspector.deletePage : kind === POSTS_TYPE ? t.posts.deletePost : t.ctypes.deleteEntry}</button>
         {/if}
