@@ -64,6 +64,13 @@ const assert = (condition, message) => {
     await preview.locator('[data-import-type="product"]').check();
     await preview.locator('.counts li', { hasText: 'Product' }).waitFor();
     assert(await preview.locator('[data-import-type="product"]').isChecked(), 'a kind of entry a plugin added can be ticked, and is counted');
+    // A category kept as a section of its own: its posts leave the blog. Ticked, counted, then left as it was.
+    await preview.locator('[data-import-category="news"]').check();
+    await preview.locator('.counts li', { hasText: 'News' }).waitFor();
+    assert((await preview.locator('.counts').innerText()).replace(/\s+/g, ' ').includes('1 posts'), 'a category can be made a section of its own, and its posts leave the blog');
+    if (shots) await page.screenshot({ path: join(shots, 'admin-import-category.png'), fullPage: true });
+    await preview.locator('[data-import-category="news"]').uncheck();
+    await preview.locator('.counts li', { hasText: 'News' }).waitFor({ state: 'detached' });
     await preview.locator('[data-import-images]').uncheck();
     await preview.locator('[data-import-run]').click();
     const done = screen.locator('[data-import-done]');

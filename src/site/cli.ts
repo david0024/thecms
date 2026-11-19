@@ -49,8 +49,8 @@ async function main(args: string[]): Promise<void> {
   if (command === 'import' && dbPath && extra) {
     if (!existsSync(extra)) throw new Error(`${extra} does not exist`);
     // Read and understood before anything is written: a file that is not an export creates nothing.
-    const types = flags.find((f) => f.startsWith('--types='))?.slice(8).split(',').map((name) => name.trim()).filter(Boolean) ?? [];
-    const plan = planImport(await Bun.file(extra).text(), new Date().toISOString().slice(0, 10), { types });
+    const listed = (flag: string): string[] => flags.find((f) => f.startsWith(`${flag}=`))?.slice(flag.length + 1).split(',').map((name) => name.trim()).filter(Boolean) ?? [];
+    const plan = planImport(await Bun.file(extra).text(), new Date().toISOString().slice(0, 10), { types: listed('--types'), categories: listed('--categories') });
     const store = await Store.open(dbPath);
     try {
       const fresh = await store.isEmpty();
@@ -94,7 +94,7 @@ async function main(args: string[]): Promise<void> {
     }
     return;
   }
-  console.log('A site is a SQLite file (site.db) or a database address (postgres://... or mysql://...).\n\nUsage:\n  thecms init <site.db>\n  thecms edit <site.db> [port]\n  thecms theme <site.db> <theme.json>\n  thecms export <site.db> <folder>\n  thecms import <site.db> <export.xml> [--no-images] [--types=portfolio,team]');
+  console.log('A site is a SQLite file (site.db) or a database address (postgres://... or mysql://...).\n\nUsage:\n  thecms init <site.db>\n  thecms edit <site.db> [port]\n  thecms theme <site.db> <theme.json>\n  thecms export <site.db> <folder>\n  thecms import <site.db> <export.xml> [--no-images] [--types=portfolio,team] [--categories=projects]');
   process.exitCode = command ? 1 : 0;
 }
 

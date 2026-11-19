@@ -124,6 +124,8 @@ export interface ImportPreview {
   types: { id: string; name: string; count: number }[];
   /** Kinds a plugin or theme added that could be brought as content types. */
   others: { type: string; count: number }[];
+  /** Categories of posts that could each become a content type (ADR 0016). */
+  categories: { nicename: string; name: string; count: number }[];
   images: number;
   redirects: number;
   menu: boolean;
@@ -143,6 +145,7 @@ const preview = (plan: ImportPlan): ImportPreview => ({
   posts: plan.posts.length,
   types: plan.types.map((type) => ({ id: type.id, name: type.name, count: plan.entries[type.id]?.length ?? 0 })),
   others: plan.others,
+  categories: plan.categories,
   images: plan.images.length,
   redirects: plan.redirects.length,
   menu: plan.menu !== null,
@@ -234,8 +237,8 @@ export async function startEditor(store: Store, options: { port?: number; listen
     if (request.method !== 'POST') return json({ error: 'not found' }, 404);
     if (Number(request.headers.get('content-length') ?? 0) > IMPORT_MAX_BYTES) return json({ error: 'the export file is too large' }, 413);
     // The body is the export file itself. It is read and understood before anything is written.
-    const types = (url.searchParams.get('types') ?? '').split(',').map((name) => name.trim()).filter(Boolean);
-    const plan = planImport(await request.text(), new Date().toISOString().slice(0, 10), { types });
+    const listed = (name: string): string[] => (url.searchParams.get(name) ?? '').split(',').map((value) => value.trim()).filter(Boolean);
+    const plan = planImport(await request.text(), new Date().toISOString().slice(0, 10), { types: listed('types'), categories: listed('categories') });
     if (url.pathname === '/api/import/plan') return json(preview(plan));
     if (url.pathname !== '/api/import/run') return json({ error: 'not found' }, 404);
     if (importing.status === 'running') return json({ error: 'an import is already running' }, 409);
