@@ -33,6 +33,7 @@ The decisions behind this, each with its reason:
 - [ADR 0017 — Gallery, questions, testimonials, prices](docs/adr/0017-more-blocks.md)
 - [ADR 0018 — Tags](docs/adr/0018-tags.md)
 - [ADR 0019 — The contact form and the site's form service](docs/adr/0019-the-contact-form.md)
+- [ADR 0020 — The core is AGPL-3.0-or-later](docs/adr/0020-licence-agpl.md)
 
 ## Where it stands
 
@@ -145,5 +146,7 @@ Three rules hold everywhere:
 
 ## Licence
 
-[GPL-3.0-or-later](LICENSE). Themes are data and modules run behind a contract,
-so they may carry any licence.
+The core is [AGPL-3.0-or-later](LICENSE) (ADR 0020). Themes, language packs and
+the client/SDK are MIT; themes, modules and the sites you build may carry any
+licence. Contributions come under a simple [CLA](CLA.md); see
+[CONTRIBUTING.md](CONTRIBUTING.md).
