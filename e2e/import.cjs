@@ -77,7 +77,7 @@ const assert = (condition, message) => {
     const done = screen.locator('[data-import-done]');
     await done.waitFor();
     const summary = await done.locator('p').first().innerText();
-    assert(summary.includes('2 posts') && summary.includes('1 entries of other types'), `the report is on the screen (${summary})`);
+    assert(summary.includes('2 posts') && summary.includes('1 entry of another type came too'), `the report is on the screen (${summary})`);
     if (shots) await page.screenshot({ path: join(shots, 'admin-import-done.png'), fullPage: true });
 
     // The admin knows about what came, without being opened again.

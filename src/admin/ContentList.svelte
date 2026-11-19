@@ -5,7 +5,7 @@
  */
 import { type ContentType, entryPath, pagePath, POSTS_TYPE, slugify } from '../core/index.ts';
 import type { Kind, PageInfo, PostInfo } from './api.ts';
-import { t } from './messages.ts';
+import { say, t } from './messages.ts';
 
 let {
   kind,
@@ -24,7 +24,7 @@ const words = $derived(
     ? { heading: t.nav.pages, add: t.app.newPage, none: '' }
     : kind === POSTS_TYPE
       ? { heading: type.name, add: t.posts.newPost, none: t.posts.none }
-      : { heading: type.name, add: t.ctypes.newEntry(type.singular), none: t.ctypes.noEntries },
+      : { heading: type.name, add: say(t.ctypes.newEntry, { singular: type.singular.toLowerCase() }), none: t.ctypes.noEntries },
 );
 const status = (item: PageInfo): string => (!item.published ? t.bar.draft : item.changed ? t.bar.changed : t.bar.published);
 </script>

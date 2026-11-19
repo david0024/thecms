@@ -49,10 +49,19 @@ export interface State {
   /** The theme being worked on differs from the published one. */
   themeChanged: boolean;
   themes: Theme[];
+  /** English, and every language pack the installation has (ADR 0021). */
+  languages: LanguageInfo[];
   templates: Record<string, TemplateInfo>;
   pages: PageInfo[];
   posts: PostInfo[];
   entries: Record<string, PostInfo[]>;
+}
+
+export interface LanguageInfo {
+  language: string;
+  name: string;
+  /** How much of English the pack says, from 0 to 1. */
+  coverage: number;
 }
 
 export interface MediaItem {

@@ -6,7 +6,7 @@
  */
 import { onMount } from 'svelte';
 import { api, type Message } from './api.ts';
-import { t } from './messages.ts';
+import { say, t } from './messages.ts';
 
 let items = $state.raw<Message[] | null>(null);
 let keep = $state(180);
@@ -42,7 +42,7 @@ onMount(() => void attempt(api.messages));
   <header>
     <h1>{t.inbox.heading}</h1>
   </header>
-  <p class="hint">{t.inbox.intro(keep)}</p>
+  <p class="hint">{say(t.inbox.intro, { count: keep })}</p>
   {#if problem}<p class="bad" role="alert">{problem}</p>{/if}
   {#if items && items.length === 0}
     <p class="hint">{t.inbox.empty}</p>

@@ -34,6 +34,7 @@ The decisions behind this, each with its reason:
 - [ADR 0018 — Tags](docs/adr/0018-tags.md)
 - [ADR 0019 — The contact form and the site's form service](docs/adr/0019-the-contact-form.md)
 - [ADR 0020 — The core is AGPL-3.0-or-later](docs/adr/0020-licence-agpl.md)
+- [ADR 0021 — Language packs](docs/adr/0021-language-packs.md)
 
 ## Where it stands
 
@@ -61,6 +62,7 @@ theme, publish, and export the site as static files.
 | Import from the admin: choose the file, see what would come over and what would not, then run it | done |
 | A WordPress category kept as a section of its own: its posts become entries of a new content type | done |
 | Contact form with consent, a small form service of the site's own, email to the owner, messages kept for a set time, exported or erased on request | done |
+| Language packs: the admin and the site's words in one JSON file a language, checked against English; Romanian ships complete | done |
 | Modules (isolated plugins) | planned |
 
 ## Try it
@@ -144,6 +146,7 @@ src/blocks/   one Svelte 5 component per block type, and the shared layout CSS
 src/site/     the store (SQLite, Postgres or MySQL), the static export, the editing server, the command line
 src/admin/    the editor: a Svelte 5 app and the script that runs inside the canvas
 themes/       themes, as JSON
+languages/    language packs, as JSON (more from the folder in THECMS_LANGUAGES)
 docs/adr/     decisions, with their reasons
 ```
 

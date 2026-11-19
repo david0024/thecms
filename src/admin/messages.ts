@@ -1,14 +1,19 @@
 /**
- * Every word the admin shows, as data (ADR 0001 d3). A language is another
- * object of this shape; nothing in a component is written in a language.
+ * Every word the admin shows, in English, as data (ADR 0001 d3, ADR 0021).
+ * Another language is a language pack (`languages/<code>.json`) whose keys are
+ * these paths under `admin.`; nothing in a component is written in a language.
+ * A message with {places} is filled with `say`; one that depends on a number
+ * gives its plural forms.
  */
+import { applyPack, type Catalog, format, isPlural, type LanguagePack, type Message, type Plural } from '../core/language.ts';
+
 export const en = {
   app: { pages: 'Pages', blocks: 'Add a block', blocksHint: 'Click to add, or drag onto the page.', tooDeep: 'Groups nest at most four deep; it cannot go there.', newPage: 'New page', pageTitle: 'Page title', create: 'Create', cancel: 'Cancel', home: 'Home page' },
   nav: { pages: 'Pages', posts: 'Posts', media: 'Media', messages: 'Messages', settings: 'Menu and settings', theme: 'Theme', label: 'Sections', back: 'All', import: 'Import' },
   list: { address: 'Address', status: 'Status' },
   design: {
-    heading: (singular: string): string => `The page of each ${singular.toLowerCase()}`,
-    intro: (name: string): string => `Every entry of ${name} is shown in this page. Add any block around it; "Part of the entry" places the title, the date, a field or the entry's own blocks. The page shows your newest entry as an example.`,
+    heading: 'The page of each {singular}',
+    intro: `Every entry of {name} is shown in this page. Add any block around it; "Part of the entry" places the title, the date, a field or the entry's own blocks. The page shows your newest entry as an example.`,
     reset: 'Go back to the default page',
     resetHint: 'Visitors keep the page they see until you publish.',
     open: 'Design its page',
@@ -21,7 +26,7 @@ export const en = {
     choose: 'Choose the export file',
     other: 'Choose another file',
     reading: 'Reading the file…',
-    found: (name: string): string => `Found: ${name}`,
+    found: 'Found: {name}',
     pages: 'pages',
     posts: 'posts',
     images: 'images',
@@ -30,7 +35,7 @@ export const en = {
     othersHint: 'A plugin or theme of the old site added these. Tick the ones that are content you want (a portfolio, a team); each becomes a content type here.',
     sections: 'Categories that are sections of their own',
     sectionsHint: 'Some sites keep projects, team members or events as posts in a category. Tick a category to make it a content type here, with its own list and address; its posts leave the blog and become its entries. Its old addresses lead to the new ones.',
-    postCount: (n: number): string => (n === 1 ? '1 post' : `${n} posts`),
+    postCount: { one: '1 post', other: '{count} posts' } as Plural,
     choices: 'Choices',
     copyImages: 'Copy the images from the old site',
     copyImagesHint: 'The old site has to be online while this runs. Without a copy, images break when the old site is gone.',
@@ -40,19 +45,20 @@ export const en = {
     notes: 'What to know',
     safe: 'Nothing already in this site is replaced: a page or post whose address is taken is left as it is.',
     run: 'Import',
-    copying: (done: number, total: number): string => `Copying images: ${done} of ${total}`,
+    copying: 'Copying images: {done} of {total}',
     writing: 'Writing the pages and posts…',
     stay: 'You can look around the admin meanwhile; this keeps going until it is done.',
     done: 'The import is done',
-    summary: (r: { pages: number; posts: number; entries: number; drafts: number; images: number; redirects: number; menu: boolean }): string =>
-      `Imported ${r.pages} pages, ${r.posts} posts${r.entries ? ` and ${r.entries} entries of other types` : ''} (${r.drafts} of them as drafts), with ${r.images} images.` +
-      `${r.menu ? ' The menu came over too.' : ''}${r.redirects ? ` ${r.redirects} old addresses now lead to their new ones.` : ''}`,
+    summary: 'Imported {pages} pages and {posts} posts ({drafts} of them as drafts), with {images} images.',
+    summaryEntries: { one: '1 entry of another type came too.', other: '{count} entries of other types came too.' } as Plural,
+    summaryMenu: 'The menu came over too.',
+    summaryRedirects: { one: '1 old address now leads to its new one.', other: '{count} old addresses now lead to their new ones.' } as Plural,
     another: 'Import another file',
-    failed: (reason: string): string => `The import stopped: ${reason}`,
+    failed: 'The import stopped: {reason}',
   },
   inbox: {
     heading: 'Messages',
-    intro: (days: number): string => `What visitors sent through the forms on your site. Each message is kept ${days} days, then deleted; change that in Site settings.`,
+    intro: { one: 'What visitors sent through the forms on your site. Each message is kept 1 day, then deleted; change that in Site settings.', other: 'What visitors sent through the forms on your site. Each message is kept {count} days, then deleted; change that in Site settings.' } as Plural,
     empty: 'No messages yet. A contact form on a published page sends them here.',
     consent: 'What they agreed to',
     remove: 'Delete',
@@ -81,8 +87,8 @@ export const en = {
     save: 'Save',
     remove: 'Delete this content type',
     builtIn: 'Always there. Rename it in Menu and settings.',
-    entries: (n: number): string => (n === 1 ? '1 entry' : `${n} entries`),
-    newEntry: (singular: string): string => `New ${singular.toLowerCase()}`,
+    entries: { one: '1 entry', other: '{count} entries' } as Plural,
+    newEntry: 'New {singular}',
     noEntries: 'Nothing here yet.',
     deleteEntry: 'Delete this entry',
   },
@@ -125,6 +131,10 @@ export const en = {
     heading: 'Site',
     name: 'Site name',
     language: 'Language (en, ro, pt-BR)',
+    languageHint: "The site's own words (the menu, \"Page not found\") come from its language pack; without one they are in English.",
+    adminLanguage: 'Language of the admin',
+    sameAsSite: 'The same as the site',
+    partial: { other: '{count}% translated' } as Plural,
     url: 'Address (https://example.com)',
     urlHint: 'Needed for the sitemap and for link previews.',
     header: 'Header',
@@ -209,7 +219,7 @@ export const en = {
     theme: 'From the theme',
     custom: 'My own value',
     invalid: 'Not a valid value',
-    free: (n: number) => (n === 1 ? '1 value here is your own and will not follow the theme.' : `${n} values here are your own and will not follow the theme.`),
+    free: { one: '1 value here is your own and will not follow the theme.', other: '{count} values here are your own and will not follow the theme.' } as Plural,
     reset: 'Reset to theme',
     resetPage: 'Reset the whole page to the theme',
     props: {
@@ -290,4 +300,24 @@ export const en = {
 };
 
 export type Messages = typeof en;
-export const t: Messages = en;
+
+/** The words the admin shows now: English, or a language pack put over it before the admin starts. */
+export const t: Messages = structuredClone(en);
+let language = 'en';
+
+/** Puts a language pack's admin words in place. What the pack leaves out stays English. */
+export function useLanguage(pack: LanguagePack | null): void {
+  const applied = applyPack({ admin: en } as unknown as Catalog, pack).admin as unknown as Messages;
+  replaceInPlace(t as unknown as Catalog, applied as unknown as Catalog);
+  language = pack?.language ?? 'en';
+}
+
+function replaceInPlace(target: Catalog, source: Catalog): void {
+  for (const [key, value] of Object.entries(source)) {
+    if (typeof value === 'string' || isPlural(value)) target[key] = value;
+    else replaceInPlace(target[key] as Catalog, value as Catalog);
+  }
+}
+
+/** A message with its places filled, and for a number the form the admin's language uses. */
+export const say = (message: Message, params: Record<string, string | number> = {}): string => format(message, params, language);
