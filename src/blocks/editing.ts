@@ -31,7 +31,7 @@ export const marker = (): ((path: string) => string | undefined) => {
 export type EntryLists = Record<string, { type: ContentType; entries: Post[] }>;
 
 /**
- * The entry a content type's page is drawn for (ADR 0014), and which part of
+ * The entry a content type's page is drawn for (ADR 0015), and which part of
  * that page the editor is changing: the entry's own blocks (`entry`), the
  * type's page around them (`template`), or neither, for a visitor.
  */
