@@ -33,10 +33,10 @@ import {
 } from '../core/index.ts';
 import { wordsFor } from '../blocks/words.ts';
 import { menuOf, renderBlogList, renderPage, renderPost, STYLESHEET } from './document.ts';
+import { BASE_CSS } from './shipped.ts';
 import type { Store } from './store.ts';
 
 const MARKER = '.thecms-export';
-const BASE_CSS = new URL('../blocks/base.css', import.meta.url);
 const FEED_ENTRIES = 30;
 
 const xml = (v: string): string => v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -109,7 +109,7 @@ export async function buildSite(
   };
 
   // The structure first, the theme after it: where both set the same thing, the theme wins.
-  files.set(STYLESHEET.slice(1), `${await Bun.file(BASE_CSS).text()}${themeCss(theme)}`);
+  files.set(STYLESHEET.slice(1), `${BASE_CSS}${themeCss(theme)}`);
   // What a block that lists entries shows: only what is published.
   const listable = Object.fromEntries(types.map(({ type, posts: own }) => [type.id, { type, entries: own }]));
   for (const p of pages) page(pagePath(p.slug), renderPage(site, theme, p, menu, listable));

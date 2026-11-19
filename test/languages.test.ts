@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { applyPack, type Catalog, flattenCatalog, format, packCoverage, parsePack, placeholders } from '../src/core/index.ts';
 import { en as adminEnglish, say, t, useLanguage } from '../src/admin/messages.ts';
 import { dateText, wordsFor } from '../src/blocks/words.ts';
-import { BUNDLED_LANGUAGES, ENGLISH, languages, packFor, readLanguages } from '../src/site/languages.ts';
+import { ENGLISH, languages, packFor, readLanguages } from '../src/site/languages.ts';
 import { startEditor } from '../src/site/server.ts';
 import { Store } from '../src/site/store.ts';
 import plain from '../themes/plain.json';
@@ -75,7 +75,7 @@ describe('a message', () => {
 
 describe('the packs that ship', () => {
   test('each fits English, and says all of it', () => {
-    const { packs, problems } = readLanguages([BUNDLED_LANGUAGES]);
+    const { packs, problems } = readLanguages([]);
     expect(problems).toEqual([]);
     expect(packs.map((p) => p.language)).toContain('ro');
     for (const pack of packs) expect(Object.keys(flattenCatalog(ENGLISH)).filter((key) => !(key in pack.messages))).toEqual([]);
@@ -98,7 +98,7 @@ describe('the packs that ship', () => {
       await writeFile(join(dir, 'ro.json'), JSON.stringify({ $language: 'ro', $name: 'Mine', 'site.menu': 'Meniul meu', 'site.nope': 'x' }));
       await writeFile(join(dir, 'broken.json'), '{');
       await writeFile(join(dir, 'notes.txt'), 'not a pack');
-      const { packs, problems } = readLanguages([BUNDLED_LANGUAGES, dir, join(dir, 'missing')]);
+      const { packs, problems } = readLanguages([dir, join(dir, 'missing')]);
       expect(packs.find((p) => p.language === 'ro')?.name).toBe('Mine');
       expect(problems).toHaveLength(2);
       expect(problems[0]).toStartWith('broken.json: not JSON');

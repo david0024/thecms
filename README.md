@@ -36,6 +36,7 @@ The decisions behind this, each with its reason:
 - [ADR 0020 — The core is AGPL-3.0-or-later](docs/adr/0020-licence-agpl.md)
 - [ADR 0021 — Language packs](docs/adr/0021-language-packs.md)
 - [ADR 0022 — Accounts](docs/adr/0022-accounts.md)
+- [ADR 0023 — Installation](docs/adr/0023-installation.md)
 
 ## Where it stands
 
@@ -65,9 +66,37 @@ theme, publish, and export the site as static files.
 | Contact form with consent, a small form service of the site's own, email to the owner, messages kept for a set time, exported or erased on request | done |
 | Language packs: the admin and the site's words in one JSON file a language, checked against English; Romanian ships complete | done |
 | Accounts for a served editor: the first owner from a one-time link, editors invited by the owner, an editor writes content and nothing else | done |
+| Installed with one command: one file a platform from GitHub Releases, checked by its checksum; a server with systemd in one more option; `thecms update` | done |
 | Modules (isolated plugins) | planned |
 
-## Try it
+## Install
+
+On Linux or macOS:
+
+```sh
+curl -fsSL https://github.com/david0024/thecms/releases/latest/download/install.sh | sh
+```
+
+On Windows, in PowerShell:
+
+```powershell
+irm https://github.com/david0024/thecms/releases/latest/download/install.ps1 | iex
+```
+
+Then, in a folder for your site, run `thecms`. It makes `site.db` with sample
+pages and opens the editor. `thecms update` brings the newest release.
+
+On a Linux server, as root, the editor for your client, behind your web server:
+
+```sh
+curl -fsSL https://github.com/david0024/thecms/releases/latest/download/install.sh \
+  | sh -s -- --server --public=https://cms.example.com
+```
+
+It prints the link that makes the owner's account. Add
+`--database=postgres://…` to keep the site in a database server (ADR 0023).
+
+## Try it from the sources
 
 Needs [Bun](https://bun.sh) 1.4 or newer.
 
@@ -153,6 +182,12 @@ bun test --coverage --coverage-reporter=lcov --coverage-dir=coverage
 for t in editor import templates forms admin accounts; do THECMS_COVERAGE=coverage node e2e/$t.cjs; done
 bun run coverage           # the table, coverage/all.lcov, and the gate
 ```
+
+```sh
+bun tools/build.ts dist-bin --targets=linux-x64   # the program as one file (all platforms without --targets)
+```
+
+A release is a tag: set the version in `package.json`, then push `v<version>`.
 
 ```
 src/core/     documents and their rules; pure TypeScript, no database, no framework

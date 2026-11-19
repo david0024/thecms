@@ -113,11 +113,66 @@ describe('the command line', () => {
     }
   });
 
-  test('without a command it shows how to use it; with an unknown one it also fails', async () => {
-    await run();
+  test('help shows how to use it; an unknown command also does, and fails', async () => {
+    await run('help');
+    expect(said.join('\n')).toContain('Usage:');
+    await run('--help');
     expect(said.join('\n')).toContain('Usage:');
     expect(process.exitCode).toBe(0);
     await run('nonsense');
+    expect(said.join('\n')).toContain('Usage:');
     expect(process.exitCode).toBe(1);
+    await run('version');
+    expect(said.join('\n')).toMatch(/^thecms \d+\.\d+\.\d+/);
+  });
+
+  test('without a command, the site here is made if new and opened in the editor, or served with accounts', async () => {
+    const site = join(dir, 'here.db');
+    process.env.THECMS_SITE = site;
+    try {
+      const editor = await run('--port=0');
+      editor?.stop();
+      expect(said.join('\n')).toContain('with 3 sample pages');
+      expect(said.join('\n')).toMatch(/#token=\w+/);
+      const again = await run('--port=0');
+      again?.stop();
+      expect(said.join('\n')).not.toContain('sample pages');
+      process.env.THECMS_PUBLIC = 'https://cms.example.com';
+      const served = await run('--port=0');
+      served?.stop();
+      expect(said.join('\n')).toMatch(/https:\/\/cms\.example\.com\/admin\/#link=[\w-]+/);
+      // While there is no owner, a new link can be had without starting it again; with one, not.
+      await run('setup-link', site, '--public=https://cms.example.com');
+      expect(said.join('\n')).toMatch(/within the hour[^\n]*\n\n {2}https:\/\/cms\.example\.com\/admin\/#link=[\w-]+$/);
+      await expect(run('setup-link', site)).rejects.toThrow('--public=');
+      await expect(run('setup-link', join(dir, 'none.db'), '--public=https://cms.example.com')).rejects.toThrow('does not exist');
+      const store = await Store.open(site);
+      await store.addUser({ email: 'ana@example.com', role: 'owner', password: 'a long enough password' });
+      await store.close();
+      await expect(run('setup-link', site, '--public=https://cms.example.com')).rejects.toThrow('has an owner');
+    } finally {
+      delete process.env.THECMS_SITE;
+      delete process.env.THECMS_PUBLIC;
+    }
+  });
+
+  test('init --if-new leaves a site that is there as it is', async () => {
+    const db = join(dir, 'site.db');
+    await run('init', db, '--if-new');
+    expect(said.join('\n')).toContain('Created');
+    await run('init', db, '--if-new');
+    expect(said.join('\n')).toContain('already holds a site; it was left as it is');
+  });
+
+  test('update says it runs from the sources, and never replaces them', async () => {
+    const real = globalThis.fetch;
+    globalThis.fetch = (async () => Response.json({ tag_name: 'v999.0.0' })) as unknown as typeof fetch;
+    try {
+      await run('update', '--check');
+      expect(said.join('\n')).toContain('999.0.0 is out');
+      await expect(run('update')).rejects.toThrow('runs from the sources');
+    } finally {
+      globalThis.fetch = real;
+    }
   });
 });
