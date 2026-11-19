@@ -1,10 +1,31 @@
-/** The admin's calls to the editing server. The token comes from the address the CLI printed. */
+/**
+ * The admin's calls to the editing server. On one's own computer they carry
+ * the key from the address the command printed; on a served admin, the
+ * session cookie and a header only the admin's own page sends (ADR 0022).
+ */
 import type { Page, Post, Site, Theme } from '../core/index.ts';
 import type { ImportPreview, ImportProgress } from '../site/server.ts';
 
 export type { ImportPreview, ImportProgress };
-import type { Message } from '../site/store.ts';
-export type { Message };
+import type { Message, Role, User } from '../site/store.ts';
+export type { Message, Role, User };
+
+/** The person signed in, as the admin is told. */
+export interface Me {
+  id: string;
+  email: string;
+  name: string;
+  role: Role;
+}
+export interface People {
+  users: User[];
+  me: Me;
+  /** A one-time link just made, for the owner to send. */
+  link?: string;
+}
+
+/** A call refused because nobody is signed in: the admin shows the sign-in form. */
+export class SignInNeeded extends Error {}
 export interface ImportChoices {
   /** Kinds of entry to bring as content types. */
   types: string[];
@@ -51,6 +72,9 @@ export interface State {
   themes: Theme[];
   /** English, and every language pack the installation has (ADR 0021). */
   languages: LanguageInfo[];
+  me: Me;
+  /** The admin is served to others, with accounts; false on one's own computer. */
+  accounts: boolean;
   templates: Record<string, TemplateInfo>;
   pages: PageInfo[];
   posts: PostInfo[];
@@ -72,25 +96,32 @@ export interface MediaItem {
   label: string;
 }
 
-const token = new URLSearchParams(location.hash.slice(1)).get('token') ?? '';
+const hash = new URLSearchParams(location.hash.slice(1));
+const token = hash.get('token') ?? '';
+/** A one-time link's secret: the first owner, an invitation, a new password. */
+export const linkSecret = hash.get('link') ?? '';
+const who = (): Record<string, string> => (token ? { 'x-thecms-token': token } : { 'x-thecms-request': '1' });
 
-async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const response = await fetch(path, {
-    method,
-    headers: { 'x-thecms-token': token, ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
-  const data = (await response.json()) as T & { error?: string };
+async function answer<T>(response: Response): Promise<T> {
+  const data = (await response.json()) as T & { error?: string; signIn?: boolean };
+  if (response.status === 401 && data.signIn) throw new SignInNeeded(data.error ?? 'sign in first');
   if (!response.ok) throw new Error(data.error ?? `request failed (${response.status})`);
   return data;
 }
 
+async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
+  return answer<T>(
+    await fetch(path, {
+      method,
+      headers: { ...who(), ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    }),
+  );
+}
+
 /** A file as the whole body of a call. */
 async function send<T>(path: string, file: Blob): Promise<T> {
-  const response = await fetch(path, { method: 'POST', headers: { 'x-thecms-token': token, 'content-type': 'application/octet-stream' }, body: file });
-  const data = (await response.json()) as T & { error?: string };
-  if (!response.ok) throw new Error(data.error ?? `request failed (${response.status})`);
-  return data;
+  return answer<T>(await fetch(path, { method: 'POST', headers: { ...who(), 'content-type': 'application/octet-stream' }, body: file }));
 }
 
 export const api = {
@@ -121,13 +152,15 @@ export const api = {
   importForget: () => call<ImportProgress>('DELETE', '/api/import'),
   /** The body is the file itself; the server reads what it is from its bytes. */
   async upload(file: Blob, label: string): Promise<{ item: MediaItem; media: MediaItem[] }> {
-    const response = await fetch(`/api/media?label=${encodeURIComponent(label)}`, {
-      method: 'POST',
-      headers: { 'x-thecms-token': token, 'content-type': 'application/octet-stream' },
-      body: file,
-    });
-    const data = (await response.json()) as { item: MediaItem; media: MediaItem[]; error?: string };
-    if (!response.ok) throw new Error(data.error ?? `request failed (${response.status})`);
-    return data;
+    return send(`/api/media?label=${encodeURIComponent(label)}`, file);
   },
+  signIn: (email: string, password: string) => call<{ me: Me }>('POST', '/api/session', { email, password }),
+  signOut: () => call<{ signedOut: boolean }>('DELETE', '/api/session'),
+  link: (secret: string) => call<{ kind: 'setup' | 'invite' | 'reset'; email: string; name: string }>('POST', '/api/link', { secret }),
+  useLink: (secret: string, fields: { name?: string; email?: string; password: string }) => call<{ me: Me }>('POST', '/api/link/use', { secret, ...fields }),
+  people: () => call<People>('GET', '/api/users'),
+  invite: (email: string, role: Role) => call<People>('POST', '/api/users', { email, role }),
+  newLink: (id: string) => call<People>('POST', '/api/users/link', { id }),
+  setRole: (id: string, role: Role) => call<People>('PUT', '/api/users', { id, role }),
+  removeUser: (id: string) => call<People>('DELETE', `/api/users?id=${encodeURIComponent(id)}`),
 };

@@ -45,7 +45,7 @@ for (const [name, address] of databases) {
 
     beforeEach(async () => {
       const old = await Store.open(address);
-      for (const table of ['meta', 'pages', 'entries', 'media', 'messages']) await old.rawForTests(`DROP TABLE IF EXISTS ${table}`);
+      for (const table of ['meta', 'pages', 'entries', 'media', 'messages', 'users', 'sessions', 'links']) await old.rawForTests(`DROP TABLE IF EXISTS ${table}`);
       await old.close();
       store = await Store.open(address);
       await store.setTheme(plain);

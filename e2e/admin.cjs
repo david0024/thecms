@@ -109,6 +109,10 @@ function png(width, height) {
     await page.goto(url.replace(/#.*$/, ''));
     await page.getByText('it carries the key to this editor').waitFor();
     assert(true, 'without its key the admin says to open the address the command printed');
+    await page.goto(url.replace(/token=\w+/, 'token=wrong'));
+    await page.reload();
+    await page.getByText('no token').waitFor();
+    assert(true, 'with a wrong key it says what the server answered');
     await page.goto(url);
     await page.reload();
 

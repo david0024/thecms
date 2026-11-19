@@ -45,7 +45,7 @@ describe('the command line', () => {
     const address = process.env.THECMS_TEST_POSTGRES as string;
     const clear = async () => {
       const store = await Store.open(address);
-      for (const table of ['meta', 'pages', 'entries', 'media', 'messages']) await store.rawForTests(`DROP TABLE IF EXISTS ${table}`);
+      for (const table of ['meta', 'pages', 'entries', 'media', 'messages', 'users', 'sessions', 'links']) await store.rawForTests(`DROP TABLE IF EXISTS ${table}`);
       await store.close();
     };
     await clear();

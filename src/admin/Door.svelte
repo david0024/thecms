@@ -1,0 +1,136 @@
+<script lang="ts">
+/**
+ * The way into the admin (ADR 0022). On one's own computer the address carries
+ * the key and the admin opens at once. On a served admin a person signs in, or
+ * arrives by a one-time link: the first owner's, an invitation, or a new
+ * password. A link's secret is taken out of the address once it is used.
+ */
+import { onMount } from 'svelte';
+import { api, linkSecret, SignInNeeded } from './api.ts';
+import App from './App.svelte';
+import { say, t } from './messages.ts';
+
+/** The server's rule (store.ts PASSWORD_MIN); said here so the form can say it first. */
+const PASSWORD_MIN = 10;
+
+let stage = $state<'waiting' | 'in' | 'signIn' | 'link' | 'key' | 'failed'>('waiting');
+let link = $state.raw<{ kind: 'setup' | 'invite' | 'reset'; email: string; name: string } | null>(null);
+let email = $state('');
+let password = $state('');
+let name = $state('');
+let busy = $state(false);
+let problem = $state('');
+
+const message = (error: unknown): string => (error instanceof Error ? error.message : String(error));
+
+async function attempt(work: () => Promise<unknown>): Promise<void> {
+  busy = true;
+  problem = '';
+  try {
+    await work();
+    // The link is spent: it should not stay in the address, the history or a bookmark.
+    if (linkSecret) history.replaceState(null, '', location.pathname);
+    stage = 'in';
+  } catch (error) {
+    problem = message(error);
+  } finally {
+    busy = false;
+  }
+}
+
+const signIn = (event: SubmitEvent): void => {
+  event.preventDefault();
+  void attempt(() => api.signIn(email, password));
+};
+
+const useLink = (event: SubmitEvent): void => {
+  event.preventDefault();
+  void attempt(() => api.useLink(linkSecret, { name, email, password }));
+};
+
+onMount(async () => {
+  if (linkSecret) {
+    try {
+      link = await api.link(linkSecret);
+      name = link.name;
+      email = link.email;
+      stage = 'link';
+    } catch (error) {
+      problem = message(error);
+      history.replaceState(null, '', location.pathname);
+      stage = 'signIn';
+    }
+    return;
+  }
+  try {
+    await api.state();
+    stage = 'in';
+  } catch (error) {
+    if (error instanceof SignInNeeded) stage = 'signIn';
+    else if (!api.hasToken) stage = 'key';
+    else {
+      problem = message(error);
+      stage = 'failed';
+    }
+  }
+});
+</script>
+
+{#if stage === 'in'}
+  <App />
+{:else if stage === 'key'}
+  <p class="notice">{t.door.key}</p>
+{:else if stage === 'failed' || stage === 'waiting'}
+  <p class="notice">{problem || '…'}</p>
+{:else}
+  <main class="door">
+    {#if stage === 'signIn'}
+      <form onsubmit={signIn} data-sign-in>
+        <h1>{t.door.signIn}</h1>
+        {#if problem}<p class="bad" role="alert">{problem}</p>{/if}
+        <label class="field"><span>{t.door.email}</span><input type="email" autocomplete="username" required bind:value={email} data-email /></label>
+        <label class="field"><span>{t.door.password}</span><input type="password" autocomplete="current-password" required bind:value={password} data-password /></label>
+        <button type="submit" class="primary" disabled={busy}>{t.door.go}</button>
+        <p class="hint">{t.door.forgot}</p>
+      </form>
+    {:else if link}
+      <form onsubmit={useLink} data-link={link.kind}>
+        <h1>{t.door[link.kind]}</h1>
+        <p class="hint">{say(t.door[`${link.kind}Intro`], { email: link.email })}</p>
+        {#if problem}<p class="bad" role="alert">{problem}</p>{/if}
+        {#if link.kind !== 'reset'}
+          <label class="field"><span>{t.door.name}</span><input type="text" autocomplete="name" required bind:value={name} data-name /></label>
+        {/if}
+        {#if link.kind === 'setup'}
+          <label class="field"><span>{t.door.email}</span><input type="email" autocomplete="username" required bind:value={email} data-email /></label>
+        {/if}
+        <label class="field">
+          <span>{t.door.newPassword}</span>
+          <input type="password" autocomplete="new-password" required minlength={PASSWORD_MIN} bind:value={password} data-password />
+          <small>{say(t.door.passwordHint, { count: PASSWORD_MIN })}</small>
+        </label>
+        <button type="submit" class="primary" disabled={busy}>{t.door.save}</button>
+      </form>
+    {/if}
+  </main>
+{/if}
+
+<style>
+  /* The admin's own rules arrive with it; the door is drawn before, so it brings what it needs. */
+  :global(html, body) { height: 100%; margin: 0; }
+  :global(body) { font: 14px/1.45 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; color: #1c1b22; background: #f3f2f7; }
+  .notice { margin: 4rem auto; max-width: 30rem; text-align: center; }
+  .door { display: grid; place-items: center; min-height: 100vh; padding: 1rem; box-sizing: border-box; }
+  form { box-sizing: border-box; width: min(100%, 24rem); padding: 1.6rem; background: #fff; border: 1px solid #dddbe6; border-radius: 10px; }
+  h1 { margin: 0 0 0.8rem; font-size: 1.3rem; }
+  .field { display: block; margin-bottom: 0.8rem; }
+  .field span { display: block; margin-bottom: 0.2rem; font-size: 12.5px; color: #4b4960; }
+  input { box-sizing: border-box; width: 100%; padding: 0.5rem; border: 1px solid #cfccdc; border-radius: 6px; background: #fff; color: inherit; font: inherit; }
+  .hint, small { display: block; color: #6a6880; font-size: 12.5px; }
+  small { margin-top: 0.2rem; }
+  .bad { color: #b3261e; }
+  form > .hint { margin: 0 0 1rem; }
+  form > p.hint:last-child { margin: 1rem 0 0; }
+  button { width: 100%; margin-top: 0.4rem; padding: 0.55rem; border: 1px solid #6d5dfc; border-radius: 6px; background: #6d5dfc; color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+  button:disabled { opacity: 0.45; cursor: default; }
+</style>

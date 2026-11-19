@@ -60,6 +60,7 @@ jobs:
           node e2e/templates.cjs
           node e2e/forms.cjs
           node e2e/admin.cjs
+          node e2e/accounts.cjs
       # The whole source tree, both kinds of test together. Below the floor, or a file no test measures, fails the build.
       - name: Coverage
         shell: bash

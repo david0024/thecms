@@ -45,6 +45,7 @@ import EntryFieldsForm from './EntryFieldsForm.svelte';
 import ImageField from './ImageField.svelte';
 import ImportScreen from './ImportScreen.svelte';
 import MediaLibrary from './MediaLibrary.svelte';
+import People from './People.svelte';
 import Messages from './Messages.svelte';
 import Fields from './Fields.svelte';
 import { say, t } from './messages.ts';
@@ -58,7 +59,7 @@ let site = $state.raw<State | null>(null);
 let page = $state.raw<Doc | null>(null);
 let kind = $state<Kind>('page');
 /** Which section of the admin is showing: a list, or the builder with one page or post open. */
-let view = $state<'pages' | 'media' | 'messages' | 'types' | 'import' | 'edit' | `list:${string}`>('pages');
+let view = $state<'pages' | 'media' | 'messages' | 'people' | 'types' | 'import' | 'edit' | `list:${string}`>('pages');
 let selected = $state<string | null>(null);
 let tab = $state<'content' | 'style'>('content');
 let saving = $state<'saved' | 'saving' | 'unsaved' | 'error'>('saved');
@@ -93,6 +94,8 @@ const parts = $derived(designed ? [...ENTRY_PARTS.map((part) => ({ id: part, nam
 const menuLists = $derived<MenuList[]>(types.filter((ty) => (site?.entries[ty.id]?.length ?? 0) > 0).map((ty) => ({ id: ty.id, title: ty.name, href: listPath(ty) })));
 /** The list the open page or entry came from. */
 const home = $derived<typeof view>(designing ? 'types' : kind === 'page' ? 'pages' : `list:${kind}`);
+/** An editor writes and publishes content; the site, the theme and the people are the owner's (ADR 0022). */
+const owner = $derived(site?.me.role === 'owner');
 const freeOnPage = $derived(page ? countFreeValues(page.blocks) : 0);
 
 const fail = (error: unknown): void => {
@@ -404,6 +407,14 @@ async function saveTypes(next: ContentType[]): Promise<string> {
   }
 }
 
+async function signOut(): Promise<void> {
+  try {
+    await api.signOut();
+  } finally {
+    location.reload();
+  }
+}
+
 /** The site was changed by something other than this screen (an import): read it again. */
 async function reload(): Promise<void> {
   try {
@@ -466,9 +477,7 @@ onMount(() => {
 
 <svelte:window onkeydown={onKey} />
 
-{#if !api.hasToken}
-  <p class="notice">Open the address that <code>thecms edit</code> printed; it carries the key to this editor.</p>
-{:else if !site || !page}
+{#if !site || !page}
   <p class="notice">{failure || '…'}</p>
 {:else}
   <div class="editor admin" class:building={view === 'edit'}>
@@ -480,11 +489,21 @@ onMount(() => {
         <button type="button" aria-current={view === `list:${ty.id}` ? 'page' : undefined} onclick={() => (view = `list:${ty.id}`)} data-nav={ty.id}>{ty.name}</button>
       {/each}
       <button type="button" aria-current={view === 'media' ? 'page' : undefined} onclick={() => (view = 'media')} data-nav="media">{t.nav.media}</button>
-      <button type="button" aria-current={view === 'messages' ? 'page' : undefined} onclick={() => (view = 'messages')} data-nav="messages">{t.nav.messages}</button>
-      <button type="button" onclick={() => panel('site')} data-nav="settings">{t.nav.settings}</button>
-      <button type="button" onclick={() => panel('theme')} data-nav="theme">{t.nav.theme}</button>
-      <button type="button" aria-current={view === 'types' ? 'page' : undefined} onclick={() => (view = 'types')} data-nav="types">{t.ctypes.heading}</button>
-      <button type="button" aria-current={view === 'import' ? 'page' : undefined} onclick={() => (view = 'import')} data-nav="import">{t.nav.import}</button>
+      {#if owner}
+        <button type="button" aria-current={view === 'messages' ? 'page' : undefined} onclick={() => (view = 'messages')} data-nav="messages">{t.nav.messages}</button>
+        <button type="button" onclick={() => panel('site')} data-nav="settings">{t.nav.settings}</button>
+        <button type="button" onclick={() => panel('theme')} data-nav="theme">{t.nav.theme}</button>
+        <button type="button" aria-current={view === 'types' ? 'page' : undefined} onclick={() => (view = 'types')} data-nav="types">{t.ctypes.heading}</button>
+        <button type="button" aria-current={view === 'import' ? 'page' : undefined} onclick={() => (view = 'import')} data-nav="import">{t.nav.import}</button>
+        {#if site.accounts}
+          <button type="button" aria-current={view === 'people' ? 'page' : undefined} onclick={() => (view = 'people')} data-nav="people">{t.nav.people}</button>
+        {/if}
+      {/if}
+      {#if site.accounts}
+        <span class="grow"></span>
+        <small class="me">{site.me.name || site.me.email}</small>
+        <button type="button" onclick={signOut} data-sign-out>{t.door.signOut}</button>
+      {/if}
     </nav>
 
     {#if view === 'pages'}
@@ -504,6 +523,8 @@ onMount(() => {
       <Messages />
     {:else if view === 'import'}
       <ImportScreen ondone={reload} />
+    {:else if view === 'people'}
+      <People />
     {/if}
     {#if failure && view !== 'edit'}<p class="bad toast" role="alert">{failure}</p>{/if}
 
@@ -516,6 +537,7 @@ onMount(() => {
       <button type="button" onclick={redo} disabled={future.length === 0} title={t.bar.redo} aria-label={t.bar.redo}>↷</button>
       <span class="status" data-state={saving} role="status">{failure && saving === 'error' ? `${t.bar.error}: ${failure}` : t.bar[saving]}</span>
       <span class="grow"></span>
+      {#if owner}
       <button type="button" onclick={toggleSite} aria-pressed={siteMode} data-site-mode>{siteMode ? t.theme.done : t.site.edit}</button>
       <label class="inline">
         <span>{t.bar.theme}</span>
@@ -526,6 +548,7 @@ onMount(() => {
       </label>
       <button type="button" onclick={toggleTheme} aria-pressed={themeMode} data-theme-mode>{themeMode ? t.theme.done : t.theme.edit}</button>
       {#if site.themeChanged}<button type="button" onclick={publishTheme} title={t.theme.changed} data-publish-theme>{t.theme.publish}</button>{/if}
+      {/if}
       <span class="sep"></span>
       <span class="state">{!info?.published ? t.bar.draft : info.changed || saving !== 'saved' ? t.bar.changed : t.bar.published}</span>
       <button type="button" class="primary" onclick={publish} disabled={info?.published && !info.changed && saving === 'saved'}>{t.bar.publish}</button>
@@ -683,6 +706,7 @@ onMount(() => {
   .admin.building { grid-template-columns: 1fr; }
   .rail[hidden] { display: none; }
   .rail { display: flex; flex-direction: column; gap: 0.25rem; padding: 0.9rem 0.6rem; background: #1c1b22; color: #fff; }
+  .rail .me { padding: 0 0.5rem; color: #a9a6bd; overflow-wrap: anywhere; }
   .rail strong { padding: 0 0.5rem 0.8rem; overflow-wrap: anywhere; }
   :global(.editor .rail button) { border-color: transparent; background: none; color: #d9d7e6; text-align: start; }
   :global(.editor .rail button:hover:not(:disabled)) { border-color: transparent; background: #2e2c3a; }
@@ -718,7 +742,7 @@ onMount(() => {
   .tabs button[aria-selected='true'] { background: #f1efff; border-color: #6d5dfc; font-weight: 600; }
   :global(.editor .field) { display: block; margin-bottom: 0.7rem; }
   :global(.editor label > span, .editor legend) { display: block; margin-bottom: 0.2rem; font-size: 12.5px; color: #4b4960; }
-  :global(.editor input[type='text'], .editor input[type='number'], .editor input[type='url'], .editor input[type='date'], .editor textarea, .editor select) { width: 100%; padding: 0.4rem 0.5rem; border: 1px solid #cfccdc; border-radius: 6px; background: #fff; color: inherit; font: inherit; }
+  :global(.editor input[type='text'], .editor input[type='email'], .editor input[type='password'], .editor input[type='number'], .editor input[type='url'], .editor input[type='date'], .editor textarea, .editor select) { width: 100%; padding: 0.4rem 0.5rem; border: 1px solid #cfccdc; border-radius: 6px; background: #fff; color: inherit; font: inherit; }
   :global(.editor input[aria-invalid='true']) { border-color: #b3261e; }
   :global(.editor textarea) { resize: vertical; }
   :global(.editor fieldset) { margin: 0; padding: 0.6rem; border: 1px solid #e4e2ee; border-radius: 6px; }

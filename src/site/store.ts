@@ -86,6 +86,9 @@ const SQLITE: Dialect = {
     'CREATE TABLE IF NOT EXISTS entries (type TEXT NOT NULL, slug TEXT NOT NULL, draft TEXT NOT NULL, published TEXT, published_at TEXT, updated_at TEXT NOT NULL, PRIMARY KEY (type, slug))',
     'CREATE TABLE IF NOT EXISTS media (name TEXT PRIMARY KEY, label TEXT NOT NULL, size INTEGER NOT NULL, bytes BLOB NOT NULL, created_at TEXT NOT NULL)',
     'CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, received_at TEXT NOT NULL, form TEXT NOT NULL, page TEXT NOT NULL, name TEXT NOT NULL, email TEXT NOT NULL, body TEXT NOT NULL, consent TEXT NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, email TEXT NOT NULL UNIQUE, name TEXT NOT NULL, role TEXT NOT NULL, password TEXT NOT NULL, created_at TEXT NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, expires_at TEXT NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS links (id TEXT PRIMARY KEY, kind TEXT NOT NULL, user_id TEXT NOT NULL, expires_at TEXT NOT NULL)',
   ],
   params: (query) => query,
   upsert: (table, columns, key, update) =>
@@ -104,6 +107,9 @@ const POSTGRES: Dialect = {
     'CREATE TABLE IF NOT EXISTS entries (type VARCHAR(255) NOT NULL, slug VARCHAR(255) NOT NULL, draft TEXT NOT NULL, published TEXT, published_at VARCHAR(40), updated_at VARCHAR(40) NOT NULL, PRIMARY KEY (type, slug))',
     'CREATE TABLE IF NOT EXISTS media (name VARCHAR(255) PRIMARY KEY, label TEXT NOT NULL, size INTEGER NOT NULL, bytes BYTEA NOT NULL, created_at VARCHAR(40) NOT NULL)',
     'CREATE TABLE IF NOT EXISTS messages (id VARCHAR(40) PRIMARY KEY, received_at VARCHAR(40) NOT NULL, form VARCHAR(255) NOT NULL, page TEXT NOT NULL, name TEXT NOT NULL, email TEXT NOT NULL, body TEXT NOT NULL, consent TEXT NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS users (id VARCHAR(40) PRIMARY KEY, email VARCHAR(255) NOT NULL UNIQUE, name TEXT NOT NULL, role VARCHAR(20) NOT NULL, password TEXT NOT NULL, created_at VARCHAR(40) NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS sessions (id VARCHAR(64) PRIMARY KEY, user_id VARCHAR(40) NOT NULL, expires_at VARCHAR(40) NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS links (id VARCHAR(64) PRIMARY KEY, kind VARCHAR(20) NOT NULL, user_id VARCHAR(40) NOT NULL, expires_at VARCHAR(40) NOT NULL)',
   ],
   params: (query) => {
     let n = 0;
@@ -121,6 +127,9 @@ const MYSQL: Dialect = {
     `CREATE TABLE IF NOT EXISTS entries (type VARCHAR(255) NOT NULL, slug VARCHAR(255) NOT NULL, draft LONGTEXT NOT NULL, published LONGTEXT, published_at VARCHAR(40), updated_at VARCHAR(40) NOT NULL, PRIMARY KEY (type, slug)) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS media (name VARCHAR(255) PRIMARY KEY, label TEXT NOT NULL, size INTEGER NOT NULL, bytes LONGBLOB NOT NULL, created_at VARCHAR(40) NOT NULL) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS messages (id VARCHAR(40) PRIMARY KEY, received_at VARCHAR(40) NOT NULL, form VARCHAR(255) NOT NULL, page TEXT NOT NULL, name TEXT NOT NULL, email TEXT NOT NULL, body TEXT NOT NULL, consent TEXT NOT NULL) ${MYSQL_TABLE}`,
+    `CREATE TABLE IF NOT EXISTS users (id VARCHAR(40) PRIMARY KEY, email VARCHAR(255) NOT NULL UNIQUE, name TEXT NOT NULL, role VARCHAR(20) NOT NULL, password TEXT NOT NULL, created_at VARCHAR(40) NOT NULL) ${MYSQL_TABLE}`,
+    `CREATE TABLE IF NOT EXISTS sessions (id VARCHAR(64) PRIMARY KEY, user_id VARCHAR(40) NOT NULL, expires_at VARCHAR(40) NOT NULL) ${MYSQL_TABLE}`,
+    `CREATE TABLE IF NOT EXISTS links (id VARCHAR(64) PRIMARY KEY, kind VARCHAR(20) NOT NULL, user_id VARCHAR(40) NOT NULL, expires_at VARCHAR(40) NOT NULL) ${MYSQL_TABLE}`,
   ],
   params: (query) => query,
   upsert: (table, columns, _key, update) =>
@@ -160,6 +169,40 @@ export interface Message {
   /** The words of the consent the visitor ticked. */
   consent: string;
 }
+
+/**
+ * Someone who may sign in to the admin (ADR 0022). The owner can do
+ * everything; an editor writes and publishes content and nothing else.
+ */
+export type Role = 'owner' | 'editor';
+export interface User {
+  id: string;
+  email: string;
+  name: string;
+  role: Role;
+  /** False while an invitation has not been taken up. */
+  active: boolean;
+  createdAt: string;
+}
+/** What a one-time link is for: the first owner, someone invited, a new password. */
+export type LinkKind = 'setup' | 'invite' | 'reset';
+
+export const PASSWORD_MIN = 10;
+const PASSWORD_MAX = 200;
+/** An address as it is kept, lower case; empty when it is not one. */
+export const cleanEmail = (value: string): string => {
+  const email = value.trim().toLowerCase();
+  return /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email) && email.length <= 254 ? email : '';
+};
+/** What is wrong with a password, or nothing. Said before a one-time link is spent. */
+export const passwordProblem = (password: string): string =>
+  password.length < PASSWORD_MIN ? `a password has at least ${PASSWORD_MIN} characters` : password.length > PASSWORD_MAX ? `a password has at most ${PASSWORD_MAX} characters` : '';
+const SESSION_DAYS = 30;
+/** A secret is kept only as its hash: a copy of the database does not sign anyone in. */
+const hashOf = (secret: string): string => new Bun.CryptoHasher('sha256').update(secret).digest('hex');
+const newSecret = (): string => Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64url');
+/** Checked against when nobody has the address, so a wrong address takes as long as a wrong password. */
+let decoy: Promise<string> | null = null;
 
 /** A type's page is cleaned as a page's blocks are: the same rules, the same limits. */
 const cleanTemplate = (blocks: unknown[]): Block[] => normalizePage({ slug: '', title: 'template', blocks }).page.blocks;
@@ -213,6 +256,11 @@ export class Store {
 
   private async run(query: string, params: unknown[] = []): Promise<void> {
     await this.sql.unsafe(this.dialect.params(query), params);
+  }
+
+  /** How many rows a change touched: the database's own answer, so two requests cannot both win. */
+  private async changed(query: string, params: unknown[] = []): Promise<number> {
+    return Number(((await this.sql.unsafe(this.dialect.params(query), params)) as { count?: number }).count ?? 0);
   }
 
   private async getMeta(key: string): Promise<unknown> {
@@ -602,6 +650,117 @@ export class Store {
   }
 
   /** Runs a query as it is written, for a test that needs to put a row in a state the store never would. */
+  // Accounts (ADR 0022).
+
+  async users(): Promise<User[]> {
+    const rows = await this.rows<Row>('SELECT id, email, name, role, password, created_at FROM users ORDER BY created_at, email');
+    return rows.map((r) => ({ id: String(r.id), email: String(r.email), name: String(r.name), role: r.role === 'owner' ? 'owner' : 'editor', active: String(r.password) !== '', createdAt: String(r.created_at) }));
+  }
+
+  async user(id: string): Promise<User | null> {
+    return (await this.users()).find((u) => u.id === id) ?? null;
+  }
+
+  /** Someone new. Without a password they are invited, and choose one through their link. */
+  async addUser(input: { email: string; name?: string; role: Role; password?: string }): Promise<User> {
+    const email = cleanEmail(input.email);
+    if (!email) throw new Error('that is not an email address');
+    if ((await this.users()).some((u) => u.email === email)) throw new Error('someone with this address already has an account');
+    const id = crypto.randomUUID();
+    const password = input.password === undefined ? '' : await this.hashPassword(input.password);
+    await this.run('INSERT INTO users (id, email, name, role, password, created_at) VALUES (?, ?, ?, ?, ?, ?)', [
+      id,
+      email,
+      str(input.name ?? '', 120).trim(),
+      input.role === 'owner' ? 'owner' : 'editor',
+      password,
+      new Date().toISOString(),
+    ]);
+    return (await this.user(id)) as User;
+  }
+
+  private async hashPassword(password: string): Promise<string> {
+    const problem = passwordProblem(password);
+    if (problem) throw new Error(problem);
+    return Bun.password.hash(password, { algorithm: 'argon2id' });
+  }
+
+  /** Sets someone's password and name, and signs them out everywhere else. */
+  async setPassword(id: string, password: string, name?: string): Promise<void> {
+    const hash = await this.hashPassword(password);
+    if (name !== undefined) await this.run('UPDATE users SET password = ?, name = ? WHERE id = ?', [hash, str(name, 120).trim(), id]);
+    else await this.run('UPDATE users SET password = ? WHERE id = ?', [hash, id]);
+    await this.run('DELETE FROM sessions WHERE user_id = ?', [id]);
+  }
+
+  /** The person this address and password belong to, or null. It takes as long either way. */
+  async checkPassword(email: string, password: string): Promise<User | null> {
+    const row = await this.row<Row>('SELECT id, password FROM users WHERE email = ?', [email.trim().toLowerCase()]);
+    const hash = row && String(row.password) ? String(row.password) : await (decoy ??= Bun.password.hash(newSecret(), { algorithm: 'argon2id' }));
+    const right = password.length <= PASSWORD_MAX && (await Bun.password.verify(password, hash));
+    return right && row && String(row.password) ? this.user(String(row.id)) : null;
+  }
+
+  /** Changes what someone may do. The site always keeps an owner. */
+  async setRole(id: string, role: Role): Promise<void> {
+    const users = await this.users();
+    if (role !== 'owner' && users.filter((u) => u.role === 'owner' && u.active && u.id !== id).length === 0) throw new Error('the site needs an owner');
+    await this.run('UPDATE users SET role = ? WHERE id = ?', [role === 'owner' ? 'owner' : 'editor', id]);
+  }
+
+  /** Removes someone, with their sessions and links. The last owner stays. */
+  async removeUser(id: string): Promise<void> {
+    const users = await this.users();
+    if (users.find((u) => u.id === id)?.role === 'owner' && users.filter((u) => u.role === 'owner' && u.active && u.id !== id).length === 0) throw new Error('the site needs an owner');
+    await this.run('DELETE FROM sessions WHERE user_id = ?', [id]);
+    await this.run('DELETE FROM links WHERE user_id = ?', [id]);
+    await this.run('DELETE FROM users WHERE id = ?', [id]);
+  }
+
+  /** A new session: the secret goes in the person's cookie, its hash stays here. */
+  async startSession(userId: string, now = new Date()): Promise<string> {
+    const secret = newSecret();
+    await this.run('INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)', [hashOf(secret), userId, new Date(now.getTime() + SESSION_DAYS * 86_400_000).toISOString()]);
+    return secret;
+  }
+
+  /** Who a session's secret signs in, while it has not run out. */
+  async sessionUser(secret: string, now = new Date()): Promise<User | null> {
+    if (!secret) return null;
+    const row = await this.row<Row>('SELECT user_id, expires_at FROM sessions WHERE id = ?', [hashOf(secret)]);
+    if (!row) return null;
+    if (String(row.expires_at) <= now.toISOString()) {
+      await this.endSession(secret);
+      return null;
+    }
+    const user = await this.user(String(row.user_id));
+    return user?.active ? user : null;
+  }
+
+  async endSession(secret: string): Promise<void> {
+    await this.run('DELETE FROM sessions WHERE id = ?', [hashOf(secret)]);
+  }
+
+  /** A link that works once, for a while. A new link of the same kind for the same person replaces the old one. */
+  async makeLink(kind: LinkKind, userId: string, hours: number, now = new Date()): Promise<string> {
+    const secret = newSecret();
+    await this.run('DELETE FROM links WHERE kind = ? AND user_id = ?', [kind, userId]);
+    await this.run('DELETE FROM links WHERE expires_at <= ?', [now.toISOString()]);
+    await this.run('INSERT INTO links (id, kind, user_id, expires_at) VALUES (?, ?, ?, ?)', [hashOf(secret), kind, userId, new Date(now.getTime() + hours * 3_600_000).toISOString()]);
+    return secret;
+  }
+
+  /** What a link is for, while it works. `use` spends it. */
+  async link(secret: string, use = false, now = new Date()): Promise<{ kind: LinkKind; user: User | null } | null> {
+    if (!secret) return null;
+    const row = await this.row<Row>('SELECT kind, user_id, expires_at FROM links WHERE id = ?', [hashOf(secret)]);
+    if (!row || String(row.expires_at) <= now.toISOString()) return null;
+    // Spent by whoever deletes it: of two requests with the same link, one gets nothing.
+    if (use && (await this.changed('DELETE FROM links WHERE id = ?', [hashOf(secret)])) !== 1) return null;
+    const kind = String(row.kind) as LinkKind;
+    return { kind, user: kind === 'setup' ? null : await this.user(String(row.user_id)) };
+  }
+
   async rawForTests(query: string, params: unknown[] = []): Promise<void> {
     await this.run(query, params);
   }
