@@ -126,13 +126,16 @@ describe('a WordPress export as a plan', () => {
       cover: { src: 'https://old.example/wp-content/uploads/2024/01/photo.jpg', alt: 'A workbench' },
       publish: true,
     });
-    expect(posts[1]).toMatchObject({ slug: 'post-11', title: 'Untitled', date: '2026-11-17', publish: false });
+    expect(posts[0]?.tags).toEqual(['wood']);
+    expect(posts[1]).toMatchObject({ slug: 'post-11', title: 'Untitled', date: '2026-11-17', publish: false, tags: [] });
   });
 
   test('links inside the old site lead to the new addresses, whatever way they were written', async () => {
     const home = JSON.stringify(plan().pages[0]);
     expect(home).toContain('"href":"/about/"');
     expect(home).toContain('"href":"/blog/hello-world/#more"');
+    // An old tag's archive is the same tag's list here.
+    expect(JSON.stringify(plan().pages)).toContain('"href":"/blog/tag/wood/"');
     expect(home).toContain('"href":"https://other.example/x"');
   });
 
@@ -179,14 +182,16 @@ describe('a WordPress export as a plan', () => {
       { from: '/about/web/', to: '/web/' },
       { from: '/2024/01/hello-world/', to: '/blog/hello-world/' },
       { from: '/category/news/', to: '/blog/category/news/' },
+      { from: '/tag/wood/', to: '/blog/tag/wood/' },
     ]);
   });
 
   test('the owner is told what did not come over', async () => {
     const notes = plan().notes.join('\n');
-    for (const said of ['2 menus', 'latest-posts', 'column layouts', 'tables', 'contact-form-7', 'scripts', 'embedded media', '"Secret"', 'Links to files', '1 comment not', '1 tag not', '"product"', 'sit at the top level']) {
+    for (const said of ['2 menus', 'latest-posts', 'column layouts', 'tables', 'contact-form-7', 'scripts', 'embedded media', '"Secret"', 'Links to files', '1 comment not', '"product"', 'sit at the top level']) {
       expect(notes).toContain(said);
     }
+    expect(notes).not.toMatch(/\btags?\b[^\n]*not imported/);
     // A link to someone else's site is not a stray link of the old one.
     expect(notes).not.toMatch(/not pages or posts[^\n]*"Home"/);
   });
@@ -257,7 +262,7 @@ describe('carrying the plan out', () => {
 
   test('images are copied into the site and the pages point at the copies; one that fails stays where it was and is named', async () => {
     const report = await runImport(store, plan(), { fetchImage, fresh: true });
-    expect(report).toMatchObject({ pages: 4, posts: 2, drafts: 2, images: 1, redirects: 3, menu: true });
+    expect(report).toMatchObject({ pages: 4, posts: 2, drafts: 2, images: 1, redirects: 4, menu: true });
     expect(fetched.sort()).toHaveLength(2);
     const [stored] = await store.media();
     expect(stored?.label).toBe('photo.jpg');
@@ -398,7 +403,9 @@ describe('a category that is a section of its own (ADR 0016)', () => {
   test("a post's other categories are named as lost", () => {
     const twice = WXR.replace('<category domain="category" nicename="news"><![CDATA[News]]></category>', '<category domain="category" nicename="news"><![CDATA[News]]></category><category domain="category" nicename="events"><![CDATA[Events]]></category>');
     expect(chosen(['news'], twice).notes.join('\n')).toContain('lost their other categories');
-    expect(chosen(['news']).notes.join('\n')).not.toContain('lost their other categories');
+    const alone = WXR.replace('<category domain="post_tag" nicename="wood"><![CDATA[wood]]></category>', '');
+    expect(chosen(['news'], alone).notes.join('\n')).not.toContain('lost their other categories');
+    expect(chosen(['news']).notes.join('\n')).toContain('lost their other categories and their tags');
   });
 
   test('carried out, the site has the section and its entries', async () => {

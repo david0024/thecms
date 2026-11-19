@@ -1,9 +1,10 @@
 <script lang="ts">
 /** A list of entries of one content type: its front page, a later page of it, or one category. */
 import type { ContentType, MenuLink, Post, Site } from '../core/index.ts';
-import { entryPath, listPath, postExcerpt, postsType, typeCategoryPath } from '../core/index.ts';
+import { entryPath, listPath, postExcerpt, postsType } from '../core/index.ts';
+import PostMeta from './PostMeta.svelte';
 import Shell from './Shell.svelte';
-import { dateText, wordsFor } from './words.ts';
+import { wordsFor } from './words.ts';
 
 let {
   site,
@@ -36,12 +37,7 @@ const words = $derived(wordsFor(site.language));
         {#each posts as post (post.slug)}
           <li class="post-card">
             {#if post.cover}<a href={entryPath(kind, post.slug)} tabindex="-1" aria-hidden="true"><img src={post.cover.src} alt="" loading="lazy" decoding="async" /></a>{/if}
-            {#if kind.dated || post.categories.length}
-              <p class="post-meta">
-                {#if kind.dated}<time datetime={post.date}>{dateText(post.date, site.language)}</time>{/if}
-                {#each post.categories as name}<a href={typeCategoryPath(kind, name)}>{name}</a>{/each}
-              </p>
-            {/if}
+            <PostMeta type={kind} {post} language={site.language} />
             <h2><a href={entryPath(kind, post.slug)}>{post.title}</a></h2>
             <p>{postExcerpt(post)}</p>
           </li>

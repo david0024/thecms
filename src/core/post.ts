@@ -1,6 +1,6 @@
 /**
  * A blog post (ADR 0007): a page's worth of blocks, with what makes it a post:
- * a date, a short summary, a cover picture and categories. Its body is made of
+ * a date, a short summary, a cover picture, categories and tags. Its body is made of
  * the same blocks as a page, so everything the editor can do on a page it can
  * do in a post.
  */
@@ -21,6 +21,8 @@ export interface Post {
   cover: ImageValue | null;
   /** Names as the author wrote them; the address of a category comes from `slugify`. */
   categories: string[];
+  /** Words that cut across categories (`oak`, `kitchen`), as the author wrote them; kept by the same type setting as categories. */
+  tags: string[];
   /** What its type asks for besides: a client's name, a price, a second picture (ADR 0010). */
   fields: Record<string, unknown>;
   blocks: Block[];
@@ -28,6 +30,7 @@ export interface Post {
 
 export const POSTS_PER_PAGE = 10;
 const MAX_CATEGORIES = 8;
+const MAX_TAGS = 20;
 
 /** A real calendar day written `YYYY-MM-DD`. */
 export function isDate(value: unknown): value is string {
@@ -36,14 +39,14 @@ export function isDate(value: unknown): value is string {
   return !Number.isNaN(time) && new Date(time).toISOString().slice(0, 10) === value;
 }
 
-function cleanCategories(input: unknown): string[] {
+function cleanCategories(input: unknown, max = MAX_CATEGORIES): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
   for (const raw of Array.isArray(input) ? input : []) {
     const name = str(raw, 40).replace(/\s+/g, ' ').trim();
     const slug = slugify(name);
     // Two names that would share an address are one category: the first spelling is kept.
-    if (!slug || seen.has(slug) || out.length >= MAX_CATEGORIES) continue;
+    if (!slug || seen.has(slug) || out.length >= max) continue;
     seen.add(slug);
     out.push(name);
   }
@@ -70,6 +73,7 @@ export function normalizePost(input: unknown, today = '1970-01-01', type: Conten
       excerpt: str(raw.excerpt, 400).trim(),
       cover: cleanImage(raw.cover),
       categories: type.categories ? cleanCategories(raw.categories) : [],
+      tags: type.categories ? cleanCategories(raw.tags, MAX_TAGS) : [],
       fields: cleanTypeFields(type, raw.fields, isDate),
       blocks,
     },
@@ -83,6 +87,7 @@ export const entryPath = (type: ContentType, slug: string): string => `/${type.p
 export const listPath = (type: ContentType, page = 1): string => (page <= 1 ? `/${type.path}/` : `/${type.path}/page/${page}/`);
 export const typeCategoryPath = (type: ContentType, name: string, page = 1): string =>
   `/${type.path}/category/${slugify(name)}/${page <= 1 ? '' : `page/${page}/`}`;
+export const typeTagPath = (type: ContentType, name: string, page = 1): string => `/${type.path}/tag/${slugify(name)}/${page <= 1 ? '' : `page/${page}/`}`;
 export const feedPath = (type: ContentType): string => `/${type.path}/feed.xml`;
 
 export const postPath = (slug: string): string => `/${BLOG_SLUG}/${slug}/`;
@@ -90,6 +95,7 @@ export const postPath = (slug: string): string => `/${BLOG_SLUG}/${slug}/`;
 export const blogPath = (page = 1): string => (page <= 1 ? `/${BLOG_SLUG}/` : `/${BLOG_SLUG}/page/${page}/`);
 export const categoryPath = (name: string, page = 1): string =>
   `/${BLOG_SLUG}/category/${slugify(name)}/${page <= 1 ? '' : `page/${page}/`}`;
+export const tagPath = (name: string, page = 1): string => `/${BLOG_SLUG}/tag/${slugify(name)}/${page <= 1 ? '' : `page/${page}/`}`;
 export const FEED_PATH = `/${BLOG_SLUG}/feed.xml`;
 
 /** What a list shows under a post's title. */
@@ -104,11 +110,11 @@ export const newestFirst = (posts: Post[]): Post[] =>
 export const listed = (type: ContentType, entries: Post[]): Post[] =>
   type.dated ? newestFirst(entries) : [...entries].sort((a, b) => a.title.localeCompare(b.title) || a.slug.localeCompare(b.slug));
 
-/** Every category these posts use, by name, with the posts in each. */
-export function categoriesOf(posts: Post[]): { name: string; slug: string; posts: Post[] }[] {
+/** Every category these posts use (or every tag), by name, with the posts in each. */
+export function categoriesOf(posts: Post[], by: 'categories' | 'tags' = 'categories'): { name: string; slug: string; posts: Post[] }[] {
   const found = new Map<string, { name: string; slug: string; posts: Post[] }>();
   for (const post of posts) {
-    for (const name of post.categories) {
+    for (const name of post[by]) {
       const slug = slugify(name);
       const entry = found.get(slug) ?? { name, slug, posts: [] };
       entry.posts.push(post);

@@ -23,6 +23,7 @@ import {
   newId,
   pagePath,
   postPath,
+  tagPath,
   RESERVED_SLUGS,
   slugify,
 } from '../core/index.ts';
@@ -46,6 +47,7 @@ export interface PlannedPost {
   excerpt: string;
   cover: { src: string; alt: string } | null;
   categories: string[];
+  tags: string[];
   blocks: Block[];
   publish: boolean;
 }
@@ -279,10 +281,13 @@ export function planImport(
     entrySlugs.set(item, slug);
     remember(item, entryPath(type, slug));
   }
-  for (const [nicename, type] of typeOfCategory) {
-    const url = parse(`/category/${nicename}/`, base);
-    if (url) paths.set(keyOf(url), listPath(type));
-  }
+  // A link to an old archive of a category or a tag leads to the same list here.
+  const archive = (from: string, to: string): void => {
+    const url = parse(from, base);
+    if (url) paths.set(keyOf(url), to);
+  };
+  for (const [nicename, { name }] of postCategories) archive(`/category/${nicename}/`, typeOfCategory.has(nicename) ? listPath(typeOfCategory.get(nicename) as ContentType) : categoryPath(name));
+  for (const item of postSlugs.keys()) for (const c of item.categories) if (c.domain === 'post_tag' && c.nicename) archive(`/tag/${c.nicename}/`, tagPath(c.name || c.nicename));
 
   // Content, with its links and images pointed at this site.
   const images = new Set<string>();
@@ -355,7 +360,6 @@ export function planImport(
       publish: publishOf(item),
     });
   }
-  const tags = new Set<string>();
   const asEntry = (item: Item, slug: string, categories: boolean): PlannedPost => {
     const heading = item.title || 'Untitled';
     const thumb = attachments.get(item.meta.get('_thumbnail_id') ?? '');
@@ -368,13 +372,13 @@ export function planImport(
       excerpt: plainText(parseHtml(item.excerpt)).slice(0, 400),
       cover: thumb ? { src: ctx.image(thumb.src), alt: thumb.alt } : null,
       categories: categories ? item.categories.filter((c) => c.domain === 'category' && c.nicename !== 'uncategorized').map((c) => c.name) : [],
+      tags: categories ? item.categories.filter((c) => c.domain === 'post_tag').map((c) => c.name || c.nicename) : [],
       blocks: htmlToBlocks(item.content, ctx),
       publish: publishOf(item),
     };
   };
   const posts: PlannedPost[] = [];
   for (const [item, slug] of postSlugs) {
-    for (const c of item.categories) if (c.domain === 'post_tag') tags.add(c.nicename);
     posts.push(asEntry(item, slug, true));
   }
   const entries: Record<string, PlannedPost[]> = {};
@@ -382,9 +386,9 @@ export function planImport(
   for (const [item, slug] of entrySlugs) {
     const type = entryTypeOf(item) as ContentType;
     (entries[type.id] ??= []).push(asEntry(item, slug, false));
-    if (item.type === 'post' && item.categories.some((c) => c.domain === 'category' && c.nicename !== 'uncategorized' && typeOfCategory.get(c.nicename) !== type)) unfiled.add(item.title || 'Untitled');
+    if (item.type === 'post' && item.categories.some((c) => c.domain === 'post_tag' || (c.domain === 'category' && c.nicename !== 'uncategorized' && typeOfCategory.get(c.nicename) !== type))) unfiled.add(item.title || 'Untitled');
   }
-  if (unfiled.size) notes.push(`Posts that became entries of a section of their own lost their other categories, because entries there are not grouped by category: ${list(unfiled)}.`);
+  if (unfiled.size) notes.push(`Posts that became entries of a section of their own lost their other categories and their tags, because entries there are not grouped by either: ${list(unfiled)}.`);
 
   const anyPostPublished = posts.some((p) => p.publish);
   if (!home) {
@@ -406,12 +410,14 @@ export function planImport(
   // The menu.
   const terms = new Map(childrenOf(channel, 'wp:category').map((c) => [textOf(c, 'wp:term_id'), decodeHtml(textOf(c, 'wp:cat_name'))]));
   const nicenames = new Map(childrenOf(channel, 'wp:category').map((c) => [textOf(c, 'wp:term_id'), textOf(c, 'wp:category_nicename')]));
+  const tagTerms = new Map(childrenOf(channel, 'wp:tag').map((c) => [textOf(c, 'wp:term_id'), decodeHtml(textOf(c, 'wp:tag_name')) || textOf(c, 'wp:tag_slug')]));
   const targetOfId = (kind: string, id: string): MenuTarget | null => {
     if (kind === 'category') {
       const type = typeOfCategory.get(nicenames.get(id) ?? '');
       if (type) return { kind: 'url', href: listPath(type) };
       return terms.has(id) ? { kind: 'url', href: categoryPath(terms.get(id) as string) } : null;
     }
+    if (kind === 'post_tag') return tagTerms.has(id) ? { kind: 'url', href: tagPath(tagTerms.get(id) as string) } : null;
     const item = byId.get(id);
     if (!item) return null;
     if (item === postsPage) return { kind: 'blog' };
@@ -527,6 +533,10 @@ export function planImport(
     else if (usedCategories.has(title) && !textOf(c, 'wp:category_parent')) redirects.push({ from: `/category/${textOf(c, 'wp:category_nicename')}/`, to: categoryPath(title) });
   }
 
+  const usedTags = new Map<string, string>();
+  for (const item of postSlugs.keys()) for (const c of item.categories) if (c.domain === 'post_tag' && c.nicename && published(item)) usedTags.set(c.nicename, c.name || c.nicename);
+  for (const [nicename, title] of usedTags) redirects.push({ from: `/tag/${nicename}/`, to: tagPath(title) });
+
   // What the owner should know.
   for (const [what, { titles, which }] of lost) {
     const names = [...which];
@@ -539,7 +549,6 @@ export function planImport(
   if (elsewhere.size) notes.push(`Images kept on other sites stay where they are and are not copied. In: ${list(elsewhere)}.`);
   const comments = items.reduce((sum, item) => sum + item.comments, 0);
   if (comments) notes.push(`${count(comments, 'comment')} not imported: a site here has no comments.`);
-  if (tags.size) notes.push(`${count(tags.size, 'tag')} not imported: posts here are grouped by category only.`);
   const other = new Map<string, number>();
   for (const item of items) if (!HOUSEKEEPING.has(item.type) && !typeOf.has(item.type) && live(item)) other.set(item.type, (other.get(item.type) ?? 0) + 1);
   for (const [type, n] of other) {

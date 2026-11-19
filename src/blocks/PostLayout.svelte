@@ -6,13 +6,13 @@
  * the page puts them.
  */
 import type { Block, ContentType, MenuLink, Post, Site } from '../core/index.ts';
-import { listPath, postsType, typeCategoryPath } from '../core/index.ts';
+import { listPath, postsType } from '../core/index.ts';
 import EntryFields from './EntryFields.svelte';
 import { type EntryLists, setEntry } from './editing.ts';
 import BlockView from './BlockView.svelte';
 import Frozen from './Frozen.svelte';
+import PostMeta from './PostMeta.svelte';
 import Shell from './Shell.svelte';
-import { dateText } from './words.ts';
 
 let {
   site,
@@ -53,12 +53,7 @@ setEntry({ post, type: type ?? postsType(site.blogTitle), language: site.languag
     {:else}
       <header class="b post-head">
         <div class="b-in">
-          {#if kind.dated || post.categories.length}
-            <p class="post-meta">
-              {#if kind.dated}<time datetime={post.date}>{dateText(post.date, site.language)}</time>{/if}
-              {#each post.categories as name}<a href={typeCategoryPath(kind, name)}>{name}</a>{/each}
-            </p>
-          {/if}
+          <PostMeta type={kind} {post} language={site.language} />
           <h1>{post.title}</h1>
           {#if post.cover}<img class="post-cover" src={post.cover.src} alt={post.cover.alt} />{/if}
           <EntryFields type={kind} {post} language={site.language} />
