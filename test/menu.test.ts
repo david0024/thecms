@@ -16,13 +16,13 @@ const siteWith = (menu: unknown) => normalizeSite({ ...DEMO_SITE, menu });
 const titles = (links: { title: string; href: string; children: unknown[] }[]): string => links.map((l) => `${l.title}→${l.href || '-'}`).join(' ');
 
 describe('the menu as a document', () => {
-  test('no menu means the site makes one; anything that is not a list is no menu', () => {
+  test('no menu means the site makes one; anything that is not a list is no menu', async () => {
     for (const input of [undefined, null, 'menu', { items: [] }]) expect(normalizeMenu(input)).toBeNull();
     expect(normalizeMenu([])).toEqual([]);
     expect(normalizeSite({ name: 'Old site' }).menu).toBeNull();
   });
 
-  test('items are cleaned: labels cut, addresses checked, ids unique, three levels and twelve items at most', () => {
+  test('items are cleaned: labels cut, addresses checked, ids unique, three levels and twelve items at most', async () => {
     const deep = { label: 'L1', children: [{ label: 'L2', children: [{ label: 'L3', children: [{ label: 'L4' }] }] }] };
     const menu = normalizeMenu([
       { id: 'same', label: '  Two   words ', target: { kind: 'url', href: 'javascript:alert(1)' } },
@@ -43,18 +43,18 @@ describe('the menu as a document', () => {
 });
 
 describe('from the menu to links', () => {
-  test('the automatic menu: the pages that asked to be in it, in order, then the blog when there are posts', () => {
+  test('the automatic menu: the pages that asked to be in it, in order, then the blog when there are posts', async () => {
     expect(titles(resolveMenu(siteWith(null), pages, false))).toBe('Home→/ About→/about/');
     expect(titles(resolveMenu(siteWith(null), pages, true))).toBe('Home→/ About→/about/ Blog→/blog/');
     expect(automaticMenu(siteWith(null), pages, true).map((n) => n.target.kind)).toEqual(['page', 'page', 'blog']);
   });
 
-  test('an arranged menu is drawn in its own order, with its own words, and may show a page the automatic one hides', () => {
+  test('an arranged menu is drawn in its own order, with its own words, and may show a page the automatic one hides', async () => {
     const site = siteWith([node('', { kind: 'page', slug: 'about' }), node('Start', { kind: 'page', slug: '' }), node('', { kind: 'page', slug: 'hidden' }), node('Shop', { kind: 'url', href: 'https://shop.example' })]);
     expect(titles(resolveMenu(site, pages, false))).toBe('About→/about/ Start→/ Hidden→/hidden/ Shop→https://shop.example');
   });
 
-  test('an item never leads to what is not there', () => {
+  test('an item never leads to what is not there', async () => {
     const site = siteWith([
       node('Gone', { kind: 'page', slug: 'deleted' }, [node('Under gone', { kind: 'page', slug: 'about' })]),
       node('', { kind: 'blog' }),
@@ -70,7 +70,7 @@ describe('from the menu to links', () => {
     expect(titles(resolveMenu(site, pages, true))).toBe('Blog→/blog/ Heading→-');
   });
 
-  test('an item is a wide menu when what is under it has links of its own', () => {
+  test('an item is a wide menu when what is under it has links of its own', async () => {
     const small = resolveMenu(siteWith([node('Small', { kind: 'none' }, [node('', { kind: 'page', slug: 'about' })])]), pages, false)[0];
     const wide = resolveMenu(siteWith([node('Wide', { kind: 'none' }, [node('Col', { kind: 'none' }, [node('', { kind: 'page', slug: 'about' })])])]), pages, false)[0];
     expect(small && isMega(small)).toBe(false);
@@ -91,23 +91,23 @@ describe('the menu on the page', () => {
   const flat = (markup: string): string => markup.replace(/>\s+</g, '><');
   const html = flat(renderPage(site, theme, page, menuOf(site, pages, false)));
 
-  test('a plain item is a link; the page being shown is marked', () => {
+  test('a plain item is a link; the page being shown is marked', async () => {
     expect(html).toContain('<li><a href="/">Home</a></li>');
     expect(html).toContain('<a href="/about/" aria-current="page">');
   });
 
-  test('an item that holds others opens without script, and its own page is the first link inside', () => {
+  test('an item that holds others opens without script, and its own page is the first link inside', async () => {
     expect(html).toContain('<li><details name="site-menu"><summary class="current">More</summary><div class="sub"><ul><li><a href="/about/" aria-current="page">More</a></li><li><a href="https://example.org/">Elsewhere</a></li></ul></div></details></li>');
     expect(html).not.toContain('<script');
   });
 
-  test('a wide menu has a column for each sub-item; what the owner typed is text', () => {
+  test('a wide menu has a column for each sub-item; what the owner typed is text', async () => {
     expect(html).toContain('<li class="mega"><details name="site-menu"><summary class="current">Wide &lt;b></summary>');
     expect(html).toContain('<div class="col"><p class="col-title">Column</p><ul><li><a href="/about/" aria-current="page">About</a></li></ul></div>');
     expect(html).toContain('<div class="col"><p class="col-title"><a href="/hidden/">Hidden</a></p></div>');
   });
 
-  test('a menu button for narrow screens is there whenever there is a menu, and it is a labelled checkbox', () => {
+  test('a menu button for narrow screens is there whenever there is a menu, and it is a labelled checkbox', async () => {
     expect(html).toContain('<input class="menu-check" type="checkbox" id="site-menu" aria-label="Menu"/><label class="menu-button" for="site-menu">Menu</label>');
     const lone = flat(renderPage(normalizeSite({ name: 'One page', menu: null }), theme, page, []));
     expect(lone).not.toContain('menu-check');
@@ -121,7 +121,7 @@ describe('the menu on the page', () => {
     expect(home).not.toContain('href="/about/"');
   });
 
-  test('the theme styles the panel, and only through the stylesheet', () => {
+  test('the theme styles the panel, and only through the stylesheet', async () => {
     const styled = parseTheme({ ...plain, layout: { menu: { style: { background: { token: 'primary' }, radius: { value: '0' } } } } }).theme as Theme;
     expect(themeCss(styled)).toContain('.site-header .sub{background-color:var(--t-color-primary);border-radius:0}');
     expect(flat(renderPage(site, styled, page, menuOf(site, pages, false)))).toBe(html);

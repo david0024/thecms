@@ -10,7 +10,7 @@ const el = (name: string, kids: DomNode[], attrs: Record<string, string> = {}): 
   getAttribute: (n) => attrs[n] ?? null,
 });
 
-test('reads paragraphs, headings, quotes, lists, marks and links', () => {
+test('reads paragraphs, headings, quotes, lists, marks and links', async () => {
   const doc = domToRichText(
     el('DIV', [
       el('H1', [t('Title')]),
@@ -32,7 +32,7 @@ test('reads paragraphs, headings, quotes, lists, marks and links', () => {
   ]);
 });
 
-test('keeps nothing of pasted markup but its words', () => {
+test('keeps nothing of pasted markup but its words', async () => {
   const doc = domToRichText(
     el('DIV', [
       t('loose text'),

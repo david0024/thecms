@@ -40,7 +40,7 @@ const FEED_ENTRIES = 30;
 const xml = (v: string): string => v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 /** Gives a stored image's bytes by name; null when the site does not have it. */
-export type MediaSource = (name: string) => Uint8Array | null;
+export type MediaSource = (name: string) => Uint8Array | null | Promise<Uint8Array | null>;
 
 /** `/blog/` → `blog/index.html`. */
 const fileOf = (path: string): string => `${path.slice(1)}index.html`;
@@ -135,7 +135,7 @@ export async function buildSite(
   for (const [where, src] of shown) {
     const name = mediaNameOf(src);
     if (!name || files.has(src.slice(1))) continue;
-    const bytes = media(name);
+    const bytes = await media(name);
     // A site that would show a broken picture is not published quietly.
     if (!bytes) throw new Error(`${where} shows an image this site does not have: ${src}`);
     files.set(src.slice(1), bytes);
@@ -175,9 +175,9 @@ export async function buildSite(
  * someone's files.
  */
 export async function exportSite(store: Store, outDir: string): Promise<string[]> {
-  const theme = store.publishedTheme();
+  const theme = await store.publishedTheme();
   if (!theme) throw new Error('the theme is not published yet');
-  const pages = store.published();
+  const pages = await store.published();
   if (pages.length === 0) throw new Error('nothing is published yet');
   if (!pages.some((p) => p.slug === '')) throw new Error('the home page is not published');
 
@@ -187,7 +187,10 @@ export async function exportSite(store: Store, outDir: string): Promise<string[]
   }
   await rm(outDir, { recursive: true, force: true });
 
-  const files = await buildSite(store.site(), theme, pages, (name) => store.mediaFile(name)?.bytes ?? null, Object.fromEntries(contentTypes(store.site()).map((type) => [type.id, store.publishedEntries(type.id)])), store.redirects());
+  const site = await store.site();
+  const entries: Record<string, Post[]> = {};
+  for (const type of contentTypes(site)) entries[type.id] = await store.publishedEntries(type.id);
+  const files = await buildSite(site, theme, pages, async (name) => (await store.mediaFile(name))?.bytes ?? null, entries, await store.redirects());
   files.set(MARKER, 'Made by thecms export. This folder is replaced on every export.\n');
   for (const [path, contents] of files) {
     const target = join(outDir, path);

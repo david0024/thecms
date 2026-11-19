@@ -18,7 +18,20 @@ jobs:
           bun-version: 1.4.4
       - run: bun install --frozen-lockfile
       - run: bun run typecheck
+      # The store is tested on every database it supports (ADR 0013).
+      - name: Start Postgres and MySQL
+        run: |
+          docker run -d --name pg -e POSTGRES_USER=thecms -e POSTGRES_PASSWORD=pw -e POSTGRES_DB=thecms -p 5432:5432 postgres:16
+          docker run -d --name my -e MYSQL_ROOT_PASSWORD=pw -e MYSQL_DATABASE=thecms -e MYSQL_USER=thecms -e MYSQL_PASSWORD=pw -p 3306:3306 mysql:8.4 --mysql-native-password=ON --authentication-policy=mysql_native_password
+          for i in $(seq 1 90); do
+            docker exec my mysqladmin ping -h127.0.0.1 -uthecms -ppw >/dev/null 2>&1 && docker exec pg pg_isready -h 127.0.0.1 -U thecms >/dev/null 2>&1 && exit 0
+            sleep 2
+          done
+          exit 1
       - run: bun test
+        env:
+          THECMS_TEST_POSTGRES: postgres://thecms:pw@127.0.0.1:5432/thecms
+          THECMS_TEST_MYSQL: mysql://thecms:pw@127.0.0.1:3306/thecms
       # The command people run, on a real file, checked by what it wrote.
       - name: Export the sample site
         run: |

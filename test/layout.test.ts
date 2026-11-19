@@ -15,12 +15,12 @@ const withLayout = (layout: unknown): ReturnType<typeof parseTheme> => parseThem
 const PNG = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='), (c) => c.charCodeAt(0));
 
 describe('the layout of the header and footer is part of the theme', () => {
-  test('a theme file written before there was a layout still loads, with the default', () => {
+  test('a theme file written before there was a layout still loads, with the default', async () => {
     expect('layout' in plain).toBe(false);
     expect(themeOf(plain).layout).toEqual(DEFAULT_LAYOUT);
   });
 
-  test('a layout is checked like the rest of a theme: one bad value refuses the whole document', () => {
+  test('a layout is checked like the rest of a theme: one bad value refuses the whole document', async () => {
     const bad: [unknown, string][] = [
       [{ header: { arrangement: 'sideways' } }, 'layout.header.arrangement'],
       [{ footer: { arrangement: 'stacked' } }, 'layout.footer.arrangement'],
@@ -37,7 +37,7 @@ describe('the layout of the header and footer is part of the theme', () => {
     }
   });
 
-  test('the stylesheet carries the arrangement, the pinning and the style', () => {
+  test('the stylesheet carries the arrangement, the pinning and the style', async () => {
     const { theme } = withLayout({
       header: { arrangement: 'centered', sticky: true, style: { background: { token: 'surface' }, paddingBlock: { value: '2rem' } } },
       footer: { arrangement: 'centered' },
@@ -49,7 +49,7 @@ describe('the layout of the header and footer is part of the theme', () => {
     expect(themeCss(themeOf(plain))).not.toContain('.site-header');
   });
 
-  test('two themes that lay the header out differently draw the same markup', () => {
+  test('two themes that lay the header out differently draw the same markup', async () => {
     const site = normalizeSite(DEMO_SITE);
     const page = normalizePage(DEMO_PAGES[0]).page;
     const menu = DEMO_PAGES.map((p) => ({ title: p.title, href: `/${p.slug}`, children: [] }));
@@ -66,7 +66,7 @@ describe('the layout of the header and footer is part of the theme', () => {
 });
 
 describe('what the header and footer say is the site\'s', () => {
-  test('a logo, a button and footer links are cleaned like a block\'s', () => {
+  test('a logo, a button and footer links are cleaned like a block\'s', async () => {
     const site = normalizeSite({
       name: 'S',
       logo: { src: 'javascript:alert(1)', alt: 'x' },
@@ -82,7 +82,7 @@ describe('what the header and footer say is the site\'s', () => {
     expect(normalizeSite({ name: 'Old', footer: 'f' })).toMatchObject({ logo: null, action: null, footerLinks: [] });
   });
 
-  test('only what a visitor can follow is drawn; the logo is read out as the site\'s name', () => {
+  test('only what a visitor can follow is drawn; the logo is read out as the site\'s name', async () => {
     const site = normalizeSite({ name: 'Nord <b>', logo: { src: '/logo.png', alt: '' }, action: { label: 'Soon', href: '' }, footerLinks: [{ label: 'Privacy', href: '/privacy/' }, { label: 'Later', href: '' }] });
     const { body } = renderParts(site, themeOf(plain), normalizePage({ title: 'T', blocks: [] }).page, []);
     expect(body).toContain('<img class="site-logo" src="/logo.png" alt="Nord &lt;b>"');
@@ -99,30 +99,30 @@ describe('the logo is an image of the site', () => {
   let store: Store;
   beforeEach(async () => {
     dir = await mkdtemp(join(tmpdir(), 'thecms-'));
-    store = new Store(join(dir, 'site.db'));
-    store.setSite(DEMO_SITE);
-    store.setTheme(plain);
-    store.publishTheme();
-    for (const page of DEMO_PAGES) store.publish(store.savePage(page).slug);
+    store = await Store.open(join(dir, 'site.db'));
+    await store.setSite(DEMO_SITE);
+    await store.setTheme(plain);
+    await store.publishTheme();
+    for (const page of DEMO_PAGES) await store.publish((await store.savePage(page)).slug);
   });
   afterEach(async () => {
-    store.close();
+    await store.close();
     await rm(dir, { recursive: true, force: true });
   });
 
   test('it cannot be deleted while it is the logo, and it is exported', async () => {
-    const item = store.addMedia(PNG);
-    store.setSite({ ...store.site(), logo: { src: item.path, alt: '' } });
-    expect(() => store.deleteMedia(item.name)).toThrow('the header (logo)');
+    const item = await store.addMedia(PNG);
+    await store.setSite({ ...await store.site(), logo: { src: item.path, alt: '' } });
+    await expect(store.deleteMedia(item.name)).rejects.toThrow('the header (logo)');
     const files = await exportSite(store, join(dir, 'out'));
     expect(files).toContain(item.path.slice(1));
-    store.setSite({ ...store.site(), logo: null });
-    store.deleteMedia(item.name);
-    expect(store.media()).toHaveLength(0);
+    await store.setSite({ ...await store.site(), logo: null });
+    await store.deleteMedia(item.name);
+    expect(await store.media()).toHaveLength(0);
   });
 
   test('a logo the site does not have stops the export', async () => {
-    store.setSite({ ...store.site(), logo: { src: `/media/${'0'.repeat(32)}.png`, alt: '' } });
+    await store.setSite({ ...await store.site(), logo: { src: `/media/${'0'.repeat(32)}.png`, alt: '' } });
     await expect(exportSite(store, join(dir, 'out'))).rejects.toThrow('the header shows an image this site does not have');
   });
 });

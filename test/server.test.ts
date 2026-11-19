@@ -14,15 +14,15 @@ const HOST = '127.0.0.1:4321';
 
 beforeAll(async () => {
   dir = await mkdtemp(join(tmpdir(), 'thecms-'));
-  store = new Store(join(dir, 'site.db'));
-  store.setSite(DEMO_SITE);
-  store.setTheme(plain);
-  store.publishTheme();
-  for (const page of DEMO_PAGES) store.publish(store.savePage(page).slug);
+  store = await Store.open(join(dir, 'site.db'));
+  await store.setSite(DEMO_SITE);
+  await store.setTheme(plain);
+  await store.publishTheme();
+  for (const page of DEMO_PAGES) await store.publish((await store.savePage(page)).slug);
   editor = await startEditor(store, { listen: false });
 });
 afterAll(async () => {
-  store.close();
+  await store.close();
   await rm(dir, { recursive: true, force: true });
 });
 
@@ -58,10 +58,10 @@ describe('who may call the editing API', () => {
   });
 
   test('a write without the token changes nothing', async () => {
-    const before = JSON.stringify(store.pages());
+    const before = JSON.stringify(await store.pages());
     const response = await call('/api/page?slug=about', { method: 'DELETE', headers: { 'x-thecms-token': '' } });
     expect(response.status).toBe(401);
-    expect(JSON.stringify(store.pages())).toBe(before);
+    expect(JSON.stringify(await store.pages())).toBe(before);
   });
 
   test('pages are served with a policy that runs no script but the editor’s own', async () => {
@@ -107,23 +107,23 @@ describe('the editing API', () => {
     const draft = { slug: 'about', title: 'About us', blocks: [{ type: 'text', content: { body: [{ type: 'paragraph', children: [{ text: 'New words' }] }] } }] };
     const saved = (await (await call('/api/page', { method: 'PUT', body: { page: draft } })).json()) as { pages: { slug: string; changed: boolean }[] };
     expect(saved.pages.find((p) => p.slug === 'about')!.changed).toBe(true);
-    expect(store.published().find((p) => p.slug === 'about')!.title).toBe('About');
+    expect((await store.published()).find((p) => p.slug === 'about')!.title).toBe('About');
     await call('/api/publish', { method: 'POST', body: { slug: 'about' } });
-    expect(store.published().find((p) => p.slug === 'about')!.title).toBe('About us');
+    expect((await store.published()).find((p) => p.slug === 'about')!.title).toBe('About us');
   });
 
   test('a new page cannot replace an existing one, and the home page cannot be deleted', async () => {
     const clash = await call('/api/page', { method: 'PUT', body: { page: { slug: 'contact', title: 'Contact' }, create: true } });
     expect(clash.status).toBe(409);
-    expect(store.draft('contact')!.blocks.length).toBeGreaterThan(0);
+    expect((await store.draft('contact'))!.blocks.length).toBeGreaterThan(0);
     expect((await call('/api/page?slug=', { method: 'DELETE' })).status).toBe(400);
-    expect(store.draft('')).not.toBeNull();
+    expect(await store.draft('')).not.toBeNull();
   });
 
   test('an invalid theme is refused with the reason, and the theme stays', async () => {
     const response = await call('/api/theme', { method: 'PUT', body: { theme: { ...plain, name: '' } } });
     expect(response.status).toBe(400);
     expect(((await response.json()) as { error: string }).error).toContain('name');
-    expect(store.theme()!.name).toBe('Plain');
+    expect((await store.theme())!.name).toBe('Plain');
   });
 });

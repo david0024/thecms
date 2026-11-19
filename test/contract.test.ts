@@ -10,11 +10,11 @@ import BlockView from '../src/blocks/BlockView.svelte';
 import { COMPONENTS } from '../src/blocks/components.ts';
 import { BLOCK_TYPES, createBlock } from '../src/core/index.ts';
 
-test('the renderer draws exactly the types the core defines', () => {
+test('the renderer draws exactly the types the core defines', async () => {
   expect(Object.keys(COMPONENTS).sort()).toEqual([...BLOCK_TYPES].sort());
 });
 
-test('a new block of every type renders', () => {
+test('a new block of every type renders', async () => {
   for (const type of BLOCK_TYPES) {
     const block = createBlock(type);
     const { body } = render(BlockView, { props: { block } });

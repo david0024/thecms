@@ -27,7 +27,7 @@ const PNG = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAA
 const bytes = (text: string): Uint8Array => new TextEncoder().encode(text.padEnd(16, ' '));
 
 describe('what counts as an image', () => {
-  test('a file is what its bytes say', () => {
+  test('a file is what its bytes say', async () => {
     expect(imageExt(PNG)).toBe('png');
     expect(imageExt(Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, 0, 0, 0, 0, 0, 0, 0, 0]))).toBe('jpg');
     expect(imageExt(bytes('GIF89a'))).toBe('gif');
@@ -35,20 +35,20 @@ describe('what counts as an image', () => {
     expect(imageExt(bytes('\0\0\0\x1cftypavif'))).toBe('avif');
   });
 
-  test('a script, an SVG and a page are not images, whatever they are called', () => {
+  test('a script, an SVG and a page are not images, whatever they are called', async () => {
     for (const text of ['<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"/>', '<!doctype html><script>alert(1)</script>', 'GIF89', '']) {
       expect(imageExt(bytes(text))).toBeNull();
     }
   });
 
-  test('only an address made by the store names a stored image', () => {
+  test('only an address made by the store names a stored image', async () => {
     expect(mediaNameOf(`/media/${'a'.repeat(32)}.png`)).toBe(`${'a'.repeat(32)}.png`);
     for (const src of ['/media/../site.db', `/media/${'a'.repeat(32)}.svg`, `/media/${'A'.repeat(32)}.png`, `https://example.com/media/${'a'.repeat(32)}.png`, '/media/x.png']) {
       expect(mediaNameOf(src)).toBeNull();
     }
   });
 
-  test('the images of a page are found wherever a field holds one, groups included', () => {
+  test('the images of a page are found wherever a field holds one, groups included', async () => {
     const { blocks } = normalizeBlocks([
       { type: 'hero', content: { title: 'x', image: { src: '/media/one.png', alt: '' } } },
       { type: 'group', children: [{ type: 'image', content: { image: { src: 'https://example.com/two.jpg', alt: '' } } }, { type: 'image' }] },
@@ -63,20 +63,20 @@ describe('moving blocks without losing them', () => {
   // g1 > g2 > g3 > g4: as deep as a page goes.
   const tower = [group('g1', [group('g2', [group('g3', [group('g4')])])]), leaf('t'), group('pair', [group('inner', [leaf('u')])])];
 
-  test('depth is counted from the top', () => {
+  test('depth is counted from the top', async () => {
     expect(depthOf(tower, 't')).toBe(1);
     expect(depthOf(tower, 'g4')).toBe(4);
     expect(depthOf(tower, 'nope')).toBeUndefined();
   });
 
-  test('a block fits where cleaning would keep all of it', () => {
+  test('a block fits where cleaning would keep all of it', async () => {
     expect(fits(tower, 'g3', leaf('x'))).toBe(true);
     expect(fits(tower, 'g4', leaf('x'))).toBe(false);
     expect(fits(tower, 'g2', findById(tower, 'pair') as Block)).toBe(false);
     expect(fits(tower, null, findById(tower, 'g1') as Block)).toBe(true);
   });
 
-  test('a move too deep changes nothing, and what a refused move would have lost is real', () => {
+  test('a move too deep changes nothing, and what a refused move would have lost is real', async () => {
     expect(moveTo(tower, 't', 'g4', 0)).toBe(tower);
     expect(moveTo(tower, 'pair', 'g2', 0)).toBe(tower);
     // Forced past the check, the cleaning on save drops the block: this is what the check prevents.
@@ -97,38 +97,38 @@ describe('images stored with the site', () => {
 
   beforeEach(async () => {
     dir = await mkdtemp(join(tmpdir(), 'thecms-'));
-    store = new Store(join(dir, 'site.db'));
-    store.setSite(DEMO_SITE);
-    store.setTheme(plain);
-    store.publishTheme();
-    for (const page of DEMO_PAGES) store.publish(store.savePage(page).slug);
+    store = await Store.open(join(dir, 'site.db'));
+    await store.setSite(DEMO_SITE);
+    await store.setTheme(plain);
+    await store.publishTheme();
+    for (const page of DEMO_PAGES) await store.publish((await store.savePage(page)).slug);
     editor = await startEditor(store, { listen: false });
   });
   afterEach(async () => {
-    store.close();
+    await store.close();
     await rm(dir, { recursive: true, force: true });
   });
 
-  const show = (src: string): void => {
-    const home = store.draft('') as NonNullable<ReturnType<Store['draft']>>;
-    store.savePage({ ...home, blocks: [...home.blocks, { type: 'image', content: { image: { src, alt: 'A pixel' } } }] });
+  const show = async (src: string): Promise<void> => {
+    const home = (await store.draft('')) as NonNullable<Awaited<ReturnType<Store['draft']>>>;
+    await store.savePage({ ...home, blocks: [...home.blocks, { type: 'image', content: { image: { src, alt: 'A pixel' } } }] });
   };
 
-  test('the same picture twice is stored once, under a name made from its bytes', () => {
-    const first = store.addMedia(PNG, 'pixel.png');
-    const again = store.addMedia(PNG, 'copy.png');
+  test('the same picture twice is stored once, under a name made from its bytes', async () => {
+    const first = await store.addMedia(PNG, 'pixel.png');
+    const again = await store.addMedia(PNG, 'copy.png');
     expect(first.path).toMatch(/^\/media\/[a-f0-9]{32}\.png$/);
     expect(again.name).toBe(first.name);
-    expect(store.media()).toHaveLength(1);
-    expect(store.mediaFile(first.name)?.bytes).toEqual(PNG);
+    expect(await store.media()).toHaveLength(1);
+    expect((await store.mediaFile(first.name))?.bytes).toEqual(PNG);
   });
 
-  test('what is not an image, or is too heavy, is refused', () => {
-    expect(() => store.addMedia(bytes('<svg onload="alert(1)"/>'), 'x.png')).toThrow('not an image');
+  test('what is not an image, or is too heavy, is refused', async () => {
+    expect(async () => await store.addMedia(bytes('<svg onload="alert(1)"/>'), 'x.png')).toThrow('not an image');
     const heavy = new Uint8Array(MEDIA_MAX_BYTES + 1);
     heavy.set(PNG);
-    expect(() => store.addMedia(heavy)).toThrow('at most 10 MB');
-    expect(store.media()).toHaveLength(0);
+    await expect(store.addMedia(heavy)).rejects.toThrow('at most 10 MB');
+    expect(await store.media()).toHaveLength(0);
   });
 
   test('upload needs the token; showing does not, and says what the file is', async () => {
@@ -145,28 +145,28 @@ describe('images stored with the site', () => {
   });
 
   test('an image a page shows cannot be deleted; one nothing shows can', async () => {
-    const item = store.addMedia(PNG);
-    show(item.path);
+    const item = await store.addMedia(PNG);
+    await show(item.path);
     const refused = await call(`/api/media?name=${item.name}`, { method: 'DELETE' });
     expect(refused.status).toBe(400);
     expect(((await refused.json()) as { error: string }).error).toContain('used on: Home');
     // Still shown by what is published, even after the draft lets go of it.
-    store.publish('');
-    store.savePage({ ...(store.draft('') as object), blocks: [] });
-    expect(store.mediaUsedBy(item.name)).toHaveLength(1);
-    store.publish('');
+    await store.publish('');
+    await store.savePage({ ...(await store.draft('') as object), blocks: [] });
+    expect(await store.mediaUsedBy(item.name)).toHaveLength(1);
+    await store.publish('');
     expect((await call(`/api/media?name=${item.name}`, { method: 'DELETE' })).status).toBe(200);
-    expect(store.media()).toHaveLength(0);
+    expect(await store.media()).toHaveLength(0);
   });
 
   test('the export carries the images published pages show, and only those', async () => {
-    const used = store.addMedia(PNG);
-    const unused = store.addMedia(Uint8Array.from([...PNG, 0]));
-    show(used.path);
+    const used = await store.addMedia(PNG);
+    const unused = await store.addMedia(Uint8Array.from([...PNG, 0]));
+    await show(used.path);
     const out = join(dir, 'out');
     await exportSite(store, out);
     expect(await readdir(out)).not.toContain('media');
-    store.publish('');
+    await store.publish('');
     const files = await exportSite(store, out);
     expect(files).toContain(used.path.slice(1));
     expect(files).not.toContain(unused.path.slice(1));
@@ -175,8 +175,8 @@ describe('images stored with the site', () => {
   });
 
   test('a published page whose image is gone stops the export, and says which page', async () => {
-    show(`/media/${'0'.repeat(32)}.png`);
-    store.publish('');
+    await show(`/media/${'0'.repeat(32)}.png`);
+    await store.publish('');
     await expect(exportSite(store, join(dir, 'out'))).rejects.toThrow('shows an image this site does not have');
   });
 });

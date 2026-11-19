@@ -18,11 +18,11 @@ describe('an import from the admin (ADR 0012)', () => {
   const fetched: string[] = [];
 
   beforeEach(async () => {
-    store = new Store(':memory:');
-    store.setSite(DEMO_SITE);
-    store.setTheme(plain);
-    store.publishTheme();
-    for (const page of DEMO_PAGES) store.publish(store.savePage(page).slug);
+    store = await Store.open(':memory:');
+    await store.setSite(DEMO_SITE);
+    await store.setTheme(plain);
+    await store.publishTheme();
+    for (const page of DEMO_PAGES) await store.publish((await store.savePage(page)).slug);
     gate = Promise.resolve();
     fetched.length = 0;
     editor = await startEditor(store, {
@@ -34,7 +34,7 @@ describe('an import from the admin (ADR 0012)', () => {
       },
     });
   });
-  afterEach(() => store.close());
+  afterEach(async () => await store.close());
 
   const call = (path: string, init: { method?: string; body?: string; headers?: Record<string, string> } = {}): Promise<Response> =>
     editor.fetch(new Request(`http://${HOST}${path}`, { method: init.method ?? 'GET', headers: { host: HOST, 'x-thecms-token': editor.token, ...init.headers }, body: init.body }));
@@ -48,14 +48,14 @@ describe('an import from the admin (ADR 0012)', () => {
   };
 
   test('the file is read and counted, and nothing is written', async () => {
-    const before = JSON.stringify([store.pages(), store.posts(), store.site(), store.media(), store.redirects()]);
+    const before = JSON.stringify([await store.pages(), await store.posts(), await store.site(), await store.media(), await store.redirects()]);
     const response = await call('/api/import/plan', { method: 'POST', body: WXR });
     expect(response.status).toBe(200);
     const preview = (await response.json()) as ImportPreview;
     expect(preview).toMatchObject({ pages: 4, posts: 2, images: 2, redirects: 3, menu: true, types: [], others: [{ type: 'product', count: 1 }] });
     expect(preview.site.url).toStartWith('http');
     expect(preview.notes.length).toBeGreaterThan(0);
-    expect(JSON.stringify([store.pages(), store.posts(), store.site(), store.media(), store.redirects()])).toBe(before);
+    expect(JSON.stringify([await store.pages(), await store.posts(), await store.site(), await store.media(), await store.redirects()])).toBe(before);
   });
 
   test('a kind the owner ticks moves from "other" to a content type', async () => {
@@ -73,7 +73,7 @@ describe('an import from the admin (ADR 0012)', () => {
     expect(await finished()).toEqual({ status: 'idle' });
     expect((await call('/api/import/plan', { method: 'POST', body: WXR, headers: { 'content-length': String(IMPORT_MAX_BYTES + 1) } })).status).toBe(413);
     expect((await call('/api/import/run', { method: 'POST', body: WXR, headers: { 'x-thecms-token': 'no' } })).status).toBe(401);
-    expect(store.posts()).toHaveLength(0);
+    expect(await store.posts()).toHaveLength(0);
   });
 
   test('it runs after the request has answered, says how far it is, and refuses a second one meanwhile', async () => {
@@ -90,10 +90,10 @@ describe('an import from the admin (ADR 0012)', () => {
     expect(done).toMatchObject({ status: 'done', report: { pages: 2, posts: 2, entries: 1, images: 2, menu: false } });
     expect(fetched).toHaveLength(2);
     // The site kept its own name, menu and home page; the content came beside them.
-    expect(store.site().name).toBe(DEMO_SITE.name);
-    expect(store.draft('')?.title).toBe(DEMO_PAGES.find((p) => p.slug === '')?.title as string);
-    expect(store.site().types.map((t) => t.id)).toContain('product');
-    expect(store.publishedEntries('product')).toHaveLength(1);
+    expect((await store.site()).name).toBe(DEMO_SITE.name);
+    expect((await store.draft(''))?.title).toBe(DEMO_PAGES.find((p) => p.slug === '')?.title as string);
+    expect((await store.site()).types.map((t) => t.id)).toContain('product');
+    expect(await store.publishedEntries('product')).toHaveLength(1);
     const state = (await (await call('/api/state')).json()) as { posts: unknown[]; entries: Record<string, unknown[]> };
     expect(state.posts).toHaveLength(2);
     expect(state.entries.product).toHaveLength(1);
@@ -105,21 +105,21 @@ describe('an import from the admin (ADR 0012)', () => {
     const done = await finished();
     expect(done).toMatchObject({ status: 'done', report: { images: 0, menu: true } });
     expect(fetched).toHaveLength(0);
-    expect(store.site().name).not.toBe(DEMO_SITE.name);
-    expect(store.media()).toHaveLength(0);
+    expect((await store.site()).name).not.toBe(DEMO_SITE.name);
+    expect(await store.media()).toHaveLength(0);
   });
 });
 
 describe('a content type the site cannot take', () => {
   test('is left out with its entries and named; the rest still comes', async () => {
-    const store = new Store(':memory:');
-    store.setTheme(plain);
-    store.savePage({ slug: 'product', title: 'Product', description: '', inMenu: true, blocks: [] });
+    const store = await Store.open(':memory:');
+    await store.setTheme(plain);
+    await store.savePage({ slug: 'product', title: 'Product', description: '', inMenu: true, blocks: [] });
     const report = await runImport(store, planImport(WXR, '2026-11-17', { types: ['product'] }), { fetchImage: null, fresh: false });
     expect(report.entries).toBe(0);
     expect(report.pages).toBeGreaterThan(0);
     expect(report.notes.join('\n')).toContain('The content type "Product" was not added');
-    expect(store.site().types).toEqual([]);
-    store.close();
+    expect((await store.site()).types).toEqual([]);
+    await store.close();
   });
 });
