@@ -10,7 +10,10 @@ import BlogLayout from '../blocks/BlogLayout.svelte';
 import type { EntryLists } from '../blocks/editing.ts';
 import Layout from '../blocks/Layout.svelte';
 import PostLayout from '../blocks/PostLayout.svelte';
+import { ALTERNATES } from '../blocks/words.ts';
 import {
+  type Alternate,
+  alternates as alternatesOf,
   type Block,
   blocksCss,
   type ContentType,
@@ -28,6 +31,9 @@ import {
   resolveMenu,
   type Site,
   type Theme,
+  languageOf,
+  pagesIn,
+  siteIn,
 } from '../core/index.ts';
 
 const esc = (v: string): string =>
@@ -39,6 +45,19 @@ export type MenuItem = MenuLink;
 export const menuOf = (site: Site, pages: MenuPage[], lists: MenuLists): MenuItem[] => resolveMenu(site, pages, lists);
 
 export const STYLESHEET = '/assets/site.css';
+
+/**
+ * What a page is drawn with in its own language (ADR 0024): the site's words
+ * and menu in that language, and where the page is in the others.
+ */
+export function pageSetting(site: Site, slug: string, pages: MenuPage[], lists: MenuLists): { site: Site; menu: MenuItem[]; alternates: Alternate[] } {
+  const language = languageOf(site, slug);
+  const local = siteIn(site, language);
+  return { site: local, menu: menuOf(local, pagesIn(site, language, pages), language === site.language ? lists : []), alternates: alternatesOf(site, slug, pages) };
+}
+
+/** The other languages reach the header through the context of the render. */
+const withAlternates = (alternates: Alternate[]) => new Map<string, unknown>([[ALTERNATES, alternates]]);
 
 /**
  * Svelte marks where a browser would take the page over (`<!--[-->`). Nothing
@@ -54,8 +73,8 @@ const own = (blocks: Block[], theme: Theme): string => blocksCss(blocks, theme);
  * A page's markup and the styles its blocks set for themselves. With
  * `editing`, text that can be typed on the page is marked for the editor.
  */
-export function renderParts(site: Site, theme: Theme, page: Page, menu: MenuItem[], editing = false, lists: EntryLists = {}): { body: string; css: string } {
-  return { body: clean(render(Layout, { props: { site, page, menu, editing, lists } }).body), css: own(page.blocks, theme) };
+export function renderParts(site: Site, theme: Theme, page: Page, menu: MenuItem[], editing = false, lists: EntryLists = {}, alternates: Alternate[] = []): { body: string; css: string } {
+  return { body: clean(render(Layout, { props: { site, page, menu, editing, lists }, context: withAlternates(alternates) }).body), css: own(page.blocks, theme) };
 }
 
 /** The same for an entry of a content type; a blog post when no type is named. */
@@ -71,9 +90,10 @@ export function renderPostParts(
   template: Block[] | null = null,
   /** The editor is changing the type's page, with this entry as the example. */
   designing = false,
+  alternates: Alternate[] = [],
 ): { body: string; css: string } {
   return {
-    body: clean(render(PostLayout, { props: { site, post, menu, editing, type, lists, template, designing } }).body),
+    body: clean(render(PostLayout, { props: { site, post, menu, editing, type, lists, template, designing }, context: withAlternates(alternates) }).body),
     css: own([...(template ?? []), ...post.blocks], theme),
   };
 }
@@ -90,6 +110,8 @@ interface Head {
   image?: string;
   /** The feed to point a reader at, when this part of the site has one. */
   feed?: string;
+  /** The same page in the site's other languages. */
+  alternates?: Alternate[];
 }
 
 function documentHtml(site: Site, head: Head, body: string, css: string): string {
@@ -107,14 +129,16 @@ function documentHtml(site: Site, head: Head, body: string, css: string): string
     `<meta property="og:type" content="${head.type}">`,
     image ? `<meta property="og:image" content="${esc(image)}">` : '',
     head.feed ? `<link rel="alternate" type="application/atom+xml" title="${esc(site.name)}" href="${head.feed}">` : '',
+    // Search engines are told where each language's page is; only with the site's address, as they want it whole.
+    ...(site.url ? (head.alternates ?? []).map((a) => `<link rel="alternate" hreflang="${esc(a.language)}" href="${esc(`${site.url}${a.href}`)}">`) : []),
     `<link rel="stylesheet" href="${STYLESHEET}">`,
     css ? `<style>${css}</style>` : '',
   ].filter(Boolean);
   return `<!doctype html>\n<html lang="${esc(site.language)}">\n<head>\n${lines.join('\n')}\n</head>\n<body>\n${body}\n</body>\n</html>\n`;
 }
 
-export function renderPage(site: Site, theme: Theme, page: Page, menu: MenuItem[], lists: EntryLists = {}): string {
-  const { body, css } = renderParts(site, theme, page, menu, false, lists);
+export function renderPage(site: Site, theme: Theme, page: Page, menu: MenuItem[], lists: EntryLists = {}, alternates: Alternate[] = []): string {
+  const { body, css } = renderParts(site, theme, page, menu, false, lists, alternates);
   return documentHtml(
     site,
     {
@@ -123,6 +147,8 @@ export function renderPage(site: Site, theme: Theme, page: Page, menu: MenuItem[
       description: pageDescription(page),
       path: pagePath(page.slug),
       type: 'website',
+      // Only a page's own translations: a language's home page is not this page in that language.
+      alternates: alternates.filter((a) => a.translated).length > 1 ? alternates.filter((a) => a.translated) : [],
     },
     body,
     css,
@@ -131,8 +157,17 @@ export function renderPage(site: Site, theme: Theme, page: Page, menu: MenuItem[
 
 const feedOf = (site: Site, type: ContentType): string => (site.url && type.feed ? feedPath(type) : '');
 
-export function renderPost(site: Site, theme: Theme, post: Post, menu: MenuItem[], type: ContentType = postsType(site.blogTitle), lists: EntryLists = {}, template: Block[] | null = null): string {
-  const { body, css } = renderPostParts(site, theme, post, menu, false, type, lists, template);
+export function renderPost(
+  site: Site,
+  theme: Theme,
+  post: Post,
+  menu: MenuItem[],
+  type: ContentType = postsType(site.blogTitle),
+  lists: EntryLists = {},
+  template: Block[] | null = null,
+  alternates: Alternate[] = [],
+): string {
+  const { body, css } = renderPostParts(site, theme, post, menu, false, type, lists, template, false, alternates);
   return documentHtml(
     site,
     {
@@ -155,8 +190,9 @@ export function renderBlogList(
   list: { heading: string; path: string; posts: Post[]; newer?: string; older?: string },
   menu: MenuItem[],
   type: ContentType = postsType(site.blogTitle),
+  alternates: Alternate[] = [],
 ): string {
-  const body = clean(render(BlogLayout, { props: { site, menu, heading: list.heading, posts: list.posts, newer: list.newer, older: list.older, type } }).body);
+  const body = clean(render(BlogLayout, { props: { site, menu, heading: list.heading, posts: list.posts, newer: list.newer, older: list.older, type }, context: withAlternates(alternates) }).body);
   return documentHtml(
     site,
     { title: `${list.heading} · ${site.name}`, shareTitle: list.heading, description: '', path: list.path, type: 'website', feed: feedOf(site, type) },

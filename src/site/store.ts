@@ -40,6 +40,9 @@ import {
   POSTS_TYPE,
   contentTypes,
   reservedSlugs,
+  languageName,
+  prefixOf,
+  slugProblem,
   typeById,
   type ContentType,
   listed,
@@ -291,6 +294,13 @@ export class Store {
     for (const type of site.types) {
       if (await this.draft(type.path)) throw new Error(`a page already lives at "/${type.path}/"; give the content type "${type.name}" another address`);
     }
+    // A language takes its prefix as an address, and keeps its pages while it has any (ADR 0024).
+    const slugs = (await this.rows<{ slug: string }>('SELECT slug FROM pages')).map((row) => String(row.slug));
+    for (const language of site.languages) {
+      if (slugs.includes(prefixOf(language)) && !(await this.site()).languages.includes(language)) throw new Error(`a page already lives at "/${prefixOf(language)}/"; give it another address before adding ${languageName(language)}`);
+    }
+    const left = slugs.find((slug) => slug.includes('/') && !site.languages.some((language) => slug.startsWith(`${prefixOf(language)}/`)));
+    if (left) throw new Error(`"/${left}/" is still in ${languageName(left.split('/')[0] as string)}; delete the pages of a language before removing it`);
     const kept = new Set([POSTS_TYPE, ...site.types.map((t) => t.id)]);
     const orphans = (await this.rows<{ type: string; n: number | string }>('SELECT type, COUNT(*) AS n FROM entries GROUP BY type')).filter((row) => !kept.has(row.type));
     const first = orphans[0];
@@ -399,7 +409,9 @@ export class Store {
   async savePage(input: unknown): Promise<Page> {
     const { page } = normalizePage(input);
     if (!page.title) throw new Error('a page has a title');
-    if (reservedSlugs(await this.site()).includes(page.slug)) throw new Error(`the address "/${page.slug}/" is used by the site itself; choose another`);
+    const site = await this.site();
+    const problem = slugProblem(site, page.slug, reservedSlugs(site));
+    if (problem) throw new Error(problem);
     const next = await this.row<{ n: number | string }>('SELECT COALESCE(MAX(position), 0) + 1 AS n FROM pages');
     await this.run(this.dialect.upsert('pages', ['slug', 'position', 'draft', 'updated_at'], ['slug'], ['draft', 'updated_at']), [
       page.slug,

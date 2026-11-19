@@ -4,7 +4,7 @@
  * in the header, the footer's words and links. How these are laid out is the
  * theme's (ADR 0006), so nothing here is a colour or a position.
  */
-import type { LinkValue, MenuList, Site } from '../core/index.ts';
+import { type LinkValue, languageName, MAX_LANGUAGES, type MenuList, prefixOf, type Site, type SiteText } from '../core/index.ts';
 import type { LanguageInfo, PageInfo } from './api.ts';
 import ImageField from './ImageField.svelte';
 import MenuBuilder from './MenuBuilder.svelte';
@@ -31,6 +31,16 @@ const named = (l: LanguageInfo): string => (l.coverage < 1 ? `${l.name} (${say(t
 const set = (patch: Partial<Site>): void => onchange({ ...site, ...patch });
 const link = (value: LinkValue | null, patch: Partial<LinkValue>): LinkValue => ({ label: value?.label ?? '', href: value?.href ?? '', ...patch });
 const setFooterLink = (i: number, patch: Partial<LinkValue>): void => set({ footerLinks: site.footerLinks.map((l, j) => (j === i ? link(l, patch) : l)) });
+/** What the header and footer say in another language (ADR 0024). */
+const own = (language: string): SiteText => site.translations[language] ?? { footer: '', action: null, footerLinks: [] };
+const setOwn = (language: string, patch: Partial<SiteText>): void => set({ translations: { ...site.translations, [language]: { ...own(language), ...patch } } });
+let adding = $state('');
+const addLanguage = (): void => {
+  const language = adding.trim();
+  if (!language) return;
+  set({ languages: [...site.languages, language] });
+  adding = '';
+};
 </script>
 
 <label class="field">
@@ -43,6 +53,22 @@ const setFooterLink = (i: number, patch: Partial<LinkValue>): void => set({ foot
   <datalist id="cms-languages">{#each languages as l (l.language)}<option value={l.language}>{named(l)}</option>{/each}</datalist>
   <small>{t.site.languageHint}</small>
 </label>
+<fieldset class="field" data-site-languages>
+  <legend>{t.site.otherLanguages}</legend>
+  {#each site.languages as language (language)}
+    <div class="custom" data-site-other={language}>
+      <span class="grow">{languageName(language)} <small>/{prefixOf(language)}/</small></span>
+      <button type="button" class="quiet" onclick={() => set({ languages: site.languages.filter((l) => l !== language) })} data-language-remove>{t.inspector.remove}</button>
+    </div>
+  {/each}
+  {#if site.languages.length < MAX_LANGUAGES}
+    <div class="custom">
+      <input type="text" maxlength="20" list="cms-languages" placeholder="ro, de, fr" bind:value={adding} onkeydown={(e) => e.key === 'Enter' && addLanguage()} data-language-new />
+      <button type="button" onclick={addLanguage} data-language-add>{t.inspector.add}</button>
+    </div>
+  {/if}
+  <small>{t.site.otherLanguagesHint}</small>
+</fieldset>
 <label class="field">
   <span>{t.site.adminLanguage}</span>
   <select
@@ -113,8 +139,27 @@ const setFooterLink = (i: number, patch: Partial<LinkValue>): void => set({ foot
   <input type="number" min="1" max="3650" value={site.keepMessages} onchange={(e) => set({ keepMessages: Number(e.currentTarget.value) })} data-site-keep />
 </label>
 
+{#each site.languages as language (language)}
+  <h3>{say(t.site.inLanguage, { language: languageName(language) })}</h3>
+  <label class="field">
+    <span>{t.site.footerText}</span>
+    <input type="text" maxlength="300" value={own(language).footer} oninput={(e) => setOwn(language, { footer: e.currentTarget.value })} data-own-footer={language} />
+  </label>
+  <fieldset class="field" data-own-action={language}>
+    <legend>{t.site.action}</legend>
+    <label><span>{t.inspector.linkLabel}</span>
+      <input type="text" maxlength="80" value={own(language).action?.label ?? ''} oninput={(e) => setOwn(language, { action: link(own(language).action, { label: e.currentTarget.value }) })} />
+    </label>
+    <label><span>{t.inspector.linkHref}</span>
+      <input type="text" value={own(language).action?.href ?? ''} oninput={(e) => setOwn(language, { action: link(own(language).action, { href: e.currentTarget.value }) })} />
+    </label>
+  </fieldset>
+  <small>{t.site.inLanguageHint}</small>
+{/each}
+
 <p class="hint">{t.site.live}</p>
 
 <style>
   h3 { margin: 1.1rem 0 0.5rem; font-size: 13px; }
+  .grow { flex: 1; }
 </style>

@@ -17,6 +17,7 @@ export * from './redirect.ts';
 export * from './richtext.ts';
 export * from './style.ts';
 export * from './theme.ts';
+export * from './translation.ts';
 export * from './tree.ts';
 export * from './types.ts';
 export * from './util.ts';

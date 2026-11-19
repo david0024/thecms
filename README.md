@@ -37,6 +37,7 @@ The decisions behind this, each with its reason:
 - [ADR 0021 — Language packs](docs/adr/0021-language-packs.md)
 - [ADR 0022 — Accounts](docs/adr/0022-accounts.md)
 - [ADR 0023 — Installation](docs/adr/0023-installation.md)
+- [ADR 0024 — The same page in more than one language](docs/adr/0024-languages.md)
 
 ## Where it stands
 
@@ -67,6 +68,7 @@ theme, publish, and export the site as static files.
 | Language packs: the admin and the site's words in one JSON file a language, checked against English; Romanian ships complete | done |
 | Accounts for a served editor: the first owner from a one-time link, editors invited by the owner, an editor writes content and nothing else | done |
 | Installed with one command: one file a platform from GitHub Releases, checked by its checksum; a server with systemd in one more option; `thecms update` | done |
+| Pages in more than one language: each translated from the list of pages, at /ro/…, with the header, footer and menu of its language, a switcher and hreflang | done (posts and entries: planned) |
 | Modules (isolated plugins) | planned |
 
 ## Install
@@ -179,7 +181,7 @@ measured by no test.
 
 ```sh
 bun test --coverage --coverage-reporter=lcov --coverage-dir=coverage
-for t in editor import templates forms admin accounts; do THECMS_COVERAGE=coverage node e2e/$t.cjs; done
+for t in editor import templates forms admin accounts translations; do THECMS_COVERAGE=coverage node e2e/$t.cjs; done
 bun run coverage           # the table, coverage/all.lcov, and the gate
 ```
 

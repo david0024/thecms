@@ -19,7 +19,11 @@ export const en = {
   formName: 'Name',
   formEmail: 'Email',
   formMessage: 'Message',
+  languages: 'Languages',
 };
+
+/** Where a page's other languages reach the header (ADR 0024): set by whatever draws the page. */
+export const ALTERNATES = 'thecms-alternates';
 
 export type Words = typeof en;
 
