@@ -3,6 +3,8 @@ import type { Page, Post, Site, Theme } from '../core/index.ts';
 import type { ImportPreview, ImportProgress } from '../site/server.ts';
 
 export type { ImportPreview, ImportProgress };
+import type { Message } from '../site/store.ts';
+export type { Message };
 export interface ImportChoices {
   /** Kinds of entry to bring as content types. */
   types: string[];
@@ -94,6 +96,10 @@ export const api = {
   setTheme: (theme: Theme) => call<State>('PUT', '/api/theme', { theme }),
   publishTheme: () => call<State>('POST', '/api/theme/publish', {}),
   media: () => call<{ media: MediaItem[] }>('GET', '/api/media'),
+  messages: () => call<{ messages: Message[]; keep: number }>('GET', '/api/messages'),
+  messagesFrom: (email: string) => call<{ messages: Message[]; keep: number }>('GET', `/api/messages?email=${encodeURIComponent(email.trim())}`),
+  removeMessage: (id: string) => call<{ messages: Message[]; keep: number }>('DELETE', `/api/messages?id=${encodeURIComponent(id)}`),
+  eraseMessagesFrom: (email: string) => call<{ messages: Message[]; keep: number }>('DELETE', `/api/messages?email=${encodeURIComponent(email.trim())}`),
   removeMedia: (name: string) => call<{ media: MediaItem[] }>('DELETE', `/api/media?name=${encodeURIComponent(name)}`),
   importPlan: (file: Blob, types: string[], categories: string[]) =>
     send<ImportPreview>(`/api/import/plan?types=${encodeURIComponent(types.join(','))}&categories=${encodeURIComponent(categories.join(','))}`, file),

@@ -88,6 +88,17 @@ export const BLOCKS = {
     fields: { title: text(200), text: multiline(600), email: text(254), phone: text(40), address: multiline(300) },
     create: () => ({ title: 'Get in touch' }),
   },
+  /** A form a visitor writes to the owner with (ADR 0019): a name, an address to answer, the message, and consent to keep it. */
+  form: {
+    fields: { title: text(200), intro: multiline(600), consent: multiline(600), button: text(60), sent: text(300), failed: text(300) },
+    create: () => ({
+      title: 'Write to us',
+      consent: 'I agree that what I write here is kept to answer me, and deleted after that.',
+      button: 'Send',
+      sent: 'Thank you. Your message was sent; we will answer soon.',
+      failed: 'The message could not be sent. Please try again, or write to us by email.',
+    }),
+  },
   gallery: {
     fields: {
       title: text(200),

@@ -4,7 +4,7 @@
  */
 export const en = {
   app: { pages: 'Pages', blocks: 'Add a block', blocksHint: 'Click to add, or drag onto the page.', tooDeep: 'Groups nest at most four deep; it cannot go there.', newPage: 'New page', pageTitle: 'Page title', create: 'Create', cancel: 'Cancel', home: 'Home page' },
-  nav: { pages: 'Pages', posts: 'Posts', media: 'Media', settings: 'Menu and settings', theme: 'Theme', label: 'Sections', back: 'All', import: 'Import' },
+  nav: { pages: 'Pages', posts: 'Posts', media: 'Media', messages: 'Messages', settings: 'Menu and settings', theme: 'Theme', label: 'Sections', back: 'All', import: 'Import' },
   list: { address: 'Address', status: 'Status' },
   design: {
     heading: (singular: string): string => `The page of each ${singular.toLowerCase()}`,
@@ -49,6 +49,18 @@ export const en = {
       `${r.menu ? ' The menu came over too.' : ''}${r.redirects ? ` ${r.redirects} old addresses now lead to their new ones.` : ''}`,
     another: 'Import another file',
     failed: (reason: string): string => `The import stopped: ${reason}`,
+  },
+  inbox: {
+    heading: 'Messages',
+    intro: (days: number): string => `What visitors sent through the forms on your site. Each message is kept ${days} days, then deleted; change that in Site settings.`,
+    empty: 'No messages yet. A contact form on a published page sends them here.',
+    consent: 'What they agreed to',
+    remove: 'Delete',
+    rights: 'A visitor asks to see or erase what they sent',
+    rightsHint: 'Give the address they wrote from. Download everything sent from it, or erase it all at once.',
+    address: 'their@address.example',
+    export: 'Download as a file',
+    erase: 'Erase everything from this address',
   },
   ctypes: {
     heading: 'Content types',
@@ -124,6 +136,10 @@ export const en = {
     footerLinks: 'Footer links',
     linkText: 'Link text',
     live: 'These are used the next time the site is exported.',
+    forms: 'Forms',
+    formsAddress: 'Address of the form service (https://forms.example.com)',
+    formsHint: 'Where contact forms send what visitors write: the thecms forms command, running where visitors can reach it. Left empty, forms are not shown on the site.',
+    keep: 'Keep messages for (days)',
   },
   menu: {
     title: 'Menu',
@@ -232,7 +248,7 @@ export const en = {
     upload: 'Upload a theme file',
     notATheme: 'This file is not a valid theme.',
   },
-  types: { hero: 'Hero', text: 'Text', image: 'Image', services: 'Services', contact: 'Contact', gallery: 'Gallery', faq: 'Questions and answers', testimonials: 'Testimonials', pricing: 'Prices', entries: 'List of entries', entry: 'Part of the entry', group: 'Group' } as Record<string, string>,
+  types: { hero: 'Hero', text: 'Text', image: 'Image', services: 'Services', contact: 'Contact', form: 'Contact form', gallery: 'Gallery', faq: 'Questions and answers', testimonials: 'Testimonials', pricing: 'Prices', entries: 'List of entries', entry: 'Part of the entry', group: 'Group' } as Record<string, string>,
   fields: {
     part: 'What it shows',
     eyebrow: 'Small line above the title',
@@ -253,6 +269,10 @@ export const en = {
     phone: 'Phone',
     address: 'Address',
     label: 'Button text',
+    consent: 'Words of the consent box (required)',
+    button: 'Button text',
+    sent: 'Shown once it was sent',
+    failed: 'Shown when it could not be sent',
     images: 'Pictures',
     question: 'Question',
     answer: 'Answer',
@@ -265,7 +285,7 @@ export const en = {
     period: 'Per (month, project…)',
     features: 'What it includes (one a line)',
   } as Record<string, string>,
-  empty: { image: 'Choose an image in the panel on the right', gallery: 'Add pictures in the panel on the right', group: 'An empty group. Select it, then add a block.', page: 'An empty page. Add a block from the left.' } as Record<string, string>,
+  empty: { image: 'Choose an image in the panel on the right', gallery: 'Add pictures in the panel on the right', form: 'Set the address of the form service in Site settings; until then this form is not shown on the site.', group: 'An empty group. Select it, then add a block.', page: 'An empty page. Add a block from the left.' } as Record<string, string>,
   actions: { drag: 'Drag to move', up: 'Move up', down: 'Move down', duplicate: 'Duplicate', delete: 'Delete' } as Record<string, string>,
 };
 

@@ -64,6 +64,21 @@ img{max-width:100%;height:auto;display:block}
 
 .contact{font-style:normal}
 
+.form{display:grid;gap:var(--t-space-sm);margin-top:var(--t-space-md)}
+.form p{margin:0}
+.form-field{display:grid;gap:.3em}
+.form-field label{font-weight:600}
+.form input[type=text],.form input[type=email],.form textarea{font:inherit;color:inherit;background:var(--t-color-background);border:1px solid var(--t-color-border);border-radius:var(--t-radius-sm);padding:.6em .75em;width:100%}
+.form input:focus-visible,.form textarea:focus-visible{outline:2px solid var(--t-color-primary);outline-offset:1px}
+.form-consent{display:flex;gap:.6em;align-items:flex-start;font-size:var(--t-size-sm)}
+.form-consent input{margin-top:.3em}
+.form button{font:inherit;border:0;cursor:pointer}
+.form-trap{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
+.form-note{display:none;padding:var(--t-space-sm) var(--t-space-md);border-radius:var(--t-radius-md);background:var(--t-color-surface);border-inline-start:3px solid var(--t-color-primary);margin:var(--t-space-sm) 0 0}
+.form-note:target,.form-note.shown{display:block}
+.form-failed{border-color:currentColor}
+.b-form{--b-width:var(--t-width-narrow)}
+
 .gallery{list-style:none;margin:var(--t-space-md) 0 0;padding:0;display:grid;gap:var(--b-gap);grid-template-columns:repeat(auto-fill,minmax(min(100%,14rem),1fr))}
 .gallery img{aspect-ratio:4/3;object-fit:cover}
 .b-gallery{--b-width:var(--t-width-wide)}

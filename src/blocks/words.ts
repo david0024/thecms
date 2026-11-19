@@ -13,6 +13,9 @@ const en = {
   pages: 'Pages',
   noPosts: 'Nothing has been posted yet.',
   feed: 'Feed',
+  formName: 'Name',
+  formEmail: 'Email',
+  formMessage: 'Message',
 };
 
 export type Words = typeof en;
@@ -29,6 +32,9 @@ const WORDS: Record<string, Words> = {
     pages: 'Pagini',
     noPosts: 'Încă nu a fost publicat nimic.',
     feed: 'Flux',
+    formName: 'Nume',
+    formEmail: 'Email',
+    formMessage: 'Mesaj',
   },
 };
 

@@ -85,6 +85,7 @@ const SQLITE: Dialect = {
     'CREATE TABLE IF NOT EXISTS pages (slug TEXT PRIMARY KEY, position INTEGER NOT NULL, draft TEXT NOT NULL, published TEXT, published_at TEXT, updated_at TEXT NOT NULL)',
     'CREATE TABLE IF NOT EXISTS entries (type TEXT NOT NULL, slug TEXT NOT NULL, draft TEXT NOT NULL, published TEXT, published_at TEXT, updated_at TEXT NOT NULL, PRIMARY KEY (type, slug))',
     'CREATE TABLE IF NOT EXISTS media (name TEXT PRIMARY KEY, label TEXT NOT NULL, size INTEGER NOT NULL, bytes BLOB NOT NULL, created_at TEXT NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, received_at TEXT NOT NULL, form TEXT NOT NULL, page TEXT NOT NULL, name TEXT NOT NULL, email TEXT NOT NULL, body TEXT NOT NULL, consent TEXT NOT NULL)',
   ],
   params: (query) => query,
   upsert: (table, columns, key, update) =>
@@ -102,6 +103,7 @@ const POSTGRES: Dialect = {
     'CREATE TABLE IF NOT EXISTS pages (slug VARCHAR(255) PRIMARY KEY, position INTEGER NOT NULL, draft TEXT NOT NULL, published TEXT, published_at VARCHAR(40), updated_at VARCHAR(40) NOT NULL)',
     'CREATE TABLE IF NOT EXISTS entries (type VARCHAR(255) NOT NULL, slug VARCHAR(255) NOT NULL, draft TEXT NOT NULL, published TEXT, published_at VARCHAR(40), updated_at VARCHAR(40) NOT NULL, PRIMARY KEY (type, slug))',
     'CREATE TABLE IF NOT EXISTS media (name VARCHAR(255) PRIMARY KEY, label TEXT NOT NULL, size INTEGER NOT NULL, bytes BYTEA NOT NULL, created_at VARCHAR(40) NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS messages (id VARCHAR(40) PRIMARY KEY, received_at VARCHAR(40) NOT NULL, form VARCHAR(255) NOT NULL, page TEXT NOT NULL, name TEXT NOT NULL, email TEXT NOT NULL, body TEXT NOT NULL, consent TEXT NOT NULL)',
   ],
   params: (query) => {
     let n = 0;
@@ -118,6 +120,7 @@ const MYSQL: Dialect = {
     `CREATE TABLE IF NOT EXISTS pages (slug VARCHAR(255) PRIMARY KEY, position INTEGER NOT NULL, draft LONGTEXT NOT NULL, published LONGTEXT, published_at VARCHAR(40), updated_at VARCHAR(40) NOT NULL) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS entries (type VARCHAR(255) NOT NULL, slug VARCHAR(255) NOT NULL, draft LONGTEXT NOT NULL, published LONGTEXT, published_at VARCHAR(40), updated_at VARCHAR(40) NOT NULL, PRIMARY KEY (type, slug)) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS media (name VARCHAR(255) PRIMARY KEY, label TEXT NOT NULL, size INTEGER NOT NULL, bytes LONGBLOB NOT NULL, created_at VARCHAR(40) NOT NULL) ${MYSQL_TABLE}`,
+    `CREATE TABLE IF NOT EXISTS messages (id VARCHAR(40) PRIMARY KEY, received_at VARCHAR(40) NOT NULL, form VARCHAR(255) NOT NULL, page TEXT NOT NULL, name TEXT NOT NULL, email TEXT NOT NULL, body TEXT NOT NULL, consent TEXT NOT NULL) ${MYSQL_TABLE}`,
   ],
   params: (query) => query,
   upsert: (table, columns, _key, update) =>
@@ -141,6 +144,22 @@ export function shownAddress(address: string): string {
 }
 
 type Row = Record<string, unknown>;
+
+/** What a visitor sent through a form (ADR 0019). */
+export interface Message {
+  id: string;
+  /** When it arrived, as an ISO time. */
+  receivedAt: string;
+  /** The id of the form block it was sent with. */
+  form: string;
+  /** The address of the page the form was on. */
+  page: string;
+  name: string;
+  email: string;
+  body: string;
+  /** The words of the consent the visitor ticked. */
+  consent: string;
+}
 
 /** A type's page is cleaned as a page's blocks are: the same rules, the same limits. */
 const cleanTemplate = (blocks: unknown[]): Block[] => normalizePage({ slug: '', title: 'template', blocks }).page.blocks;
@@ -517,6 +536,69 @@ export class Store {
     const used = await this.mediaUsedBy(name);
     if (used.length) throw new Error(`this image is used on: ${used.join(', ')}`);
     await this.run('DELETE FROM media WHERE name = ?', [name]);
+  }
+
+  /**
+   * Keeps what a visitor sent through a form (ADR 0019), with the words of the
+   * consent they ticked, exactly as the page showed them.
+   */
+  async addMessage(input: { form: string; page: string; name: string; email: string; body: string; consent: string }, at = new Date()): Promise<Message> {
+    const message: Message = {
+      id: crypto.randomUUID(),
+      receivedAt: at.toISOString(),
+      form: str(input.form, 60),
+      page: str(input.page, 300),
+      name: str(input.name, 120).trim(),
+      email: str(input.email, 254).trim(),
+      body: str(input.body, 5000).trim(),
+      consent: str(input.consent, 600).trim(),
+    };
+    await this.run('INSERT INTO messages (id, received_at, form, page, name, email, body, consent) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [
+      message.id,
+      message.receivedAt,
+      message.form,
+      message.page,
+      message.name,
+      message.email,
+      message.body,
+      message.consent,
+    ]);
+    return message;
+  }
+
+  /** Every message kept, newest first; or those one address sent, for answering a request to see or erase them. */
+  async messages(email?: string): Promise<Message[]> {
+    const rows = await this.rows<Row>(
+      `SELECT id, received_at, form, page, name, email, body, consent FROM messages${email ? ' WHERE LOWER(email) = ?' : ''} ORDER BY received_at DESC, id`,
+      email ? [email.trim().toLowerCase()] : [],
+    );
+    return rows.map((r) => ({
+      id: String(r.id),
+      receivedAt: String(r.received_at),
+      form: String(r.form),
+      page: String(r.page),
+      name: String(r.name),
+      email: String(r.email),
+      body: String(r.body),
+      consent: String(r.consent),
+    }));
+  }
+
+  async deleteMessage(id: string): Promise<void> {
+    await this.run('DELETE FROM messages WHERE id = ?', [id]);
+  }
+
+  /** Erases everything one address sent. Returns how many were erased. */
+  async deleteMessagesFrom(email: string): Promise<number> {
+    const found = (await this.messages(email)).length;
+    await this.run('DELETE FROM messages WHERE LOWER(email) = ?', [email.trim().toLowerCase()]);
+    return found;
+  }
+
+  /** Deletes what was kept longer than the site keeps messages. */
+  async forgetOldMessages(now = new Date()): Promise<void> {
+    const days = (await this.site()).keepMessages;
+    await this.run('DELETE FROM messages WHERE received_at < ?', [new Date(now.getTime() - days * 86_400_000).toISOString()]);
   }
 
   /** Runs a query as it is written, for a test that needs to put a row in a state the store never would. */

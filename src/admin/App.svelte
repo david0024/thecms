@@ -45,6 +45,7 @@ import EntryFieldsForm from './EntryFieldsForm.svelte';
 import ImageField from './ImageField.svelte';
 import ImportScreen from './ImportScreen.svelte';
 import MediaLibrary from './MediaLibrary.svelte';
+import Messages from './Messages.svelte';
 import Fields from './Fields.svelte';
 import { t } from './messages.ts';
 import { setPath } from './paths.ts';
@@ -57,7 +58,7 @@ let site = $state.raw<State | null>(null);
 let page = $state.raw<Doc | null>(null);
 let kind = $state<Kind>('page');
 /** Which section of the admin is showing: a list, or the builder with one page or post open. */
-let view = $state<'pages' | 'media' | 'types' | 'import' | 'edit' | `list:${string}`>('pages');
+let view = $state<'pages' | 'media' | 'messages' | 'types' | 'import' | 'edit' | `list:${string}`>('pages');
 let selected = $state<string | null>(null);
 let tab = $state<'content' | 'style'>('content');
 let saving = $state<'saved' | 'saving' | 'unsaved' | 'error'>('saved');
@@ -467,6 +468,7 @@ onMount(() => {
         <button type="button" aria-current={view === `list:${ty.id}` ? 'page' : undefined} onclick={() => (view = `list:${ty.id}`)} data-nav={ty.id}>{ty.name}</button>
       {/each}
       <button type="button" aria-current={view === 'media' ? 'page' : undefined} onclick={() => (view = 'media')} data-nav="media">{t.nav.media}</button>
+      <button type="button" aria-current={view === 'messages' ? 'page' : undefined} onclick={() => (view = 'messages')} data-nav="messages">{t.nav.messages}</button>
       <button type="button" onclick={() => panel('site')} data-nav="settings">{t.nav.settings}</button>
       <button type="button" onclick={() => panel('theme')} data-nav="theme">{t.nav.theme}</button>
       <button type="button" aria-current={view === 'types' ? 'page' : undefined} onclick={() => (view = 'types')} data-nav="types">{t.ctypes.heading}</button>
@@ -486,6 +488,8 @@ onMount(() => {
       {/if}
     {:else if view === 'media'}
       <MediaLibrary />
+    {:else if view === 'messages'}
+      <Messages />
     {:else if view === 'import'}
       <ImportScreen ondone={reload} />
     {/if}

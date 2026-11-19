@@ -45,7 +45,7 @@ for (const [name, address] of databases) {
 
     beforeEach(async () => {
       const old = await Store.open(address);
-      for (const table of ['meta', 'pages', 'entries', 'media']) await old.rawForTests(`DROP TABLE IF EXISTS ${table}`);
+      for (const table of ['meta', 'pages', 'entries', 'media', 'messages']) await old.rawForTests(`DROP TABLE IF EXISTS ${table}`);
       await old.close();
       store = await Store.open(address);
       await store.setTheme(plain);
@@ -121,6 +121,16 @@ for (const [name, address] of databases) {
       await store.savePage({ slug: '', title: 'Home', blocks: [] });
       await store.deleteMedia(first.name);
       expect(await store.media()).toEqual([]);
+    });
+
+    test('a message a visitor sent is kept whole, found by address in any case, and erased', async () => {
+      const kept = await store.addMessage({ form: 'b_1', page: '/contact/', name: 'Ana Ștefănescu 🌲', email: 'Ana@Example.org', body: 'Bună ziua.\n'.repeat(400), consent: 'Da.' });
+      expect(await store.messages('ana@example.org')).toEqual([kept]);
+      await store.setSite({ name: 'S', keepMessages: 1 });
+      await store.forgetOldMessages(new Date(Date.now() + 2 * 86_400_000));
+      expect(await store.messages()).toEqual([]);
+      await store.addMessage({ form: 'b_1', page: '/', name: 'B', email: 'b@example.org', body: 'x', consent: 'c' });
+      expect(await store.deleteMessagesFrom('B@EXAMPLE.ORG')).toBe(1);
     });
 
     test('a WordPress import and an export, end to end', async () => {
