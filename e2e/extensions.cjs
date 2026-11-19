@@ -1,0 +1,126 @@
+/**
+ * An extension in a real browser (ADR 0026): installed from its file after the
+ * owner has read what it asks for, its screen kept, what it offers on a block
+ * and on a page run in the builder, then removed with what it kept.
+ *
+ *   node e2e/extensions.cjs [folder for screenshots]
+ */
+const { chromium } = require('playwright');
+const coverage = require('./coverage.cjs');
+const { spawn, execFileSync } = require('node:child_process');
+const { mkdtempSync, rmSync } = require('node:fs');
+const { tmpdir } = require('node:os');
+const { join } = require('node:path');
+
+const root = join(__dirname, '..');
+const cli = (...args) => execFileSync('bun', ['src/site/cli.ts', ...args], { cwd: root, encoding: 'utf8' });
+const assert = (condition, message) => {
+  if (!condition) throw new Error(`FAILED: ${message}`);
+  console.log(`ok  ${message}`);
+};
+const PORT = 4397;
+
+(async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'thecms-e2e-extensions-'));
+  const db = join(dir, 'site.db');
+  const shots = process.argv[2];
+  cli('init', db);
+  const packed = execFileSync('bun', ['tools/pack-extension.ts', 'test/fixtures/extension', dir], { cwd: root, encoding: 'utf8' }).trim().split('  ')[1];
+
+  const server = spawn('bun', ['src/site/cli.ts', 'edit', db, String(PORT)], { cwd: root });
+  const url = await new Promise((resolve, reject) => {
+    let out = '';
+    server.stdout.on('data', (chunk) => {
+      out += chunk;
+      const found = out.match(/http:\/\/127\.0\.0\.1:\d+\/admin\/#token=\w+/);
+      if (found) resolve(found[0]);
+    });
+    server.stderr.on('data', (chunk) => process.stderr.write(chunk));
+    server.on('exit', () => reject(new Error('the editor stopped')));
+  });
+
+  const browser = await coverage.launch(chromium, 'extensions');
+  try {
+    const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(String(e)));
+    const canvas = page.frameLocator('iframe');
+    await page.goto(url);
+
+    // Installed only after the owner has read what it asks for.
+    await page.locator('[data-nav="extensions"]').click();
+    await page.locator('[data-no-extensions]').waitFor();
+    await page.locator('[data-extension-file]').setInputFiles(packed);
+    const asks = await page.locator('[data-asks]').innerText();
+    assert(asks.includes('api.shout.example') && asks.includes('Settings: Key') && asks.includes('“Louder” on a block'), 'before it is installed, the owner reads what it asks for');
+    if (shots) await page.screenshot({ path: join(shots, 'extension-offer.png') });
+    await page.locator('[data-accept]').click();
+    await page.locator('[data-extension="shout"]').waitFor();
+    assert((await page.locator('[data-offer]').count()) === 0, 'accepted, it is installed and listed');
+
+    // Off, it has no screen; on again, its screen keeps its settings, and a secret is never shown again.
+    await page.locator('[data-extension-on]').uncheck();
+    await page.locator('[data-extension-view]').waitFor({ state: 'detached' });
+    await page.locator('[data-extension-on]').check();
+    await page.locator('[data-extension-view="settings"]').click();
+    await page.locator('[data-extension-add]').click();
+    await page.locator('[data-extension-save]').click();
+    await page.getByText('Name is needed').waitFor();
+    await page.locator('[data-field="name"]').fill('Main');
+    await page.locator('[data-field="key"]').fill('sk-very-secret');
+    await page.locator('[data-field="style"]').selectOption('stars');
+    await page.locator('[data-field="loud"]').uncheck();
+    await page.locator('[data-extension-save]').click();
+    await page.locator('[data-row]').waitFor();
+    const row = await page.locator('[data-row]').innerText();
+    assert(row.includes('Main') && row.includes('••••••') && !row.includes('sk-very-secret'), 'its screen keeps a row; the secret is never shown again');
+    await page.locator('[data-extension-edit]').click();
+    assert((await page.locator('[data-field="key"]').inputValue()) === '', 'changing a row does not show the secret either');
+    await page.locator('[data-field="name"]').fill('Main settings');
+    await page.locator('[data-extension-save]').click();
+    await page.getByText('Main settings').waitFor();
+
+    // In the builder: on the block being edited, and on the page, each answer is a change like any other.
+    await page.locator('[data-nav="pages"]').click();
+    await page.locator('button[data-open=""]').click();
+    await page.locator('.builder:not([hidden])').waitFor();
+    const before = await canvas.locator('h1').innerText();
+    await canvas.locator('h1').click();
+    await page.locator('[data-extension-action="shout/louder"]').click();
+    await canvas.locator('h1', { hasText: `*${before}*` }).waitFor();
+    assert(true, 'what it offers on a block changes that block on the page');
+    if (shots) await page.screenshot({ path: join(shots, 'extension-block.png') });
+    await page.locator('button[title="Undo"]').click();
+    await canvas.locator('h1', { hasText: new RegExp(`^${before.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`) }).waitFor();
+    assert(true, 'and is undone like any change');
+    await page.locator('[data-back]').click();
+    await page.locator('button[data-open="about"]').click();
+    await page.locator('[data-extension-tools="page"]').waitFor();
+    await page.locator('[data-extension-action="shout/title"]').click();
+    await page.locator('[data-ask="language"]').selectOption('en');
+    await page.locator('[data-run]').click();
+    await page.locator('.doc', { hasText: '*About* (en)' }).waitFor();
+    if (shots) await page.screenshot({ path: join(shots, 'extension-page.png') });
+    assert(true, 'what it offers on a page asks its question, then changes the page');
+
+    // Removed, with what it kept.
+    await page.locator('[data-back]').click();
+    await page.locator('[data-nav="extensions"]').click();
+    await page.locator('[data-extension-remove]').click();
+    await page.locator('[data-extension-remove-sure]').click();
+    await page.locator('[data-no-extensions]').waitFor();
+    assert(true, 'removed, it is gone with what it kept');
+    assert(errors.length === 0, `no errors in the browser ${errors.join(' | ')}`);
+  } catch (error) {
+    if (shots) await browser.contexts()[0]?.pages()[0]?.screenshot({ path: join(shots, 'failure.png') }).catch(() => {});
+    throw error;
+  } finally {
+    await browser.close();
+    server.kill();
+  }
+  rmSync(dir, { recursive: true, force: true });
+  console.log('\nExtensions work.');
+})().catch((error) => {
+  console.error(error.message ?? error);
+  process.exit(1);
+});

@@ -12,7 +12,7 @@ import { afterAll, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { postsType } from '../src/core/index.ts';
+import { EXTENSION_FORMAT, postsType } from '../src/core/index.ts';
 import { runImport } from '../src/import/run.ts';
 import { planImport } from '../src/import/wxr.ts';
 import { exportSite } from '../src/site/export.ts';
@@ -46,7 +46,7 @@ for (const [name, address] of databases) {
 
     beforeEach(async () => {
       const old = await Store.open(address);
-      for (const table of ['meta', 'pages', 'entries', 'media', 'messages', 'users', 'sessions', 'links']) await old.rawForTests(`DROP TABLE IF EXISTS ${table}`);
+      for (const table of ['meta', 'pages', 'entries', 'media', 'messages', 'users', 'sessions', 'links', 'extensions', 'extension_rows']) await old.rawForTests(`DROP TABLE IF EXISTS ${table}`);
       await old.close();
       store = await Store.open(address);
       await store.setTheme(plain);
@@ -83,6 +83,29 @@ for (const [name, address] of databases) {
       expect((await store.published())[0]?.title).toBe('About us');
       await store.deletePage('about');
       expect(await store.draft('about')).toBeNull();
+    });
+
+    test('an extension, and the rows it keeps, until it is removed', async () => {
+      const raw = { format: EXTENSION_FORMAT, code: '', manifest: { name: 'notes', version: '1.0.0', collections: [{ name: 'notes', fields: [{ key: 'text', kind: 'longtext' }] }] } };
+      await store.installExtension(raw, 'a'.repeat(64), new Date('2026-11-19T10:00:00Z'));
+      await store.installExtension({ ...raw, manifest: { ...raw.manifest, version: '1.1.0' } }, 'b'.repeat(64));
+      await store.enableExtension('notes', false);
+      await expect(store.installExtension({ format: 'x' }, 'c')).rejects.toThrow('not an extension');
+      const [installed] = await store.extensions();
+      expect(installed).toMatchObject({ sha256: 'b'.repeat(64), enabled: false, manifest: { version: '1.1.0' } });
+      const long = 'Lemn de stejar, ăîșțâ 🌲. '.repeat(4000);
+      const first = await store.saveExtensionRow('notes', 'notes', { text: long }, null, new Date('2026-01-01T00:00:00Z'));
+      const second = await store.saveExtensionRow('notes', 'notes', { text: 'second', id: 'ignored' });
+      expect((await store.extensionRows('notes', 'notes')).map((r) => r.id)).toEqual([first.id, second.id]);
+      expect(await store.extensionRow('notes', 'notes', first.id)).toEqual({ id: first.id, text: long });
+      await store.saveExtensionRow('notes', 'notes', { text: 'changed' }, second.id);
+      await expect(store.saveExtensionRow('notes', 'notes', { text: 'x' }, 'missing')).rejects.toThrow('no such row');
+      expect(await store.extensionRow('notes', 'notes', second.id)).toEqual({ id: second.id, text: 'changed' });
+      await store.deleteExtensionRow('notes', 'notes', first.id);
+      expect(await store.extensionRows('notes', 'notes')).toHaveLength(1);
+      await store.uninstallExtension('notes');
+      expect(await store.extensions()).toEqual([]);
+      expect(await store.extensionRows('notes', 'notes')).toEqual([]);
     });
 
     test('a long page is kept whole', async () => {

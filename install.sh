@@ -135,6 +135,7 @@ umask 077
 cat >"/etc/$NAME/env" <<EOF
 THECMS_SITE=$site
 THECMS_PUBLIC=$public
+THECMS_EXTENSION_RUNNER=/run/$NAME-extensions/runner.sock
 EOF
 chown "root:$NAME" "/etc/$NAME/env"
 chmod 640 "/etc/$NAME/env"
@@ -167,7 +168,48 @@ ReadWritePaths=$home
 [Install]
 WantedBy=multi-user.target
 EOF
+# Extensions (ADR 0026): each runs where systemd starts it for a connection to this socket, which only the
+# service may open: under a user made for that run, with no network, and no way into the site or its settings.
+cat >"/etc/systemd/system/$NAME-extensions.socket" <<EOF
+[Unit]
+Description=Where $NAME runs the code of its extensions
+
+[Socket]
+ListenStream=/run/$NAME-extensions/runner.sock
+Accept=yes
+SocketUser=$NAME
+SocketGroup=$NAME
+SocketMode=0600
+DirectoryMode=0755
+
+[Install]
+WantedBy=sockets.target
+EOF
+cat >"/etc/systemd/system/$NAME-extensions@.service" <<EOF
+[Unit]
+Description=The code of one $NAME extension
+
+[Service]
+ExecStart=$bin_dir/$NAME __extension-runner
+StandardInput=socket
+StandardOutput=socket
+StandardError=journal
+DynamicUser=yes
+PrivateNetwork=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+InaccessiblePaths=-$home -/etc/$NAME
+NoNewPrivileges=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX
+MemoryMax=512M
+TasksMax=64
+EOF
 systemctl daemon-reload
+systemctl enable --now "$NAME-extensions.socket" >/dev/null 2>&1
 systemctl enable "$NAME" >/dev/null 2>&1
 systemctl restart "$NAME"
 

@@ -1,0 +1,28 @@
+{
+  "name": "shout",
+  "displayName": "Shout",
+  "description": "Says everything louder: a block's headings, a page's title. For the tests.",
+  "version": "1.0.0",
+  "publisher": "thecms tests",
+  "thecmsMinVersion": "0.1.0",
+  "egress": ["api.shout.example", "*.cdn.example"],
+  "collections": [
+    { "name": "settings", "label": "Settings", "fields": [
+      { "key": "name", "label": "Name", "kind": "text", "required": true },
+      { "key": "key", "label": "Key", "kind": "secret" },
+      { "key": "loud", "label": "Loud", "kind": "boolean", "initial": true },
+      { "key": "style", "label": "Style", "kind": "choice", "options": ["caps", "stars"], "initial": "caps" }
+    ] },
+    { "name": "log", "label": "Log", "fields": [{ "key": "what", "label": "What", "kind": "longtext" }] }
+  ],
+  "actions": [
+    { "name": "louder", "label": "Louder", "on": "block", "reads": ["settings"], "writes": ["log"] },
+    { "name": "title", "label": "Louder title", "on": "page", "ask": [{ "key": "language", "label": "Into", "kind": "language" }], "reads": ["settings"] },
+    { "name": "ping", "label": "Ping", "reads": ["settings"] },
+    { "name": "sneak", "label": "Sneak", "reads": [] },
+    { "name": "slow", "label": "Slow", "timeoutSeconds": 1 },
+    { "name": "crash", "label": "Crash" }
+  ],
+  "views": [{ "collection": "settings", "title": "Settings", "columns": ["name", "key", "style"] }],
+  "messages": { "ro": { "Louder": "Mai tare", "Settings": "Setări" } }
+}

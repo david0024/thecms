@@ -139,5 +139,22 @@ test('the program builds as one file that runs on its own, away from the sources
   expect(run('export', 'site.db', 'out').exitCode).toBe(0);
   expect(await Bun.file(join(away, 'out', 'index.html')).text()).toContain('<h1>Solid wood furniture, made to measure</h1>');
   expect(await Bun.file(join(away, 'out', 'assets', 'site.css')).text()).toContain('--t-color-primary');
+  // An extension's code runs in the same file, started as its runner (ADR 0026).
+  const reply = await new Promise<unknown>((resolve) => {
+    const child = Bun.spawn([file, '__extension-runner'], {
+      cwd: away,
+      env: { PATH: process.env.PATH ?? '' },
+      serialization: 'json',
+      ipc(message: { t: string }) {
+        if (message.t === 'loaded') child.send({ t: 'run', id: 1, action: 'hello', input: { name: 'Ana' } });
+        else {
+          resolve(message);
+          child.kill();
+        }
+      },
+    });
+    child.send({ t: 'load', code: 'export const actions = { hello: async (input) => `Hello, ${input.name}` };' });
+  });
+  expect(reply).toEqual({ t: 'done', id: 1, ok: true, value: 'Hello, Ana' });
   await expect(build(join(dir, 'never'), ['plan9-x64'])).rejects.toThrow();
 }, 120_000);

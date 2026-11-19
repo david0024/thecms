@@ -16,13 +16,14 @@
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { compile } from 'svelte/compiler';
-import { type ContentType, DISPLAY_NAME, type LanguagePack, defaultTemplate, MEDIA_MAX_BYTES, MEDIA_PREFIX, normalizePage, type Page, type Post, contentTypes, listPath, type MenuList, normalizePost, parseTheme, pagesIn, POSTS_TYPE, reservedSlugs, slugProblem, type Theme, themeCss } from '../core/index.ts';
+import { cleanRow, EXTENSION_MAX_BYTES, extensionAsks, isObject, languageOf, normalizeBlocks, shownRow, str, type ContentType, DISPLAY_NAME, type LanguagePack, defaultTemplate, MEDIA_MAX_BYTES, MEDIA_PREFIX, normalizePage, type Page, type Post, contentTypes, listPath, type MenuList, normalizePost, parseTheme, pagesIn, POSTS_TYPE, reservedSlugs, slugProblem, type Theme, themeCss } from '../core/index.ts';
 import type { EntryLists } from '../blocks/editing.ts';
 import { type FetchImage, fetchImage as fetchOverNetwork, IMPORT_MAX_BYTES, type ImportReport, runImport } from '../import/run.ts';
 import { type ImportPlan, planImport } from '../import/wxr.ts';
 import { type MenuItem, menuOf, pageSetting, renderParts, renderPostParts } from './document.ts';
 import { languages, packFor } from './languages.ts';
 import { accounts, cleanPublicAddress, ownerOnly, shown } from './accounts.ts';
+import { extensionHost, type Spawn } from './extensions.ts';
 import { BUILT_ADMIN } from './built-admin.ts';
 import { BASE_CSS, SHIPPED_THEMES } from './shipped.ts';
 import type { Store, User } from './store.ts';
@@ -185,6 +186,8 @@ export async function startEditor(
     public?: string;
     /** Where to listen; this machine unless said otherwise. */
     hostname?: string;
+    /** How an extension's process is started; the tests give their own. */
+    spawnExtension?: Spawn;
   } = {},
 ): Promise<EditorServer> {
   const assets = BUILT_ADMIN ? new Map(Object.entries(BUILT_ADMIN)) : await buildAdmin();
@@ -261,7 +264,28 @@ export async function startEditor(
       new Date().toISOString().slice(0, 10),
       type,
     ).post;
+  const extensions = extensionHost(store, { spawn: options.spawnExtension });
+  /**
+   * The extensions as the admin shows them. The owner sees each one, with what
+   * it asked for and its screens; an editor sees what the ones turned on offer
+   * in the editor.
+   */
+  const extensionsFor = async (me: User) =>
+    (await store.extensions())
+      .filter((e) => me.role === 'owner' || e.enabled)
+      .map(({ manifest, sha256, enabled, installedAt }) => ({
+        name: manifest.name,
+        displayName: manifest.displayName,
+        description: manifest.description,
+        version: manifest.version,
+        publisher: manifest.publisher,
+        enabled,
+        actions: manifest.actions.filter((a) => me.role === 'owner' || a.on).map(({ name, label, on, ask }) => ({ name, label, on, ask })),
+        messages: manifest.messages,
+        ...(me.role === 'owner' ? { sha256, installedAt, asks: extensionAsks(manifest), views: manifest.views, collections: manifest.collections } : {}),
+      }));
   const state = async (me: User): Promise<unknown> => ({
+    extensions: await extensionsFor(me),
     site: await store.site(),
     theme: await theme(),
     themeChanged: await store.themeChanged(),
@@ -308,7 +332,85 @@ export async function startEditor(
     return json(importing, 202);
   }
 
+  /** Extensions (ADR 0026): installing them is the owner's; what they offer in the editor is everyone's. */
+  async function extensionsApi(request: Request, url: URL, me: User): Promise<Response> {
+    const owner = me.role === 'owner';
+    const [, , , name = '', part = '', what = ''] = url.pathname.split('/');
+    const refused = json({ error: 'only the owner may do this' }, 403);
+    if (!name) return request.method === 'GET' ? json({ extensions: await extensionsFor(me) }) : json({ error: 'not found' }, 404);
+    if (name === 'offer' || name === 'install') {
+      if (!owner) return refused;
+      if (request.method !== 'POST') return json({ error: 'not found' }, 404);
+      if (Number(request.headers.get('content-length') ?? 0) > EXTENSION_MAX_BYTES) return json({ error: 'an extension is at most 5 MB' }, 413);
+      const text = await request.text();
+      if (name === 'offer') return json({ offer: await extensions.offer(text) });
+      await extensions.install(text, url.searchParams.get('sha256') ?? '');
+      return json({ extensions: await extensionsFor(me) });
+    }
+    const installed = await store.extension(name);
+    if (!installed) return json({ error: `no extension "${name}" is installed` }, 404);
+    if (part === 'run' && request.method === 'POST') {
+      const action = installed.manifest.actions.find((a) => a.name === what);
+      if (!action) return json({ error: `${installed.manifest.displayName} has no action "${what}"` }, 404);
+      if (!action.on && !owner) return refused;
+      const body = (await request.json()) as Record<string, unknown>;
+      const site = await store.site();
+      const given = isObject(body.ask) ? body.ask : {};
+      const ask = Object.fromEntries(action.ask.map((a) => [a.key, str(given[a.key], 2000)]));
+      if (action.on === 'block') {
+        const [block] = normalizeBlocks([body.block]).blocks;
+        if (!block) return json({ error: 'there is no block to give it' }, 400);
+        const language = languageOf(site, String(body.slug ?? ''));
+        const answer = (await extensions.run(name, action.name, { block, language, ask, site: { name: site.name, language: site.language, languages: site.languages } })) as Record<string, unknown> | null;
+        // What comes back is a block like any other, cleaned by the same rules, in the same place.
+        const [next] = normalizeBlocks([{ ...(isObject(answer?.block) ? answer.block : {}), id: block.id }]).blocks;
+        if (!next) return json({ error: `${installed.manifest.displayName} did not give back a block` }, 400);
+        return json({ block: next });
+      }
+      if (action.on === 'page') {
+        const { page } = normalizePage(body.page);
+        const language = languageOf(site, page.slug);
+        const answer = (await extensions.run(name, action.name, { page, language, ask, site: { name: site.name, language: site.language, languages: site.languages } })) as Record<string, unknown> | null;
+        if (!isObject(answer?.page)) return json({ error: `${installed.manifest.displayName} did not give back a page` }, 400);
+        return json({ page: normalizePage({ ...answer.page }).page });
+      }
+      return json({ answer: (await extensions.run(name, action.name, body.input ?? null)) ?? null });
+    }
+    if (!owner) return refused;
+    if (!part) {
+      if (request.method === 'PUT') {
+        const body = (await request.json()) as Record<string, unknown>;
+        await extensions.enable(name, body.enabled === true);
+      } else if (request.method === 'DELETE') await extensions.uninstall(name);
+      else return json({ error: 'not found' }, 404);
+      return json({ extensions: await extensionsFor(me) });
+    }
+    if (part !== 'rows') return json({ error: 'not found' }, 404);
+    // A screen shows its collection: the owner reads and writes it through it, as the screen allows.
+    const view = installed.manifest.views.find((v) => v.collection === what);
+    const of = installed.manifest.collections.find((c) => c.name === what);
+    if (!view || !of) return json({ error: 'not found' }, 404);
+    const rows = async () => json({ rows: (await store.extensionRows(name, of.name)).map((row) => shownRow(of, row)) });
+    if (request.method === 'GET') return rows();
+    if (request.method === 'DELETE') {
+      if (!view.remove) return json({ error: 'this screen does not remove rows' }, 403);
+      await store.deleteExtensionRow(name, of.name, url.searchParams.get('id') ?? '');
+      return rows();
+    }
+    if (request.method !== 'PUT') return json({ error: 'not found' }, 404);
+    const body = (await request.json()) as Record<string, unknown>;
+    const id = typeof body.id === 'string' && body.id ? body.id : null;
+    if (id ? !view.edit : !view.create) return json({ error: id ? 'this screen does not change rows' : 'this screen does not add rows' }, 403);
+    const before = id ? await store.extensionRow(name, of.name, id) : null;
+    if (id && !before) return json({ error: 'no such row' }, 404);
+    const { row, problems } = cleanRow(of, body.row, before);
+    if (problems.length) return json({ error: problems.join('; ') }, 400);
+    await store.saveExtensionRow(name, of.name, row, id);
+    return rows();
+  }
+
   async function api(request: Request, url: URL, me: User): Promise<Response> {
+    if (url.pathname === '/api/extensions' || url.pathname.startsWith('/api/extensions/')) return extensionsApi(request, url, me);
     if (url.pathname.startsWith('/api/import')) return importApi(request, url);
     if (url.pathname === '/api/messages') {
       const email = url.searchParams.get('email') ?? '';
@@ -496,6 +598,9 @@ export async function startEditor(
     token,
     port,
     fetch: handle,
-    stop: () => server?.stop(true),
+    stop: () => {
+      extensions.close();
+      server?.stop(true);
+    },
   };
 }

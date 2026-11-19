@@ -29,6 +29,39 @@ export const en = {
     save: 'Continue',
     signOut: 'Sign out',
   },
+  ext: {
+    heading: "Extensions",
+    intro: "An extension adds to this program: a screen of its own, and things to do in the editor. Its code runs apart from the site, and reaches only what you accept here.",
+    none: "No extension is installed.",
+    install: "Install an extension",
+    file: "Extension file (.thecms-extension)",
+    asks: "It asks to:",
+    keeps: "keep its own: {list}",
+    secrets: "hold secrets: {list}",
+    calls: "call: {list}",
+    callsNothing: "call nothing outside this program",
+    onBlock: "offer “{action}” on a block in the editor",
+    onPage: "offer “{action}” on a page in the editor",
+    replaces: "It replaces version {version}.",
+    accept: "Accept and install",
+    cancel: "Cancel",
+    by: "by {publisher}",
+    on: "On",
+    off: "Off",
+    remove: "Remove",
+    removeSure: "Remove it and what it kept",
+    open: "Open",
+    add: "Add",
+    save: "Save",
+    edit: "Edit",
+    delete: "Delete",
+    secretSet: "set; leave empty to keep it",
+    empty: "Nothing here yet.",
+    tools: "Extensions",
+    run: "Run",
+    working: "Working…",
+    checksum: "SHA-256 {sha}",
+  },
   people: {
     heading: 'People',
     intro: 'Who may sign in to this admin. To add someone, invite them by their address and send them the link that appears; the site sends no email for it.',
@@ -359,6 +392,9 @@ function replaceInPlace(target: Catalog, source: Catalog): void {
     else replaceInPlace(target[key] as Catalog, value as Catalog);
   }
 }
+
+/** The language the admin speaks now. */
+export const adminLanguage = (): string => language;
 
 /** A message with its places filled, and for a number the form the admin's language uses. */
 export const say = (message: Message, params: Record<string, string | number> = {}): string => format(message, params, language);

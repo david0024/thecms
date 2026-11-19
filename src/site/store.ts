@@ -20,6 +20,8 @@
 import { SQL } from 'bun';
 import {
   type Block,
+  type ExtensionPackage,
+  parseExtension,
   imageExt,
   imageSources,
   isMediaName,
@@ -50,6 +52,15 @@ import {
   str,
   type Theme,
 } from '../core/index.ts';
+
+/** An installed extension (ADR 0026). */
+export interface InstalledExtension extends ExtensionPackage {
+  sha256: string;
+  enabled: boolean;
+  installedAt: string;
+}
+/** A row an extension keeps: its fields and an id. */
+export type ExtensionRow = Record<string, unknown> & { id: string };
 
 /** One stored image, as the editor lists it. */
 export interface MediaItem {
@@ -92,6 +103,8 @@ const SQLITE: Dialect = {
     'CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, email TEXT NOT NULL UNIQUE, name TEXT NOT NULL, role TEXT NOT NULL, password TEXT NOT NULL, created_at TEXT NOT NULL)',
     'CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, expires_at TEXT NOT NULL)',
     'CREATE TABLE IF NOT EXISTS links (id TEXT PRIMARY KEY, kind TEXT NOT NULL, user_id TEXT NOT NULL, expires_at TEXT NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS extensions (name TEXT PRIMARY KEY, version TEXT NOT NULL, sha256 TEXT NOT NULL, package TEXT NOT NULL, enabled INTEGER NOT NULL, installed_at TEXT NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS extension_rows (extension TEXT NOT NULL, collection TEXT NOT NULL, id TEXT NOT NULL, data TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY (extension, collection, id))',
   ],
   params: (query) => query,
   upsert: (table, columns, key, update) =>
@@ -113,6 +126,8 @@ const POSTGRES: Dialect = {
     'CREATE TABLE IF NOT EXISTS users (id VARCHAR(40) PRIMARY KEY, email VARCHAR(255) NOT NULL UNIQUE, name TEXT NOT NULL, role VARCHAR(20) NOT NULL, password TEXT NOT NULL, created_at VARCHAR(40) NOT NULL)',
     'CREATE TABLE IF NOT EXISTS sessions (id VARCHAR(64) PRIMARY KEY, user_id VARCHAR(40) NOT NULL, expires_at VARCHAR(40) NOT NULL)',
     'CREATE TABLE IF NOT EXISTS links (id VARCHAR(64) PRIMARY KEY, kind VARCHAR(20) NOT NULL, user_id VARCHAR(40) NOT NULL, expires_at VARCHAR(40) NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS extensions (name VARCHAR(64) PRIMARY KEY, version VARCHAR(40) NOT NULL, sha256 VARCHAR(64) NOT NULL, package TEXT NOT NULL, enabled INTEGER NOT NULL, installed_at VARCHAR(40) NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS extension_rows (extension VARCHAR(64) NOT NULL, collection VARCHAR(64) NOT NULL, id VARCHAR(40) NOT NULL, data TEXT NOT NULL, updated_at VARCHAR(40) NOT NULL, PRIMARY KEY (extension, collection, id))',
   ],
   params: (query) => {
     let n = 0;
@@ -133,6 +148,8 @@ const MYSQL: Dialect = {
     `CREATE TABLE IF NOT EXISTS users (id VARCHAR(40) PRIMARY KEY, email VARCHAR(255) NOT NULL UNIQUE, name TEXT NOT NULL, role VARCHAR(20) NOT NULL, password TEXT NOT NULL, created_at VARCHAR(40) NOT NULL) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS sessions (id VARCHAR(64) PRIMARY KEY, user_id VARCHAR(40) NOT NULL, expires_at VARCHAR(40) NOT NULL) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS links (id VARCHAR(64) PRIMARY KEY, kind VARCHAR(20) NOT NULL, user_id VARCHAR(40) NOT NULL, expires_at VARCHAR(40) NOT NULL) ${MYSQL_TABLE}`,
+    `CREATE TABLE IF NOT EXISTS extensions (name VARCHAR(64) PRIMARY KEY, version VARCHAR(40) NOT NULL, sha256 VARCHAR(64) NOT NULL, package LONGTEXT NOT NULL, enabled INTEGER NOT NULL, installed_at VARCHAR(40) NOT NULL) ${MYSQL_TABLE}`,
+    `CREATE TABLE IF NOT EXISTS extension_rows (extension VARCHAR(64) NOT NULL, collection VARCHAR(64) NOT NULL, id VARCHAR(40) NOT NULL, data LONGTEXT NOT NULL, updated_at VARCHAR(40) NOT NULL, PRIMARY KEY (extension, collection, id)) ${MYSQL_TABLE}`,
   ],
   params: (query) => query,
   upsert: (table, columns, _key, update) =>
@@ -771,6 +788,74 @@ export class Store {
     if (use && (await this.changed('DELETE FROM links WHERE id = ?', [hashOf(secret)])) !== 1) return null;
     const kind = String(row.kind) as LinkKind;
     return { kind, user: kind === 'setup' ? null : await this.user(String(row.user_id)) };
+  }
+
+  /** The extensions installed (ADR 0026), each with the package it was installed from. */
+  async extensions(): Promise<InstalledExtension[]> {
+    const rows = await this.rows<{ name: string; sha256: string; package: string; enabled: number | string; installed_at: string }>('SELECT name, sha256, package, enabled, installed_at FROM extensions ORDER BY name');
+    return rows.flatMap((row) => {
+      const { pkg } = parseExtension(JSON.parse(row.package));
+      return pkg ? [{ ...pkg, sha256: row.sha256, enabled: Number(row.enabled) === 1, installedAt: row.installed_at }] : [];
+    });
+  }
+
+  async extension(name: string): Promise<InstalledExtension | null> {
+    return (await this.extensions()).find((e) => e.manifest.name === name) ?? null;
+  }
+
+  /**
+   * Installs a package, or a new version of one. Its rows stay; a collection
+   * the new version no longer declares keeps its rows until it is uninstalled.
+   */
+  async installExtension(raw: unknown, sha256: string, at = new Date()): Promise<InstalledExtension> {
+    const { pkg, problems } = parseExtension(raw);
+    if (!pkg) throw new Error(problems.join('; '));
+    const before = await this.extension(pkg.manifest.name);
+    await this.run(this.dialect.upsert('extensions', ['name', 'version', 'sha256', 'package', 'enabled', 'installed_at'], ['name'], ['version', 'sha256', 'package', 'installed_at']), [
+      pkg.manifest.name,
+      pkg.manifest.version,
+      sha256,
+      JSON.stringify(raw),
+      before ? (before.enabled ? 1 : 0) : 1,
+      at.toISOString(),
+    ]);
+    return (await this.extension(pkg.manifest.name)) as InstalledExtension;
+  }
+
+  async enableExtension(name: string, enabled: boolean): Promise<void> {
+    if (!(await this.changed('UPDATE extensions SET enabled = ? WHERE name = ?', [enabled ? 1 : 0, name]))) throw new Error(`no extension "${name}" is installed`);
+  }
+
+  /** Removes an extension and everything it kept. */
+  async uninstallExtension(name: string): Promise<void> {
+    await this.sql.begin(async (tx) => {
+      await tx.unsafe(this.dialect.params('DELETE FROM extension_rows WHERE extension = ?'), [name]);
+      await tx.unsafe(this.dialect.params('DELETE FROM extensions WHERE name = ?'), [name]);
+    });
+  }
+
+  /** The rows of one of an extension's collections, oldest first. */
+  async extensionRows(extension: string, collection: string): Promise<ExtensionRow[]> {
+    const rows = await this.rows<{ id: string; data: string; updated_at: string }>('SELECT id, data, updated_at FROM extension_rows WHERE extension = ? AND collection = ? ORDER BY id', [extension, collection]);
+    return rows.map((row) => ({ ...(JSON.parse(row.data) as Record<string, unknown>), id: row.id }));
+  }
+
+  async extensionRow(extension: string, collection: string, id: string): Promise<ExtensionRow | null> {
+    const row = await this.row<{ data: string }>('SELECT data FROM extension_rows WHERE extension = ? AND collection = ? AND id = ?', [extension, collection, id]);
+    return row ? { ...(JSON.parse(row.data) as Record<string, unknown>), id } : null;
+  }
+
+  /** Keeps a row, already cleaned by its collection's fields. A new one gets an id that sorts after the ones before it. */
+  async saveExtensionRow(extension: string, collection: string, data: Record<string, unknown>, id: string | null = null, at = new Date()): Promise<ExtensionRow> {
+    const key = id ?? `${at.getTime().toString(36).padStart(9, '0')}${crypto.randomUUID().replace(/-/g, '').slice(0, 8)}`;
+    if (id !== null && !(await this.extensionRow(extension, collection, id))) throw new Error('no such row');
+    const { id: _ignored, ...rest } = data;
+    await this.run(this.dialect.upsert('extension_rows', ['extension', 'collection', 'id', 'data', 'updated_at'], ['extension', 'collection', 'id'], ['data', 'updated_at']), [extension, collection, key, JSON.stringify(rest), at.toISOString()]);
+    return { ...rest, id: key };
+  }
+
+  async deleteExtensionRow(extension: string, collection: string, id: string): Promise<void> {
+    await this.run('DELETE FROM extension_rows WHERE extension = ? AND collection = ? AND id = ?', [extension, collection, id]);
   }
 
   async rawForTests(query: string, params: unknown[] = []): Promise<void> {

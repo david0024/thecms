@@ -3,7 +3,8 @@
  * the key from the address the command printed; on a served admin, the
  * session cookie and a header only the admin's own page sends (ADR 0022).
  */
-import type { Page, Post, Site, Theme } from '../core/index.ts';
+import type { Block, ExtensionAction, ExtensionCollection, ExtensionView, Page, Post, Site, Theme } from '../core/index.ts';
+import type { ExtensionOffer } from '../site/extensions.ts';
 import type { ImportPreview, ImportProgress } from '../site/server.ts';
 
 export type { ImportPreview, ImportProgress };
@@ -75,11 +76,29 @@ export interface State {
   me: Me;
   /** The admin is served to others, with accounts; false on one's own computer. */
   accounts: boolean;
+  extensions: ExtensionInfo[];
   templates: Record<string, TemplateInfo>;
   pages: PageInfo[];
   posts: PostInfo[];
   entries: Record<string, PostInfo[]>;
 }
+
+/** An installed extension as the admin is told (ADR 0026). The owner is told more. */
+export interface ExtensionInfo {
+  name: string;
+  displayName: string;
+  description: string;
+  version: string;
+  publisher: string;
+  enabled: boolean;
+  actions: Pick<ExtensionAction, 'name' | 'label' | 'on' | 'ask'>[];
+  messages: Record<string, Record<string, string>>;
+  sha256?: string;
+  asks?: ExtensionOffer['asks'];
+  views?: ExtensionView[];
+  collections?: ExtensionCollection[];
+}
+export type { ExtensionOffer };
 
 export interface LanguageInfo {
   language: string;
@@ -126,6 +145,15 @@ async function send<T>(path: string, file: Blob): Promise<T> {
 
 export const api = {
   hasToken: token !== '',
+  offerExtension: (file: Blob) => send<{ offer: ExtensionOffer }>('/api/extensions/offer', file),
+  installExtension: (file: Blob, sha256: string) => send<{ extensions: ExtensionInfo[] }>(`/api/extensions/install?sha256=${sha256}`, file),
+  enableExtension: (name: string, enabled: boolean) => call<{ extensions: ExtensionInfo[] }>('PUT', `/api/extensions/${name}`, { enabled }),
+  uninstallExtension: (name: string) => call<{ extensions: ExtensionInfo[] }>('DELETE', `/api/extensions/${name}`),
+  extensionRows: (name: string, collection: string) => call<{ rows: Record<string, unknown>[] }>('GET', `/api/extensions/${name}/rows/${collection}`),
+  saveExtensionRow: (name: string, collection: string, row: Record<string, unknown>, id: string | null) => call<{ rows: Record<string, unknown>[] }>('PUT', `/api/extensions/${name}/rows/${collection}`, { id, row }),
+  deleteExtensionRow: (name: string, collection: string, id: string) => call<{ rows: Record<string, unknown>[] }>('DELETE', `/api/extensions/${name}/rows/${collection}?id=${encodeURIComponent(id)}`),
+  runOnBlock: (name: string, action: string, block: Block, slug: string, ask: Record<string, string>) => call<{ block: Block }>('POST', `/api/extensions/${name}/run/${action}`, { block, slug, ask }),
+  runOnPage: (name: string, action: string, page: Doc, ask: Record<string, string>) => call<{ page: Page }>('POST', `/api/extensions/${name}/run/${action}`, { page, ask }),
   state: () => call<State>('GET', '/api/state'),
   page: (slug: string, kind: Kind = 'page') => call<{ page: Doc }>('GET', `/api/page?kind=${kind}&slug=${encodeURIComponent(slug)}`),
   save: (page: Doc, create = false, kind: Kind = 'page') => call<{ page: Doc } & Lists>('PUT', '/api/page', { page, create, kind }),
