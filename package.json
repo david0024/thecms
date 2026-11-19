@@ -12,12 +12,14 @@
     "test": "bun test",
     "typecheck": "svelte-check --tsconfig ./tsconfig.json --fail-on-warnings",
     "check": "bun run typecheck && bun test",
-    "cms": "bun src/site/cli.ts"
+    "cms": "bun src/site/cli.ts",
+    "coverage": "bun tools/coverage.ts coverage --lines=94 --file=55"
   },
   "dependencies": {
     "svelte": "^5.57.3"
   },
   "devDependencies": {
+    "@jridgewell/trace-mapping": "^0.3.31",
     "@types/bun": "^1.4.4",
     "svelte-check": "^4.7.8",
     "typescript": "~6"

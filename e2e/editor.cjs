@@ -9,6 +9,7 @@
  *   node e2e/editor.cjs [folder for screenshots]
  */
 const { chromium } = require('playwright');
+const coverage = require('./coverage.cjs');
 const { spawn, execFileSync } = require('node:child_process');
 const { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } = require('node:fs');
 const { tmpdir } = require('node:os');
@@ -39,7 +40,7 @@ const assert = (condition, message) => {
     server.on('exit', () => reject(new Error('the editor stopped')));
   });
 
-  const browser = await chromium.launch();
+  const browser = await coverage.launch(chromium, 'editor');
   try {
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: shots ? 2 : 1 });
     const errors = [];

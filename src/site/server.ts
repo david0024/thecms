@@ -10,7 +10,8 @@
  * from another origin. Accounts and sign-in arrive with the hosted server;
  * until then nothing here is reachable without the token.
  */
-import { readdir } from 'node:fs/promises';
+import { mkdir, readdir } from 'node:fs/promises';
+import { join } from 'node:path';
 import { compile } from 'svelte/compiler';
 import { type ContentType, defaultTemplate, MEDIA_MAX_BYTES, MEDIA_PREFIX, normalizePage, type Page, type Post, contentTypes, listPath, type MenuList, normalizePost, parseTheme, POSTS_TYPE, reservedSlugs, type Theme, themeCss } from '../core/index.ts';
 import type { EntryLists } from '../blocks/editing.ts';
@@ -23,12 +24,20 @@ const ADMIN = new URL('../admin/', import.meta.url);
 const THEMES = new URL('../../themes/', import.meta.url);
 const BASE_CSS = new URL('../blocks/base.css', import.meta.url);
 
-/** The admin and the canvas script, built for a browser from their sources. */
-export async function buildAdmin(): Promise<Map<string, string>> {
+/**
+ * The admin and the canvas script, built for a browser from their sources.
+ *
+ * With THECMS_COVERAGE set to a folder, the build also writes its source maps
+ * there, and the Svelte compiler's own, so that what the browser ran in the
+ * end-to-end tests can be counted against the source lines (tools/coverage.ts).
+ */
+export async function buildAdmin(coverage = process.env.THECMS_COVERAGE): Promise<Map<string, string>> {
+  const svelteMaps: Record<string, unknown> = {};
   const result = await Bun.build({
     entrypoints: [new URL('main.ts', ADMIN).pathname, new URL('frame.ts', ADMIN).pathname],
     target: 'browser',
     conditions: ['browser'],
+    sourcemap: coverage ? 'external' : 'none',
     plugins: [
       {
         name: 'svelte-client',
@@ -36,6 +45,7 @@ export async function buildAdmin(): Promise<Map<string, string>> {
           build.onLoad({ filter: /\.svelte$/ }, async ({ path }) => {
             const source = await Bun.file(path).text();
             const { js } = compile(source, { filename: path, generate: 'client', css: 'injected', dev: false });
+            if (coverage) svelteMaps[path] = js.map;
             return { contents: js.code, loader: 'js' };
           });
         },
@@ -44,9 +54,15 @@ export async function buildAdmin(): Promise<Map<string, string>> {
   });
   if (!result.success) throw new AggregateError(result.logs, 'the admin did not build');
   const files = new Map<string, string>();
+  const maps: Record<string, unknown> = {};
   for (const output of result.outputs) {
-    const name = output.path.replace(/^.*[\\/]/, '').replace(/^main\.js$/, 'app.js');
-    files.set(name, await output.text());
+    const name = output.path.replace(/^.*[\\/]/, '').replace(/^main\.js/, 'app.js');
+    if (output.kind === 'sourcemap') maps[name.replace(/\.map$/, '')] = await output.json();
+    else files.set(name, await output.text());
+  }
+  if (coverage) {
+    await mkdir(coverage, { recursive: true });
+    await Bun.write(join(coverage, 'admin-maps.json'), JSON.stringify({ root: process.cwd(), bundles: maps, svelte: svelteMaps }));
   }
   return files;
 }

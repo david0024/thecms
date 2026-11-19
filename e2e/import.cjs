@@ -6,6 +6,7 @@
  *   node e2e/import.cjs [folder for screenshots]
  */
 const { chromium } = require('playwright');
+const coverage = require('./coverage.cjs');
 const { spawn, execFileSync } = require('node:child_process');
 const { mkdtempSync, readFileSync, rmSync } = require('node:fs');
 const { tmpdir } = require('node:os');
@@ -36,7 +37,7 @@ const assert = (condition, message) => {
     server.on('exit', () => reject(new Error('the editor stopped')));
   });
 
-  const browser = await chromium.launch();
+  const browser = await coverage.launch(chromium, 'import');
   try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
     const errors = [];
