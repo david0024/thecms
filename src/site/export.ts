@@ -24,6 +24,7 @@ import {
   postExcerpt,
   postImageSources,
   typeCategoryPath,
+  typeTagPath,
   type Redirect,
   redirectFile,
   type Site,
@@ -58,7 +59,7 @@ function feed(site: Site, type: ContentType, posts: Post[]): string {
       `    <id>${url}</id>`,
       `    <updated>${day(post.date)}</updated>`,
       `    <summary>${xml(postExcerpt(post))}</summary>`,
-      ...post.categories.map((name) => `    <category term="${xml(name)}"/>`),
+      ...[...post.categories, ...post.tags].map((name) => `    <category term="${xml(name)}"/>`),
       '  </entry>',
     ].join('\n');
   });
@@ -118,6 +119,7 @@ export async function buildSite(
     const lists = [
       { heading: type.name, path: (n: number) => listPath(type, n), posts: own },
       ...categoriesOf(own).map((c) => ({ heading: c.name, path: (n: number) => typeCategoryPath(type, c.name, n), posts: c.posts })),
+      ...categoriesOf(own, 'tags').map((c) => ({ heading: `#${c.name}`, path: (n: number) => typeTagPath(type, c.name, n), posts: c.posts })),
     ];
     for (const list of lists) {
       const cut = paginate(list.posts);

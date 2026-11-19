@@ -34,6 +34,12 @@ describe('a post as a document', () => {
     expect(categories).toEqual(['News', 'Work shop', 'a', 'b', 'c', 'd', 'e', 'f']);
   });
 
+  test('tags: like categories, at most twenty; a type without categories keeps neither', async () => {
+    expect(post({ tags: [' Oak ', 'oak', 'Kitchen', ...Array.from({ length: 30 }, (_, i) => `t${i}`)] }).tags).toEqual(['Oak', 'Kitchen', ...Array.from({ length: 18 }, (_, i) => `t${i}`)]);
+    const plainType = { id: 'team', name: 'Team', singular: 'Person', path: 'team', dated: false, categories: false, feed: false, fields: [] };
+    expect(normalizePost({ title: 'A', tags: ['x'], categories: ['y'] }, '2026-01-01', plainType).post).toMatchObject({ tags: [], categories: [] });
+  });
+
   test('a cover is checked like any image', async () => {
     expect(post({ cover: { src: 'javascript:alert(1)', alt: '' } }).cover).toBeNull();
     expect(post({ cover: { src: '/media/x.png', alt: 'A' } }).cover).toEqual({ src: '/media/x.png', alt: 'A' });
@@ -85,6 +91,19 @@ describe('the blog as files', () => {
     // A category has its own pages.
     expect(text(files, 'blog/category/old/page/2/index.html').match(/class="post-card"/g)).toHaveLength(2);
     expect(text(files, 'index.html')).toContain('<a href="/blog/">Blog</a>');
+  });
+
+  test('a tag has its list, its pages and its place in the feed; a post links to its tags', async () => {
+    const tagged = [post({ slug: 'a', title: 'A', categories: ['News'], tags: ['Oak', 'Kitchen'] }), post({ slug: 'b', title: 'B', date: '2026-03-05', tags: ['oak'] })];
+    const files = await buildSite(site, theme, pages, () => null, tagged);
+    const oak = text(files, 'blog/tag/oak/index.html');
+    // Spelled as the newest post spells it, as a category is.
+    expect(oak).toContain('<h1>#oak</h1>');
+    expect(oak.match(/class="post-card"/g)).toHaveLength(2);
+    expect(text(files, 'blog/tag/kitchen/index.html').match(/class="post-card"/g)).toHaveLength(1);
+    expect(text(files, 'blog/a/index.html')).toContain('<a class="post-tag" href="/blog/tag/oak/">#Oak</a>');
+    expect(text(files, 'sitemap.xml')).toContain('<loc>https://example.com/blog/tag/oak/</loc>');
+    expect(text(files, 'blog/feed.xml')).toContain('<category term="Kitchen"/>');
   });
 
   test('the sitemap and the feed name every address in full; the feed stops at thirty', async () => {

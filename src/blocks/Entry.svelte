@@ -5,10 +5,11 @@
  * ordinary page, or inside the entry's own blocks) it draws nothing.
  */
 import type { Block, EntryContent, ImageValue, LinkValue } from '../core/index.ts';
-import { isLink, typeCategoryPath } from '../core/index.ts';
+import { isLink } from '../core/index.ts';
 import BlockView from './BlockView.svelte';
 import { getEntry, setEditing, setEntry } from './editing.ts';
 import EntryFields from './EntryFields.svelte';
+import PostMeta from './PostMeta.svelte';
 import { dateText } from './words.ts';
 
 let { block }: { block: Block } = $props();
@@ -25,15 +26,9 @@ const value = $derived(field && shown ? shown.post.fields[field.key] : undefined
 
 {#if shown}
   {@const { post, type, language } = shown}
-  {@const meta = type.dated || post.categories.length > 0}
   {#if c.part === 'header'}
     <div class="post-head">
-      {#if meta}
-        <p class="post-meta">
-          {#if type.dated}<time datetime={post.date}>{dateText(post.date, language)}</time>{/if}
-          {#each post.categories as name}<a href={typeCategoryPath(type, name)}>{name}</a>{/each}
-        </p>
-      {/if}
+      <PostMeta {type} {post} {language} />
       <h1>{post.title}</h1>
       {#if post.cover}<img class="post-cover" src={post.cover.src} alt={post.cover.alt} />{/if}
       <EntryFields {type} {post} {language} />
@@ -41,12 +36,7 @@ const value = $derived(field && shown ? shown.post.fields[field.key] : undefined
   {:else if c.part === 'title'}
     <h1>{post.title}</h1>
   {:else if c.part === 'meta'}
-    {#if meta}
-      <p class="post-meta">
-        {#if type.dated}<time datetime={post.date}>{dateText(post.date, language)}</time>{/if}
-        {#each post.categories as name}<a href={typeCategoryPath(type, name)}>{name}</a>{/each}
-      </p>
-    {/if}
+    <PostMeta {type} {post} {language} />
   {:else if c.part === 'cover'}
     {#if post.cover}<img class="post-cover" src={post.cover.src} alt={post.cover.alt} />{/if}
   {:else if c.part === 'fields'}

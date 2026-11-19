@@ -617,6 +617,16 @@ onMount(() => {
             />
             <small>{t.posts.categoriesHint}</small>
           </label>
+          <label class="field">
+            <span>{t.posts.tags}</span>
+            <input
+              type="text"
+              value={post.tags.join(', ')}
+              onchange={(e) => change({ ...post, tags: e.currentTarget.value.split(',').map((c) => c.trim()).filter(Boolean) }, { step: false })}
+              data-post-tags
+            />
+            <small>{t.posts.tagsHint}</small>
+          </label>
           {/if}
           <label class="field">
             <span>{t.posts.excerpt}</span>

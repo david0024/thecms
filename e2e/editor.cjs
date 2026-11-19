@@ -375,6 +375,10 @@ const assert = (condition, message) => {
     await page.keyboard.press('Tab');
     await page.locator('[data-post-excerpt]').fill('Saturdays too, from December.');
     await canvas.locator('.post-meta a', { hasText: 'Workshop' }).waitFor();
+    await page.locator('[data-post-tags]').fill('opening hours, winter');
+    await page.keyboard.press('Tab');
+    await canvas.locator('.post-meta a.post-tag', { hasText: '#winter' }).waitFor();
+    assert(true, 'tags are typed beside the categories and shown on the post');
     await saved();
     if (shots) await page.screenshot({ path: join(shots, 'editor-post.png') });
     await page.getByRole('button', { name: 'Publish' }).click();
