@@ -80,7 +80,7 @@ back.
 *Why version 3:* it combines cleanly with Apache-2.0 dependencies, which are
 common in the JavaScript ecosystem.
 
-Packages shared with Zveltio stay MIT, which is GPL-compatible. Themes are data
+Packages shared with Zveltio's SDK stay MIT, which is GPL-compatible. (Corrected 2026-11-19: Zveltio itself is AGPL-3.0 and only its SDK is MIT, so code from this core can also go into Zveltio; only code meant for the SDK must be MIT.) Themes are data
 and modules run isolated behind a contract, so neither is a derived work: they
 may carry any licence, commercial ones included.
 

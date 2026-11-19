@@ -262,6 +262,18 @@ export async function startEditor(store: Store, options: { port?: number; listen
 
   async function api(request: Request, url: URL): Promise<Response> {
     if (url.pathname.startsWith('/api/import')) return importApi(request, url);
+    if (url.pathname === '/api/messages') {
+      const email = url.searchParams.get('email') ?? '';
+      if (request.method === 'DELETE') {
+        if (email) await store.deleteMessagesFrom(email);
+        else await store.deleteMessage(url.searchParams.get('id') ?? '');
+      }
+      await store.forgetOldMessages();
+      const keep = (await store.site()).keepMessages;
+      // Asked for one address: what that visitor sent, to give them or to check before erasing.
+      if (request.method === 'GET' && email) return json({ messages: await store.messages(email), keep });
+      return json({ messages: await store.messages(), keep });
+    }
     if (url.pathname === '/api/media') {
       if (request.method === 'GET') return json({ media: await store.media() });
       if (request.method === 'DELETE') {

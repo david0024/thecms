@@ -33,7 +33,26 @@ export interface Site {
   blogTitle: string;
   /** The content types the owner added. Posts are always there and are not listed here (ADR 0010). */
   types: ContentType[];
+  /** Where the site's forms send what visitors write (ADR 0019): the address of this site's form service. Empty: no form is drawn. */
+  forms: string;
+  /** How many days a message a visitor sent is kept before it is deleted (ADR 0019). */
+  keepMessages: number;
 }
+
+/** A form service's address: https, or http on this machine while trying it out. Nothing else, and never a path or a query. */
+export function cleanFormsAddress(value: unknown): string {
+  const v = str(value, 300).trim().replace(/\/+$/, '');
+  try {
+    const url = new URL(v);
+    const local = url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
+    if ((url.protocol !== 'https:' && !local) || url.username || url.password || url.search || url.hash) return '';
+    return `${url.origin}${url.pathname.replace(/\/+$/, '')}`;
+  } catch {
+    return '';
+  }
+}
+
+export const KEEP_MESSAGES_DAYS = 180;
 
 const MAX_FOOTER_LINKS = 12;
 
@@ -73,6 +92,8 @@ export function normalizeSite(input: unknown): Site {
     menu: normalizeMenu(raw.menu),
     blogTitle: str(raw.blogTitle, 60).trim() || 'Blog',
     types: normalizeTypes(raw.types),
+    forms: cleanFormsAddress(raw.forms),
+    keepMessages: Number.isInteger(raw.keepMessages) && (raw.keepMessages as number) >= 1 && (raw.keepMessages as number) <= 3650 ? (raw.keepMessages as number) : KEEP_MESSAGES_DAYS,
   };
 }
 

@@ -7,12 +7,15 @@
  *   thecms theme <site.db> <theme.json>   set and publish the site's theme
  *   thecms export <site.db> <folder>      write the published site as static files
  *   thecms import <site.db> <export.xml>  bring in a WordPress site (add --no-images to skip copying images)
+ *   thecms forms <site.db> [port]         receive what visitors send through the site's forms (ADR 0019)
  */
 import { existsSync } from 'node:fs';
 import { DEMO_PAGES, DEMO_POSTS, DEMO_SITE } from './demo.ts';
 import { fetchImage, runImport } from '../import/run.ts';
 import { planImport } from '../import/wxr.ts';
 import { exportSite } from './export.ts';
+import { startForms } from './forms.ts';
+import { smtpMailer } from './mail.ts';
 import { startEditor } from './server.ts';
 import { databaseKind, shownAddress, Store } from './store.ts';
 
@@ -78,6 +81,22 @@ async function main(args: string[]): Promise<void> {
     }
     return;
   }
+  if (command === 'forms' && dbPath) {
+    if (missing()) throw new Error(`${shown} does not exist`);
+    // Where the owner is told of a message, and through which mail server: the same way a database is given, as an address.
+    const mailer = smtpMailer(process.env.THECMS_SMTP);
+    const to = process.env.THECMS_MAIL_TO ?? '';
+    const store = await Store.open(dbPath);
+    const forms = startForms(store, { port: extra ? Number(extra) : 4322, hostname: process.env.THECMS_FORMS_HOST ?? '127.0.0.1', mailer, to, from: process.env.THECMS_MAIL_FROM });
+    console.log(
+      `Receiving forms for ${shown} at ${forms.url}/send.
+` +
+        `${mailer && to ? `Each message is also sent to ${to}.` : 'Messages are kept and shown in the admin. Set THECMS_SMTP and THECMS_MAIL_TO to be told by email.'}
+` +
+        'Put the public address of this service in Site settings, then export the site again.',
+    );
+    return;
+  }
   if ((command === 'theme' || command === 'export') && dbPath && extra) {
     if (missing()) throw new Error(`${shown} does not exist`);
     const store = await Store.open(dbPath);
@@ -94,7 +113,7 @@ async function main(args: string[]): Promise<void> {
     }
     return;
   }
-  console.log('A site is a SQLite file (site.db) or a database address (postgres://... or mysql://...).\n\nUsage:\n  thecms init <site.db>\n  thecms edit <site.db> [port]\n  thecms theme <site.db> <theme.json>\n  thecms export <site.db> <folder>\n  thecms import <site.db> <export.xml> [--no-images] [--types=portfolio,team] [--categories=projects]');
+  console.log('A site is a SQLite file (site.db) or a database address (postgres://... or mysql://...).\n\nUsage:\n  thecms init <site.db>\n  thecms edit <site.db> [port]\n  thecms theme <site.db> <theme.json>\n  thecms export <site.db> <folder>\n  thecms forms <site.db> [port]\n  thecms import <site.db> <export.xml> [--no-images] [--types=portfolio,team] [--categories=projects]');
   process.exitCode = command ? 1 : 0;
 }
 

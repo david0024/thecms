@@ -32,6 +32,7 @@ The decisions behind this, each with its reason:
 - [ADR 0016 — A category that is a section of its own](docs/adr/0016-categories-as-sections.md)
 - [ADR 0017 — Gallery, questions, testimonials, prices](docs/adr/0017-more-blocks.md)
 - [ADR 0018 — Tags](docs/adr/0018-tags.md)
+- [ADR 0019 — The contact form and the site's form service](docs/adr/0019-the-contact-form.md)
 
 ## Where it stands
 
@@ -58,6 +59,7 @@ theme, publish, and export the site as static files.
 | WordPress import: pages, posts, images, menu, links rewritten, old addresses kept alive, a report of what did not come over | done |
 | Import from the admin: choose the file, see what would come over and what would not, then run it | done |
 | A WordPress category kept as a section of its own: its posts become entries of a new content type | done |
+| Contact form with consent, a small form service of the site's own, email to the owner, messages kept for a set time, exported or erased on request | done |
 | Modules (isolated plugins) | planned |
 
 ## Try it
@@ -69,6 +71,14 @@ bun install
 bun run cms init site.db              # a sample site, in one file
 bun run cms edit site.db              # the visual editor; open the address it prints
 bun run cms export site.db dist       # the published site as static files
+```
+
+Contact forms send to a small service of the site's own (ADR 0019). Run it where
+visitors can reach it, put its address in Site settings, and export again:
+
+```sh
+THECMS_SMTP=smtps://user:pass@mail.example.com THECMS_MAIL_TO=you@example.com \
+  bun run cms forms site.db 4322     # receives at /send; messages show in the admin
 ```
 
 `site.db` can be a Postgres or MySQL address instead of a file, and every

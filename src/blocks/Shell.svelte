@@ -15,7 +15,7 @@
 import type { Snippet } from 'svelte';
 import type { MenuLink, Site } from '../core/index.ts';
 import { holdsCurrent, isLink, isMega } from '../core/index.ts';
-import { type EntryLists, marker, setEditing, setLists } from './editing.ts';
+import { type EntryLists, marker, setEditing, setLists, setSite } from './editing.ts';
 import { wordsFor } from './words.ts';
 
 let {
@@ -30,6 +30,8 @@ let {
 setEditing(editing);
 // svelte-ignore state_referenced_locally
 setLists(lists, site.language);
+// svelte-ignore state_referenced_locally
+setSite(site, current);
 const mark = marker();
 const words = $derived(wordsFor(site.language));
 const footerLinks = $derived(site.footerLinks.filter(isLink));

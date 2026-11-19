@@ -73,6 +73,17 @@ const setFooterLink = (i: number, patch: Partial<LinkValue>): void => set({ foot
     <button type="button" onclick={() => set({ footerLinks: [...site.footerLinks, { label: '', href: '' }] })}>{t.inspector.add}</button>
   {/if}
 </fieldset>
+<h3>{t.site.forms}</h3>
+<label class="field">
+  <span>{t.site.formsAddress}</span>
+  <input type="url" value={site.forms} onchange={(e) => set({ forms: e.currentTarget.value.trim() })} data-site-forms />
+  <small>{t.site.formsHint}</small>
+</label>
+<label class="field">
+  <span>{t.site.keep}</span>
+  <input type="number" min="1" max="3650" value={site.keepMessages} onchange={(e) => set({ keepMessages: Number(e.currentTarget.value) })} data-site-keep />
+</label>
+
 <p class="hint">{t.site.live}</p>
 
 <style>

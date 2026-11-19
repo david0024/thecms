@@ -36,6 +36,16 @@ export interface EntriesContent {
   /** The words of the link to the whole list; empty for no link. */
   more: string;
 }
+export interface FormContent {
+  title: string;
+  intro: string;
+  /** What the visitor agrees to by ticking the box. The box is required. */
+  consent: string;
+  button: string;
+  /** Shown once the message was sent. */
+  sent: string;
+  failed: string;
+}
 export interface GalleryContent {
   title: string;
   intro: string;

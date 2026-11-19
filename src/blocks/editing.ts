@@ -7,7 +7,7 @@
  * out, and the HTML is exactly what it was before the editor existed.
  */
 import { getContext, setContext } from 'svelte';
-import type { ContentType, Post } from '../core/index.ts';
+import type { ContentType, Post, Site } from '../core/index.ts';
 
 const KEY = 'thecms:editing';
 
@@ -51,6 +51,14 @@ export const setEntry = (entry: EntryContext): void => {
 };
 
 export const getEntry = (): EntryContext | undefined => getContext(ENTRY) as EntryContext | undefined;
+
+const SITE = 'thecms:site';
+
+/** The site a page is drawn for, and the page's own address: what a form needs to know to send and to come back. */
+export const setSite = (site: Site, path: string): void => {
+  setContext(SITE, { site, path });
+};
+export const getSite = (): { site: Site; path: string } | undefined => getContext(SITE) as { site: Site; path: string } | undefined;
 
 const LISTS = 'thecms:lists';
 
