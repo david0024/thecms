@@ -13,21 +13,21 @@
  * it has accounts instead (ADR 0022, src/site/accounts.ts): a session cookie,
  * a header no other site's page can send, and calls only the owner may make.
  */
-import { mkdir, readdir } from 'node:fs/promises';
+import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { compile } from 'svelte/compiler';
-import { type ContentType, type LanguagePack, defaultTemplate, MEDIA_MAX_BYTES, MEDIA_PREFIX, normalizePage, type Page, type Post, contentTypes, listPath, type MenuList, normalizePost, parseTheme, POSTS_TYPE, reservedSlugs, type Theme, themeCss } from '../core/index.ts';
+import { type ContentType, DISPLAY_NAME, type LanguagePack, defaultTemplate, MEDIA_MAX_BYTES, MEDIA_PREFIX, normalizePage, type Page, type Post, contentTypes, listPath, type MenuList, normalizePost, parseTheme, POSTS_TYPE, reservedSlugs, type Theme, themeCss } from '../core/index.ts';
 import type { EntryLists } from '../blocks/editing.ts';
 import { type FetchImage, fetchImage as fetchOverNetwork, IMPORT_MAX_BYTES, type ImportReport, runImport } from '../import/run.ts';
 import { type ImportPlan, planImport } from '../import/wxr.ts';
 import { type MenuItem, menuOf, renderParts, renderPostParts } from './document.ts';
 import { languages, packFor } from './languages.ts';
 import { accounts, cleanPublicAddress, ownerOnly, shown } from './accounts.ts';
+import { BUILT_ADMIN } from './built-admin.ts';
+import { BASE_CSS, SHIPPED_THEMES } from './shipped.ts';
 import type { Store, User } from './store.ts';
 
 const ADMIN = new URL('../admin/', import.meta.url);
-const THEMES = new URL('../../themes/', import.meta.url);
-const BASE_CSS = new URL('../blocks/base.css', import.meta.url);
 
 /**
  * The admin and the canvas script, built for a browser from their sources.
@@ -73,13 +73,10 @@ export async function buildAdmin(coverage = process.env.THECMS_COVERAGE): Promis
 }
 
 /** The themes that ship with the CMS, for the theme picker. */
-export async function bundledThemes(): Promise<Theme[]> {
-  const themes: Theme[] = [];
-  for (const file of (await readdir(THEMES)).filter((f) => f.endsWith('.json')).sort()) {
-    const { theme } = parseTheme(await Bun.file(new URL(file, THEMES)).json());
-    if (theme) themes.push(theme);
-  }
-  return themes;
+export function bundledThemes(): Theme[] {
+  return Object.keys(SHIPPED_THEMES)
+    .sort()
+    .flatMap((file) => parseTheme(SHIPPED_THEMES[file]).theme ?? []);
 }
 
 const CSP = "default-src 'self'; img-src 'self' http: https: data:; style-src 'self' 'unsafe-inline'; frame-ancestors 'self'; base-uri 'none'; form-action 'none'";
@@ -96,7 +93,7 @@ const adminPage = (pack: LanguagePack | null): string => `<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>thecms</title>
+<title>${DISPLAY_NAME}</title>
 </head>
 <body>
 <div id="app"></div>
@@ -190,9 +187,9 @@ export async function startEditor(
     hostname?: string;
   } = {},
 ): Promise<EditorServer> {
-  const assets = await buildAdmin();
-  const themes = await bundledThemes();
-  const baseCss = await Bun.file(BASE_CSS).text();
+  const assets = BUILT_ADMIN ? new Map(Object.entries(BUILT_ADMIN)) : await buildAdmin();
+  const themes = bundledThemes();
+  const baseCss = BASE_CSS;
   const token = crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, '');
   let port = options.port ?? 4321;
   const publicAddress = options.public ? cleanPublicAddress(options.public) : '';
