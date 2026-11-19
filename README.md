@@ -28,6 +28,7 @@ The decisions behind this, each with its reason:
 - [ADR 0011 — A block that lists entries](docs/adr/0011-the-entries-block.md)
 - [ADR 0012 — Importing from the admin](docs/adr/0012-import-from-the-admin.md)
 - [ADR 0013 — One store, three databases](docs/adr/0013-sqlite-postgres-mysql.md)
+- [ADR 0015 — A page for each content type](docs/adr/0015-a-page-for-each-content-type.md)
 
 ## Where it stands
 
@@ -49,6 +50,7 @@ theme, publish, and export the site as static files.
 | Menu builder: sub-menus, wide menus with columns, a folded menu on phones, all without script | done |
 | Content types: the owner adds kinds of entry (projects, team, events) with their own fields, list and address; posts are one of them | done |
 | A block that lists entries of a type on any page (latest posts, a few projects) | done |
+| Each content type's page designed in the builder, with the entry's parts placed in it | done |
 | WordPress import: pages, posts, images, menu, links rewritten, old addresses kept alive, a report of what did not come over | done |
 | Import from the admin: choose the file, see what would come over and what would not, then run it | done |
 | Modules (isolated plugins) | planned |

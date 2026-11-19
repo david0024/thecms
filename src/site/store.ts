@@ -19,6 +19,7 @@
  */
 import { SQL } from 'bun';
 import {
+  type Block,
   imageExt,
   imageSources,
   isMediaName,
@@ -140,6 +141,9 @@ export function shownAddress(address: string): string {
 }
 
 type Row = Record<string, unknown>;
+
+/** A type's page is cleaned as a page's blocks are: the same rules, the same limits. */
+const cleanTemplate = (blocks: unknown[]): Block[] => normalizePage({ slug: '', title: 'template', blocks }).page.blocks;
 
 export class Store {
   readonly kind: DatabaseKind;
@@ -285,6 +289,43 @@ export class Store {
   /** Whether the theme being worked on differs from the published one. */
   async themeChanged(): Promise<boolean> {
     return JSON.stringify(await this.theme()) !== JSON.stringify(await this.publishedTheme());
+  }
+
+  /**
+   * The page a content type draws its entries with (ADR 0015), as it is being
+   * worked on. Like the theme it has a draft and a published copy, so
+   * changing it never changes the live site until it is published. Null: the
+   * type uses the default page.
+   */
+  async template(typeId: string): Promise<Block[] | null> {
+    return this.readTemplate(`template:${(await this.type(typeId)).id}`);
+  }
+
+  /** The page visitors see entries of this type in. */
+  async publishedTemplate(typeId: string): Promise<Block[] | null> {
+    return this.readTemplate(`template:${(await this.type(typeId)).id}:published`);
+  }
+
+  private async readTemplate(key: string): Promise<Block[] | null> {
+    const raw = await this.getMeta(key);
+    return Array.isArray(raw) ? cleanTemplate(raw) : null;
+  }
+
+  /** Replaces a type's page being worked on; null goes back to the default page. */
+  async setTemplate(typeId: string, blocks: unknown): Promise<Block[] | null> {
+    const type = await this.type(typeId);
+    const clean = Array.isArray(blocks) ? cleanTemplate(blocks) : null;
+    await this.setMeta(`template:${type.id}`, clean);
+    return clean;
+  }
+
+  async publishTemplate(typeId: string): Promise<void> {
+    await this.setMeta(`template:${(await this.type(typeId)).id}:published`, await this.template(typeId));
+  }
+
+  /** Whether a type's page differs from what visitors see. */
+  async templateChanged(typeId: string): Promise<boolean> {
+    return JSON.stringify(await this.template(typeId)) !== JSON.stringify(await this.publishedTemplate(typeId));
   }
 
   /** Saves a page's draft. The published copy, if any, is left as it is. */
@@ -463,6 +504,10 @@ export class Store {
     for (const row of await this.rows<{ type: string; draft: string; published: string | null }>('SELECT type, draft, published FROM entries ORDER BY type, slug')) {
       const copies = [row.draft, row.published].filter((c): c is string => c !== null).map((c) => normalizePost(JSON.parse(c), undefined, types.get(row.type)).post);
       if (copies.some((post) => postImageSources(post).some((src) => mediaNameOf(src) === name))) titles.push((copies[0] as Post).title);
+    }
+    for (const type of contentTypes(site)) {
+      const copies = [await this.template(type.id), await this.publishedTemplate(type.id)];
+      if (copies.some((blocks) => imageSources(blocks ?? []).some((src) => mediaNameOf(src) === name))) titles.push(`the page of "${type.name}"`);
     }
     return titles;
   }

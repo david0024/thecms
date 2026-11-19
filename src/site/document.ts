@@ -57,8 +57,23 @@ export function renderParts(site: Site, theme: Theme, page: Page, menu: MenuItem
 }
 
 /** The same for an entry of a content type; a blog post when no type is named. */
-export function renderPostParts(site: Site, theme: Theme, post: Post, menu: MenuItem[], editing = false, type: ContentType = postsType(site.blogTitle), lists: EntryLists = {}): { body: string; css: string } {
-  return { body: clean(render(PostLayout, { props: { site, post, menu, editing, type, lists } }).body), css: own(post.blocks, theme) };
+export function renderPostParts(
+  site: Site,
+  theme: Theme,
+  post: Post,
+  menu: MenuItem[],
+  editing = false,
+  type: ContentType = postsType(site.blogTitle),
+  lists: EntryLists = {},
+  /** The type's own page (ADR 0015); null draws the default one. */
+  template: Block[] | null = null,
+  /** The editor is changing the type's page, with this entry as the example. */
+  designing = false,
+): { body: string; css: string } {
+  return {
+    body: clean(render(PostLayout, { props: { site, post, menu, editing, type, lists, template, designing } }).body),
+    css: own([...(template ?? []), ...post.blocks], theme),
+  };
 }
 
 interface Head {
@@ -114,8 +129,8 @@ export function renderPage(site: Site, theme: Theme, page: Page, menu: MenuItem[
 
 const feedOf = (site: Site, type: ContentType): string => (site.url && type.feed ? feedPath(type) : '');
 
-export function renderPost(site: Site, theme: Theme, post: Post, menu: MenuItem[], type: ContentType = postsType(site.blogTitle), lists: EntryLists = {}): string {
-  const { body, css } = renderPostParts(site, theme, post, menu, false, type, lists);
+export function renderPost(site: Site, theme: Theme, post: Post, menu: MenuItem[], type: ContentType = postsType(site.blogTitle), lists: EntryLists = {}, template: Block[] | null = null): string {
+  const { body, css } = renderPostParts(site, theme, post, menu, false, type, lists, template);
   return documentHtml(
     site,
     {

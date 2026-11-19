@@ -12,7 +12,7 @@
  */
 import { readdir } from 'node:fs/promises';
 import { compile } from 'svelte/compiler';
-import { MEDIA_MAX_BYTES, MEDIA_PREFIX, normalizePage, contentTypes, listPath, type MenuList, normalizePost, parseTheme, POSTS_TYPE, reservedSlugs, type Theme, themeCss } from '../core/index.ts';
+import { type ContentType, defaultTemplate, MEDIA_MAX_BYTES, MEDIA_PREFIX, normalizePage, type Page, type Post, contentTypes, listPath, type MenuList, normalizePost, parseTheme, POSTS_TYPE, reservedSlugs, type Theme, themeCss } from '../core/index.ts';
 import type { EntryLists } from '../blocks/editing.ts';
 import { type FetchImage, fetchImage as fetchOverNetwork, IMPORT_MAX_BYTES, type ImportReport, runImport } from '../import/run.ts';
 import { type ImportPlan, planImport } from '../import/wxr.ts';
@@ -187,11 +187,38 @@ export async function startEditor(store: Store, options: { port?: number; listen
     return out;
   };
   /** Every list the admin shows: the pages, and each content type's entries by the type's name. */
-  const lists = async (): Promise<{ pages: Awaited<ReturnType<Store['pages']>>; posts: Listed; entries: Record<string, Listed> }> => ({
+  /** Each type's own page (ADR 0015): whether it has one, and whether visitors see what is being worked on. */
+  const templates = async (): Promise<Record<string, { custom: boolean; published: boolean; changed: boolean }>> => {
+    const out: Record<string, { custom: boolean; published: boolean; changed: boolean }> = {};
+    for (const type of contentTypes(await store.site())) {
+      const draft = await store.template(type.id);
+      const live = await store.publishedTemplate(type.id);
+      out[type.id] = { custom: draft !== null, published: live !== null || draft === null, changed: JSON.stringify(draft) !== JSON.stringify(live) };
+    }
+    return out;
+  };
+  const lists = async (): Promise<{ pages: Awaited<ReturnType<Store['pages']>>; posts: Listed; entries: Record<string, Listed>; templates: Awaited<ReturnType<typeof templates>> }> => ({
     pages: await store.pages(),
     posts: await store.posts(),
     entries: await allEntries(),
+    templates: await templates(),
   });
+  /** A type's page as the builder edits it: a page whose blocks are the type's page, named after the type. */
+  const templateDoc = async (type: ContentType): Promise<Page> => ({
+    slug: type.id,
+    title: `${type.singular} page`,
+    description: '',
+    inMenu: false,
+    blocks: (await store.template(type.id)) ?? defaultTemplate(),
+  });
+  /** What a type's page is drawn with in the builder: its newest entry, or an example when it has none. */
+  const sampleEntry = async (type: ContentType): Promise<Post> =>
+    (await store.draftEntries(type.id))[0] ??
+    normalizePost(
+      { slug: 'example', title: `An example ${type.singular.toLowerCase()}`, excerpt: '', blocks: [{ type: 'text', content: { body: [{ type: 'paragraph', children: [{ text: `What a ${type.singular.toLowerCase()} says goes here.` }] }] } }] },
+      new Date().toISOString().slice(0, 10),
+      type,
+    ).post;
   const state = async (): Promise<unknown> => ({ site: await store.site(), theme: await theme(), themeChanged: await store.themeChanged(), themes, ...(await lists()) });
 
   /** One import at a time; it outlives the request that started it, because copying images takes minutes. */
@@ -250,6 +277,30 @@ export async function startEditor(store: Store, options: { port?: number; listen
     const route = `${request.method} ${url.pathname}`;
     // An entry of a content type is edited through the same calls as a page; `kind` names its type.
     const asked = String(url.searchParams.get('kind') ?? body.kind ?? 'page');
+    // A type's own page (ADR 0015) is edited through the same calls, as `template:<type>`.
+    if (asked.startsWith('template:')) {
+      const type = await store.type(asked.slice(9));
+      switch (route) {
+        case 'GET /api/page':
+          return json({ page: await templateDoc(type) });
+        case 'PUT /api/page': {
+          const { page, issues } = normalizePage({ ...(body.page as object), title: 'template' });
+          await store.setTemplate(type.id, page.blocks);
+          return json({ page: await templateDoc(type), issues, ...(await lists()) });
+        }
+        case 'DELETE /api/page':
+          // Back to the default page. Visitors keep what is published until it is published.
+          await store.setTemplate(type.id, null);
+          return json(await lists());
+        case 'POST /api/publish':
+          await store.publishTemplate(type.id);
+          return json(await lists());
+        case 'POST /api/render': {
+          const { page } = normalizePage({ ...(body.page as object), title: 'template' });
+          return json(renderPostParts(await store.site(), await theme(), await sampleEntry(type), await menu(), true, type, await entryLists(), page.blocks, true));
+        }
+      }
+    }
     if (asked !== 'page') {
       const type = await store.type(asked === 'post' ? POSTS_TYPE : asked);
       switch (route) {
@@ -270,7 +321,7 @@ export async function startEditor(store: Store, options: { port?: number; listen
           await store.publishEntry(type.id, String(body.slug ?? ''));
           return json(await lists());
         case 'POST /api/render':
-          return json(renderPostParts(await store.site(), await theme(), normalizePost(body.page, new Date().toISOString().slice(0, 10), type).post, await menu(), true, type, await entryLists()));
+          return json(renderPostParts(await store.site(), await theme(), normalizePost(body.page, new Date().toISOString().slice(0, 10), type).post, await menu(), true, type, await entryLists(), await store.template(type.id)));
       }
     }
     switch (route) {

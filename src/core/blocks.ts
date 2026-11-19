@@ -22,6 +22,8 @@ export type Field =
   /** The name of a content type: where a block that lists entries takes them from. */
   | { kind: 'source' }
   | { kind: 'number'; min: number; max: number }
+  /** Which part of an entry a block of an entry's page shows (ADR 0014): its title, its date, one of its fields. */
+  | { kind: 'part' }
   | { kind: 'list'; max: number; item: Record<string, Field> };
 
 export interface ImageValue {
@@ -90,6 +92,11 @@ export const BLOCKS = {
     fields: { title: text(200), source: { kind: 'source' }, count: { kind: 'number', min: 1, max: 24 }, more: text(80) },
     create: () => ({ title: 'Latest posts', source: POSTS_TYPE, count: 3, more: 'See all' }),
   },
+  /** A part of the entry being shown, on the page a content type designs for its entries (ADR 0014). Draws nothing anywhere else. */
+  entry: {
+    fields: { part: { kind: 'part' } },
+    create: () => ({ part: 'header' }),
+  },
   group: {
     container: true,
     fields: {},
@@ -98,6 +105,20 @@ export const BLOCKS = {
 } as const satisfies Record<string, BlockDef>;
 
 export type BlockType = keyof typeof BLOCKS;
+
+/**
+ * The parts of an entry a page can show: everything above its own blocks as
+ * the default page draws it (`header`), each piece of that alone, the
+ * entry's own blocks (`body`), or one field of its type (`field:client`).
+ */
+export const ENTRY_PARTS = ['header', 'title', 'meta', 'cover', 'fields', 'body'] as const;
+export const ENTRY_PART = /^(header|title|meta|cover|fields|body|field:[a-z0-9_]{1,40})$/;
+
+/** What a type's page starts as when the owner first opens it: the default page, as blocks to change. */
+export const defaultTemplate = (): Block[] => [
+  { id: newId(), type: 'entry', content: { part: 'header' } },
+  { id: newId(), type: 'entry', content: { part: 'body' } },
+];
 export const BLOCK_TYPES = Object.keys(BLOCKS) as BlockType[];
 
 export const isBlockType = (v: unknown): v is BlockType => typeof v === 'string' && Object.hasOwn(BLOCKS, v);
@@ -151,6 +172,10 @@ function cleanField(field: Field, raw: unknown): unknown {
       return cleanLink(raw);
     case 'source':
       return slugify(raw) || POSTS_TYPE;
+    case 'part': {
+      const value = str(raw, 60);
+      return ENTRY_PART.test(value) ? value : 'header';
+    }
     case 'number': {
       const n = Math.round(Number(raw));
       return Number.isFinite(n) ? Math.min(field.max, Math.max(field.min, n)) : field.min;

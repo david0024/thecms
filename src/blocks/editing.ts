@@ -30,6 +30,28 @@ export const marker = (): ((path: string) => string | undefined) => {
  */
 export type EntryLists = Record<string, { type: ContentType; entries: Post[] }>;
 
+/**
+ * The entry a content type's page is drawn for (ADR 0014), and which part of
+ * that page the editor is changing: the entry's own blocks (`entry`), the
+ * type's page around them (`template`), or neither, for a visitor.
+ */
+export interface EntryContext {
+  post: Post;
+  type: ContentType;
+  language: string;
+  editing: 'entry' | 'template' | null;
+  /** Already inside the entry's own blocks: a part met there draws nothing, so a page never holds itself. */
+  inBody?: boolean;
+}
+
+const ENTRY = 'thecms:entry';
+
+export const setEntry = (entry: EntryContext): void => {
+  setContext(ENTRY, entry);
+};
+
+export const getEntry = (): EntryContext | undefined => getContext(ENTRY) as EntryContext | undefined;
+
 const LISTS = 'thecms:lists';
 
 export const setLists = (lists: EntryLists, language: string): void => {

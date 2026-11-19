@@ -13,6 +13,7 @@ import {
   type MenuList,
   POSTS_TYPE,
   BLOCK_TYPES,
+  ENTRY_PARTS,
   type BlockDef,
   BLOCKS,
   type BlockStyle,
@@ -80,12 +81,17 @@ const block = $derived(page && selected ? findById(page.blocks, selected) : null
 const def = $derived(block ? (BLOCKS[block.type] as BlockDef) : null);
 const types = $derived(site ? contentTypes(site.site) : []);
 /** The content type of what is open; none for a page. */
-const type = $derived<ContentType | undefined>(kind === 'page' ? undefined : types.find((ty) => ty.id === kind));
-const info = $derived((type ? site?.entries[type.id] : site?.pages)?.find((p) => p.slug === page?.slug));
+/** A content type's own page is open (ADR 0015), not a page or an entry. */
+const designing = $derived(kind.startsWith('template:'));
+const designed = $derived<ContentType | undefined>(designing ? types.find((ty) => `template:${ty.id}` === kind) : undefined);
+const type = $derived<ContentType | undefined>(kind === 'page' || designing ? undefined : types.find((ty) => ty.id === kind));
+const info = $derived(designed ? site?.templates[designed.id] : (type ? site?.entries[type.id] : site?.pages)?.find((p) => p.slug === page?.slug));
+/** What the entry block can show on the page being designed: the parts every entry has, then the type's own fields. */
+const parts = $derived(designed ? [...ENTRY_PARTS.map((part) => ({ id: part, name: t.parts[part] ?? part })), ...designed.fields.map((f) => ({ id: `field:${f.key}`, name: f.label }))] : []);
 /** The lists a menu can lead to: each content type that has an entry. */
 const menuLists = $derived<MenuList[]>(types.filter((ty) => (site?.entries[ty.id]?.length ?? 0) > 0).map((ty) => ({ id: ty.id, title: ty.name, href: listPath(ty) })));
 /** The list the open page or entry came from. */
-const home = $derived<typeof view>(kind === 'page' ? 'pages' : `list:${kind}`);
+const home = $derived<typeof view>(designing ? 'types' : kind === 'page' ? 'pages' : `list:${kind}`);
 const freeOnPage = $derived(page ? countFreeValues(page.blocks) : 0);
 
 const fail = (error: unknown): void => {
@@ -286,8 +292,8 @@ async function createPage(title: string, newKind: Kind): Promise<void> {
   try {
     // An entry without a date is dated today by the server.
     const fresh = newKind === 'page' ? { slug, title, description: '', inMenu: true, blocks: [] } : ({ slug, title, blocks: [] } as unknown as Post);
-    const { pages, posts, entries } = await api.save(fresh, true, newKind);
-    site = { ...site, pages, posts, entries };
+    const { pages, posts, entries, templates } = await api.save(fresh, true, newKind);
+    site = { ...site, pages, posts, entries, templates };
     await edit(slug, newKind);
   } catch (error) {
     fail(error);
@@ -299,8 +305,8 @@ async function removePage(): Promise<void> {
   try {
     clearTimeout(saveTimer);
     saving = 'saved';
-    const { pages, posts, entries } = await api.remove(page.slug, kind);
-    site = { ...site, pages, posts, entries };
+    const { pages, posts, entries, templates } = await api.remove(page.slug, kind);
+    site = { ...site, pages, posts, entries, templates };
     view = home;
     await open('');
   } catch (error) {
@@ -313,8 +319,8 @@ async function publish(): Promise<void> {
   try {
     await save();
     if (saving !== 'saved') return;
-    const { pages, posts, entries } = await api.publish(page.slug, kind);
-    site = { ...site, pages, posts, entries };
+    const { pages, posts, entries, templates } = await api.publish(page.slug, kind);
+    site = { ...site, pages, posts, entries, templates };
   } catch (error) {
     fail(error);
   }
@@ -470,7 +476,7 @@ onMount(() => {
     {#if view === 'pages'}
       <ContentList kind="page" items={site.pages} onopen={(slug) => edit(slug, 'page')} oncreate={(title) => createPage(title, 'page')} />
     {:else if view === 'types'}
-      <ContentTypes site={site.site} counts={Object.fromEntries(types.map((ty) => [ty.id, site?.entries[ty.id]?.length ?? 0]))} onsave={saveTypes} />
+      <ContentTypes site={site.site} counts={Object.fromEntries(types.map((ty) => [ty.id, site?.entries[ty.id]?.length ?? 0]))} templates={site.templates} onsave={saveTypes} ondesign={(id) => edit(id, `template:${id}`)} />
     {:else if view.startsWith('list:')}
       {@const listed = types.find((ty) => `list:${ty.id}` === view)}
       {#if listed}
@@ -488,7 +494,7 @@ onMount(() => {
     <!-- The builder stays in the page while a list shows, so the canvas is ready when a page is chosen. -->
     <div class="builder" hidden={view !== 'edit'}>
     <header class="bar">
-      <button type="button" class="quiet" onclick={() => (view = home)} data-back>← {type ? type.name : t.nav.pages}</button>
+      <button type="button" class="quiet" onclick={() => (view = home)} data-back>← {designed ? t.ctypes.heading : type ? type.name : t.nav.pages}</button>
       <strong class="doc">{page.title}</strong>
       <button type="button" onclick={undo} disabled={past.length === 0} title={t.bar.undo} aria-label={t.bar.undo}>↶</button>
       <button type="button" onclick={redo} disabled={future.length === 0} title={t.bar.redo} aria-label={t.bar.redo}>↷</button>
@@ -512,7 +518,7 @@ onMount(() => {
     <aside class="left">
       <h2>{t.app.blocks}</h2>
       <ul class="library">
-        {#each BLOCK_TYPES as type (type)}
+        {#each BLOCK_TYPES.filter((ty) => ty !== 'entry' || designing) as type (type)}
           <li>
             <button
               type="button"
@@ -552,6 +558,7 @@ onMount(() => {
               fields={def.fields}
               content={block.content}
               sources={types}
+              {parts}
               onchange={(path, value) => patch(block.id, (b) => ({ ...b, content: setPath(b.content, path, value) }))}
             />
           {/key}
@@ -572,6 +579,13 @@ onMount(() => {
                 })}
             />
           {/key}
+        {/if}
+      {:else if designed}
+        <h2>{t.design.heading(designed.singular)}</h2>
+        <p class="hint">{t.design.intro(designed.name)}</p>
+        {#if site.templates[designed.id]?.custom}
+          <button type="button" class="danger" onclick={removePage} data-design-reset>{t.design.reset}</button>
+          <small>{t.design.resetHint}</small>
         {/if}
       {:else}
         <h2>{type ? type.singular : t.inspector.page}</h2>
