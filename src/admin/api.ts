@@ -3,7 +3,7 @@
  * the key from the address the command printed; on a served admin, the
  * session cookie and a header only the admin's own page sends (ADR 0022).
  */
-import type { Block, ExtensionAction, ExtensionCollection, Page, Post, Site, Theme } from '../core/index.ts';
+import type { Block, ExtensionAction, Redirect, RedirectProblem, ExtensionCollection, Page, Post, Site, Theme } from '../core/index.ts';
 import type { ViewDocument } from '../view/index.ts';
 import type { ExtensionOffer } from '../site/extensions.ts';
 import type { ImportPreview, ImportProgress } from '../site/server.ts';
@@ -182,10 +182,13 @@ export const api = {
   runOnPage: (name: string, action: string, page: Doc, ask: Record<string, string>, fixed = false) => call<{ page: Page }>('POST', `/api/extensions/${name}/run/${action}`, { page, ask, fixed }),
   runEachLanguage: (name: string, action: string, slug: string, kind: Kind, ask: Record<string, string>) => call<{ done: string[]; skipped: string[] } & Lists>('POST', `/api/extensions/${name}/each/${action}`, { slug, kind, ask }),
   state: () => call<State>('GET', '/api/state'),
+  move: (from: string, to: string) => call<{ page: Page } & Lists>('POST', '/api/move', { from, to }),
+  redirects: () => call<{ redirects: Redirect[] }>('GET', '/api/redirects'),
+  setRedirects: (redirects: Redirect[]) => call<{ redirects: Redirect[] }>('PUT', '/api/redirects', { redirects }),
   page: (slug: string, kind: Kind = 'page') => call<{ page: Doc; translation?: TranslationInfo }>('GET', `/api/page?kind=${kind}&slug=${encodeURIComponent(slug)}`),
   translate: (slug: string, language: string, kind: Kind = 'page') => call<{ page: Page; translation: TranslationInfo } & Lists>('POST', '/api/translate', { slug, language, kind }),
   split: (of: string, language: string, kind: Kind = 'page') => call<{ page: Page; translation: TranslationInfo } & Lists>('POST', '/api/split', { of, language, kind }),
-  check: () => call<{ check: { broken: { href: string; from: string[] }[]; unnamed: { src: string; on: string[] }[]; untranslated?: { slug: string; language: string; missing: number }[] } }>('GET', '/api/check'),
+  check: () => call<{ check: { broken: { href: string; from: string[] }[]; unnamed: { src: string; on: string[] }[]; untranslated?: { slug: string; language: string; missing: number }[]; redirects?: RedirectProblem[] } }>('GET', '/api/check'),
   versions: (slug: string, kind: Kind = 'page') => call<{ versions: { at: string; title: string }[] }>('GET', `/api/versions?kind=${kind}&slug=${encodeURIComponent(slug)}`),
   version: (slug: string, at: string, kind: Kind = 'page') => call<{ page: Doc }>('GET', `/api/version?kind=${kind}&slug=${encodeURIComponent(slug)}&at=${encodeURIComponent(at)}`),
   save: (page: Doc, create = false, kind: Kind = 'page', translation: TranslationInfo | null = null) => call<{ page: Doc; translation?: TranslationInfo } & Lists>('PUT', '/api/page', { page, create, kind, ...(translation ? { translation } : {}) }),

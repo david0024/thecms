@@ -23,6 +23,9 @@ import {
   type ExtensionPackage,
   fillTranslation,
   areaBlock,
+  addRedirect,
+  pageSlug,
+  type MenuNode,
   LAYOUT_AREAS,
   READY_LAYOUTS,
   parseExtension,
@@ -521,10 +524,62 @@ export class Store {
     const slug = found?.translated ? found.of : where;
     // Asked before, not counted after: MySQL counts a row that already held these values as unchanged.
     if (!(await this.row('SELECT 1 AS found FROM pages WHERE slug = ?', [slug]))) throw new Error(`no page "${slug}"`);
+    const before = await this.liveAddresses(slug);
     const at = now.toISOString();
     await this.run('UPDATE pages SET published = draft, published_at = ? WHERE slug = ?', [at, slug]);
     const row = await this.row<{ published: string }>('SELECT published FROM pages WHERE slug = ?', [slug]);
     await this.keepVersion('page', slug, String(row?.published), at);
+    // A translation published at a new address leaves a way from the old one (ADR 0036).
+    await this.followMoves(before, await this.liveAddresses(slug));
+  }
+
+  /** Where a page and each of its translations are published, by language. */
+  private async liveAddresses(of: string): Promise<Map<string, string>> {
+    return new Map((await this.published()).filter((p) => p.of === of).map((p) => [p.language, p.slug]));
+  }
+
+  /** Each address visitors knew that moved, kept as a redirect to where it went (ADR 0036). */
+  private async followMoves(before: Map<string, string>, after: Map<string, string>): Promise<void> {
+    let redirects = await this.redirects();
+    const start = JSON.stringify(redirects);
+    for (const [language, old] of before) {
+      const now = after.get(language);
+      if (now !== undefined && now !== old) redirects = addRedirect(redirects, pagePath(old), pagePath(now));
+    }
+    if (JSON.stringify(redirects) !== start) await this.setRedirects(redirects);
+  }
+
+  /**
+   * Gives a page another address (ADR 0036): its draft, what is published,
+   * its versions and the menu go with it, and every address of it visitors
+   * knew leads to the new one.
+   */
+  async movePage(from: string, input: string): Promise<Page> {
+    const site = await this.site();
+    const to = pageSlug(input);
+    const page = await this.draft(from);
+    if (!page) throw new Error(`no page "${from}"`);
+    if (from === '') throw new Error('the home page stays at /');
+    if (!to || to === from) throw new Error('a page moves to another address');
+    if (languageOf(site, to) !== languageOf(site, from)) throw new Error(`a page in ${languageName(languageOf(site, from))} stays under its language`);
+    const problem = slugProblem(site, to, reservedSlugs(site));
+    if (problem) throw new Error(problem);
+    const moved = { ...page, slug: to };
+    const others = (await this.drafts()).filter((p) => p.slug !== from);
+    const taken = placePages(site, others).find((p) => placePages(site, [moved]).some((m) => m.slug === p.slug));
+    if (taken) throw new Error(`"/${taken.slug}/" is already the address of "${taken.title}"`);
+    const before = await this.liveAddresses(from);
+    const row = await this.row<{ published: string | null }>('SELECT published FROM pages WHERE slug = ?', [from]);
+    const published = row?.published ? JSON.stringify({ ...JSON.parse(row.published), slug: to }) : null;
+    await this.run('UPDATE pages SET slug = ?, draft = ?, published = ?, updated_at = ? WHERE slug = ?', [to, JSON.stringify(moved), published, new Date().toISOString(), from]);
+    await this.run('UPDATE versions SET slug = ? WHERE kind = ? AND slug = ?', [to, 'page', from]);
+    // The menu names a page by its address: it follows the page.
+    if (site.menu) {
+      const follow = (nodes: MenuNode[]): MenuNode[] => nodes.map((n) => ({ ...n, target: n.target.kind === 'page' && n.target.slug === from ? { kind: 'page', slug: to } : n.target, children: follow(n.children) }));
+      await this.setMeta('site', { ...site, menu: follow(site.menu) });
+    }
+    await this.followMoves(before, await this.liveAddresses(to));
+    return moved;
   }
 
   async draft(slug: string): Promise<Page | null> {

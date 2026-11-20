@@ -41,3 +41,52 @@ export function normalizeRedirects(input: unknown): Redirect[] {
 
 /** The file an old address is served from: `/old/` is `old/index.html`. */
 export const redirectFile = (from: string): string => (from.endsWith('/') ? `${from.slice(1)}index.html` : from.slice(1));
+
+/**
+ * The list with one more old address leading to a new one (ADR 0036): what
+ * led to the old address now leads straight to the new one, so no visitor
+ * goes through two hops, and nothing leads away from an address that is
+ * answered again.
+ */
+export function addRedirect(list: readonly Redirect[], from: string, to: string): Redirect[] {
+  const target = (r: Redirect): string => r.to.split('#')[0] as string;
+  const moved = list.filter((r) => r.from !== to && r.from !== from).map((r) => (target(r) === from ? { ...r, to: to + r.to.slice(from.length) } : r));
+  return normalizeRedirects([...moved, { from, to }]);
+}
+
+/** What is wrong with a list of redirects, for the check before publishing (ADR 0036). */
+export interface RedirectProblem {
+  from: string;
+  to: string;
+  /** `loop`: following it comes back to where it started. `chain`: it leads to another old address. `missing`: it leads nowhere on the site. `shadowed`: a page lives at the old address, so it is never followed. */
+  problem: 'loop' | 'chain' | 'missing' | 'shadowed';
+}
+
+/** Each redirect that loops, chains, leads nowhere or is hidden by a page, given the addresses the site answers. */
+export function redirectProblems(list: readonly Redirect[], answered: ReadonlySet<string>): RedirectProblem[] {
+  const next = new Map(list.map((r) => [r.from, r.to.split('#')[0] as string]));
+  const out: RedirectProblem[] = [];
+  for (const { from, to } of list) {
+    const target = to.split('#')[0] as string;
+    if (answered.has(from)) {
+      out.push({ from, to, problem: 'shadowed' });
+      continue;
+    }
+    const seen = new Set([from]);
+    let at = target;
+    while (next.has(at) && !seen.has(at) && !answered.has(at)) {
+      seen.add(at);
+      at = next.get(at) as string;
+    }
+    if (seen.has(at)) out.push({ from, to, problem: 'loop' });
+    else if (next.has(target) && !answered.has(target)) out.push({ from, to, problem: 'chain' });
+    else if (!answered.has(target)) out.push({ from, to, problem: 'missing' });
+  }
+  return out;
+}
+
+/** The redirects as Cloudflare Pages and Netlify read them: one `from to 301` a line. */
+export const redirectsFile = (list: readonly Redirect[]): string => list.map((r) => `${r.from} ${r.to} 301`).join('\n') + (list.length ? '\n' : '');
+
+/** The same for Apache. */
+export const htaccessFile = (list: readonly Redirect[]): string => list.map((r) => `Redirect 301 ${r.from} ${r.to}`).join('\n') + (list.length ? '\n' : '');

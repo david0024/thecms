@@ -506,6 +506,22 @@ async function setAdminLanguage(adminLanguage: string): Promise<void> {
   }
 }
 
+/** The page at another address (ADR 0036): saved first, then moved; the old address leads to the new one. */
+async function movePage(input: HTMLInputElement): Promise<void> {
+  if (!page || !site || kind !== 'page') return;
+  const from = page.slug;
+  try {
+    await save();
+    const { page: moved } = await api.move(from, input.value);
+    // The menu follows the page, so the site is read again.
+    site = await api.state();
+    await edit(moved.slug, 'page');
+  } catch (error) {
+    input.value = from;
+    fail(error);
+  }
+}
+
 /** The layouts as the owner set them (ADR 0035). Answers with the reason when the site refuses, '' when it took them. */
 async function saveLayouts(next: Layout[]): Promise<string> {
   if (!site) return '';
@@ -848,6 +864,13 @@ onMount(() => {
           {@const info = site.sections.find((one) => one.slug === page?.slug)}
           <p class="hint" data-section-used>{t.sections.usedOn}: {info?.usedOn.length ? info.usedOn.join(', ') : t.sections.unused}</p>
         {:else if 'inMenu' in page}
+          {#if kind === 'page' && page.slug !== ''}
+            <label class="field">
+              <span>{t.inspector.pageAddress}</span>
+              <input type="text" value={page.slug} onchange={(e) => movePage(e.currentTarget)} data-page-address />
+              <small>{t.inspector.pageAddressHint}</small>
+            </label>
+          {/if}
           <label class="check" class:off={site.site.menu !== null} title={site.site.menu !== null ? t.inspector.inMenuOff : undefined}>
             <input type="checkbox" disabled={site.site.menu !== null} checked={page.inMenu} onchange={(e) => page && 'inMenu' in page && change({ ...page, inMenu: e.currentTarget.checked }, { step: false })} />
             <span>{t.inspector.inMenu}</span>
