@@ -54,7 +54,8 @@ const words = (query: string): string[] => [...new Set(folded(query).text.split(
 export function searchIndex(files: Map<string, string | Uint8Array>): SearchDoc[] {
   const docs: SearchDoc[] = [];
   for (const [file, body] of files) {
-    if (typeof body !== 'string' || !file.endsWith('index.html') || body.includes('http-equiv="refresh"')) continue;
+    // A page behind a password is not found by search: its words would be shown to anyone (ADR 0043).
+    if (typeof body !== 'string' || !file.endsWith('index.html') || body.includes('http-equiv="refresh"') || body.includes('<meta name="thecms-locked"')) continue;
     const main = /<main[^>]*>([\s\S]*?)<\/main>/.exec(body)?.[1] ?? '';
     if (main.includes('class="b blog"')) continue;
     const title = decode(/<meta property="og:title" content="([^"]*)">/.exec(body)?.[1] ?? '');

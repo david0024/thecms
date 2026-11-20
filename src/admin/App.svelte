@@ -67,6 +67,7 @@ import MediaLibrary from './MediaLibrary.svelte';
 import People from './People.svelte';
 import Messages from './Messages.svelte';
 import Comments from './Comments.svelte';
+import PageLock from './PageLock.svelte';
 import Fields from './Fields.svelte';
 import { say, t } from './messages.ts';
 import { setPath } from './paths.ts';
@@ -897,6 +898,7 @@ onMount(() => {
         <ExtensionTools extensions={site.extensions} on="page" languages={siteLanguages} onrun={runOnPage} oneach={everyLanguage ? runEveryLanguage : undefined} />
         {#if !designing && !sectioning && !translation}
           {#key `${kind}/${page.slug}`}<Schedule slug={page.slug} {kind} />{/key}
+          {#if kind === 'page' && page.slug !== ''}{#key page.slug}<PageLock slug={page.slug} />{/key}{/if}
         {/if}
         {#if !designing}
           {#key `${kind}/${page.slug}`}<Versions slug={page.slug} {kind} onrestore={(doc) => change(doc)} />{/key}

@@ -4,8 +4,10 @@
  * writes, served from memory; what a visitor sends goes under `/_/`. A site
  * that needs nothing dynamic can still be exported to any host instead.
  */
+import { timingSafeEqual } from 'node:crypto';
 import type { Mailer } from './mail.ts';
-import { publishedSite } from './export.ts';
+import { lockOf, publishedSite } from './export.ts';
+import { lockCookie, lockedPage } from './locks.ts';
 import { startClock } from './clock.ts';
 import { type ExtensionHostApi, extensionHost, type Spawn } from './extensions.ts';
 import { startForms } from './forms.ts';
@@ -74,6 +76,24 @@ export function startRuntime(
     return built.files;
   };
 
+  /** Passwords a visitor may try in a window: enough for a person, too few to guess one. */
+  const tries = new Map<string, number[]>();
+  const tooMany = (ip: string): boolean => {
+    const at = now();
+    const recent = (tries.get(ip) ?? []).filter((t) => at - t < 10 * 60_000);
+    tries.set(ip, recent);
+    if (recent.length >= 10) return true;
+    recent.push(at);
+    return false;
+  };
+  const cookieOf = (request: Request, name: string): string => {
+    for (const part of (request.headers.get('cookie') ?? '').split(';')) {
+      const [key, ...value] = part.trim().split('=');
+      if (key === name) return value.join('=');
+    }
+    return '';
+  };
+
   /** What search reads, made once for each build of the site. */
   const indexes = new WeakMap<Map<string, string | Uint8Array>, SearchDoc[]>();
 
@@ -99,6 +119,22 @@ export function startRuntime(
     // An extension's own addresses: /_/x/<extension>/<path>.
     const routed = /^\/_\/x\/([a-z][a-z0-9-]{1,39})\/(.+)$/.exec(url.pathname);
     if (routed) return extensions.route(routed[1] as string, routed[2] as string, request);
+    if (url.pathname === '/_/unlock' && request.method === 'POST') {
+      // A password given for a page behind one (ADR 0043): right, and the visitor keeps its key; wrong, and they are told.
+      if (Number(request.headers.get('content-length') ?? 0) > 4096) return new Response('too large\n', { status: 413 });
+      const fields = new URLSearchParams((await request.text()).slice(0, 4096));
+      const back = /^\/(?!\/)[^\s\\#?]*$/.test(fields.get('back') ?? '') ? (fields.get('back') as string) : '/';
+      const files = await site();
+      const body = files.get(back.endsWith('/') ? `${back.slice(1)}index.html` : back.slice(1));
+      const slug = typeof body === 'string' ? lockOf(body) : null;
+      const key = slug !== null && !tooMany(ip || 'unknown') ? await store.unlockPage(slug, fields.get('password') ?? '') : null;
+      if (slug === null || key === null) return new Response(null, { status: 303, headers: { location: `${back}#locked-wrong` } });
+      const secure = url.protocol === 'https:' || request.headers.get('x-forwarded-proto') === 'https';
+      return new Response(null, {
+        status: 303,
+        headers: { location: back, 'set-cookie': `${lockCookie(slug)}=${key}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000${secure ? '; Secure' : ''}` },
+      });
+    }
     if (url.pathname === '/_/search' && (request.method === 'GET' || request.method === 'HEAD')) {
       const files = await site();
       const frame = files.get('404.html');
@@ -128,6 +164,16 @@ export function startRuntime(
     // An old address the export keeps answers here with a real 301, as Cloudflare and Apache do with its lists (ADR 0036).
     const moved = typeof body === 'string' ? /<meta http-equiv="refresh" content="0; url=([^"]+)">/.exec(body)?.[1] : undefined;
     if (moved) return new Response(null, { status: 301, headers: { location: moved.replaceAll('&amp;', '&') } });
+    const locked = typeof body === 'string' ? lockOf(body) : null;
+    if (locked !== null) {
+      // Behind a password: shown only to a visitor holding its key, and kept by no cache in between.
+      const key = await store.pageKey(locked);
+      const given = Buffer.from(cookieOf(request, lockCookie(locked)));
+      const opened = key !== null && given.length === key.length && timingSafeEqual(given, Buffer.from(key));
+      const page = opened ? file(own, body as string) : file(own, lockedPage(String(files.get('404.html')), url.pathname), 403);
+      page.headers.set('cache-control', 'private, no-store');
+      return page;
+    }
     if (body !== undefined) return file(own, body);
     // An address without its last slash leads to the page that has one.
     if (files.has(`${path}/index.html`)) return new Response(null, { status: 301, headers: { location: `${url.pathname}/${url.search}` } });

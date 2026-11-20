@@ -222,6 +222,16 @@ export const en = {
     export: 'Download as a file',
     erase: 'Erase everything from this address',
   },
+  lock: {
+    heading: 'Password',
+    open: 'Anyone can see this page.',
+    closed: 'Visitors need a password to see this page. It is not in the sitemap or the search, and an export does not hold it.',
+    runtime: 'A password is asked by the site\'s runtime (thecms run); on a site exported to a static host, this page cannot be opened.',
+    password: 'New password',
+    set: 'Ask for this password',
+    remove: 'Open it to everyone',
+    done: 'Saved. It applies at once to what is published.',
+  },
   comments: {
     heading: 'Comments',
     intro: 'What visitors wrote under entries. A comment is shown on the site once it is approved; a later one from the same address is shown at once. One nobody approves is deleted when messages are.',

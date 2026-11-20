@@ -83,6 +83,20 @@ const PORT = 4395;
     await page.locator('[data-schedule-at]').waitFor();
     assert(true, 'and that hour is taken back');
 
+    // A password (ADR 0043): set beside the page, refused when too short, and taken away.
+    await page.locator('[data-lock-state="open"]').waitFor();
+    await page.locator('[data-lock-password]').fill('abc');
+    await page.locator('[data-lock-set]').click();
+    await page.getByText('a password has 4 to 200 characters').waitFor();
+    assert(true, 'a password too short is refused, and the editor says why');
+    await page.locator('[data-lock-password]').fill('open sesame');
+    await page.locator('[data-lock-set]').click();
+    await page.locator('[data-lock-state="closed"]').waitFor();
+    assert((await page.locator('[data-lock-password]').inputValue()) === '', 'a page is put behind a password, which is not shown again');
+    await page.locator('[data-lock-remove]').click();
+    await page.locator('[data-lock-state="open"]').waitFor();
+    assert(true, 'and opened to everyone again');
+
     // The settings list it, and take one written by hand.
     await page.locator('[data-back]').click();
     await page.locator('[data-nav="settings"]').click();

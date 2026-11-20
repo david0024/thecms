@@ -157,6 +157,7 @@ const SQLITE: Dialect = {
     'CREATE TABLE IF NOT EXISTS media_sizes (name TEXT PRIMARY KEY, width INTEGER NOT NULL, height INTEGER NOT NULL)',
     'CREATE TABLE IF NOT EXISTS schedule (kind TEXT NOT NULL, slug TEXT NOT NULL, at TEXT NOT NULL, PRIMARY KEY (kind, slug))',
     'CREATE TABLE IF NOT EXISTS media_variants (name TEXT PRIMARY KEY, original TEXT NOT NULL, width INTEGER NOT NULL, bytes BLOB NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS page_locks (slug TEXT PRIMARY KEY, hash TEXT NOT NULL)',
     'CREATE TABLE IF NOT EXISTS extension_jobs (extension TEXT NOT NULL, action TEXT NOT NULL, last_at TEXT NOT NULL, PRIMARY KEY (extension, action))',
     'CREATE TABLE IF NOT EXISTS comments (id TEXT PRIMARY KEY, type TEXT NOT NULL, entry TEXT NOT NULL, name TEXT NOT NULL, email TEXT NOT NULL, body TEXT NOT NULL, consent TEXT NOT NULL, at TEXT NOT NULL, approved INTEGER NOT NULL)',
   ],
@@ -187,6 +188,7 @@ const POSTGRES: Dialect = {
     'CREATE TABLE IF NOT EXISTS media_sizes (name VARCHAR(255) PRIMARY KEY, width INTEGER NOT NULL, height INTEGER NOT NULL)',
     'CREATE TABLE IF NOT EXISTS schedule (kind VARCHAR(64) NOT NULL, slug VARCHAR(255) NOT NULL, at VARCHAR(40) NOT NULL, PRIMARY KEY (kind, slug))',
     'CREATE TABLE IF NOT EXISTS media_variants (name VARCHAR(255) PRIMARY KEY, original VARCHAR(255) NOT NULL, width INTEGER NOT NULL, bytes BYTEA NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS page_locks (slug VARCHAR(255) PRIMARY KEY, hash TEXT NOT NULL)',
     'CREATE TABLE IF NOT EXISTS extension_jobs (extension VARCHAR(64) NOT NULL, action VARCHAR(64) NOT NULL, last_at VARCHAR(40) NOT NULL, PRIMARY KEY (extension, action))',
     'CREATE TABLE IF NOT EXISTS comments (id VARCHAR(40) PRIMARY KEY, type VARCHAR(255) NOT NULL, entry VARCHAR(255) NOT NULL, name TEXT NOT NULL, email TEXT NOT NULL, body TEXT NOT NULL, consent TEXT NOT NULL, at VARCHAR(40) NOT NULL, approved INTEGER NOT NULL)',
   ],
@@ -216,6 +218,7 @@ const MYSQL: Dialect = {
     `CREATE TABLE IF NOT EXISTS media_sizes (name VARCHAR(255) PRIMARY KEY, width INTEGER NOT NULL, height INTEGER NOT NULL) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS schedule (kind VARCHAR(64) NOT NULL, slug VARCHAR(255) NOT NULL, at VARCHAR(40) NOT NULL, PRIMARY KEY (kind, slug)) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS media_variants (name VARCHAR(255) PRIMARY KEY, original VARCHAR(255) NOT NULL, width INTEGER NOT NULL, bytes LONGBLOB NOT NULL) ${MYSQL_TABLE}`,
+    `CREATE TABLE IF NOT EXISTS page_locks (slug VARCHAR(255) PRIMARY KEY, hash TEXT NOT NULL) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS extension_jobs (extension VARCHAR(64) NOT NULL, action VARCHAR(64) NOT NULL, last_at VARCHAR(40) NOT NULL, PRIMARY KEY (extension, action)) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS comments (id VARCHAR(40) PRIMARY KEY, type VARCHAR(255) NOT NULL, entry VARCHAR(255) NOT NULL, name TEXT NOT NULL, email TEXT NOT NULL, body TEXT NOT NULL, consent TEXT NOT NULL, at VARCHAR(40) NOT NULL, approved INTEGER NOT NULL) ${MYSQL_TABLE}`,
   ],
@@ -694,6 +697,7 @@ export class Store {
     const published = row?.published ? JSON.stringify({ ...JSON.parse(row.published), slug: to }) : null;
     await this.run('UPDATE pages SET slug = ?, draft = ?, published = ?, updated_at = ? WHERE slug = ?', [to, JSON.stringify(moved), published, new Date().toISOString(), from]);
     await this.run('UPDATE versions SET slug = ? WHERE kind = ? AND slug = ?', [to, 'page', from]);
+    await this.run('UPDATE page_locks SET slug = ? WHERE slug = ?', [to, from]);
     await this.run('UPDATE schedule SET slug = ? WHERE kind = ? AND slug = ?', [to, 'page', from]);
     // The menu names a page by its address: it follows the page.
     if (site.menu) {
@@ -859,6 +863,54 @@ export class Store {
     await this.run('DELETE FROM pages WHERE slug = ?', [slug]);
     await this.run('DELETE FROM versions WHERE kind = ? AND slug = ?', ['page', slug]);
     await this.run('DELETE FROM schedule WHERE kind = ? AND slug = ?', ['page', slug]);
+    await this.run('DELETE FROM page_locks WHERE slug = ?', [slug]);
+  }
+
+  // Pages behind a password (ADR 0043).
+
+  /**
+   * Puts a page, with each of its translations, behind a password, or takes
+   * it away (null). The password is kept only as its hash.
+   */
+  async lockPage(at: string, password: string | null): Promise<string[]> {
+    const found = await this.locate(at);
+    const slug = found?.translated ? found.of : at;
+    if (slug === '') throw new Error('the home page is open to everyone');
+    if (!(await this.row('SELECT 1 AS found FROM pages WHERE slug = ?', [slug]))) throw new Error(`no page "${slug}"`);
+    if (password === null) await this.run('DELETE FROM page_locks WHERE slug = ?', [slug]);
+    else {
+      if (password.length < 4 || password.length > 200) throw new Error('a password has 4 to 200 characters');
+      await this.run(this.dialect.upsert('page_locks', ['slug', 'hash'], ['slug'], ['hash']), [slug, await Bun.password.hash(password, { algorithm: 'argon2id' })]);
+    }
+    return this.lockedPages();
+  }
+
+  /** The pages behind a password, by the address of their main language. */
+  async lockedPages(): Promise<string[]> {
+    return (await this.rows<{ slug: string }>('SELECT slug FROM page_locks ORDER BY slug')).map((r) => String(r.slug));
+  }
+
+  /**
+   * Is this the page's password? When it is, the key a visitor keeps to see
+   * it: it changes with the password, so a new password shuts out everyone
+   * who had the old one. Null otherwise.
+   */
+  async unlockPage(slug: string, password: string): Promise<string | null> {
+    const row = await this.row<{ hash: string }>('SELECT hash FROM page_locks WHERE slug = ?', [slug]);
+    if (!row || !(await Bun.password.verify(password, String(row.hash)))) return null;
+    return this.pageKey(slug);
+  }
+
+  /** The key that opens a page for a visitor who gave its password, or null for a page that has none. */
+  async pageKey(slug: string): Promise<string | null> {
+    const row = await this.row<{ hash: string }>('SELECT hash FROM page_locks WHERE slug = ?', [slug]);
+    if (!row) return null;
+    let secret = (await this.getMeta('unlock')) as string | null;
+    if (!secret) {
+      secret = newSecret();
+      await this.setMeta('unlock', secret);
+    }
+    return new Bun.CryptoHasher('sha256', secret).update(`${slug}\n${String(row.hash)}`).digest('base64url');
   }
 
   /** Every published page at its address, translations with them, in menu order (ADR 0032). */

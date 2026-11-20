@@ -43,6 +43,7 @@ import {
   languageOf,
 } from '../core/index.ts';
 import { wordsFor } from '../blocks/words.ts';
+import { lockedPage } from './locks.ts';
 import { menuOf, pageSetting, renderBlogList, renderPage, renderPost, STYLESHEET } from './document.ts';
 import { checkRedirects, checkSite, describeCheck } from './check.ts';
 import { BASE_CSS } from './shipped.ts';
@@ -90,6 +91,15 @@ function feed(site: Site, type: ContentType, posts: Post[]): string {
   ].join('\n');
 }
 
+/** What marks a page behind a password, for the runtime: its content is the page's address in the main language. */
+export const LOCK_META = 'thecms-locked';
+
+/** The page behind a password a built file is, or null. */
+export const lockOf = (html: string): string | null => {
+  const found = new RegExp(`<meta name="${LOCK_META}" content="([^"]*)">`).exec(html);
+  return found ? (found[1] as string).replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>') : null;
+};
+
 /**
  * The whole site as `path → contents`, without touching the disk. Of the
  * stored images, only those something published shows are included.
@@ -110,6 +120,8 @@ export async function buildSite(
   images: Record<string, MediaSize> = {},
   /** The approved comments (ADR 0040), by `type/entry`: shown under the entries of a type that takes them. */
   comments: Record<string, ShownComment[]> = {},
+  /** The pages behind a password (ADR 0043): each address, with the page it belongs to. */
+  locked: Record<string, string> = {},
 ): Promise<Map<string, string | Uint8Array>> {
   const files = new Map<string, string | Uint8Array>();
   site = { ...site, pictures: { sizes: images, widths: theme.tokens.width } };
@@ -141,6 +153,13 @@ export async function buildSite(
   for (const p of pages) {
     const setting = pageSetting(site, p.slug, pages, lists);
     page(pagePath(p.slug), renderPage(withAreas(setting.site, sections, setting.site.language), theme, p, setting.menu, listable, setting.alternates));
+  }
+  // A page behind a password says so to the runtime, which asks for it; search engines are asked to keep none of it.
+  for (const [path, slug] of Object.entries(locked)) {
+    const html = files.get(fileOf(path));
+    if (typeof html !== 'string') continue;
+    files.set(fileOf(path), html.replace('<head>', `<head>\n<meta name="robots" content="noindex">\n<meta name="${LOCK_META}" content="${xml(slug)}">`));
+    paths.splice(paths.indexOf(path), 1);
   }
   // Entries and their lists are in the main language, and so is what their layouts show (ADR 0035).
   const framed = withAreas(site, sections, site.language);
@@ -230,6 +249,9 @@ export async function exportSite(store: Store, outDir: string, warn: (line: stri
   const { problems, warnings } = describeCheck({ ...checkSite(files), untranslated: await store.untranslated(), redirects: checkRedirects(files, await store.redirects()) });
   if (problems.length) throw new Error(`Nothing was exported. A link leads to an address the site does not have:\n${problems.map((p) => `  ${p}`).join('\n')}`);
   for (const line of warnings) warn(line);
+  // A page behind a password is not written out: a static host cannot ask for it (ADR 0043).
+  const frame = String(files.get('404.html'));
+  for (const [path, contents] of files) if (typeof contents === 'string' && lockOf(contents) !== null) files.set(path, lockedPage(frame, null));
 
   const existing = await readdir(outDir).catch(() => [] as string[]);
   if (existing.length > 0 && !existing.includes(MARKER)) {
@@ -260,5 +282,7 @@ export async function publishedSite(store: Store): Promise<Map<string, string | 
     entries[type.id] = await store.publishedEntries(type.id);
     templates[type.id] = await store.publishedTemplate(type.id);
   }
-  return buildSite(site, theme, pages, async (name) => (await store.mediaFile(name))?.bytes ?? null, entries, await store.redirects(), templates, await store.publishedSections(), await store.mediaSizes(), await store.shownComments());
+  const locks = new Set(await store.lockedPages());
+  const locked = Object.fromEntries(pages.filter((p) => locks.has(p.of)).map((p) => [pagePath(p.slug), p.of]));
+  return buildSite(site, theme, pages, async (name) => (await store.mediaFile(name))?.bytes ?? null, entries, await store.redirects(), templates, await store.publishedSections(), await store.mediaSizes(), await store.shownComments(), locked);
 }
