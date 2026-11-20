@@ -41,7 +41,7 @@ const kind = $derived(type ?? postsType());
 setEntry({ post, type: type ?? postsType(), language: site.language, editing: editing ? (designing ? 'template' : 'entry') : null });
 </script>
 
-<Shell {site} {menu} current={listPath(kind)} {editing} {lists}>
+<Shell {site} {menu} current={listPath(kind)} {editing} {lists} layout={kind.layout}>
   <article class="post">
     {#if template}
       {#if editing && !designing}

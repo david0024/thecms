@@ -84,6 +84,55 @@ const PORT = 4399;
     await page.getByText('take it off there first').first().waitFor();
     if (shots) await page.screenshot({ path: join(shots, 'section-kept.png') });
     assert(true, 'a section shown on a page is not deleted');
+
+    // Layouts (ADR 0035): ready ones, each changeable, and new ones from closed choices.
+    await page.locator('[data-back]').click();
+    await page.locator('[data-nav="layouts"]').click();
+    assert((await page.locator('[data-list="layouts"] [data-layout]').count()) === 4, 'a site comes with ready layouts');
+    await page.locator('[data-layout="sidebar"]').click();
+    await page.locator('[data-layout-area="side"]').selectOption('get-in-touch');
+    await page.locator('[data-layout-save]').click();
+    await page.locator('[data-layout="sidebar"]', { hasText: 'Get in touch' }).waitFor();
+    assert(true, 'a ready layout shows a section in its sidebar');
+    await page.locator('[data-new-layout]').click();
+    await page.locator('[data-layout-name]').fill('Shop');
+    await page.locator('[data-layout-header]').uncheck();
+    await page.locator('[data-layout-width]').selectOption('wide');
+    await page.locator('[data-layout-sidebar]').selectOption('left');
+    await page.locator('[data-layout-area="top"]').selectOption('get-in-touch');
+    if (shots) await page.screenshot({ path: join(shots, 'layout-builder.png') });
+    await page.locator('[data-layout-save]').click();
+    await page.locator('[data-layout="shop"]').waitFor();
+    if (shots) await page.screenshot({ path: join(shots, 'layouts.png') });
+    assert(true, 'a new layout is made from a name and a few choices');
+
+    // A new page picks its layout; the inspector changes it.
+    await page.locator('[data-nav="pages"]').click();
+    await page.locator('[data-new="page"]').click();
+    await page.locator('[data-list="page"] input[type="text"]').fill('Offers');
+    await page.locator('[data-new-layout]').selectOption('sidebar');
+    await page.locator('[data-list="page"] button[type="submit"]').click();
+    await canvas.locator('aside [data-frozen] h1', { hasText: 'Call us today' }).waitFor();
+    assert((await canvas.locator('.site-header').count()) === 1, 'a page made in a layout is drawn in it, its sidebar showing the section');
+    await page.locator('[data-page-layout]').selectOption('shop');
+    await canvas.locator('[data-layout="shop"]').waitFor();
+    assert((await canvas.locator('.site-header').count()) === 0, 'another layout, picked on the page, has no header');
+    await stored();
+    if (shots) await page.screenshot({ path: join(shots, 'page-in-layout.png') });
+
+    // A layout a page is drawn in stays; a type gives one to its entries.
+    await page.locator('[data-back]').click();
+    await page.locator('[data-nav="layouts"]').click();
+    await page.locator('[data-layout="shop"]').click();
+    await page.locator('[data-layout-remove]').click();
+    await page.getByText('give it another layout').waitFor();
+    assert(true, 'a layout a page is drawn in is not deleted');
+    await page.locator('[data-nav="types"]').click();
+    await page.locator('[data-type="posts"] button.open').click();
+    await page.locator('[data-type-layout]').selectOption('article');
+    await page.locator('[data-type-save]').click();
+    await page.locator('[data-new-type]').waitFor();
+    assert(true, 'a content type picks the layout of its entries');
     assert(errors.length === 0, `no errors in the browser ${errors.join(' | ')}`);
   } catch (error) {
     if (shots) await browser.contexts()[0]?.pages()[0]?.screenshot({ path: join(shots, 'failure.png') }).catch(() => {});

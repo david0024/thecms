@@ -162,6 +162,7 @@ export function translatedPage(site: Site, page: Page, language: string): Placed
     title: translation.title || page.title,
     description: translation.description || (translation.blocks ? '' : page.description),
     inMenu: page.inMenu,
+    ...(page.layout ? { layout: page.layout } : {}),
     blocks: translation.blocks ?? localizeBlocks(page.blocks, translation.fields),
     translations: {},
     of: page.slug,

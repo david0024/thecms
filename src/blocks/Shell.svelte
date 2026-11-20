@@ -14,7 +14,8 @@
  */
 import { getContext, type Snippet } from 'svelte';
 import type { Alternate, MenuLink, Site } from '../core/index.ts';
-import { holdsCurrent, isLink, isMega } from '../core/index.ts';
+import { areaBlock, holdsCurrent, isLink, isMega, layoutOf } from '../core/index.ts';
+import BlockView from './BlockView.svelte';
 import { type EntryLists, marker, setEditing, setLists, setSite } from './editing.ts';
 import { ALTERNATES, wordsFor } from './words.ts';
 
@@ -24,8 +25,20 @@ let {
   current,
   editing = false,
   lists = {},
+  layout = '',
   children,
-}: { site: Site; menu: MenuLink[]; /** What a block that lists entries can list. */ lists?: EntryLists; /** The address of this page, to mark it in the menu. */ current: string; editing?: boolean; children: Snippet } = $props();
+}: {
+  site: Site;
+  menu: MenuLink[];
+  /** What a block that lists entries can list. */
+  lists?: EntryLists;
+  /** The address of this page, to mark it in the menu. */
+  current: string;
+  editing?: boolean;
+  /** The layout this page is drawn in (ADR 0035): what is around its blocks. */
+  layout?: string;
+  children: Snippet;
+} = $props();
 // svelte-ignore state_referenced_locally
 setEditing(editing);
 // svelte-ignore state_referenced_locally
@@ -38,8 +51,15 @@ const footerLinks = $derived(site.footerLinks.filter(isLink));
 /** The same page in the site's other languages; none when it has one. */
 const others: Alternate[] = getContext(ALTERNATES) ?? [];
 const home = others.find((a) => a.current)?.home ?? '/';
+const frame = $derived(layoutOf(site.layouts, layout));
+/** A place of the layout, with what its section holds in this language; nothing when it shows none. */
+const area = (section: string) => (section ? { ...areaBlock(section), children: site.areas?.[section] ?? [] } : null);
+const top = $derived(area(frame.top));
+const side = $derived(frame.sidebar === 'none' ? null : area(frame.side));
+const bottom = $derived(area(frame.bottom));
 </script>
 
+{#if frame.header}
 <header class="site-header" data-site={mark('header')}>
   <div class="site-in">
     <a class="site-name" href={home}>
@@ -91,9 +111,24 @@ const home = others.find((a) => a.current)?.home ?? '/';
     {/if}
   </div>
 </header>
-<main>
-  {@render children()}
-</main>
+{/if}
+<div class="layout layout-{frame.width}" class:layout-side={frame.sidebar !== 'none'} data-layout={frame.id} data-sidebar={frame.sidebar}>
+  {#if top}<div class="layout-top" data-area="top"><BlockView block={top} /></div>{/if}
+  {#if frame.sidebar === 'none'}
+    <main>
+      {@render children()}
+    </main>
+  {:else}
+    <div class="layout-body">
+      <main>
+        {@render children()}
+      </main>
+      <aside class="layout-aside" data-area="side">{#if side}<BlockView block={side} />{/if}</aside>
+    </div>
+  {/if}
+  {#if bottom}<div class="layout-bottom" data-area="bottom"><BlockView block={bottom} /></div>{/if}
+</div>
+{#if frame.footer}
 <footer class="site-footer" data-site={mark('footer')}>
   <div class="site-in">
     <p>{site.footer || site.name}</p>
@@ -104,6 +139,7 @@ const home = others.find((a) => a.current)?.home ?? '/';
     {/if}
   </div>
 </footer>
+{/if}
 
 {#snippet link(item: MenuLink)}<a href={item.href} aria-current={item.href === current ? 'page' : undefined}>{item.title}</a>{/snippet}
 

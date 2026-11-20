@@ -4,7 +4,8 @@
  * besides pages. A type is made here from a name and a few choices; nothing
  * about it is code.
  */
-import { type ContentType, contentTypes, type Site, slugify, TYPE_FIELD_KINDS, type TypeField, type TypeFieldKind } from '../core/index.ts';
+import { type ContentType, contentTypes, READY_LAYOUTS, STANDARD, type Site, slugify, TYPE_FIELD_KINDS, type TypeField, type TypeFieldKind } from '../core/index.ts';
+import { layoutName } from './layouts.ts';
 import { say, t } from './messages.ts';
 
 let {
@@ -104,6 +105,13 @@ async function remove(): Promise<void> {
       <label class="check"><input type="checkbox" checked={draft.dated} onchange={(e) => patch({ dated: e.currentTarget.checked, feed: e.currentTarget.checked && (draft?.feed ?? false) })} data-type-dated /><span>{t.ctypes.dated}</span></label>
       <label class="check"><input type="checkbox" checked={draft.categories} onchange={(e) => patch({ categories: e.currentTarget.checked })} data-type-categories /><span>{t.ctypes.categories}</span></label>
       <label class="check" class:off={!draft.dated}><input type="checkbox" disabled={!draft.dated} checked={draft.feed} onchange={(e) => patch({ feed: e.currentTarget.checked })} /><span>{t.ctypes.feed}</span></label>
+
+      <label class="field">
+        <span>{t.layouts.ofType}</span>
+        <select value={draft.layout ?? STANDARD} onchange={(e) => patch({ layout: e.currentTarget.value === STANDARD ? undefined : e.currentTarget.value })} data-type-layout>
+          {#each site.layouts ?? READY_LAYOUTS as layout (layout.id)}<option value={layout.id}>{layoutName(layout)}</option>{/each}
+        </select>
+      </label>
 
       <h2>{t.ctypes.fields}</h2>
       <p class="hint">{t.ctypes.fieldsHint}</p>

@@ -33,6 +33,7 @@ import {
   alternates,
   pagesIn,
   fillSections,
+  withAreas,
   languageOf,
 } from '../core/index.ts';
 import { wordsFor } from '../blocks/words.ts';
@@ -128,11 +129,13 @@ export async function buildSite(
   const listable = Object.fromEntries(types.map(({ type, posts: own }) => [type.id, { type, entries: own }]));
   for (const p of pages) {
     const setting = pageSetting(site, p.slug, pages, lists);
-    page(pagePath(p.slug), renderPage(setting.site, theme, p, setting.menu, listable, setting.alternates));
+    page(pagePath(p.slug), renderPage(withAreas(setting.site, sections, setting.site.language), theme, p, setting.menu, listable, setting.alternates));
   }
+  // Entries and their lists are in the main language, and so is what their layouts show (ADR 0035).
+  const framed = withAreas(site, sections, site.language);
 
   for (const { type, posts: own } of types) {
-    for (const post of own) page(entryPath(type, post.slug), renderPost(site, theme, post, menu, type, listable, templates[type.id] ?? null, homes));
+    for (const post of own) page(entryPath(type, post.slug), renderPost(framed, theme, post, menu, type, listable, templates[type.id] ?? null, homes));
     const lists = [
       { heading: type.name, path: (n: number) => listPath(type, n), posts: own },
       ...categoriesOf(own).map((c) => ({ heading: c.name, path: (n: number) => typeCategoryPath(type, c.name, n), posts: c.posts })),
@@ -142,7 +145,7 @@ export async function buildSite(
       const cut = paginate(list.posts);
       cut.forEach((some, i) => {
         const path = list.path(i + 1);
-        page(path, renderBlogList(site, { heading: list.heading, path, posts: some, newer: i > 0 ? list.path(i) : '', older: i < cut.length - 1 ? list.path(i + 2) : '' }, menu, type, homes));
+        page(path, renderBlogList(framed, { heading: list.heading, path, posts: some, newer: i > 0 ? list.path(i) : '', older: i < cut.length - 1 ? list.path(i + 2) : '' }, menu, type, homes));
       });
     }
     // A feed names every entry by its full address, so it needs the site's own.
@@ -154,6 +157,7 @@ export async function buildSite(
     ...posts.flatMap((p) => postImageSources(p).map((src): [string, string] => [`the entry "${p.title}"`, src])),
     ...types.flatMap(({ type }) => imageSources(templates[type.id] ?? []).map((src): [string, string] => [`the page of "${type.name}"`, src])),
   ];
+  for (const [name, blocks] of Object.entries(framed.areas ?? {})) for (const src of imageSources(blocks)) shown.push([`the section "${name}" of a layout`, src]);
   if (site.logo) shown.push(['the header', site.logo.src]);
   for (const [where, src] of shown) {
     const name = mediaNameOf(src);
@@ -179,7 +183,7 @@ export async function buildSite(
 
   files.set(
     '404.html',
-    renderPage(site, theme, { slug: '404', title: wordsFor(site.language).notFound, description: '', inMenu: false, blocks: [] }, menu),
+    renderPage(framed, theme, { slug: '404', title: wordsFor(site.language).notFound, description: '', inMenu: false, blocks: [] }, menu),
   );
   if (site.url) {
     const urls = paths.map((path) => `  <url><loc>${xml(`${site.url}${path}`)}</loc></url>`).join('\n');

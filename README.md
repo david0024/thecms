@@ -48,6 +48,7 @@ The decisions behind this, each with its reason:
 - [ADR 0032 — A page is translated field by field](docs/adr/0032-translation-by-field.md)
 - [ADR 0033 — Sections: blocks written once, shown on many pages](docs/adr/0033-sections.md)
 - [ADR 0034 — Actions on translations, and in every language](docs/adr/0034-actions-on-translations.md)
+- [ADR 0035 — Theme, layout, page, section, site: who decides what](docs/adr/0035-layouts-and-boundaries.md)
 
 ## Where it stands
 

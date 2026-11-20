@@ -3,8 +3,9 @@
  * One section of the admin: every page, or every post, as a list. Choosing
  * one opens it in the builder; the list itself changes nothing.
  */
-import { type ContentType, entryPath, languageName, pagePath, pagesIn, POSTS_TYPE, prefixOf, type Site, slugIn, slugify } from '../core/index.ts';
+import { type ContentType, entryPath, type Layout, STANDARD, languageName, pagePath, pagesIn, POSTS_TYPE, prefixOf, type Site, slugIn, slugify } from '../core/index.ts';
 import type { Kind, PageInfo, PostInfo } from './api.ts';
+import { layoutName } from './layouts.ts';
 import { say, t } from './messages.ts';
 
 let {
@@ -15,16 +16,19 @@ let {
   oncreate,
   site,
   ontranslate,
+  layouts = [],
 }: {
   kind: Kind;
   /** The content type listed; none for pages. */
   type?: ContentType;
   items: (PageInfo | PostInfo)[];
   onopen: (slug: string) => void;
-  oncreate: (title: string) => void;
+  oncreate: (title: string, layout: string) => void;
   /** For pages: the site, whose other languages each page can be translated into (ADR 0024). */
   site?: Site;
   ontranslate?: (slug: string, language: string) => void;
+  /** For pages: the layouts a new page picks from (ADR 0035). */
+  layouts?: readonly Layout[];
 } = $props();
 
 const others = $derived(!type && site ? site.languages : []);
@@ -36,6 +40,7 @@ const bySlug = $derived(new Map(items.map((item) => [item.slug, item])));
 const mark = $derived(kind === POSTS_TYPE ? 'post' : kind);
 
 let title = $state<string | null>(null);
+let layout = $state(STANDARD);
 const words = $derived(
   !type
     ? { heading: t.nav.pages, add: t.app.newPage, none: '' }
@@ -55,12 +60,17 @@ const status = (item: PageInfo): string => (!item.published ? t.bar.draft : item
       <form
         onsubmit={(e) => {
           e.preventDefault();
-          if (slugify(title)) oncreate((title ?? '').trim());
+          if (slugify(title)) oncreate((title ?? '').trim(), layout);
           title = null;
         }}
       >
         <!-- svelte-ignore a11y_autofocus -->
         <input type="text" placeholder={t.app.pageTitle} bind:value={title} maxlength="200" autofocus />
+        {#if layouts.length > 1}
+          <select bind:value={layout} aria-label={t.layouts.pick} title={t.layouts.pick} data-new-layout>
+            {#each layouts as one (one.id)}<option value={one.id}>{layoutName(one)}</option>{/each}
+          </select>
+        {/if}
         <button type="submit" class="primary" disabled={!slugify(title)}>{t.app.create}</button>
         <button type="button" class="quiet" onclick={() => (title = null)}>{t.app.cancel}</button>
       </form>
