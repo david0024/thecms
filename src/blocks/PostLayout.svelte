@@ -6,7 +6,7 @@
  * the page puts them.
  */
 import type { Block, ContentType, MenuLink, Post, Site } from '../core/index.ts';
-import { listPath, postsType } from '../core/index.ts';
+import { listPath, pictureIn, postsType } from '../core/index.ts';
 import EntryFields from './EntryFields.svelte';
 import { type EntryLists, setEntry } from './editing.ts';
 import BlockView from './BlockView.svelte';
@@ -55,7 +55,7 @@ setEntry({ post, type: type ?? postsType(), language: site.language, editing: ed
         <div class="b-in">
           <PostMeta type={kind} {post} language={site.language} />
           <h1>{post.title}</h1>
-          {#if post.cover}<img class="post-cover" src={post.cover.src} alt={post.cover.alt} />{/if}
+          {#if post.cover}{@const pa = pictureIn(site, kind.layout, post.cover.src, 'full')}<img class="post-cover" src={post.cover.src} srcset={pa.srcset} sizes={pa.sizes} width={pa.width} height={pa.height} alt={post.cover.alt} />{/if}
           <EntryFields type={kind} {post} language={site.language} />
         </div>
       </header>

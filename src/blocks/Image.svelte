@@ -1,16 +1,17 @@
 <script lang="ts">
 import type { Block, ImageContent } from '../core/index.ts';
-import { isEditing, marker } from './editing.ts';
+import { isEditing, marker, picture } from './editing.ts';
 
 let { block }: { block: Block } = $props();
 const c = $derived(block.content as unknown as ImageContent);
 const editing = isEditing();
 const mark = marker();
+const pic = picture();
 </script>
 
-{#if c.image}
+{#if c.image}{@const pa = pic(c.image.src, 'full')}
   <figure class="figure">
-    <img src={c.image.src} alt={c.image.alt} loading="lazy" decoding="async" />
+    <img src={c.image.src} srcset={pa.srcset} sizes={pa.sizes} width={pa.width} height={pa.height} alt={c.image.alt} loading="lazy" decoding="async" />
     {#if c.caption || editing}<figcaption data-edit={mark('caption')}>{c.caption}</figcaption>{/if}
   </figure>
 {:else if editing}

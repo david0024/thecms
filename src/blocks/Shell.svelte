@@ -14,9 +14,9 @@
  */
 import { getContext, type Snippet } from 'svelte';
 import type { Alternate, MenuLink, Site } from '../core/index.ts';
-import { areaBlock, holdsCurrent, isLink, isMega, layoutOf } from '../core/index.ts';
+import { areaBlock, holdsCurrent, isLink, isMega, layoutOf, measureFor } from '../core/index.ts';
 import BlockView from './BlockView.svelte';
-import { type EntryLists, marker, setEditing, setLists, setSite } from './editing.ts';
+import { type EntryLists, marker, setEditing, setLists, setMeasure, setSite } from './editing.ts';
 import { ALTERNATES, wordsFor } from './words.ts';
 
 let {
@@ -45,6 +45,8 @@ setEditing(editing);
 setLists(lists, site.language);
 // svelte-ignore state_referenced_locally
 setSite(site, current);
+// svelte-ignore state_referenced_locally
+setMeasure(layoutOf(site.layouts, layout).width, measureFor(site.pictures?.widths ?? {}, layoutOf(site.layouts, layout).width));
 const mark = marker();
 const words = $derived(wordsFor(site.language));
 const footerLinks = $derived(site.footerLinks.filter(isLink));

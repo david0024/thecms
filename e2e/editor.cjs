@@ -260,6 +260,9 @@ const assert = (condition, message) => {
       return c.toDataURL('image/jpeg').split(',')[1];
     });
     writeFileSync(photo, Buffer.from(jpeg, 'base64'));
+    // Each smaller copy the browser makes is sent on its own (ADR 0005 d8).
+    const copies = [];
+    page.on('response', (r) => r.url().includes('/api/media/variant') && copies.push(r.status()));
     await page.locator('[data-media-file]').setInputFiles(photo);
     const img = canvas.locator('.b-image img');
     await img.waitFor({ state: 'attached' });
@@ -269,6 +272,8 @@ const assert = (condition, message) => {
     assert(/^\/media\/[a-f0-9]{32}\.webp$/.test(image.src) && image.alt === 'A plank of oak', `the photo is stored with the site, as WebP (${image.src})`);
     await page.waitForFunction(() => document.querySelector('iframe').contentDocument.querySelector('.b-image img')?.naturalWidth === 2400);
     assert(true, 'a photo wider than a page needs is made 2400 pixels wide before it is uploaded');
+    for (let i = 0; i < 100 && copies.length < 3; i++) await page.waitForTimeout(50);
+    assert(copies.length === 3 && copies.every((status) => status === 200), `the photo gets three smaller copies, made in the browser (${copies.join(', ')})`);
     const fake = join(dir, 'fake.png');
     writeFileSync(fake, '<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"/>');
     await page.locator('[data-media-file]').setInputFiles(fake);
@@ -475,6 +480,25 @@ const assert = (condition, message) => {
     assert(errors.length === 1, `the refusal is the only error in the console (${errors.join(' | ')})`);
     errors.length = 0;
     if (shots) await page.screenshot({ path: join(shots, 'admin-media.png') });
+    // A picture from before copies were made gets them when the media screen opens; one that could not, through a button.
+    await page.route('**/api/media', async (route) => {
+      const response = await route.fetch();
+      const body = await response.json();
+      await route.fulfill({ response, json: { ...body, media: body.media.map((m) => ({ ...m, variants: [] })) } });
+    });
+    await page.route('**/api/media/variant**', (route) => route.fulfill({ status: 500, contentType: 'application/json', body: '{"error":"down"}' }));
+    await page.locator('[data-nav="pages"]').click();
+    copies.length = 0;
+    await page.locator('[data-nav="media"]').click();
+    await page.locator('[data-media-sizes]').waitFor();
+    assert(copies.length >= 1, 'opening the media screen makes the copies a picture lacks');
+    await page.unroute('**/api/media/variant**');
+    copies.length = 0;
+    await page.locator('[data-media-sizes]').click();
+    await page.waitForFunction(() => !document.querySelector('[data-media-sizes], [data-media-sizing]'));
+    assert(copies.length >= 3 && copies.every((status) => status === 200), `the button makes them again (${copies.join(', ')})`);
+    await page.unroute('**/api/media');
+    errors.length = 0;
     await page.locator('[data-nav="pages"]').click();
     assert((await page.locator('[data-list="page"] tr', { hasText: 'Prețuri și comenzi' }).innerText()).includes('/preturi-si-comenzi/'), 'a list shows each page with its address and state');
     if (shots) await page.screenshot({ path: join(shots, 'admin-pages.png') });
@@ -515,10 +539,12 @@ const assert = (condition, message) => {
   assert(prices.includes('<h1>A headline that says what you do</h1>'), 'the new page is exported at its own address');
   assert(prices.includes('<h2>Our prices</h2><ul><li>Oak table</li><li>Walnut shelf</li></ul>'), 'the heading and the list are in the export');
   assert(/<strong>Ask ?<\/strong>/.test(prices) && /<a href="\/contact\/">offer<\/a>/.test(prices) && !prices.includes('javascript:'), 'so are the bold word and the link, and not the refused one');
-  const picture = prices.match(/<img src="\/(media\/[a-f0-9]{32}\.webp)" alt="A plank of oak"/);
+  const picture = prices.match(/<img src="\/(media\/([a-f0-9]{32})\.webp)" srcset="([^"]+)" sizes="([^"]+)" width="2400" height="240" alt="A plank of oak"/);
   assert(picture && readFileSync(join(out, picture[1])).subarray(8, 12).toString() === 'WEBP', 'the uploaded image is exported beside the page that shows it');
+  assert(picture[3] === `/media/${picture[2]}-480.webp 480w, /media/${picture[2]}-960.webp 960w, /media/${picture[2]}-1600.webp 1600w, /media/${picture[2]}.webp 2400w`, `with its smaller copies offered (${picture[3]})`);
+  assert(picture[4].startsWith('min(100vw, ') && [480, 960, 1600].every((w) => readFileSync(join(out, `media/${picture[2]}-${w}.webp`)).subarray(8, 12).toString() === 'WEBP'), 'and exported beside it, for the width the page runs at');
   const logo = home.match(/<img class="site-logo" src="\/(media\/[a-f0-9]{32}\.png)" alt="Atelier Nord"/);
-  assert(logo && readdirSync(join(out, 'media')).length === 2, 'the logo is exported too, and no image that nothing shows');
+  assert(logo && readdirSync(join(out, 'media')).filter((name) => !name.includes('-')).length === 2, 'the logo is exported too, and no image that nothing shows');
   assert(home.includes('<p>© Atelier Nord, since 2014</p>') && home.includes('<a href="/preturi-si-comenzi/">Prices</a>'), 'the footer text and link are on every exported page');
   assert(/\.site-header\{--l-direction:column;[^}]*background-color:var\(--t-color-brand\)\}/.test(css), 'the header arrangement and colour are in the stylesheet, not in the pages');
 

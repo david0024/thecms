@@ -1,7 +1,7 @@
 <script lang="ts">
 /** A list of entries of one content type: its front page, a later page of it, or one category. */
 import type { ContentType, MenuLink, Post, Site } from '../core/index.ts';
-import { entryPath, listPath, postExcerpt, postsType } from '../core/index.ts';
+import { entryPath, listPath, pictureIn, postExcerpt, postsType } from '../core/index.ts';
 import PostMeta from './PostMeta.svelte';
 import Shell from './Shell.svelte';
 import { wordsFor } from './words.ts';
@@ -36,7 +36,7 @@ const words = $derived(wordsFor(site.language));
       <ul class="posts">
         {#each posts as post (post.slug)}
           <li class="post-card">
-            {#if post.cover}<a href={entryPath(kind, post.slug)} tabindex="-1" aria-hidden="true"><img src={post.cover.src} alt="" loading="lazy" decoding="async" /></a>{/if}
+            {#if post.cover}{@const pa = pictureIn(site, kind.layout, post.cover.src, 'card')}<a href={entryPath(kind, post.slug)} tabindex="-1" aria-hidden="true"><img src={post.cover.src} srcset={pa.srcset} sizes={pa.sizes} width={pa.width} height={pa.height} alt="" loading="lazy" decoding="async" /></a>{/if}
             <PostMeta type={kind} {post} language={site.language} />
             <h2><a href={entryPath(kind, post.slug)}>{post.title}</a></h2>
             <p>{postExcerpt(post)}</p>

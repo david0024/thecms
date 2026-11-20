@@ -13,6 +13,8 @@ import {
   feedPath,
   imageSources,
   mediaNameOf,
+  type MediaSize,
+  mediaPath,
   listed,
   listPath,
   type MenuList,
@@ -102,8 +104,11 @@ export async function buildSite(
   templates: Record<string, Block[] | null> = {},
   /** Published sections (ADR 0033): drawn where a page shows them, in the page's language. */
   sections: Page[] = [],
+  /** The stored pictures' sizes and smaller copies (ADR 0005 d8): each picture is offered at the size that fits. */
+  images: Record<string, MediaSize> = {},
 ): Promise<Map<string, string | Uint8Array>> {
   const files = new Map<string, string | Uint8Array>();
+  site = { ...site, pictures: { sizes: images, widths: theme.tokens.width } };
   // Each section block holds its section's blocks from here on, so the pages, their pictures and their links include them.
   pages = pages.map((p) => ({ ...p, blocks: fillSections(p.blocks, sections, languageOf(site, p.slug)) }));
   const filledEntries = Object.fromEntries(Object.entries(Array.isArray(entries) ? { [POSTS_TYPE]: entries } : entries).map(([id, list]) => [id, list.map((post) => ({ ...post, blocks: fillSections(post.blocks, sections, site.language) }))]));
@@ -168,6 +173,11 @@ export async function buildSite(
     // A site that would show a broken picture is not published quietly.
     if (!bytes) throw new Error(`${where} shows an image this site does not have: ${src}`);
     files.set(src.slice(1), bytes);
+    // Its smaller copies go with it, for the srcset that names them.
+    for (const variant of images[name]?.variants ?? []) {
+      const copy = await media(variant);
+      if (copy) files.set(mediaPath(variant).slice(1), copy);
+    }
   }
 
   // An old address is kept only where nothing lives now and what it leads to is published.
@@ -246,5 +256,5 @@ export async function publishedSite(store: Store): Promise<Map<string, string | 
     entries[type.id] = await store.publishedEntries(type.id);
     templates[type.id] = await store.publishedTemplate(type.id);
   }
-  return buildSite(site, theme, pages, async (name) => (await store.mediaFile(name))?.bytes ?? null, entries, await store.redirects(), templates, await store.publishedSections());
+  return buildSite(site, theme, pages, async (name) => (await store.mediaFile(name))?.bytes ?? null, entries, await store.redirects(), templates, await store.publishedSections(), await store.mediaSizes());
 }

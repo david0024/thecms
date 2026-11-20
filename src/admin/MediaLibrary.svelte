@@ -5,13 +5,15 @@
  */
 import { onMount } from 'svelte';
 import { api, type MediaItem } from './api.ts';
-import { t } from './messages.ts';
-import { shrink } from './shrink.ts';
+import { say, t } from './messages.ts';
+import { missing, prepareAll, uploadImage } from './sizes.ts';
 
 let items = $state.raw<MediaItem[] | null>(null);
 let busy = $state(false);
 let problem = $state('');
 let fileInput: HTMLInputElement | undefined = $state();
+/** The smaller copies being made: how many pictures are done, of how many. */
+let sizing = $state<{ done: number; count: number } | null>(null);
 
 const attempt = async (work: () => Promise<{ media: MediaItem[] }>): Promise<void> => {
   problem = '';
@@ -25,14 +27,24 @@ const attempt = async (work: () => Promise<{ media: MediaItem[] }>): Promise<voi
 async function upload(event: Event): Promise<void> {
   const files = [...((event.currentTarget as HTMLInputElement).files ?? [])];
   busy = true;
-  for (const file of files) await attempt(async () => api.upload(await shrink(file), file.name));
+  for (const file of files) await attempt(() => uploadImage(file));
   busy = false;
   if (fileInput) fileInput.value = '';
 }
 
 const size = (bytes: number): string => (bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`);
 
-onMount(() => void attempt(api.media));
+/** Pictures uploaded before they were made get their smaller copies here, once (ADR 0005 d8). */
+async function prepare(): Promise<void> {
+  if (!items || sizing) return;
+  items = await prepareAll(items, (done, count) => (sizing = { done, count }));
+  sizing = null;
+}
+
+onMount(async () => {
+  await attempt(api.media);
+  await prepare();
+});
 </script>
 
 <section class="screen" data-list="media">
@@ -42,6 +54,11 @@ onMount(() => void attempt(api.media));
     <input type="file" multiple accept="image/png,image/jpeg,image/gif,image/webp,image/avif" bind:this={fileInput} onchange={upload} hidden data-library-file />
   </header>
   {#if problem}<p class="bad" role="alert">{problem}</p>{/if}
+  {#if sizing}
+    <p class="hint" data-media-sizing>{say(t.media.sizing, sizing)}</p>
+  {:else if items?.some((item) => missing(item).length > 0)}
+    <p><button type="button" class="quiet" onclick={prepare} data-media-sizes>{t.media.sizes}</button></p>
+  {/if}
   {#if items && items.length === 0}
     <p class="hint">{t.media.empty}</p>
   {:else if items}

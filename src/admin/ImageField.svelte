@@ -7,7 +7,7 @@
 import type { ImageValue } from '../core/index.ts';
 import { api, type MediaItem } from './api.ts';
 import { t } from './messages.ts';
-import { shrink } from './shrink.ts';
+import { uploadImage } from './sizes.ts';
 
 let { label, value, onchange }: { label: string; value: ImageValue | null; onchange: (value: ImageValue) => void } = $props();
 
@@ -25,7 +25,7 @@ async function upload(event: Event): Promise<void> {
   busy = true;
   problem = '';
   try {
-    const { item, media } = await api.upload(await shrink(file), file.name);
+    const { item, media } = await uploadImage(file);
     if (library) library = media;
     onchange({ src: item.path, alt });
   } catch (error) {

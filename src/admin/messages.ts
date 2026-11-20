@@ -359,6 +359,8 @@ export const en = {
     empty: 'Nothing uploaded yet.',
     remove: 'Delete this image',
     elsewhere: 'Use an image from another address',
+    sizing: 'Making smaller copies for phones: {done} of {count}',
+    sizes: 'Make smaller copies',
   },
   format: {
     p: 'Paragraph',

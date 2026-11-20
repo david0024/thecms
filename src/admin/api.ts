@@ -138,6 +138,10 @@ export interface MediaItem {
   type: string;
   size: number;
   label: string;
+  width: number;
+  height: number;
+  /** The widths of its smaller copies (ADR 0005 d8). */
+  variants: number[];
 }
 
 const hash = new URLSearchParams(location.hash.slice(1));
@@ -217,6 +221,8 @@ export const api = {
   async upload(file: Blob, label: string): Promise<{ item: MediaItem; media: MediaItem[] }> {
     return send(`/api/media?label=${encodeURIComponent(label)}`, file);
   },
+  /** A smaller copy of a stored picture, made here (ADR 0005 d8). */
+  addVariant: (name: string, file: Blob) => send<{ item: MediaItem }>(`/api/media/variant?name=${encodeURIComponent(name)}`, file),
   signIn: (email: string, password: string) => call<{ me: Me }>('POST', '/api/session', { email, password }),
   signOut: () => call<{ signedOut: boolean }>('DELETE', '/api/session'),
   link: (secret: string) => call<{ kind: 'setup' | 'invite' | 'reset'; email: string; name: string }>('POST', '/api/link', { secret }),

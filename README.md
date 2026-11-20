@@ -65,7 +65,7 @@ theme, publish, and export the site as static files.
 | Static export with sitemap and robots.txt | done |
 | Visual editor: add, move, remove, type on the page, style with theme tokens | done |
 | Theme builder: tokens, block defaults and variants, themes as files | done |
-| Images uploaded and kept with the site; headings, lists and links from a bar on the page; blocks moved by dragging | done |
+| Images uploaded and kept with the site, each offered at the size that fits a phone or a wide screen (srcset made in the browser); headings, lists and links from a bar on the page; blocks moved by dragging | done |
 | Header and footer: logo, button and links from the site, layout from the theme | done |
 | Content types the owner defines (a blog is only an example): entries at `/<type>/<entry>/`, categories, tags, paged lists, Atom feed | done |
 | Admin with sections: pages, posts, media, menu and settings, theme | done |

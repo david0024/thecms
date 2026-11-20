@@ -7,13 +7,14 @@
  */
 import type { Block, EntriesContent } from '../core/index.ts';
 import { entryPath, listPath, postExcerpt } from '../core/index.ts';
-import { getLists, isEditing, marker } from './editing.ts';
+import { getLists, isEditing, marker, picture } from './editing.ts';
 import { dateText, wordsFor } from './words.ts';
 
 let { block }: { block: Block } = $props();
 const c = $derived(block.content as unknown as EntriesContent);
 const editing = isEditing();
 const mark = marker();
+const pic = picture();
 const { lists, language } = getLists();
 const list = $derived(lists[c.source]);
 const shown = $derived(list ? list.entries.slice(0, c.count) : []);
@@ -24,7 +25,7 @@ const shown = $derived(list ? list.entries.slice(0, c.count) : []);
   <ul class="cards entries">
     {#each shown as entry (entry.slug)}
       <li class="card entry-card">
-        {#if entry.cover}<a href={entryPath(list.type, entry.slug)} tabindex="-1" aria-hidden="true"><img src={entry.cover.src} alt="" loading="lazy" decoding="async" /></a>{/if}
+        {#if entry.cover}{@const pa = pic(entry.cover.src, 'card')}<a href={entryPath(list.type, entry.slug)} tabindex="-1" aria-hidden="true"><img src={entry.cover.src} srcset={pa.srcset} sizes={pa.sizes} width={pa.width} height={pa.height} alt="" loading="lazy" decoding="async" /></a>{/if}
         {#if list.type.dated}<p class="post-meta"><time datetime={entry.date}>{dateText(entry.date, language)}</time></p>{/if}
         <h3><a href={entryPath(list.type, entry.slug)}>{entry.title}</a></h3>
         <p>{postExcerpt(entry)}</p>

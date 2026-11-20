@@ -1,11 +1,12 @@
 <script lang="ts">
 import { type Block, type HeroContent, isLink } from '../core/index.ts';
-import { isEditing, marker } from './editing.ts';
+import { isEditing, marker, picture } from './editing.ts';
 
 let { block }: { block: Block } = $props();
 const c = $derived(block.content as unknown as HeroContent);
 const editing = isEditing();
 const mark = marker();
+const pic = picture();
 // In the editor a button shows as soon as it has words, so it can be seen while its address is still missing.
 const shown = (link: HeroContent['action']): link is NonNullable<HeroContent['action']> => (editing ? !!link?.label : isLink(link));
 </script>
@@ -22,5 +23,5 @@ const shown = (link: HeroContent['action']): link is NonNullable<HeroContent['ac
       </p>
     {/if}
   </div>
-  {#if c.image}<img class="hero-image" src={c.image.src} alt={c.image.alt} />{/if}
+  {#if c.image}{@const pa = pic(c.image.src, 'half')}<img class="hero-image" src={c.image.src} srcset={pa.srcset} sizes={pa.sizes} width={pa.width} height={pa.height} alt={c.image.alt} />{/if}
 </div>

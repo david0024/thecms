@@ -477,6 +477,12 @@ export async function startEditor(
       if (request.method === 'GET' && email) return json({ messages: await store.messages(email), keep });
       return json({ messages: await store.messages(), keep });
     }
+    if (url.pathname === '/api/media/variant' && request.method === 'POST') {
+      // A smaller copy the browser made of a stored picture (ADR 0005 d8); what it is, is read from its bytes.
+      if (Number(request.headers.get('content-length') ?? 0) > MEDIA_MAX_BYTES) return json({ error: 'the image is too large' }, 413);
+      const item = await store.addVariant(url.searchParams.get('name') ?? '', new Uint8Array(await request.arrayBuffer()));
+      return json({ item });
+    }
     if (url.pathname === '/api/media') {
       if (request.method === 'GET') return json({ media: await store.media() });
       if (request.method === 'DELETE') {

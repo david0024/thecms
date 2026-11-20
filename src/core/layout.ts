@@ -11,6 +11,7 @@
  * says what is there and where.
  */
 import type { Block } from './blocks.ts';
+import { measureFor, pictureAttrs, type Share } from './media.ts';
 import type { Page, Site } from './page.ts';
 import { fillSections } from './section.ts';
 import { isObject, slugify, str } from './util.ts';
@@ -110,3 +111,7 @@ export function layoutAreas(layouts: readonly Layout[], sections: readonly Page[
 
 /** The site, ready to draw a page in this language: what each of its layouts' sections holds. */
 export const withAreas = (site: Site, sections: readonly Page[], language: string): Site => ({ ...site, areas: layoutAreas(site.layouts ?? READY_LAYOUTS, sections, language) });
+
+/** A picture drawn straight in a page's layout, outside any block (an entry's cover): what fits there (ADR 0005 d8). */
+export const pictureIn = (site: Site, layout: string | undefined, src: string, share: Share): ReturnType<typeof pictureAttrs> =>
+  pictureAttrs(site.pictures, src, measureFor(site.pictures?.widths ?? {}, layoutOf(site.layouts, layout).width), share);
