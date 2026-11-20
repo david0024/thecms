@@ -10,6 +10,8 @@
  *   thecms export <site.db> <folder>      write the published site as static files
  *   thecms import <site.db> <export.xml>  bring in a WordPress site (add --no-images to skip copying images)
  *   thecms forms <site.db> [port]         receive what visitors send through the site's forms (ADR 0019)
+ *   thecms run <site.db> [--port=4323] [--host=127.0.0.1]
+ *                                         serve the published site, and what cannot be static under /_/ (ADR 0038)
  *   thecms serve <site.db> --public=https://cms.example.com [--port=4321] [--host=127.0.0.1]
  *                                         the editor for others to reach, with accounts (ADR 0022)
  *   thecms reset-link <site.db> <email> --public=https://cms.example.com
@@ -28,6 +30,7 @@ import { fetchImage, runImport } from '../import/run.ts';
 import { planImport } from '../import/wxr.ts';
 import { exportSite } from './export.ts';
 import { startForms } from './forms.ts';
+import { startRuntime } from './runtime.ts';
 import { smtpMailer } from './mail.ts';
 import { cleanPublicAddress } from './accounts.ts';
 import { startEditor } from './server.ts';
@@ -53,6 +56,7 @@ Usage:
   ${NAME} theme <site.db> <theme.json>
   ${NAME} export <site.db> <folder>
   ${NAME} forms <site.db> [port]
+  ${NAME} run <site.db> [--port=4323] [--host=127.0.0.1]
   ${NAME} import <site.db> <export.xml> [--no-images] [--types=portfolio,team] [--categories=projects]
   ${NAME} extension <site.db> list
   ${NAME} extension <site.db> install <file> [--yes]
@@ -213,6 +217,19 @@ export async function main(args: string[]): Promise<{ stop: () => void } | undef
         'Put the public address of this service in Site settings, then export the site again.',
     );
     return forms;
+  }
+  if (command === 'run' && dbPath) {
+    if (missing()) throw new Error(`${shown} does not exist`);
+    const mailer = smtpMailer(process.env.THECMS_SMTP);
+    const to = process.env.THECMS_MAIL_TO ?? '';
+    const store = await Store.open(dbPath);
+    const runtime = startRuntime(store, { port: option('port') ? Number(option('port')) : 4323, hostname: option('host') || '127.0.0.1', mailer, to, from: process.env.THECMS_MAIL_FROM });
+    console.log(
+      `Serving the published site of ${shown} at ${runtime.url}, and its forms at ${runtime.url}/_/send.\n` +
+        `${mailer && to ? `Each message is also sent to ${to}.` : 'Messages are kept and shown in the admin. Set THECMS_SMTP and THECMS_MAIL_TO to be told by email.'}\n` +
+        'Write /_ as the form service in Site settings, so the forms send here. A publication shows within a few seconds.',
+    );
+    return runtime;
   }
   if (command === 'serve' && dbPath) {
     if (missing()) throw new Error(`${shown} does not exist`);

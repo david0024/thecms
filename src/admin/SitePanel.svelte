@@ -132,7 +132,7 @@ import Redirects from './Redirects.svelte';
 <h3>{t.site.forms}</h3>
 <label class="field">
   <span>{t.site.formsAddress}</span>
-  <input type="url" value={site.forms} onchange={(e) => set({ forms: e.currentTarget.value.trim() })} data-site-forms />
+  <input type="text" inputmode="url" value={site.forms} onchange={(e) => set({ forms: e.currentTarget.value.trim() })} data-site-forms />
   <small>{t.site.formsHint}</small>
 </label>
 <label class="field">

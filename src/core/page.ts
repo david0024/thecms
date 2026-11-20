@@ -70,6 +70,8 @@ export const MAX_LANGUAGES = 9;
 /** A form service's address: https, or http on this machine while trying it out. Nothing else, and never a path or a query. */
 export function cleanFormsAddress(value: unknown): string {
   const v = str(value, 300).trim().replace(/\/+$/, '');
+  // The site's own runtime, at the same address as its pages (ADR 0038).
+  if (v === '/_') return v;
   try {
     const url = new URL(v);
     const local = url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
