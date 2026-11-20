@@ -103,6 +103,11 @@ async function accept(): Promise<void> {
         {#each offer.asks.points as point}
           <li>{say(point.on === 'page' ? t.ext.onPage : t.ext.onBlock, { action: point.action })}</li>
         {/each}
+        {#if offer.asks.routes.length}<li>{say(t.ext.routes, { list: offer.asks.routes.join(', ') })}</li>{/if}
+        {#each offer.asks.jobs as job}
+          <li>{say(t.ext.job, { action: job.action, count: job.everyMinutes })}</li>
+        {/each}
+        {#if offer.asks.events.length}<li>{say(t.ext.events, { list: offer.asks.events.join(', ') })}</li>{/if}
       </ul>
       <small class="sum">{say(t.ext.checksum, { sha: offer.sha256 })}</small>
       <div class="row">

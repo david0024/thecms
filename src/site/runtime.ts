@@ -7,6 +7,7 @@
 import type { Mailer } from './mail.ts';
 import { publishedSite } from './export.ts';
 import { startClock } from './clock.ts';
+import { type ExtensionHostApi, extensionHost, type Spawn } from './extensions.ts';
 import { startForms } from './forms.ts';
 import type { Store } from './store.ts';
 
@@ -45,9 +46,21 @@ const HEADERS = {
 
 export function startRuntime(
   store: Store,
-  options: { port?: number; listen?: boolean; hostname?: string; mailer?: Mailer | null; to?: string; from?: string; log?: (line: string) => void; now?: () => number } = {},
+  options: {
+    port?: number;
+    listen?: boolean;
+    hostname?: string;
+    mailer?: Mailer | null;
+    to?: string;
+    from?: string;
+    log?: (line: string) => void;
+    now?: () => number;
+    spawnExtension?: Spawn;
+  } = {},
 ): Runtime {
   const now = options.now ?? Date.now;
+  // The extensions' routes, jobs and events (ADR 0041): their code runs apart, as in the editor.
+  const extensions: ExtensionHostApi = extensionHost(store, { spawn: options.spawnExtension, log: options.log });
   const forms = startForms(store, { listen: false, mailer: options.mailer, to: options.to, from: options.from, log: options.log });
   let built: { at: number; files: Promise<Map<string, string | Uint8Array>> } | null = null;
 
@@ -79,6 +92,9 @@ export function startRuntime(
       inner.pathname = url.pathname.slice(2);
       return forms.fetch(new Request(inner, request), ip);
     }
+    // An extension's own addresses: /_/x/<extension>/<path>.
+    const routed = /^\/_\/x\/([a-z][a-z0-9-]{1,39})\/(.+)$/.exec(url.pathname);
+    if (routed) return extensions.route(routed[1] as string, routed[2] as string, request);
     if (url.pathname === '/_' || url.pathname === '/_/') return new Response('thecms runtime\n', { headers: { 'content-type': 'text/plain; charset=utf-8' } });
     if (url.pathname.startsWith('/_/')) return new Response('not found\n', { status: 404, headers: { 'content-type': 'text/plain; charset=utf-8' } });
     if (request.method !== 'GET' && request.method !== 'HEAD') return new Response('a page is read with GET\n', { status: 405, headers: { allow: 'GET, HEAD' } });
@@ -114,13 +130,16 @@ export function startRuntime(
         });
   if (server?.port) port = server.port;
   // The site's clock runs here too: on a server with no editor running, what was set for later is still published (ADR 0039).
-  const clock = startClock(store, { run: server !== null, log: options.log });
+  const clock = startClock(store, { run: server !== null, log: options.log, jobs: extensions.jobs });
+  const unlisten = extensions.listen();
   return {
     url: `http://${options.hostname ?? '127.0.0.1'}:${port}`,
     port,
     fetch: handle,
     stop: () => {
       clock.stop();
+      unlisten();
+      extensions.close();
       server?.stop(true);
     },
   };
