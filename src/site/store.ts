@@ -78,6 +78,7 @@ import {
   typeById,
   type ContentType,
   listed,
+  type ShownComment,
   type Site,
   str,
   type Theme,
@@ -155,6 +156,7 @@ const SQLITE: Dialect = {
     'CREATE TABLE IF NOT EXISTS media_sizes (name TEXT PRIMARY KEY, width INTEGER NOT NULL, height INTEGER NOT NULL)',
     'CREATE TABLE IF NOT EXISTS schedule (kind TEXT NOT NULL, slug TEXT NOT NULL, at TEXT NOT NULL, PRIMARY KEY (kind, slug))',
     'CREATE TABLE IF NOT EXISTS media_variants (name TEXT PRIMARY KEY, original TEXT NOT NULL, width INTEGER NOT NULL, bytes BLOB NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS comments (id TEXT PRIMARY KEY, type TEXT NOT NULL, entry TEXT NOT NULL, name TEXT NOT NULL, email TEXT NOT NULL, body TEXT NOT NULL, consent TEXT NOT NULL, at TEXT NOT NULL, approved INTEGER NOT NULL)',
   ],
   params: (query) => query,
   upsert: (table, columns, key, update) =>
@@ -183,6 +185,7 @@ const POSTGRES: Dialect = {
     'CREATE TABLE IF NOT EXISTS media_sizes (name VARCHAR(255) PRIMARY KEY, width INTEGER NOT NULL, height INTEGER NOT NULL)',
     'CREATE TABLE IF NOT EXISTS schedule (kind VARCHAR(64) NOT NULL, slug VARCHAR(255) NOT NULL, at VARCHAR(40) NOT NULL, PRIMARY KEY (kind, slug))',
     'CREATE TABLE IF NOT EXISTS media_variants (name VARCHAR(255) PRIMARY KEY, original VARCHAR(255) NOT NULL, width INTEGER NOT NULL, bytes BYTEA NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS comments (id VARCHAR(40) PRIMARY KEY, type VARCHAR(255) NOT NULL, entry VARCHAR(255) NOT NULL, name TEXT NOT NULL, email TEXT NOT NULL, body TEXT NOT NULL, consent TEXT NOT NULL, at VARCHAR(40) NOT NULL, approved INTEGER NOT NULL)',
   ],
   params: (query) => {
     let n = 0;
@@ -210,6 +213,7 @@ const MYSQL: Dialect = {
     `CREATE TABLE IF NOT EXISTS media_sizes (name VARCHAR(255) PRIMARY KEY, width INTEGER NOT NULL, height INTEGER NOT NULL) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS schedule (kind VARCHAR(64) NOT NULL, slug VARCHAR(255) NOT NULL, at VARCHAR(40) NOT NULL, PRIMARY KEY (kind, slug)) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS media_variants (name VARCHAR(255) PRIMARY KEY, original VARCHAR(255) NOT NULL, width INTEGER NOT NULL, bytes LONGBLOB NOT NULL) ${MYSQL_TABLE}`,
+    `CREATE TABLE IF NOT EXISTS comments (id VARCHAR(40) PRIMARY KEY, type VARCHAR(255) NOT NULL, entry VARCHAR(255) NOT NULL, name TEXT NOT NULL, email TEXT NOT NULL, body TEXT NOT NULL, consent TEXT NOT NULL, at VARCHAR(40) NOT NULL, approved INTEGER NOT NULL) ${MYSQL_TABLE}`,
   ],
   params: (query) => query,
   upsert: (table, columns, _key, update) =>
@@ -248,6 +252,22 @@ export interface Message {
   body: string;
   /** The words of the consent the visitor ticked. */
   consent: string;
+}
+
+/** What a visitor wrote under an entry (ADR 0040). Shown on the site once approved; the address never is. */
+export interface Comment {
+  id: string;
+  /** The entry's type and address. */
+  type: string;
+  entry: string;
+  name: string;
+  email: string;
+  body: string;
+  /** The words of the consent the visitor ticked. */
+  consent: string;
+  /** When it was sent, as an ISO time. */
+  at: string;
+  approved: boolean;
 }
 
 /**
@@ -1011,6 +1031,7 @@ export class Store {
     await this.run('DELETE FROM entries WHERE type = ? AND slug = ?', [typeId, slug]);
     await this.run('DELETE FROM versions WHERE kind = ? AND slug = ?', [typeId, slug]);
     await this.run('DELETE FROM schedule WHERE kind = ? AND slug = ?', [typeId, slug]);
+    await this.run('DELETE FROM comments WHERE type = ? AND entry = ?', [typeId, slug]);
   }
 
   /** Every published entry of a type, in the order its list shows them. */
@@ -1226,10 +1247,89 @@ export class Store {
     return found;
   }
 
-  /** Deletes what was kept longer than the site keeps messages. */
+  /** Deletes what was kept longer than the site keeps messages: messages, and comments nobody approved. */
   async forgetOldMessages(now = new Date()): Promise<void> {
     const days = (await this.site()).keepMessages;
-    await this.run('DELETE FROM messages WHERE received_at < ?', [new Date(now.getTime() - days * 86_400_000).toISOString()]);
+    const before = new Date(now.getTime() - days * 86_400_000).toISOString();
+    await this.run('DELETE FROM messages WHERE received_at < ?', [before]);
+    await this.run('DELETE FROM comments WHERE approved = 0 AND at < ?', [before]);
+  }
+
+  // Comments (ADR 0040).
+
+  /**
+   * Keeps a comment, with the consent its writer ticked. It waits for the
+   * owner, unless an earlier comment from the same address was approved:
+   * someone the owner already let speak is not held each time.
+   */
+  async addComment(input: { type: string; entry: string; name: string; email: string; body: string; consent: string }, at = new Date()): Promise<Comment> {
+    const email = str(input.email, 254).trim();
+    const known = await this.row('SELECT 1 AS found FROM comments WHERE LOWER(email) = ? AND approved = 1', [email.toLowerCase()]);
+    const comment: Comment = {
+      id: crypto.randomUUID(),
+      type: str(input.type, 60),
+      entry: str(input.entry, 200),
+      name: str(input.name, 120).trim(),
+      email,
+      body: str(input.body, 3000).trim(),
+      consent: str(input.consent, 600).trim(),
+      at: at.toISOString(),
+      approved: known !== null,
+    };
+    await this.run('INSERT INTO comments (id, type, entry, name, email, body, consent, at, approved) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', [
+      comment.id,
+      comment.type,
+      comment.entry,
+      comment.name,
+      comment.email,
+      comment.body,
+      comment.consent,
+      comment.at,
+      comment.approved ? 1 : 0,
+    ]);
+    return comment;
+  }
+
+  /** Every comment, those waiting first and then newest first; or those one address sent. */
+  async comments(email?: string): Promise<Comment[]> {
+    const rows = await this.rows<Row>(
+      `SELECT id, type, entry, name, email, body, consent, at, approved FROM comments${email ? ' WHERE LOWER(email) = ?' : ''} ORDER BY approved, at DESC, id`,
+      email ? [email.trim().toLowerCase()] : [],
+    );
+    return rows.map((r) => ({
+      id: String(r.id),
+      type: String(r.type),
+      entry: String(r.entry),
+      name: String(r.name),
+      email: String(r.email),
+      body: String(r.body),
+      consent: String(r.consent),
+      at: String(r.at),
+      approved: Number(r.approved) === 1,
+    }));
+  }
+
+  async approveComment(id: string): Promise<void> {
+    await this.run('UPDATE comments SET approved = 1 WHERE id = ?', [id]);
+  }
+
+  async deleteComment(id: string): Promise<void> {
+    await this.run('DELETE FROM comments WHERE id = ?', [id]);
+  }
+
+  /** Erases every comment one address sent. Returns how many were erased. */
+  async deleteCommentsFrom(email: string): Promise<number> {
+    const found = (await this.comments(email)).length;
+    await this.run('DELETE FROM comments WHERE LOWER(email) = ?', [email.trim().toLowerCase()]);
+    return found;
+  }
+
+  /** What the site shows: the approved comments of each entry, by `type/entry`, oldest first, without their addresses. */
+  async shownComments(): Promise<Record<string, ShownComment[]>> {
+    const rows = await this.rows<Row>('SELECT id, type, entry, name, body, at FROM comments WHERE approved = 1 ORDER BY at, id');
+    const out: Record<string, ShownComment[]> = {};
+    for (const r of rows) (out[`${String(r.type)}/${String(r.entry)}`] ??= []).push({ id: String(r.id), name: String(r.name), body: String(r.body), at: String(r.at) });
+    return out;
   }
 
   /** Runs a query as it is written, for a test that needs to put a row in a state the store never would. */

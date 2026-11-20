@@ -472,11 +472,20 @@ export async function startEditor(
         if (email) await store.deleteMessagesFrom(email);
         else await store.deleteMessage(url.searchParams.get('id') ?? '');
       }
+      if (request.method === 'DELETE' && email) await store.deleteCommentsFrom(email);
       await store.forgetOldMessages();
       const keep = (await store.site()).keepMessages;
-      // Asked for one address: what that visitor sent, to give them or to check before erasing.
-      if (request.method === 'GET' && email) return json({ messages: await store.messages(email), keep });
+      // Asked for one address: what that visitor sent, messages and comments, to give them or to check before erasing.
+      if (request.method === 'GET' && email) return json({ messages: await store.messages(email), comments: await store.comments(email), keep });
       return json({ messages: await store.messages(), keep });
+    }
+    if (url.pathname === '/api/comments') {
+      // Moderating is an editor's work too: approve what may be shown, delete the rest (ADR 0040).
+      const id = url.searchParams.get('id') ?? '';
+      if (request.method === 'POST') await store.approveComment(id);
+      if (request.method === 'DELETE') await store.deleteComment(id);
+      await store.forgetOldMessages();
+      return json({ comments: await store.comments() });
     }
     if (url.pathname === '/api/media/variant' && request.method === 'POST') {
       // A smaller copy the browser made of a stored picture (ADR 0005 d8); what it is, is read from its bytes.

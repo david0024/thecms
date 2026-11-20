@@ -10,6 +10,7 @@ import { listPath, pictureIn, postsType } from '../core/index.ts';
 import EntryFields from './EntryFields.svelte';
 import { type EntryLists, setEntry } from './editing.ts';
 import BlockView from './BlockView.svelte';
+import Comments from './Comments.svelte';
 import Frozen from './Frozen.svelte';
 import PostMeta from './PostMeta.svelte';
 import Shell from './Shell.svelte';
@@ -63,4 +64,5 @@ setEntry({ post, type: type ?? postsType(), language: site.language, editing: ed
       {#if editing && post.blocks.length === 0}<div class="cms-empty" data-empty="page"></div>{/if}
     {/if}
   </article>
+  {#if kind.comments && !editing}<Comments {site} type={kind} {post} />{/if}
 </Shell>

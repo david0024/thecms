@@ -66,6 +66,7 @@ import ImportScreen from './ImportScreen.svelte';
 import MediaLibrary from './MediaLibrary.svelte';
 import People from './People.svelte';
 import Messages from './Messages.svelte';
+import Comments from './Comments.svelte';
 import Fields from './Fields.svelte';
 import { say, t } from './messages.ts';
 import { setPath } from './paths.ts';
@@ -81,7 +82,7 @@ let kind = $state<Kind>('page');
 let translation = $state<TranslationInfo | null>(null);
 const fixed = $derived(translation !== null && !translation.split);
 /** Which section of the admin is showing: a list, or the builder with one page or post open. */
-let view = $state<'pages' | 'sections' | 'layouts' | 'media' | 'messages' | 'people' | 'types' | 'import' | 'extensions' | 'edit' | `list:${string}` | `ext:${string}`>('pages');
+let view = $state<'pages' | 'sections' | 'layouts' | 'media' | 'messages' | 'comments' | 'people' | 'types' | 'import' | 'extensions' | 'edit' | `list:${string}` | `ext:${string}`>('pages');
 let selected = $state<string | null>(null);
 let tab = $state<'content' | 'style'>('content');
 let saving = $state<'saved' | 'saving' | 'unsaved' | 'error'>('saved');
@@ -629,6 +630,9 @@ onMount(() => {
       {/each}
       <button type="button" aria-current={view === 'sections' ? 'page' : undefined} onclick={() => (view = 'sections')} data-nav="sections">{t.nav.sections}</button>
       <button type="button" aria-current={view === 'media' ? 'page' : undefined} onclick={() => (view = 'media')} data-nav="media">{t.nav.media}</button>
+      {#if types.some((ty) => ty.comments)}
+        <button type="button" aria-current={view === 'comments' ? 'page' : undefined} onclick={() => (view = 'comments')} data-nav="comments">{t.nav.comments}</button>
+      {/if}
       {#if owner}
         <button type="button" aria-current={view === 'messages' ? 'page' : undefined} onclick={() => (view = 'messages')} data-nav="messages">{t.nav.messages}</button>
         <button type="button" onclick={() => panel('site')} data-nav="settings">{t.nav.settings}</button>
@@ -670,6 +674,8 @@ onMount(() => {
       <MediaLibrary />
     {:else if view === 'messages'}
       <Messages />
+    {:else if view === 'comments'}
+      <Comments site={site.site} entries={site.entries} />
     {:else if view === 'import'}
       <ImportScreen ondone={reload} />
     {:else if view === 'people'}

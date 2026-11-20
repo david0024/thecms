@@ -68,12 +68,14 @@ function png(width, height) {
       `import { Store } from './src/site/store.ts';
        const store = await Store.open(${JSON.stringify(db)});
        const site = await store.site();
-       await store.setSite({ ...site, types: [...(site.types ?? []), { id: 'events', name: 'Events', singular: 'Event', path: 'events', fields: [
+       await store.setSite({ ...site, types: [...(site.types ?? []), { id: 'events', name: 'Events', singular: 'Event', path: 'events', comments: true, fields: [
          { key: 'where', label: 'Where', kind: 'text' }, { key: 'about', label: 'About', kind: 'longtext' }, { key: 'on', label: 'On', kind: 'date' },
          { key: 'tickets', label: 'Tickets', kind: 'link' }, { key: 'poster', label: 'Poster', kind: 'image' } ] }] });
        await store.saveEntry('events', { slug: 'open-day', title: 'Open day', blocks: [] });
        await store.addMessage({ form: 'b_x', page: '/contact/', name: 'Ana', email: 'ana@example.org', body: 'First', consent: 'c' });
        await store.addMessage({ form: 'b_x', page: '/contact/', name: 'Ana', email: 'ana@example.org', body: 'Second', consent: 'c' });
+       await store.addComment({ type: 'events', entry: 'open-day', name: 'Ana', email: 'ana@example.org', body: 'See you there', consent: 'c' });
+       await store.addComment({ type: 'events', entry: 'open-day', name: 'Bot', email: 'bot@example.org', body: 'Cheap watches', consent: 'c' });
        await store.close();`,
     ],
     { cwd: root },
@@ -228,16 +230,36 @@ function png(width, height) {
     assert(true, 'a library that cannot be read says why');
     await page.unroute('**/api/media');
 
+    // Comments wait for the owner: one is approved, the other deleted.
+    await page.locator('[data-nav="comments"]').click();
+    await page.locator('[data-list="comments"] [data-comment]').nth(1).waitFor();
+    const ana = page.locator('[data-comment]', { hasText: 'See you there' });
+    assert((await ana.getAttribute('data-approved')) === 'no' && (await ana.textContent()).includes('on Open day'), 'a comment waits, with the entry it is on');
+    await ana.locator('[data-comment-approve]').click();
+    await page.locator('[data-comment][data-approved="yes"]').waitFor();
+    assert((await ana.locator('[data-comment-approve]').count()) === 0, 'and is shown once approved');
+    await page.locator('[data-comment]', { hasText: 'Cheap watches' }).locator('[data-comment-delete]').click();
+    await page.locator('[data-comment]', { hasText: 'Cheap watches' }).waitFor({ state: 'detached' });
+    assert((await page.locator('[data-comment]').count()) === 1, 'one that should not be shown is deleted');
+    await page.locator('[data-nav="pages"]').click();
+    await page.route('**/api/comments', (route) => route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'no comments today' }) }));
+    await page.locator('[data-nav="comments"]').click();
+    await page.getByText('no comments today').waitFor();
+    assert(true, 'comments that cannot be read say why');
+    await page.unroute('**/api/comments');
+
     // A visitor's messages: everything kept about them, then erased.
     await page.locator('[data-nav="messages"]').click();
     await page.locator('[data-list="messages"] [data-message]').first().waitFor();
     await page.locator('[data-rights-email]').fill('ana@example.org');
     const [download] = await Promise.all([page.waitForEvent('download'), page.locator('[data-rights-export]').click()]);
     const exported = JSON.parse(readFileSync(await download.path(), 'utf8'));
-    assert(exported.length === 2 && exported.every((m) => m.email === 'ana@example.org'), "everything kept about a visitor can be given to them");
+    assert(exported.messages.length === 2 && exported.messages.every((m) => m.email === 'ana@example.org') && exported.comments.length === 1, "everything kept about a visitor can be given to them, comments included");
     await page.locator('[data-rights-erase]').click();
     await page.getByText('No messages yet.').waitFor();
-    assert(true, 'and erased');
+    await page.locator('[data-nav="comments"]').click();
+    await page.getByText('No comments yet.').waitFor();
+    assert(true, 'and erased, comments included');
     await page.locator('[data-nav="pages"]').click();
     await page.route('**/api/messages', (route) => route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'no messages today' }) }));
     await page.locator('[data-nav="messages"]').click();

@@ -23,6 +23,8 @@ import {
   paginate,
   pagePath,
   type Post,
+  type ShownComment,
+  typeById,
   postExcerpt,
   postImageSources,
   typeCategoryPath,
@@ -106,12 +108,14 @@ export async function buildSite(
   sections: Page[] = [],
   /** The stored pictures' sizes and smaller copies (ADR 0005 d8): each picture is offered at the size that fits. */
   images: Record<string, MediaSize> = {},
+  /** The approved comments (ADR 0040), by `type/entry`: shown under the entries of a type that takes them. */
+  comments: Record<string, ShownComment[]> = {},
 ): Promise<Map<string, string | Uint8Array>> {
   const files = new Map<string, string | Uint8Array>();
   site = { ...site, pictures: { sizes: images, widths: theme.tokens.width } };
   // Each section block holds its section's blocks from here on, so the pages, their pictures and their links include them.
   pages = pages.map((p) => ({ ...p, blocks: fillSections(p.blocks, sections, languageOf(site, p.slug)) }));
-  const filledEntries = Object.fromEntries(Object.entries(Array.isArray(entries) ? { [POSTS_TYPE]: entries } : entries).map(([id, list]) => [id, list.map((post) => ({ ...post, blocks: fillSections(post.blocks, sections, site.language) }))]));
+  const filledEntries = Object.fromEntries(Object.entries(Array.isArray(entries) ? { [POSTS_TYPE]: entries } : entries).map(([id, list]) => [id, list.map((post) => ({ ...post, blocks: fillSections(post.blocks, sections, site.language), ...(typeById(site, id)?.comments ? { comments: comments[`${id}/${post.slug}`] ?? [] } : {}) }))]));
   templates = Object.fromEntries(Object.entries(templates).map(([id, blocks]) => [id, blocks && fillSections(blocks, sections, site.language)]));
   const byType = filledEntries;
   const types = contentTypes(site)
@@ -256,5 +260,5 @@ export async function publishedSite(store: Store): Promise<Map<string, string | 
     entries[type.id] = await store.publishedEntries(type.id);
     templates[type.id] = await store.publishedTemplate(type.id);
   }
-  return buildSite(site, theme, pages, async (name) => (await store.mediaFile(name))?.bytes ?? null, entries, await store.redirects(), templates, await store.publishedSections(), await store.mediaSizes());
+  return buildSite(site, theme, pages, async (name) => (await store.mediaFile(name))?.bytes ?? null, entries, await store.redirects(), templates, await store.publishedSections(), await store.mediaSizes(), await store.shownComments());
 }

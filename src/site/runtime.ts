@@ -74,9 +74,9 @@ export function startRuntime(
   async function handle(request: Request, ip = ''): Promise<Response> {
     const url = new URL(request.url);
     // What cannot be static has its own addresses, under /_/.
-    if (url.pathname === '/_/send') {
+    if (url.pathname === '/_/send' || url.pathname === '/_/comment') {
       const inner = new URL(request.url);
-      inner.pathname = '/send';
+      inner.pathname = url.pathname.slice(2);
       return forms.fetch(new Request(inner, request), ip);
     }
     if (url.pathname === '/_' || url.pathname === '/_/') return new Response('thecms runtime\n', { headers: { 'content-type': 'text/plain; charset=utf-8' } });
