@@ -125,8 +125,16 @@ describe('export', () => {
     expect(first).toEqual(['.thecms-export', '404.html', 'about/index.html', 'assets/site.css', 'contact/index.html', 'index.html', 'robots.txt', 'sitemap.xml']);
     expect(await Bun.file(join(out, 'about/index.html')).text()).toContain('Three people and a workshop');
 
+    // Unpublished, the page leaves links to it on the others: nothing is written, the last export stays.
     await store.rawForTests('UPDATE pages SET published = NULL WHERE slug = ?', ['about']);
-    await exportSite(store, out);
+    await expect(exportSite(store, out)).rejects.toThrow('Nothing was exported. A link leads to an address the site does not have:\n  /about/ does not exist; linked from /, /404.html, /contact/');
+    expect(await readdir(out)).toContain('about');
+    // With the links gone, it goes.
+    for (const slug of ['', 'contact']) await store.savePage({ ...(await store.draft(slug))!, blocks: [] });
+    for (const slug of ['', 'contact']) await store.publish(slug);
+    await store.setSite({ ...(await store.site()), footerLinks: [] });
+    const notes: string[] = [];
+    await exportSite(store, out, (line) => notes.push(line));
     expect(await readdir(out)).not.toContain('about');
   });
 

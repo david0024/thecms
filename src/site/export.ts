@@ -35,6 +35,7 @@ import {
 } from '../core/index.ts';
 import { wordsFor } from '../blocks/words.ts';
 import { menuOf, pageSetting, renderBlogList, renderPage, renderPost, STYLESHEET } from './document.ts';
+import { checkSite, describeCheck } from './check.ts';
 import { BASE_CSS } from './shipped.ts';
 import type { Store } from './store.ts';
 
@@ -188,12 +189,12 @@ export async function buildSite(
  * export. Anything else is refused, because the alternative is deleting
  * someone's files.
  */
-export async function exportSite(store: Store, outDir: string): Promise<string[]> {
-  const theme = await store.publishedTheme();
-  if (!theme) throw new Error('the theme is not published yet');
-  const pages = await store.published();
-  if (pages.length === 0) throw new Error('nothing is published yet');
-  if (!pages.some((p) => p.slug === '')) throw new Error('the home page is not published');
+export async function exportSite(store: Store, outDir: string, warn: (line: string) => void = () => {}): Promise<string[]> {
+  const files = await publishedSite(store);
+  // A link that would lead nowhere is not published quietly either (ADR 0029).
+  const { problems, warnings } = describeCheck(checkSite(files));
+  if (problems.length) throw new Error(`Nothing was exported. A link leads to an address the site does not have:\n${problems.map((p) => `  ${p}`).join('\n')}`);
+  for (const line of warnings) warn(line);
 
   const existing = await readdir(outDir).catch(() => [] as string[]);
   if (existing.length > 0 && !existing.includes(MARKER)) {
@@ -201,14 +202,6 @@ export async function exportSite(store: Store, outDir: string): Promise<string[]
   }
   await rm(outDir, { recursive: true, force: true });
 
-  const site = await store.site();
-  const entries: Record<string, Post[]> = {};
-  const templates: Record<string, Block[] | null> = {};
-  for (const type of contentTypes(site)) {
-    entries[type.id] = await store.publishedEntries(type.id);
-    templates[type.id] = await store.publishedTemplate(type.id);
-  }
-  const files = await buildSite(site, theme, pages, async (name) => (await store.mediaFile(name))?.bytes ?? null, entries, await store.redirects(), templates);
   files.set(MARKER, 'Made by thecms export. This folder is replaced on every export.\n');
   for (const [path, contents] of files) {
     const target = join(outDir, path);
@@ -216,4 +209,21 @@ export async function exportSite(store: Store, outDir: string): Promise<string[]
     await Bun.write(target, contents);
   }
   return [...files.keys()].sort();
+}
+
+/** The published site as the files an export writes, in memory: what is checked before anything is written. */
+export async function publishedSite(store: Store): Promise<Map<string, string | Uint8Array>> {
+  const theme = await store.publishedTheme();
+  if (!theme) throw new Error('the theme is not published yet');
+  const pages = await store.published();
+  if (pages.length === 0) throw new Error('nothing is published yet');
+  if (!pages.some((p) => p.slug === '')) throw new Error('the home page is not published');
+  const site = await store.site();
+  const entries: Record<string, Post[]> = {};
+  const templates: Record<string, Block[] | null> = {};
+  for (const type of contentTypes(site)) {
+    entries[type.id] = await store.publishedEntries(type.id);
+    templates[type.id] = await store.publishedTemplate(type.id);
+  }
+  return buildSite(site, theme, pages, async (name) => (await store.mediaFile(name))?.bytes ?? null, entries, await store.redirects(), templates);
 }

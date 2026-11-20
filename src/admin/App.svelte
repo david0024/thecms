@@ -46,6 +46,7 @@ import ContentList from './ContentList.svelte';
 import Extensions from './Extensions.svelte';
 import ExtensionScreen from './ExtensionScreen.svelte';
 import ExtensionTools from './ExtensionTools.svelte';
+import SiteCheck from './SiteCheck.svelte';
 import Versions from './Versions.svelte';
 import ContentTypes from './ContentTypes.svelte';
 import EntryFieldsForm from './EntryFieldsForm.svelte';
@@ -558,7 +559,10 @@ onMount(() => {
     </nav>
 
     {#if view === 'pages'}
-      <ContentList kind="page" items={site.pages} site={site.site} onopen={(slug) => edit(slug, 'page')} oncreate={(title) => createPage(title, 'page')} ontranslate={translatePage} />
+      <div class="stack">
+        <ContentList kind="page" items={site.pages} site={site.site} onopen={(slug) => edit(slug, 'page')} oncreate={(title) => createPage(title, 'page')} ontranslate={translatePage} />
+        <SiteCheck />
+      </div>
     {:else if view === 'types'}
       <ContentTypes site={site.site} counts={Object.fromEntries(types.map((ty) => [ty.id, site?.entries[ty.id]?.length ?? 0]))} templates={site.templates} onsave={saveTypes} ondesign={(id) => edit(id, `template:${id}`)} />
     {:else if view.startsWith('list:')}
@@ -778,6 +782,8 @@ onMount(() => {
   :global(.editor .rail button:hover:not(:disabled)) { border-color: transparent; background: #2e2c3a; }
   :global(.editor .rail button[aria-current='page']) { background: #6d5dfc; color: #fff; font-weight: 600; }
   :global(.editor .screen) { overflow-y: auto; padding: 1.5rem 2rem; }
+  .stack { min-width: 0; overflow-y: auto; }
+  .stack > :global(.screen) { overflow-y: visible; }
   .toast { position: fixed; inset-block-end: 1rem; inset-inline-end: 1rem; padding: 0.5rem 0.8rem; background: #fff; border: 1px solid #b3261e; border-radius: 6px; }
   .builder { display: grid; min-width: 0; height: 100vh; grid-template: 'bar bar bar' auto 'left canvas right' 1fr / 14rem 1fr 19rem; }
   .builder[hidden] { display: none; }

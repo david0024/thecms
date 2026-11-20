@@ -29,6 +29,15 @@ export const en = {
     save: 'Continue',
     signOut: 'Sign out',
   },
+  check: {
+    heading: 'Before publishing',
+    run: 'Check the site',
+    working: 'Checking…',
+    fine: 'Nothing to fix: every link leads somewhere, and every picture says what it shows.',
+    broken: 'These links lead to an address the site does not have. The site is not exported until they are fixed:',
+    unnamed: 'These pictures have no description, for people who cannot see them:',
+    from: 'on {pages}',
+  },
   versions: {
     heading: 'Published versions',
     show: 'Show earlier versions',

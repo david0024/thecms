@@ -205,6 +205,23 @@ function png(width, height) {
     await page.locator('[data-media-item]').first().waitFor();
     assert((await page.locator('[data-media-item]').count()) >= 1, 'an image can be uploaded to the media library');
     await page.locator('[data-nav="pages"]').click();
+    // Before publishing: the site is read for links that lead nowhere and pictures with no words.
+    await page.locator('[data-check-run]').click();
+    await page.locator('[data-check-fine], [data-check-broken], [data-check-unnamed]').first().waitFor();
+    assert((await page.locator('[data-check-broken]').count()) === 0, 'the published demo has no link that leads nowhere');
+    await page.route('**/api/check', (route) => route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ error: 'the home page is not published' }) }));
+    await page.locator('[data-check-run]').click();
+    await page.locator('[data-site-check] [role="alert"]', { hasText: 'the home page is not published' }).waitFor();
+    await page.unroute('**/api/check');
+    await page.route('**/api/check', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ check: { broken: [{ href: '/servicii/', from: ['/', '/about/'] }], unnamed: [{ src: '/media/a.webp', on: ['/'] }] } }) }));
+    await page.locator('[data-check-run]').click();
+    await page.locator('[data-check-broken] li', { hasText: '/servicii/' }).waitFor();
+    await page.locator('[data-check-unnamed] li', { hasText: '/media/a.webp' }).waitFor();
+    if (shots) await page.screenshot({ path: join(shots, 'site-check.png'), fullPage: true });
+    await page.unroute('**/api/check');
+    await page.locator('[data-check-run]').click();
+    await page.locator('[data-check-broken]').waitFor({ state: 'detached' });
+    assert(true, 'what it finds is listed with the pages it is on, and a site that cannot be read says why');
     await page.route('**/api/media', (route) => route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'no media today' }) }));
     await page.locator('[data-nav="media"]').click();
     await page.getByText('no media today').waitFor();
