@@ -13,6 +13,7 @@
  * it has accounts instead (ADR 0022, src/site/accounts.ts): a session cookie,
  * a header no other site's page can send, and calls only the owner may make.
  */
+import { startClock } from './clock.ts';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { compile } from 'svelte/compiler';
@@ -497,6 +498,12 @@ export async function startEditor(
       }
     }
     const body = request.method === 'GET' || request.method === 'DELETE' ? {} : ((await request.json()) as Record<string, unknown>);
+    if (url.pathname === '/api/schedule') {
+      // A page or an entry published at a set time (ADR 0039).
+      if (request.method === 'POST') return json({ scheduled: await store.schedule(String(body.kind ?? 'page'), String(body.slug ?? ''), String(body.at ?? '')) });
+      if (request.method === 'DELETE') return json({ scheduled: await store.unschedule(url.searchParams.get('kind') ?? 'page', url.searchParams.get('slug') ?? '') });
+      return json({ scheduled: await store.scheduled() });
+    }
     const slug = url.searchParams.get('slug') ?? '';
     const route = `${request.method} ${url.pathname}`;
     // An entry of a content type is edited through the same calls as a page; `kind` names its type.
@@ -751,6 +758,8 @@ export async function startEditor(
 
   const server = options.listen === false ? null : Bun.serve({ hostname: options.hostname ?? '127.0.0.1', port, fetch: handle, maxRequestBodySize: IMPORT_MAX_BYTES + 1024 * 1024 });
   if (server?.port) port = server.port;
+  // What was set for later is published while the editor runs (ADR 0039).
+  const clock = startClock(store, { run: server !== null });
   return {
     url: people ? `${publicAddress}/admin/` : `http://127.0.0.1:${port}/admin/#token=${token}`,
     setupUrl: people ? await people.setupLink() : '',
@@ -758,6 +767,7 @@ export async function startEditor(
     port,
     fetch: handle,
     stop: () => {
+      clock.stop();
       extensions.close();
       server?.stop(true);
     },

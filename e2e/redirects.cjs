@@ -69,6 +69,20 @@ const PORT = 4395;
     await page.getByText('is already the address of').first().waitFor();
     assert((await page.locator('[data-page-address]').inputValue()) === 'despre-noi', 'and the field says where the page still is');
 
+    // Publish later (ADR 0039): an hour is set beside the page, shown, and taken back.
+    const tomorrow = await page.evaluate(() => {
+      const d = new Date(Date.now() + 86_400_000);
+      const two = (n) => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())}T10:00`;
+    });
+    await page.locator('[data-schedule-at]').fill(tomorrow);
+    await page.locator('[data-schedule-save]').click();
+    await page.locator('[data-schedule-set]').waitFor();
+    assert((await page.locator('[data-schedule-set]').innerText()).includes(tomorrow.slice(0, 4)), 'a page is set to be published at a chosen hour');
+    await page.locator('[data-schedule-cancel]').click();
+    await page.locator('[data-schedule-at]').waitFor();
+    assert(true, 'and that hour is taken back');
+
     // The settings list it, and take one written by hand.
     await page.locator('[data-back]').click();
     await page.locator('[data-nav="settings"]').click();

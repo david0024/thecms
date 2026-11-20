@@ -89,6 +89,13 @@ export const en = {
     ofType: 'Layout of its entries',
     ready: { standard: 'Standard', landing: 'Landing page', sidebar: 'With a sidebar', article: 'Article' } as Record<string, string>,
   },
+  schedule: {
+    heading: 'Publish later',
+    save: 'Set this hour',
+    set: 'Will be published on {when}, as the draft is then.',
+    cancel: 'Do not publish then',
+    hint: 'What the draft holds at that hour is published, by the editor or by the site\'s runtime, whichever is running.',
+  },
   versions: {
     heading: 'Published versions',
     show: 'Show earlier versions',

@@ -58,7 +58,6 @@ An address elsewhere (`https://forms.example.com`) works as before.
 - **The server install.** `install.sh --server` does not yet start `thecms
   run` beside the editor, with Caddy in front of both.
 - **The runtime on Workers.** That is ADR 0037 stage 3.
-- **The jobs.** The runtime does not yet have a clock (ADR 0037 d2). Old
-  messages are still forgotten when the admin or a form reads them.
+- ~~**The jobs.**~~ The runtime has a clock since ADR 0039.
 - **Many pages.** The whole site is built again after 5 seconds. For a site
   of thousands of pages, the build should follow the publications instead.
