@@ -29,18 +29,24 @@ import {
   LAYOUT_AREAS,
   READY_LAYOUTS,
   parseExtension,
+  canVary,
   imageExt,
+  imageSize,
   imageSources,
   isMediaName,
   MEDIA_MAX_BYTES,
   MEDIA_TYPES,
   type MediaExt,
   mediaNameOf,
+  type MediaSize,
   mediaPath,
   normalizePage,
   normalizePost,
   normalizeRedirects,
   normalizeSite,
+  variantName,
+  variantOf,
+  wantedWidths,
   type Page,
   type Post,
   parseTheme,
@@ -98,6 +104,11 @@ export interface MediaItem {
   size: number;
   /** The file name it was uploaded under: only a label for the author. */
   label: string;
+  /** How wide and high it is, when its bytes say (ADR 0005 d8); 0 when they do not. */
+  width: number;
+  height: number;
+  /** The widths of the smaller copies it has. */
+  variants: number[];
 }
 
 export type DatabaseKind = 'sqlite' | 'postgres' | 'mysql';
@@ -134,6 +145,8 @@ const SQLITE: Dialect = {
     'CREATE TABLE IF NOT EXISTS extensions (name TEXT PRIMARY KEY, version TEXT NOT NULL, sha256 TEXT NOT NULL, package TEXT NOT NULL, enabled INTEGER NOT NULL, installed_at TEXT NOT NULL)',
     'CREATE TABLE IF NOT EXISTS extension_rows (extension TEXT NOT NULL, collection TEXT NOT NULL, id TEXT NOT NULL, data TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY (extension, collection, id))',
     'CREATE TABLE IF NOT EXISTS versions (kind TEXT NOT NULL, slug TEXT NOT NULL, at TEXT NOT NULL, doc TEXT NOT NULL, PRIMARY KEY (kind, slug, at))',
+    'CREATE TABLE IF NOT EXISTS media_sizes (name TEXT PRIMARY KEY, width INTEGER NOT NULL, height INTEGER NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS media_variants (name TEXT PRIMARY KEY, original TEXT NOT NULL, width INTEGER NOT NULL, bytes BLOB NOT NULL)',
   ],
   params: (query) => query,
   upsert: (table, columns, key, update) =>
@@ -159,6 +172,8 @@ const POSTGRES: Dialect = {
     'CREATE TABLE IF NOT EXISTS extensions (name VARCHAR(64) PRIMARY KEY, version VARCHAR(40) NOT NULL, sha256 VARCHAR(64) NOT NULL, package TEXT NOT NULL, enabled INTEGER NOT NULL, installed_at VARCHAR(40) NOT NULL)',
     'CREATE TABLE IF NOT EXISTS extension_rows (extension VARCHAR(64) NOT NULL, collection VARCHAR(64) NOT NULL, id VARCHAR(40) NOT NULL, data TEXT NOT NULL, updated_at VARCHAR(40) NOT NULL, PRIMARY KEY (extension, collection, id))',
     'CREATE TABLE IF NOT EXISTS versions (kind VARCHAR(64) NOT NULL, slug VARCHAR(255) NOT NULL, at VARCHAR(40) NOT NULL, doc TEXT NOT NULL, PRIMARY KEY (kind, slug, at))',
+    'CREATE TABLE IF NOT EXISTS media_sizes (name VARCHAR(255) PRIMARY KEY, width INTEGER NOT NULL, height INTEGER NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS media_variants (name VARCHAR(255) PRIMARY KEY, original VARCHAR(255) NOT NULL, width INTEGER NOT NULL, bytes BYTEA NOT NULL)',
   ],
   params: (query) => {
     let n = 0;
@@ -183,6 +198,8 @@ const MYSQL: Dialect = {
     `CREATE TABLE IF NOT EXISTS extensions (name VARCHAR(64) PRIMARY KEY, version VARCHAR(40) NOT NULL, sha256 VARCHAR(64) NOT NULL, package LONGTEXT NOT NULL, enabled INTEGER NOT NULL, installed_at VARCHAR(40) NOT NULL) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS extension_rows (extension VARCHAR(64) NOT NULL, collection VARCHAR(64) NOT NULL, id VARCHAR(40) NOT NULL, data LONGTEXT NOT NULL, updated_at VARCHAR(40) NOT NULL, PRIMARY KEY (extension, collection, id)) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS versions (kind VARCHAR(64) NOT NULL, slug VARCHAR(255) NOT NULL, at VARCHAR(40) NOT NULL, doc LONGTEXT NOT NULL, PRIMARY KEY (kind, slug, at)) ${MYSQL_TABLE}`,
+    `CREATE TABLE IF NOT EXISTS media_sizes (name VARCHAR(255) PRIMARY KEY, width INTEGER NOT NULL, height INTEGER NOT NULL) ${MYSQL_TABLE}`,
+    `CREATE TABLE IF NOT EXISTS media_variants (name VARCHAR(255) PRIMARY KEY, original VARCHAR(255) NOT NULL, width INTEGER NOT NULL, bytes LONGBLOB NOT NULL) ${MYSQL_TABLE}`,
   ],
   params: (query) => query,
   upsert: (table, columns, _key, update) =>
@@ -977,21 +994,90 @@ export class Store {
     if (!ext) throw new Error('not an image this site can show (PNG, JPEG, GIF, WebP or AVIF)');
     const name = `${new Bun.CryptoHasher('sha256').update(bytes).digest('hex').slice(0, 32)}.${ext}`;
     await this.run(this.dialect.insertNew('media', ['name', 'label', 'size', 'bytes', 'created_at']), [name, str(label, 200).trim(), bytes.length, bytes, new Date().toISOString()]);
+    await this.recordSize(name, bytes);
     return (await this.media()).find((m) => m.name === name) as MediaItem;
+  }
+
+  /** Keeps how wide and high a picture is, as its bytes say. */
+  private async recordSize(name: string, bytes: Uint8Array): Promise<{ width: number; height: number }> {
+    const size = imageSize(bytes) ?? { width: 0, height: 0 };
+    await this.run(this.dialect.upsert('media_sizes', ['name', 'width', 'height'], ['name'], ['width', 'height']), [name, size.width, size.height]);
+    return size;
+  }
+
+  /** How wide and high each stored picture is, read once from its bytes for a picture stored before this was kept. */
+  private async sizes(): Promise<Map<string, { width: number; height: number }>> {
+    const known = new Map(
+      (await this.rows<{ name: string; width: number | string; height: number | string }>('SELECT name, width, height FROM media_sizes')).map((r) => [r.name, { width: Number(r.width), height: Number(r.height) }]),
+    );
+    for (const { name } of await this.rows<{ name: string }>('SELECT name FROM media')) {
+      if (known.has(name)) continue;
+      const file = await this.mediaFile(name);
+      if (file) known.set(name, await this.recordSize(name, file.bytes));
+    }
+    return known;
+  }
+
+  /** The widths of each picture's smaller copies, by the picture's name. */
+  private async variantWidths(): Promise<Map<string, { name: string; width: number }[]>> {
+    const all = new Map<string, { name: string; width: number }[]>();
+    for (const row of await this.rows<{ name: string; original: string; width: number | string }>('SELECT name, original, width FROM media_variants ORDER BY width')) {
+      all.set(row.original, [...(all.get(row.original) ?? []), { name: row.name, width: Number(row.width) }]);
+    }
+    return all;
   }
 
   /** Every stored image, newest first. */
   async media(): Promise<MediaItem[]> {
+    const sizes = await this.sizes();
+    const variants = await this.variantWidths();
     return (await this.rows<{ name: string; label: string; size: number | string }>('SELECT name, label, size FROM media ORDER BY created_at DESC, name')).map((row) => ({
       name: row.name,
       label: row.label,
       size: Number(row.size),
       path: mediaPath(row.name),
       type: MEDIA_TYPES[row.name.split('.').pop() as MediaExt],
+      width: sizes.get(row.name)?.width ?? 0,
+      height: sizes.get(row.name)?.height ?? 0,
+      variants: (variants.get(row.name) ?? []).map((v) => v.width),
     }));
   }
 
+  /** Each picture's size and smaller copies (ADR 0005 d8): what an exported page needs to offer the right one. */
+  async mediaSizes(): Promise<Record<string, MediaSize>> {
+    const sizes = await this.sizes();
+    const variants = await this.variantWidths();
+    const all: Record<string, MediaSize> = {};
+    for (const [name, size] of sizes) if (size.width > 0) all[name] = { ...size, variants: (variants.get(name) ?? []).map((v) => v.name) };
+    return all;
+  }
+
+  /**
+   * Keeps a smaller copy of a stored picture, made by the browser (ADR 0005
+   * d6). What it is, is read from its bytes: a WebP or JPEG at one of the
+   * widths that picture wants, drawn in its proportions.
+   */
+  async addVariant(original: string, bytes: Uint8Array): Promise<MediaItem> {
+    const item = (await this.media()).find((m) => m.name === original);
+    if (!item) throw new Error('no such image');
+    if (!canVary(original) || !item.width) throw new Error('this image keeps one size');
+    if (bytes.length > MEDIA_MAX_BYTES) throw new Error('the image is too large');
+    const ext = imageExt(bytes);
+    const size = imageSize(bytes);
+    if ((ext !== 'webp' && ext !== 'jpg') || !size) throw new Error('a smaller copy is a WebP or a JPEG');
+    if (!wantedWidths(item.width).includes(size.width)) throw new Error(`a smaller copy of this image is ${wantedWidths(item.width).join(', ')} pixels wide`);
+    if (Math.abs(size.height - (item.height * size.width) / item.width) > 2) throw new Error('a smaller copy keeps the proportions of the image');
+    await this.run('DELETE FROM media_variants WHERE original = ? AND width = ?', [original, size.width]);
+    await this.run(this.dialect.insertNew('media_variants', ['name', 'original', 'width', 'bytes']), [variantName(original, size.width, ext), original, size.width, bytes]);
+    return (await this.media()).find((m) => m.name === original) as MediaItem;
+  }
+
   async mediaFile(name: string): Promise<{ type: string; bytes: Uint8Array } | null> {
+    const variant = variantOf(name);
+    if (variant) {
+      const row = await this.row<{ bytes: Uint8Array }>('SELECT bytes FROM media_variants WHERE name = ?', [name]);
+      return row ? { type: MEDIA_TYPES[name.split('.').pop() as MediaExt], bytes: new Uint8Array(row.bytes) } : null;
+    }
     if (!isMediaName(name)) return null;
     const row = await this.row<{ bytes: Uint8Array }>('SELECT bytes FROM media WHERE name = ?', [name]);
     return row ? { type: MEDIA_TYPES[name.split('.').pop() as MediaExt], bytes: new Uint8Array(row.bytes) } : null;
@@ -1022,6 +1108,8 @@ export class Store {
     const used = await this.mediaUsedBy(name);
     if (used.length) throw new Error(`this image is used on: ${used.join(', ')}`);
     await this.run('DELETE FROM media WHERE name = ?', [name]);
+    await this.run('DELETE FROM media_sizes WHERE name = ?', [name]);
+    await this.run('DELETE FROM media_variants WHERE original = ?', [name]);
   }
 
   /**

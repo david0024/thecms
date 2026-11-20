@@ -171,7 +171,7 @@ describe('images stored with the site', () => {
     expect(files).toContain(used.path.slice(1));
     expect(files).not.toContain(unused.path.slice(1));
     expect(new Uint8Array(await Bun.file(join(out, used.path)).arrayBuffer())).toEqual(PNG);
-    expect(await Bun.file(join(out, 'index.html')).text()).toContain(`<img src="${used.path}" alt="A pixel"`);
+    expect(await Bun.file(join(out, 'index.html')).text()).toContain(`<img src="${used.path}" width="1" height="1" alt="A pixel"`);
   });
 
   test('a published page whose image is gone stops the export, and says which page', async () => {

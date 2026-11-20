@@ -3,6 +3,7 @@ import { type Block, blocksText, cleanImage, cleanLink, type ImageValue, type Li
 import { type Layout, normalizeLayouts } from './layout.ts';
 import { normalizeTranslations, type PageTranslation } from './localize.ts';
 import { type MenuNode, normalizeMenu } from './menu.ts';
+import type { Pictures } from './media.ts';
 import { pageSlug, prefixOf } from './translation.ts';
 import { BLOG_SLUG, type ContentType, normalizeTypes, POSTS_TYPE, postsType, RESERVED_SLUGS } from './types.ts';
 import { type Issue, isObject, safeHref, slugify, str } from './util.ts';
@@ -52,6 +53,8 @@ export interface Site {
   layouts?: Layout[];
   /** What each section a layout shows holds, in the language being drawn: filled in to draw a page, never kept. */
   areas?: Record<string, Block[]>;
+  /** The stored pictures' sizes and smaller copies (ADR 0005 d8): filled in to draw a page for export, never kept. */
+  pictures?: Pictures;
 }
 
 /** The site's own words in another language: the footer and the header's button. */

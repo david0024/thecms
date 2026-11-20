@@ -357,6 +357,8 @@
   "admin.media.empty": "Încă nu s-a încărcat nimic.",
   "admin.media.remove": "Șterge această imagine",
   "admin.media.elsewhere": "Folosește o imagine de la altă adresă",
+  "admin.media.sizing": "Se fac copii mai mici pentru telefoane: {done} din {count}",
+  "admin.media.sizes": "Fă copii mai mici",
   "admin.format.p": "Paragraf",
   "admin.format.h2": "Titlu",
   "admin.format.h3": "Subtitlu",

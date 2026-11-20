@@ -7,7 +7,7 @@
 import type { Block, EntryContent, ImageValue, LinkValue } from '../core/index.ts';
 import { isLink } from '../core/index.ts';
 import BlockView from './BlockView.svelte';
-import { getEntry, setEditing, setEntry } from './editing.ts';
+import { getEntry, picture, setEditing, setEntry } from './editing.ts';
 import EntryFields from './EntryFields.svelte';
 import PostMeta from './PostMeta.svelte';
 import { dateText } from './words.ts';
@@ -15,6 +15,7 @@ import { dateText } from './words.ts';
 let { block }: { block: Block } = $props();
 const c = $derived(block.content as unknown as EntryContent);
 const entry = getEntry();
+const pic = picture();
 const shown = entry && !entry.inBody ? entry : undefined;
 // What lies inside belongs to the entry: a part met there draws nothing.
 if (entry) setEntry({ ...entry, inBody: true });
@@ -30,7 +31,7 @@ const value = $derived(field && shown ? shown.post.fields[field.key] : undefined
     <div class="post-head">
       <PostMeta {type} {post} {language} />
       <h1>{post.title}</h1>
-      {#if post.cover}<img class="post-cover" src={post.cover.src} alt={post.cover.alt} />{/if}
+      {#if post.cover}{@const pa = pic(post.cover.src, 'full')}<img class="post-cover" src={post.cover.src} srcset={pa.srcset} sizes={pa.sizes} width={pa.width} height={pa.height} alt={post.cover.alt} />{/if}
       <EntryFields {type} {post} {language} />
     </div>
   {:else if c.part === 'title'}
@@ -38,7 +39,7 @@ const value = $derived(field && shown ? shown.post.fields[field.key] : undefined
   {:else if c.part === 'meta'}
     <PostMeta {type} {post} {language} />
   {:else if c.part === 'cover'}
-    {#if post.cover}<img class="post-cover" src={post.cover.src} alt={post.cover.alt} />{/if}
+    {#if post.cover}{@const pa = pic(post.cover.src, 'full')}<img class="post-cover" src={post.cover.src} srcset={pa.srcset} sizes={pa.sizes} width={pa.width} height={pa.height} alt={post.cover.alt} />{/if}
   {:else if c.part === 'fields'}
     <EntryFields {type} {post} {language} />
   {:else if c.part === 'body'}
@@ -50,7 +51,7 @@ const value = $derived(field && shown ? shown.post.fields[field.key] : undefined
     {#if field.kind === 'link'}
       {#if isLink(value as LinkValue | null)}<p><a href={(value as LinkValue).href}>{(value as LinkValue).label}</a></p>{/if}
     {:else if field.kind === 'image'}
-      {#if (value as ImageValue | null)?.src}<img src={(value as ImageValue).src} alt={(value as ImageValue).alt} loading="lazy" decoding="async" />{/if}
+      {#if (value as ImageValue | null)?.src}{@const pa = pic((value as ImageValue).src, 'card')}<img src={(value as ImageValue).src} srcset={pa.srcset} sizes={pa.sizes} width={pa.width} height={pa.height} alt={(value as ImageValue).alt} loading="lazy" decoding="async" />{/if}
     {:else if field.kind === 'date'}
       {#if value}<p><time datetime={value as string}>{dateText(value as string, language)}</time></p>{/if}
     {:else if value}

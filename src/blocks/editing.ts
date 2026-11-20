@@ -7,7 +7,7 @@
  * out, and the HTML is exactly what it was before the editor existed.
  */
 import { getContext, setContext } from 'svelte';
-import type { ContentType, Post, Site } from '../core/index.ts';
+import { type ContentType, type Post, pictureAttrs, type Share, type Site } from '../core/index.ts';
 
 const KEY = 'thecms:editing';
 
@@ -68,3 +68,18 @@ export const setLists = (lists: EntryLists, language: string): void => {
 
 export const getLists = (): { lists: EntryLists; language: string } =>
   (getContext(LISTS) as { lists: EntryLists; language: string } | undefined) ?? { lists: {}, language: 'en' };
+
+const MEASURE = 'thecms:measure';
+
+/** How wide the content runs where a block is drawn, so a picture in it can say which copy fits (ADR 0005 d8). */
+export const setMeasure = (layout: string, measure: string): void => {
+  setContext(MEASURE, { layout, measure });
+};
+export const getMeasure = (): { layout: string; measure: string } => (getContext(MEASURE) as { layout: string; measure: string } | undefined) ?? { layout: 'normal', measure: '100vw' };
+
+/** `pic(src, 'full')` → srcset, sizes, width and height for this picture, here; nothing in the editor or for a picture the site does not hold. */
+export const picture = (): ((src: string, share: Share) => ReturnType<typeof pictureAttrs>) => {
+  const pictures = getSite()?.site.pictures;
+  const { measure } = getMeasure();
+  return (src, share) => pictureAttrs(pictures, src, measure, share);
+};
