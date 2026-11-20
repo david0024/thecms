@@ -244,7 +244,7 @@ describe('the package', () => {
     const text = await Bun.file(file).text();
     const { pkg, problems } = parseExtension(JSON.parse(text));
     expect(problems).toEqual([]);
-    expect(pkg?.manifest.actions.map((a) => `${a.name}:${a.on}`)).toEqual(['write:block', 'translate:page', 'describe:page']);
+    expect(pkg?.manifest.actions.map((a) => `${a.name}:${a.on}:${a.each}`)).toEqual(['write:block:null', 'translate:page:language', 'describe:page:null']);
     const store = await Store.open(join(dir, 'site.db'));
     const called: string[] = [];
     const host = extensionHost(store, {

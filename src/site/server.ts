@@ -16,7 +16,7 @@
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { compile } from 'svelte/compiler';
-import { SECTION_KIND, type Block, fillSections, siteIn, type PlacedPage, translatedPage, cleanRow, EXTENSION_MAX_BYTES, extensionAsks, isObject, languageOf, normalizeBlocks, shownRow, str, type ContentType, DISPLAY_NAME, type LanguagePack, defaultTemplate, MEDIA_MAX_BYTES, MEDIA_PREFIX, normalizePage, type Page, type Post, contentTypes, listPath, type MenuList, normalizePost, parseTheme, pagesIn, POSTS_TYPE, reservedSlugs, slugProblem, type Theme, themeCss } from '../core/index.ts';
+import { SECTION_KIND, type Block, fillSections, takeWords, siteIn, type PlacedPage, translatedPage, cleanRow, EXTENSION_MAX_BYTES, type ExtensionManifest, extensionAsks, isObject, languageOf, normalizeBlocks, shownRow, str, type ContentType, DISPLAY_NAME, type LanguagePack, defaultTemplate, MEDIA_MAX_BYTES, MEDIA_PREFIX, normalizePage, type Page, type Post, contentTypes, listPath, type MenuList, normalizePost, parseTheme, pagesIn, POSTS_TYPE, reservedSlugs, slugProblem, type Theme, themeCss } from '../core/index.ts';
 import type { EntryLists } from '../blocks/editing.ts';
 import { type FetchImage, fetchImage as fetchOverNetwork, IMPORT_MAX_BYTES, type ImportReport, runImport } from '../import/run.ts';
 import { type ImportPlan, planImport } from '../import/wxr.ts';
@@ -290,7 +290,7 @@ export async function startEditor(
         version: manifest.version,
         publisher: manifest.publisher,
         enabled,
-        actions: manifest.actions.filter((a) => me.role === 'owner' || a.on).map(({ name, label, on, ask }) => ({ name, label, on, ask })),
+        actions: manifest.actions.filter((a) => me.role === 'owner' || a.on).map(({ name, label, on, ask, each }) => ({ name, label, on, ask, each })),
         messages: manifest.messages,
         ...(me.role === 'owner' ? { sha256, installedAt, asks: extensionAsks(manifest), views: manifest.views, collections: manifest.collections } : {}),
       }));
@@ -342,6 +342,41 @@ export async function startEditor(
     return json(importing, 202);
   }
 
+  /**
+   * A page action run for each of the site's other languages (ADR 0034): on
+   * the page in that language, started when it is not there yet; what it gives
+   * back fills in only the words that translation does not say. A language the
+   * page is split for keeps its own blocks, and is left as it is.
+   */
+  async function eachLanguage(request: Request, name: string, manifest: ExtensionManifest, what: string, owner: boolean): Promise<Response> {
+    const action = manifest.actions.find((a) => a.name === what && a.each === 'language');
+    if (!action) return json({ error: `${manifest.displayName} has no action "${what}" for each language` }, 404);
+    const body = (await request.json()) as Record<string, unknown>;
+    const kind = body.kind === SECTION_KIND ? 'section' : 'page';
+    if (kind === 'section' && !owner) return json({ error: 'only the owner may change this' }, 403);
+    const slug = String(body.slug ?? '');
+    const site = await store.site();
+    const main = kind === 'page' ? await store.draft(slug) : await store.sectionDraft(slug);
+    if (!main || (kind === 'page' && languageOf(site, slug) !== site.language)) return json({ error: `no ${kind} "${slug}" in the main language` }, 404);
+    const given = isObject(body.ask) ? body.ask : {};
+    const ask = Object.fromEntries(action.ask.map((a) => [a.key, str(given[a.key], 2000)]));
+    const done: string[] = [];
+    const skipped: string[] = [];
+    for (const language of site.languages) {
+      const had = main.translations?.[language];
+      if (had?.blocks) {
+        skipped.push(language);
+        continue;
+      }
+      const shown = had ? (translatedPage(site, main, language) as PlacedPage) : await store.translate(slug, language, kind);
+      const answer = (await extensions.run(name, action.name, { page: asPage(shown), language, ask, site: { name: site.name, language: site.language, languages: site.languages } })) as Record<string, unknown> | null;
+      if (!isObject(answer?.page)) return json({ error: `${manifest.displayName} did not give back a page`, done }, 400);
+      await store.fillTranslation(slug, language, answer.page, kind);
+      done.push(language);
+    }
+    return json({ done, skipped, ...(await lists()) });
+  }
+
   /** Extensions (ADR 0026): installing them is the owner's; what they offer in the editor is everyone's. */
   async function extensionsApi(request: Request, url: URL, me: User): Promise<Response> {
     const owner = me.role === 'owner';
@@ -375,17 +410,20 @@ export async function startEditor(
         // What comes back is a block like any other, cleaned by the same rules, in the same place.
         const [next] = normalizeBlocks([{ ...(isObject(answer?.block) ? answer.block : {}), id: block.id }]).blocks;
         if (!next) return json({ error: `${installed.manifest.displayName} did not give back a block` }, 400);
-        return json({ block: next });
+        // On a translation, only its words change (ADR 0034).
+        return json({ block: body.fixed === true ? takeWords([block], [next])[0] : next });
       }
       if (action.on === 'page') {
         const { page } = normalizePage(body.page);
         const language = languageOf(site, page.slug);
         const answer = (await extensions.run(name, action.name, { page, language, ask, site: { name: site.name, language: site.language, languages: site.languages } })) as Record<string, unknown> | null;
         if (!isObject(answer?.page)) return json({ error: `${installed.manifest.displayName} did not give back a page` }, 400);
-        return json({ page: normalizePage({ ...answer.page }).page });
+        const next = normalizePage({ ...answer.page }).page;
+        return json({ page: body.fixed === true ? { ...next, slug: page.slug, blocks: takeWords(page.blocks, next.blocks) } : next });
       }
       return json({ answer: (await extensions.run(name, action.name, body.input ?? null)) ?? null });
     }
+    if (part === 'each' && request.method === 'POST') return eachLanguage(request, name, installed.manifest, what, owner);
     if (!owner) return refused;
     if (!part) {
       if (request.method === 'PUT') {

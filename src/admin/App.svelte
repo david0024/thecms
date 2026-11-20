@@ -42,6 +42,7 @@ import {
   languageName,
   prefixOf,
   SECTION_KIND,
+  languageOf,
 } from '../core/index.ts';
 import { api, type Doc, type Kind, type State, type TranslationInfo } from './api.ts';
 import ContentList from './ContentList.svelte';
@@ -127,7 +128,7 @@ async function runOnBlock(name: string, action: string, ask: Record<string, stri
   if (!page || !block) return;
   const id = block.id;
   try {
-    const { block: next } = await api.runOnBlock(name, action, block, page.slug, ask);
+    const { block: next } = await api.runOnBlock(name, action, block, page.slug, ask, fixed);
     failure = '';
     patch(id, () => next);
   } catch (error) {
@@ -138,11 +139,29 @@ async function runOnBlock(name: string, action: string, ask: Record<string, stri
 async function runOnPage(name: string, action: string, ask: Record<string, string>): Promise<void> {
   if (!page) return;
   try {
-    const { page: next } = await api.runOnPage(name, action, page, ask);
+    const { page: next } = await api.runOnPage(name, action, page, ask, fixed);
     failure = '';
     change({ ...page, title: next.title || page.title, description: next.description, blocks: next.blocks });
   } catch (error) {
     fail(error);
+  }
+}
+
+/** On a page of the main language, an action for each language runs on every translation of it (ADR 0034). */
+const everyLanguage = $derived(!!site && !!page && !translation && (kind === 'page' || sectioning) && site.site.languages.length > 0 && (sectioning || languageOf(site.site, page.slug) === site.site.language));
+/** Saves the page, then fills in what each translation does not say yet; says which languages it did. */
+async function runEveryLanguage(name: string, action: string, ask: Record<string, string>): Promise<string> {
+  if (!page || !site) return '';
+  try {
+    await save();
+    const { done, skipped, pages, sections, posts, entries, templates } = await api.runEachLanguage(name, action, page.slug, kind, ask);
+    site = { ...site, pages, sections, posts, entries, templates };
+    failure = '';
+    const names = (list: string[]): string => list.map(languageName).join(', ');
+    return [done.length ? say(t.ext.eachDone, { languages: names(done) }) : '', skipped.length ? say(t.ext.eachSplit, { languages: names(skipped) }) : ''].filter(Boolean).join(' ');
+  } catch (error) {
+    fail(error);
+    return '';
   }
 }
 
@@ -820,7 +839,7 @@ onMount(() => {
           <button type="button" onclick={() => page && setBlocks(resetToTheme(page.blocks))}>{t.style.resetPage}</button>
         {/if}
         <p class="hint">{t.inspector.nothing}</p>
-        <ExtensionTools extensions={site.extensions} on="page" languages={siteLanguages} onrun={runOnPage} />
+        <ExtensionTools extensions={site.extensions} on="page" languages={siteLanguages} onrun={runOnPage} oneach={everyLanguage ? runEveryLanguage : undefined} />
         {#if !designing}
           {#key `${kind}/${page.slug}`}<Versions slug={page.slug} {kind} onrestore={(doc) => change(doc)} />{/key}
         {/if}

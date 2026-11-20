@@ -45,7 +45,11 @@ export const actions = {
     return { block: withBlockWords(input.block, texts, true) };
   },
 
-  /** Translates a page into its own language: the copy made under `ro/` comes out in Romanian. */
+  /**
+   * Translates a page into its own language: the page under `ro/` comes out in
+   * Romanian. Run on the main page, the editor runs it for each language, and
+   * keeps only the words each translation does not say yet (ADR 0034).
+   */
   async translate(input: { page: Page; language: string; site: Site }, host: Host) {
     const places = pageWords(input.page);
     const into = languageName(input.language);

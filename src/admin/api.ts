@@ -116,7 +116,7 @@ export interface ExtensionInfo {
   version: string;
   publisher: string;
   enabled: boolean;
-  actions: Pick<ExtensionAction, 'name' | 'label' | 'on' | 'ask'>[];
+  actions: Pick<ExtensionAction, 'name' | 'label' | 'on' | 'ask' | 'each'>[];
   messages: Record<string, Record<string, string>>;
   sha256?: string;
   asks?: ExtensionOffer['asks'];
@@ -178,8 +178,9 @@ export const api = {
   saveExtensionRow: (name: string, collection: string, row: Record<string, unknown>, id: string | null) => call<{ rows: Record<string, unknown>[] }>('PUT', `/api/extensions/${name}/rows/${collection}`, { id, row }),
   deleteExtensionRow: (name: string, collection: string, id: string) => call<{ rows: Record<string, unknown>[] }>('DELETE', `/api/extensions/${name}/rows/${collection}?id=${encodeURIComponent(id)}`),
   runExtensionAction: (name: string, action: string, input: Record<string, unknown>) => call<{ answer: unknown }>('POST', `/api/extensions/${name}/run/${action}`, { input }),
-  runOnBlock: (name: string, action: string, block: Block, slug: string, ask: Record<string, string>) => call<{ block: Block }>('POST', `/api/extensions/${name}/run/${action}`, { block, slug, ask }),
-  runOnPage: (name: string, action: string, page: Doc, ask: Record<string, string>) => call<{ page: Page }>('POST', `/api/extensions/${name}/run/${action}`, { page, ask }),
+  runOnBlock: (name: string, action: string, block: Block, slug: string, ask: Record<string, string>, fixed = false) => call<{ block: Block }>('POST', `/api/extensions/${name}/run/${action}`, { block, slug, ask, fixed }),
+  runOnPage: (name: string, action: string, page: Doc, ask: Record<string, string>, fixed = false) => call<{ page: Page }>('POST', `/api/extensions/${name}/run/${action}`, { page, ask, fixed }),
+  runEachLanguage: (name: string, action: string, slug: string, kind: Kind, ask: Record<string, string>) => call<{ done: string[]; skipped: string[] } & Lists>('POST', `/api/extensions/${name}/each/${action}`, { slug, kind, ask }),
   state: () => call<State>('GET', '/api/state'),
   page: (slug: string, kind: Kind = 'page') => call<{ page: Doc; translation?: TranslationInfo }>('GET', `/api/page?kind=${kind}&slug=${encodeURIComponent(slug)}`),
   translate: (slug: string, language: string, kind: Kind = 'page') => call<{ page: Page; translation: TranslationInfo } & Lists>('POST', '/api/translate', { slug, language, kind }),

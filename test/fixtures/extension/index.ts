@@ -18,6 +18,12 @@ export const actions = {
     const say = await loud(host);
     return { page: { ...input.page, title: `${say(input.page.title)} (${input.ask.language})` } };
   },
+  /** Marks every text of a page with its language, prices and addresses too: what is kept of it is the editor's to say. */
+  async stamp(input: { page: { title: string; description: string; blocks: Block[] }; language: string }) {
+    if (input.page.title === 'Nothing') return {};
+    const mark = (value: unknown): unknown => (typeof value === 'string' ? (value ? `[${input.language}] ${value}` : value) : Array.isArray(value) ? value.map(mark) : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).map(([k, v]) => [k, k === 'id' || k === 'type' || k === 'src' ? v : mark(v)])) : value);
+    return { page: { ...input.page, title: mark(input.page.title), description: mark(input.page.description), blocks: input.page.blocks.map((b) => ({ ...b, content: mark(b.content) })) } };
+  },
   async ping(_input: unknown, host: Host) {
     const site = await host.site();
     const answer = await host.fetch('https://api.shout.example/ping', { method: 'POST', body: site.name });

@@ -42,7 +42,9 @@ again, and it is given only to the extension's code.
   or rewritten, the empty ones too.
 - **Translate this page**, on a page: the page is translated into its own
   language. With ADR 0024 a translation starts as a copy under `ro/`; this
-  turns the copy into Romanian.
+  turns the copy into Romanian. Since ADR 0032 and ADR 0034 it changes only
+  a translation's words, and run on the main page it translates into every
+  language of the site what is not translated yet.
 - **Write the description**, on a page: the description for search engines,
   from what the page says.
 

@@ -199,3 +199,28 @@ export function keepWords(blocks: Block[], words: Record<string, Words>): Record
   const keys = new Set(spots(blocks).map((s) => s.key));
   return Object.fromEntries(Object.entries(words).filter(([key]) => keys.has(key)));
 }
+
+/**
+ * These blocks with only their translated places taken from `from` (ADR 0034):
+ * what an action gives back for a translation changes its words, never the
+ * layout, the pictures, the prices or the addresses every language shares.
+ */
+export function takeWords(blocks: Block[], from: Block[]): Block[] {
+  return localizeBlocks(blocks, Object.fromEntries(spots(from).map((s) => [s.key, s.value])));
+}
+
+/**
+ * A translation with what it does not say yet taken from `written` (ADR 0034):
+ * the words a person already wrote stay as they are.
+ */
+export function fillTranslation(page: Page, translation: PageTranslation, written: Page): PageTranslation {
+  const { fields } = wordsFrom(page.blocks, takeWords(page.blocks, written.blocks));
+  const title = written.title && written.title !== page.title ? written.title : '';
+  const description = written.description && written.description !== page.description ? written.description : '';
+  return {
+    ...translation,
+    title: translation.title || title,
+    description: translation.description || (page.description ? description : ''),
+    fields: { ...fields, ...Object.fromEntries(Object.entries(translation.fields).filter(([, value]) => !isEmpty(value))) },
+  };
+}

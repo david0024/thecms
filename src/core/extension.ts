@@ -63,6 +63,12 @@ export interface ExtensionAction {
   /** Absent: run from the extension's own screen, by the owner. */
   on: ExtensionPoint | null;
   ask: ExtensionAsk[];
+  /**
+   * `language`: on a page of the main language, it runs once for each of the
+   * site's other languages, on the page in that language, and what it gives
+   * back fills in the words that translation does not say yet (ADR 0034).
+   */
+  each: 'language' | null;
   /** The collections it may read and write; nothing else. */
   reads: string[];
   writes: string[];
@@ -166,11 +172,14 @@ function action(raw: unknown, names: string[], problems: string[]): ExtensionAct
       return [{ key: text(a.key, 40), label: text(a.label, 80) || text(a.key, 40), kind: a.kind === 'language' ? 'language' : 'text' }];
     });
   const seconds = Number(raw.timeoutSeconds);
+  const each = raw.each === 'language' && on === 'page' ? 'language' : null;
+  if (raw.each !== undefined && raw.each !== null && !each) problems.push(`${name}: an action runs for each language only on a page`);
   return {
     name,
     label: text(raw.label, 60) || name,
     on,
     ask,
+    each,
     reads: own(raw.reads, 'reads'),
     writes: own(raw.writes, 'writes'),
     timeoutSeconds: Number.isInteger(seconds) && seconds >= 1 && seconds <= 300 ? seconds : 60,
