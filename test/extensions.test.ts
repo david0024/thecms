@@ -41,6 +41,9 @@ describe('a package', () => {
         { action: 'Louder title', on: 'page' },
         { action: 'Stamp', on: 'page' },
       ],
+      routes: [],
+      jobs: [],
+      events: [],
     });
     expect(extensionWord(m, 'ro', 'Louder')).toBe('Mai tare');
     expect(extensionWord(m, 'ro-MD', 'Settings')).toBe('Setări');

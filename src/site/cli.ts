@@ -88,6 +88,9 @@ export function describeOffer(offer: ExtensionOffer): string {
   if (asks.secrets.length) lines.push(`  hold secrets: ${asks.secrets.join(', ')}`);
   lines.push(asks.egress.length ? `  call ${asks.egress.join(', ')}` : '  call nothing outside this program');
   for (const point of asks.points) lines.push(`  offer "${point.action}" on ${point.on === 'page' ? 'a page' : 'a block'} in the editor`);
+  if (asks.routes.length) lines.push(`  answer visitors at ${asks.routes.join(', ')}`);
+  for (const job of asks.jobs) lines.push(`  do "${job.action}" every ${job.everyMinutes === 1 ? 'minute' : `${job.everyMinutes} minutes`}`);
+  if (asks.events.length) lines.push(`  be told when: ${asks.events.join(', ')}`);
   return lines.join('\n');
 }
 

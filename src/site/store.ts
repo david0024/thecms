@@ -78,6 +78,7 @@ import {
   typeById,
   type ContentType,
   listed,
+  type ExtensionEventName,
   type ShownComment,
   type Site,
   str,
@@ -156,6 +157,7 @@ const SQLITE: Dialect = {
     'CREATE TABLE IF NOT EXISTS media_sizes (name TEXT PRIMARY KEY, width INTEGER NOT NULL, height INTEGER NOT NULL)',
     'CREATE TABLE IF NOT EXISTS schedule (kind TEXT NOT NULL, slug TEXT NOT NULL, at TEXT NOT NULL, PRIMARY KEY (kind, slug))',
     'CREATE TABLE IF NOT EXISTS media_variants (name TEXT PRIMARY KEY, original TEXT NOT NULL, width INTEGER NOT NULL, bytes BLOB NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS extension_jobs (extension TEXT NOT NULL, action TEXT NOT NULL, last_at TEXT NOT NULL, PRIMARY KEY (extension, action))',
     'CREATE TABLE IF NOT EXISTS comments (id TEXT PRIMARY KEY, type TEXT NOT NULL, entry TEXT NOT NULL, name TEXT NOT NULL, email TEXT NOT NULL, body TEXT NOT NULL, consent TEXT NOT NULL, at TEXT NOT NULL, approved INTEGER NOT NULL)',
   ],
   params: (query) => query,
@@ -185,6 +187,7 @@ const POSTGRES: Dialect = {
     'CREATE TABLE IF NOT EXISTS media_sizes (name VARCHAR(255) PRIMARY KEY, width INTEGER NOT NULL, height INTEGER NOT NULL)',
     'CREATE TABLE IF NOT EXISTS schedule (kind VARCHAR(64) NOT NULL, slug VARCHAR(255) NOT NULL, at VARCHAR(40) NOT NULL, PRIMARY KEY (kind, slug))',
     'CREATE TABLE IF NOT EXISTS media_variants (name VARCHAR(255) PRIMARY KEY, original VARCHAR(255) NOT NULL, width INTEGER NOT NULL, bytes BYTEA NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS extension_jobs (extension VARCHAR(64) NOT NULL, action VARCHAR(64) NOT NULL, last_at VARCHAR(40) NOT NULL, PRIMARY KEY (extension, action))',
     'CREATE TABLE IF NOT EXISTS comments (id VARCHAR(40) PRIMARY KEY, type VARCHAR(255) NOT NULL, entry VARCHAR(255) NOT NULL, name TEXT NOT NULL, email TEXT NOT NULL, body TEXT NOT NULL, consent TEXT NOT NULL, at VARCHAR(40) NOT NULL, approved INTEGER NOT NULL)',
   ],
   params: (query) => {
@@ -213,6 +216,7 @@ const MYSQL: Dialect = {
     `CREATE TABLE IF NOT EXISTS media_sizes (name VARCHAR(255) PRIMARY KEY, width INTEGER NOT NULL, height INTEGER NOT NULL) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS schedule (kind VARCHAR(64) NOT NULL, slug VARCHAR(255) NOT NULL, at VARCHAR(40) NOT NULL, PRIMARY KEY (kind, slug)) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS media_variants (name VARCHAR(255) PRIMARY KEY, original VARCHAR(255) NOT NULL, width INTEGER NOT NULL, bytes LONGBLOB NOT NULL) ${MYSQL_TABLE}`,
+    `CREATE TABLE IF NOT EXISTS extension_jobs (extension VARCHAR(64) NOT NULL, action VARCHAR(64) NOT NULL, last_at VARCHAR(40) NOT NULL, PRIMARY KEY (extension, action)) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS comments (id VARCHAR(40) PRIMARY KEY, type VARCHAR(255) NOT NULL, entry VARCHAR(255) NOT NULL, name TEXT NOT NULL, email TEXT NOT NULL, body TEXT NOT NULL, consent TEXT NOT NULL, at VARCHAR(40) NOT NULL, approved INTEGER NOT NULL) ${MYSQL_TABLE}`,
   ],
   params: (query) => query,
@@ -252,6 +256,12 @@ export interface Message {
   body: string;
   /** The words of the consent the visitor ticked. */
   consent: string;
+}
+
+/** Something that happened in the site, for the extensions that listen to it (ADR 0041). Never a visitor's address. */
+export interface SiteEvent {
+  name: ExtensionEventName;
+  data: Record<string, unknown>;
 }
 
 /** What a visitor wrote under an entry (ADR 0040). Shown on the site once approved; the address never is. */
@@ -314,9 +324,28 @@ export class Store {
   readonly kind: DatabaseKind;
   private readonly dialect: Dialect;
 
+  private readonly listeners = new Set<(event: SiteEvent) => void>();
+
   private constructor(private readonly sql: SQL, kind: DatabaseKind) {
     this.kind = kind;
     this.dialect = DIALECTS[kind];
+  }
+
+  /** Hears what happens in the site from now on (ADR 0041). Returns how to stop hearing it. */
+  onEvent(listener: (event: SiteEvent) => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  /** Tells whoever listens. A listener's failure is its own: what happened has happened. */
+  private emit(name: ExtensionEventName, data: Record<string, unknown>): void {
+    for (const listener of this.listeners) {
+      try {
+        listener({ name, data });
+      } catch {
+        // The change is made; a listener that throws is not the store's to answer for.
+      }
+    }
   }
 
   /** Opens a site's database, creating its tables when they are not there. */
@@ -578,6 +607,7 @@ export class Store {
     await this.keepVersion('page', slug, String(row?.published), at);
     // A translation published at a new address leaves a way from the old one (ADR 0036).
     await this.followMoves(before, await this.liveAddresses(slug));
+    this.emit('page.published', { slug, title: String((JSON.parse(String(row?.published)) as { title?: unknown }).title ?? '') });
   }
 
   /**
@@ -969,6 +999,7 @@ export class Store {
     await this.run('UPDATE entries SET published = draft, published_at = ? WHERE type = ? AND slug = ?', [at, typeId, slug]);
     const row = await this.row<{ published: string }>('SELECT published FROM entries WHERE type = ? AND slug = ?', [typeId, slug]);
     await this.keepVersion(typeId, slug, String(row?.published), at);
+    this.emit('entry.published', { type: typeId, slug, title: String((JSON.parse(String(row?.published)) as { title?: unknown }).title ?? '') });
   }
 
   /**
@@ -1215,6 +1246,7 @@ export class Store {
       message.body,
       message.consent,
     ]);
+    this.emit('message.received', { id: message.id, form: message.form, page: message.page, name: message.name, body: message.body });
     return message;
   }
 
@@ -1287,6 +1319,7 @@ export class Store {
       comment.at,
       comment.approved ? 1 : 0,
     ]);
+    this.emit('comment.created', { id: comment.id, type: comment.type, entry: comment.entry, name: comment.name, body: comment.body, approved: comment.approved });
     return comment;
   }
 
@@ -1310,7 +1343,9 @@ export class Store {
   }
 
   async approveComment(id: string): Promise<void> {
-    await this.run('UPDATE comments SET approved = 1 WHERE id = ?', [id]);
+    if ((await this.changed('UPDATE comments SET approved = 1 WHERE id = ? AND approved = 0', [id])) !== 1) return;
+    const c = (await this.comments()).find((one) => one.id === id);
+    if (c) this.emit('comment.approved', { id, type: c.type, entry: c.entry, name: c.name, body: c.body });
   }
 
   async deleteComment(id: string): Promise<void> {
@@ -1485,7 +1520,21 @@ export class Store {
     await this.sql.begin(async (tx) => {
       await tx.unsafe(this.dialect.params('DELETE FROM extension_rows WHERE extension = ?'), [name]);
       await tx.unsafe(this.dialect.params('DELETE FROM extensions WHERE name = ?'), [name]);
+      await tx.unsafe(this.dialect.params('DELETE FROM extension_jobs WHERE extension = ?'), [name]);
     });
+  }
+
+  /**
+   * Claims one run of an extension's job (ADR 0041): true when it is due, and
+   * this process is the one that marked it run. Two clocks on one database
+   * never both run it: the row says which one changed it.
+   */
+  async claimJob(extension: string, action: string, everyMinutes: number, now = new Date()): Promise<boolean> {
+    const at = now.toISOString();
+    const last = await this.row<{ last_at: string }>('SELECT last_at FROM extension_jobs WHERE extension = ? AND action = ?', [extension, action]);
+    if (!last) return (await this.changed(this.dialect.insertNew('extension_jobs', ['extension', 'action', 'last_at']), [extension, action, at])) === 1;
+    if (now.getTime() - Date.parse(last.last_at) < everyMinutes * 60_000) return false;
+    return (await this.changed('UPDATE extension_jobs SET last_at = ? WHERE extension = ? AND action = ? AND last_at = ?', [at, extension, action, last.last_at])) === 1;
   }
 
   /** The rows of one of an extension's collections, oldest first. */

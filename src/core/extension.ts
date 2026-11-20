@@ -13,8 +13,10 @@
 import { checkViews, type ViewDocument } from '../view/index.ts';
 import { isObject, str } from './util.ts';
 
-/** The format a package says it is in. */
-export const EXTENSION_FORMAT = 'thecms.extension/1';
+/** The format a package is written in now: the first, with routes, jobs and events (ADR 0041). */
+export const EXTENSION_FORMAT = 'thecms.extension/2';
+/** The first format (ADR 0026), still read: a package in it has no routes, jobs or events. */
+export const EXTENSION_FORMAT_1 = 'thecms.extension/1';
 export const EXTENSION_MAX_BYTES = 5 * 1024 * 1024;
 
 const NAME = /^[a-z][a-z0-9-]{1,39}$/;
@@ -75,6 +77,32 @@ export interface ExtensionAction {
   timeoutSeconds: number;
 }
 
+/**
+ * A public address of the extension (ADR 0041): `/_/x/<extension>/<path>` on
+ * the site's runtime, answered by one of its actions. A payment provider's
+ * confirmation, a webhook.
+ */
+export interface ExtensionRoute {
+  path: string;
+  action: string;
+  methods: ('GET' | 'POST')[];
+}
+
+/** Work the site's clock does at an interval, such as syncing stock. */
+export interface ExtensionJob {
+  action: string;
+  everyMinutes: number;
+}
+
+/** What happens in the site that an extension may hear of, and what it is told. */
+export const EXTENSION_EVENTS = ['page.published', 'entry.published', 'comment.created', 'comment.approved', 'message.received'] as const;
+export type ExtensionEventName = (typeof EXTENSION_EVENTS)[number];
+
+export interface ExtensionListener {
+  on: ExtensionEventName;
+  action: string;
+}
+
 export interface ExtensionManifest {
   name: string;
   displayName: string;
@@ -91,6 +119,10 @@ export interface ExtensionManifest {
   views: ViewDocument[];
   /** Its words, by language: `{ ro: { "Rewrite": "Rescrie" } }`. */
   messages: Record<string, Record<string, string>>;
+  /** Its public addresses, its work at intervals and what it listens to (ADR 0041). */
+  routes: ExtensionRoute[];
+  jobs: ExtensionJob[];
+  events: ExtensionListener[];
 }
 
 export interface ExtensionPackage {
@@ -186,10 +218,62 @@ function action(raw: unknown, names: string[], problems: string[]): ExtensionAct
   };
 }
 
+const ROUTE = /^[a-z0-9][a-z0-9-]{0,39}(\/[a-z0-9][a-z0-9-]{0,39}){0,3}$/;
+
+/**
+ * Routes, jobs and events each name an action that runs on its own, not one
+ * the editor offers on a block or a page: what it is given is not a page.
+ */
+function serverParts(m: Record<string, unknown>, actions: ExtensionAction[], problems: string[]): Pick<ExtensionManifest, 'routes' | 'jobs' | 'events'> {
+  const own = (name: unknown, what: string): string | null => {
+    const action = actions.find((a) => a.name === text(name, 40));
+    if (!action) problems.push(`${what} runs "${text(name, 40)}", which is not one of its actions`);
+    else if (action.on) problems.push(`${what} runs "${action.name}", which the editor offers on a ${action.on}`);
+    return action && !action.on ? action.name : null;
+  };
+  const routes: ExtensionRoute[] = [];
+  for (const r of list(m.routes).slice(0, 12)) {
+    if (!isObject(r)) continue;
+    const path = text(r.path, 200).replace(/^\/+|\/+$/g, '');
+    if (!ROUTE.test(path)) {
+      problems.push(`a route's path is lower case words joined by / ("${path}")`);
+      continue;
+    }
+    if (routes.some((x) => x.path === path)) {
+      problems.push(`the route "${path}" is declared twice`);
+      continue;
+    }
+    const action = own(r.action, `the route "${path}"`);
+    const methods = (['GET', 'POST'] as const).filter((x) => list(r.methods).map((y) => text(y, 10).toUpperCase()).includes(x));
+    if (action) routes.push({ path, action, methods: methods.length ? methods : ['POST'] });
+  }
+  const jobs: ExtensionJob[] = [];
+  for (const j of list(m.jobs).slice(0, 12)) {
+    if (!isObject(j)) continue;
+    const every = Number(j.everyMinutes);
+    const action = own(j.action, 'a job');
+    if (!Number.isInteger(every) || every < 1 || every > 10_080) problems.push(`a job runs every 1 to 10080 minutes ("${String(j.everyMinutes)}")`);
+    else if (action && jobs.some((x) => x.action === action)) problems.push(`the job "${action}" is declared twice`);
+    else if (action) jobs.push({ action, everyMinutes: every });
+  }
+  const events: ExtensionListener[] = [];
+  for (const e of list(m.events).slice(0, 24)) {
+    if (!isObject(e)) continue;
+    const on = EXTENSION_EVENTS.find((x) => x === e.on);
+    if (!on) {
+      problems.push(`an extension listens to one of ${EXTENSION_EVENTS.join(', ')} ("${text(e.on, 40)}")`);
+      continue;
+    }
+    const action = own(e.action, `listening to ${on}`);
+    if (action && !events.some((x) => x.on === on && x.action === action)) events.push({ on, action });
+  }
+  return { routes, jobs, events };
+}
+
 /** Reads a package, with every reason it cannot be installed. */
 export function parseExtension(raw: unknown): { pkg: ExtensionPackage | null; problems: string[] } {
   const problems: string[] = [];
-  if (!isObject(raw) || raw.format !== EXTENSION_FORMAT) return { pkg: null, problems: [`this is not an extension (${EXTENSION_FORMAT})`] };
+  if (!isObject(raw) || (raw.format !== EXTENSION_FORMAT && raw.format !== EXTENSION_FORMAT_1)) return { pkg: null, problems: [`this is not an extension (${EXTENSION_FORMAT})`] };
   const m = isObject(raw.manifest) ? raw.manifest : {};
   const name = text(m.name, 40);
   if (!NAME.test(name)) problems.push(`an extension's name is lower case letters, digits and - ("${name}")`);
@@ -229,6 +313,8 @@ export function parseExtension(raw: unknown): { pkg: ExtensionPackage | null; pr
       );
     }
   }
+  // The first format has none of these: what such a package says of them is not read.
+  const server = raw.format === EXTENSION_FORMAT ? serverParts(m, actions, problems) : { routes: [], jobs: [], events: [] };
   const code = typeof raw.code === 'string' ? raw.code : '';
   if (actions.length > 0 && !code.trim()) problems.push('it has actions and no code');
   if (code.length > EXTENSION_MAX_BYTES) problems.push('its code is larger than 5 MB');
@@ -247,6 +333,7 @@ export function parseExtension(raw: unknown): { pkg: ExtensionPackage | null; pr
         actions,
         views,
         messages,
+        ...server,
       },
       code,
     },
@@ -261,12 +348,24 @@ export function egressAllows(declared: readonly string[], host: string): boolean
 }
 
 /** What the owner is asked to accept, in plain words, before an extension is installed. */
-export function extensionAsks(manifest: ExtensionManifest): { collections: string[]; secrets: string[]; egress: string[]; points: { action: string; on: ExtensionPoint }[] } {
+export function extensionAsks(manifest: ExtensionManifest): {
+  collections: string[];
+  secrets: string[];
+  egress: string[];
+  points: { action: string; on: ExtensionPoint }[];
+  routes: string[];
+  jobs: { action: string; everyMinutes: number }[];
+  events: string[];
+} {
+  const label = (name: string): string => manifest.actions.find((a) => a.name === name)?.label ?? name;
   return {
     collections: manifest.collections.map((c) => c.label),
     secrets: manifest.collections.flatMap((c) => c.fields.filter((f) => f.kind === 'secret').map((f) => `${c.label}: ${f.label}`)),
     egress: manifest.egress,
     points: manifest.actions.flatMap((a) => (a.on ? [{ action: a.label, on: a.on }] : [])),
+    routes: manifest.routes.map((r) => `/_/x/${manifest.name}/${r.path}`),
+    jobs: manifest.jobs.map((j) => ({ action: label(j.action), everyMinutes: j.everyMinutes })),
+    events: [...new Set(manifest.events.map((e) => e.on))],
   };
 }
 

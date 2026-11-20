@@ -11,7 +11,7 @@
 import { join } from 'node:path';
 import { cleanRow, egressAllows, type ExtensionAction, type ExtensionManifest, extensionAsks, EXTENSION_MAX_BYTES, parseExtension } from '../core/index.ts';
 import { type FromRunner, lines, type ToRunner } from './extension-runner.ts';
-import type { InstalledExtension, Store } from './store.ts';
+import type { InstalledExtension, SiteEvent, Store } from './store.ts';
 import { isCompiled, newer } from './update.ts';
 import { VERSION } from './version.ts';
 
@@ -19,6 +19,12 @@ const sha256 = (text: string): string => new Bun.CryptoHasher('sha256').update(t
 const FETCH_MAX_BYTES = 5 * 1024 * 1024;
 /** A process nobody has asked anything for this long is stopped; the next action starts it again. */
 const IDLE_MS = 5 * 60_000;
+/** What a visitor may send to an extension's route: a provider's notice, not a file. */
+export const ROUTE_MAX_BYTES = 64 * 1024;
+/** Headers a route's action is not given: the editor's session and key are not the extension's. */
+const UNSAID = new Set(['cookie', 'x-thecms-token']);
+/** Headers a route's answer may set. */
+const SAID = ['content-type', 'location', 'cache-control'];
 
 /** What the owner is shown about a package before installing it. */
 export interface ExtensionOffer {
@@ -108,7 +114,8 @@ interface Running {
   idle: ReturnType<typeof setTimeout> | null;
 }
 
-export function extensionHost(store: Store, options: { spawn?: Spawn; fetch?: (url: string, init: RequestInit) => Promise<Response> } = {}) {
+export function extensionHost(store: Store, options: { spawn?: Spawn; fetch?: (url: string, init: RequestInit) => Promise<Response>; log?: (line: string) => void } = {}) {
+  const log = options.log ?? ((line: string) => console.error(line));
   const spawn = options.spawn ?? (process.env.THECMS_EXTENSION_RUNNER ? socketRunner(process.env.THECMS_EXTENSION_RUNNER) : spawnRunner);
   const outbound = options.fetch ?? ((url, init) => fetch(url, init));
   const running = new Map<string, Running>();
@@ -253,10 +260,98 @@ export function extensionHost(store: Store, options: { spawn?: Spawn; fetch?: (u
     }
   }
 
+  const say = (text: string, status: number, headers: Record<string, string> = {}): Response =>
+    new Response(text, { status, headers: { 'content-type': 'text/plain; charset=utf-8', 'x-content-type-options': 'nosniff', ...headers } });
+
+  /**
+   * Answers a visitor at one of an extension's public addresses (ADR 0041),
+   * `/_/x/<extension>/<path>`, with what its action gives back: a text, or
+   * `{ status, headers, body }`. The action is told the method, the query,
+   * the headers but the session's, and the body as text.
+   */
+  async function route(name: string, path: string, request: Request): Promise<Response> {
+    const extension = (await store.extension(name)) ?? null;
+    const found = extension?.enabled ? extension.manifest.routes.find((r) => r.path === path.replace(/\/+$/, '')) : undefined;
+    if (!extension || !found) return say('not found\n', 404);
+    const method = request.method === 'HEAD' ? 'GET' : request.method;
+    if (!found.methods.includes(method as 'GET' | 'POST')) return say(`this address takes ${found.methods.join(' or ')}\n`, 405, { allow: found.methods.join(', ') });
+    if (Number(request.headers.get('content-length') ?? 0) > ROUTE_MAX_BYTES) return say('too large\n', 413);
+    const body = method === 'POST' ? await request.text() : '';
+    if (body.length > ROUTE_MAX_BYTES) return say('too large\n', 413);
+    const url = new URL(request.url);
+    const input = {
+      method,
+      path: found.path,
+      query: Object.fromEntries(url.searchParams),
+      headers: Object.fromEntries([...request.headers].filter(([key]) => !UNSAID.has(key.toLowerCase()))),
+      body,
+    };
+    let answer: unknown;
+    try {
+      answer = await run(name, found.action, input);
+    } catch (error) {
+      log(`${extension.manifest.displayName} could not answer /_/x/${name}/${found.path}: ${error instanceof Error ? error.message : String(error)}`);
+      return say('the extension could not answer\n', 502);
+    }
+    if (typeof answer === 'string') return say(answer, 200);
+    const given = (answer ?? {}) as { status?: unknown; headers?: unknown; body?: unknown };
+    const status = Number.isInteger(given.status) && (given.status as number) >= 200 && (given.status as number) <= 599 ? (given.status as number) : 200;
+    const asked = given.headers && typeof given.headers === 'object' ? (given.headers as Record<string, unknown>) : {};
+    const headers: Record<string, string> = { 'x-content-type-options': 'nosniff', 'cache-control': 'no-store' };
+    for (const [key, value] of Object.entries(asked)) if (SAID.includes(key.toLowerCase()) && typeof value === 'string' && !/[\r\n]/.test(value)) headers[key.toLowerCase()] = value;
+    const text = typeof given.body === 'string' ? given.body : given.body === undefined || given.body === null ? '' : JSON.stringify(given.body);
+    headers['content-type'] ??= typeof given.body === 'string' || text === '' ? 'text/plain; charset=utf-8' : 'application/json; charset=utf-8';
+    return new Response(status === 204 || status === 304 ? null : text, { status, headers });
+  }
+
+  /** Runs each job that is due (ADR 0041), once across every clock on this database. What failed is said, and tried again at its next time. */
+  async function jobs(now = new Date()): Promise<string[]> {
+    const ran: Promise<string | null>[] = [];
+    for (const extension of await store.extensions()) {
+      if (!extension.enabled) continue;
+      for (const job of extension.manifest.jobs) {
+        if (!(await store.claimJob(extension.manifest.name, job.action, job.everyMinutes, now))) continue;
+        ran.push(
+          run(extension.manifest.name, job.action, { at: now.toISOString() }).then(
+            () => `${extension.manifest.name}.${job.action}`,
+            (error: unknown) => {
+              log(`${extension.manifest.displayName} could not do "${job.action}": ${error instanceof Error ? error.message : String(error)}`);
+              return null;
+            },
+          ),
+        );
+      }
+    }
+    return (await Promise.all(ran)).filter((x): x is string => x !== null);
+  }
+
+  /** Tells each extension that listens what happened. What one does with it is its own; a failure is said and goes no further. */
+  async function deliver(event: SiteEvent): Promise<void> {
+    const told: Promise<unknown>[] = [];
+    for (const extension of await store.extensions()) {
+      if (!extension.enabled) continue;
+      for (const listener of extension.manifest.events.filter((e) => e.on === event.name)) {
+        told.push(
+          run(extension.manifest.name, listener.action, { event: event.name, ...event.data }).catch((error: unknown) =>
+            log(`${extension.manifest.displayName} could not take ${event.name}: ${error instanceof Error ? error.message : String(error)}`),
+          ),
+        );
+      }
+    }
+    await Promise.all(told);
+  }
+
   return {
     offer,
     install,
     run,
+    route,
+    jobs,
+    deliver,
+    /** From now on, what happens in the site is told to the extensions that listen. Returns how to stop. */
+    listen(): () => void {
+      return store.onEvent((event) => void deliver(event));
+    },
     /** Turns an extension on or off; off, its process stops. */
     async enable(name: string, enabled: boolean): Promise<void> {
       await store.enableExtension(name, enabled);

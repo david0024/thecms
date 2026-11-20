@@ -27,7 +27,8 @@ never as more rights.
 ### d2. One file
 
 A package is one JSON file, `<name>-<version>.thecms-extension`, in the format
-`thecms.extension/1`: the manifest, and the code as one ES module.
+`thecms.extension/1`: the manifest, and the code as one ES module. (The second
+format, `thecms.extension/2`, adds routes, jobs and events: ADR 0041.)
 `bun tools/pack-extension.ts <folder>` makes it from a folder with
 `manifest.json` and `index.ts`, and checks it as the program will.
 

@@ -1,8 +1,9 @@
 /**
  * The site's clock (ADR 0037 d2, ADR 0039): what has to happen at a time
- * without anyone asking. It publishes what was set for later and forgets
- * messages kept long enough. The editor and the runtime each run one; a
- * publication is claimed before it is done, so it happens once.
+ * without anyone asking. It publishes what was set for later, forgets
+ * messages kept long enough, and runs the extensions' jobs that are due (ADR
+ * 0041). The editor and the runtime each run one; a publication or a job is
+ * claimed before it is done, so it happens once.
  */
 import type { Store } from './store.ts';
 
@@ -15,17 +16,19 @@ export interface Clock {
   stop: () => void;
 }
 
-export function startClock(store: Store, options: { every?: number; log?: (line: string) => void; now?: () => Date; run?: boolean } = {}): Clock {
+export function startClock(store: Store, options: { every?: number; log?: (line: string) => void; now?: () => Date; run?: boolean; jobs?: (now: Date) => Promise<unknown> } = {}): Clock {
   const log = options.log ?? ((line: string) => console.log(line));
   let busy = false;
   const tick = async (): Promise<string[]> => {
     if (busy) return [];
     busy = true;
     try {
-      const done = await store.publishDue(options.now?.() ?? new Date());
+      const now = options.now?.() ?? new Date();
+      const done = await store.publishDue(now);
       const said = done.map((d) => (d.kind === 'page' ? `/${d.slug}${d.slug ? '/' : ''}` : `${d.kind}/${d.slug}`));
       if (said.length) log(`Published as set: ${said.join(', ')}`);
       await store.forgetOldMessages();
+      await options.jobs?.(now);
       return said;
     } catch (error) {
       log(`The clock could not publish: ${error instanceof Error ? error.message : String(error)}`);

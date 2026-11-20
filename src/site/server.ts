@@ -768,7 +768,9 @@ export async function startEditor(
   const server = options.listen === false ? null : Bun.serve({ hostname: options.hostname ?? '127.0.0.1', port, fetch: handle, maxRequestBodySize: IMPORT_MAX_BYTES + 1024 * 1024 });
   if (server?.port) port = server.port;
   // What was set for later is published while the editor runs (ADR 0039).
-  const clock = startClock(store, { run: server !== null });
+  // So are the extensions' jobs, and what happens here is told to the extensions that listen (ADR 0041).
+  const clock = startClock(store, { run: server !== null, jobs: extensions.jobs });
+  const unlisten = extensions.listen();
   return {
     url: people ? `${publicAddress}/admin/` : `http://127.0.0.1:${port}/admin/#token=${token}`,
     setupUrl: people ? await people.setupLink() : '',
@@ -777,6 +779,7 @@ export async function startEditor(
     fetch: handle,
     stop: () => {
       clock.stop();
+      unlisten();
       extensions.close();
       server?.stop(true);
     },

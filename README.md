@@ -56,6 +56,7 @@ The decisions behind this, each with its reason:
 - [ADR 0038 — The site's runtime: the published site and what cannot be static, from one address](docs/adr/0038-the-runtime.md)
 - [ADR 0039 — Publish later, and the site's clock](docs/adr/0039-publish-later.md)
 - [ADR 0040 — Comments, with moderation](docs/adr/0040-comments.md)
+- [ADR 0041 — Extensions on the server: routes, jobs and events](docs/adr/0041-extensions-on-the-server.md)
 
 ## Where it stands
 
@@ -89,6 +90,7 @@ What comes next, in four stages up to a shop, memberships and courses, is in
 | Accounts for a served editor: the first owner from a one-time link, editors invited by the owner, an editor writes content and nothing else | done |
 | Installed with one command: one file a platform from GitHub Releases, checked by its checksum; a server with systemd in one more option; `thecms update` | done |
 | Extensions on the model of Zveltio's third-party ones: one file, accepted by the owner for what it asks; collections, actions on a block or a page, screens as data; code in a process of its own, on a server under a user of its own with no network | done |
+| Extensions on the server (`thecms.extension/2`): public addresses under `/_/x/`, jobs the site's clock runs at an interval, events from the site (a page published, a comment, a message) | done |
 | Pages in more than one language: each translated from the list of pages, at /ro/…, with the header, footer and menu of its language, a switcher and hreflang | done (posts and entries: planned) |
 | AI writing, as an extension with the owner's key (Claude, OpenAI or Ollama): a block written or rewritten as asked, a page translated into its language, a page's description; each comes back as a change to look at | done (image descriptions: planned) |
 | The last twenty publications of each page and entry kept, and one brought back into the editor as a change | done |
