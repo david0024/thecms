@@ -1,5 +1,6 @@
 /** A page and the site it belongs to, as documents. */
 import { type Block, blocksText, cleanImage, cleanLink, type ImageValue, type LinkValue, normalizeBlocks } from './blocks.ts';
+import { normalizeTranslations, type PageTranslation } from './localize.ts';
 import { type MenuNode, normalizeMenu } from './menu.ts';
 import { pageSlug, prefixOf } from './translation.ts';
 import { BLOG_SLUG, type ContentType, normalizeTypes, POSTS_TYPE, postsType, RESERVED_SLUGS } from './types.ts';
@@ -13,6 +14,8 @@ export interface Page {
   description: string;
   inMenu: boolean;
   blocks: Block[];
+  /** The page in the site's other languages, by language (ADR 0032). Always there once the page is cleaned. */
+  translations?: Record<string, PageTranslation>;
 }
 
 export interface Site {
@@ -85,6 +88,7 @@ export function normalizePage(input: unknown): { page: Page; issues: Issue[] } {
       description: str(raw.description, 300).trim(),
       inMenu: raw.inMenu !== false,
       blocks,
+      translations: normalizeTranslations(raw.translations),
     },
     issues,
   };

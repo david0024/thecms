@@ -49,6 +49,19 @@ export interface PageInfo {
   inMenu?: boolean;
   published: boolean;
   changed: boolean;
+  /** A page: the main page it is of, its language, and how it is translated (ADR 0032). */
+  of?: string;
+  language?: string;
+  translated?: boolean;
+  split?: boolean;
+  /** How many of its texts still show the main language's words. */
+  missing?: number;
+}
+/** What the builder is told of a page that is a translation (ADR 0032). */
+export interface TranslationInfo {
+  of: string;
+  language: string;
+  split: boolean;
 }
 export interface PostInfo extends PageInfo {
   date: string;
@@ -157,11 +170,13 @@ export const api = {
   runOnBlock: (name: string, action: string, block: Block, slug: string, ask: Record<string, string>) => call<{ block: Block }>('POST', `/api/extensions/${name}/run/${action}`, { block, slug, ask }),
   runOnPage: (name: string, action: string, page: Doc, ask: Record<string, string>) => call<{ page: Page }>('POST', `/api/extensions/${name}/run/${action}`, { page, ask }),
   state: () => call<State>('GET', '/api/state'),
-  page: (slug: string, kind: Kind = 'page') => call<{ page: Doc }>('GET', `/api/page?kind=${kind}&slug=${encodeURIComponent(slug)}`),
-  check: () => call<{ check: { broken: { href: string; from: string[] }[]; unnamed: { src: string; on: string[] }[] } }>('GET', '/api/check'),
+  page: (slug: string, kind: Kind = 'page') => call<{ page: Doc; translation?: TranslationInfo }>('GET', `/api/page?kind=${kind}&slug=${encodeURIComponent(slug)}`),
+  translate: (slug: string, language: string) => call<{ page: Page; translation: TranslationInfo } & Lists>('POST', '/api/translate', { slug, language }),
+  split: (of: string, language: string) => call<{ page: Page; translation: TranslationInfo } & Lists>('POST', '/api/split', { of, language }),
+  check: () => call<{ check: { broken: { href: string; from: string[] }[]; unnamed: { src: string; on: string[] }[]; untranslated?: { slug: string; language: string; missing: number }[] } }>('GET', '/api/check'),
   versions: (slug: string, kind: Kind = 'page') => call<{ versions: { at: string; title: string }[] }>('GET', `/api/versions?kind=${kind}&slug=${encodeURIComponent(slug)}`),
   version: (slug: string, at: string, kind: Kind = 'page') => call<{ page: Doc }>('GET', `/api/version?kind=${kind}&slug=${encodeURIComponent(slug)}&at=${encodeURIComponent(at)}`),
-  save: (page: Doc, create = false, kind: Kind = 'page') => call<{ page: Doc } & Lists>('PUT', '/api/page', { page, create, kind }),
+  save: (page: Doc, create = false, kind: Kind = 'page', translation: TranslationInfo | null = null) => call<{ page: Doc; translation?: TranslationInfo } & Lists>('PUT', '/api/page', { page, create, kind, ...(translation ? { translation } : {}) }),
   remove: (slug: string, kind: Kind = 'page') => call<Lists>('DELETE', `/api/page?kind=${kind}&slug=${encodeURIComponent(slug)}`),
   publish: (slug: string, kind: Kind = 'page') => call<Lists>('POST', '/api/publish', { slug, kind }),
   render: (page: Doc, kind: Kind = 'page') => call<{ body: string; css: string }>('POST', '/api/render', { page, kind }),

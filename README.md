@@ -45,6 +45,7 @@ The decisions behind this, each with its reason:
 - [ADR 0029 — The site is checked before it is published](docs/adr/0029-check-before-publishing.md)
 - [ADR 0030 — Data for search engines](docs/adr/0030-data-for-search-engines.md)
 - [ADR 0031 — An extension's screens are data: `thecms.view/1`](docs/adr/0031-extension-screens-as-data.md)
+- [ADR 0032 — A page is translated field by field](docs/adr/0032-translation-by-field.md)
 
 ## Where it stands
 

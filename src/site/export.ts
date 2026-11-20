@@ -192,7 +192,7 @@ export async function buildSite(
 export async function exportSite(store: Store, outDir: string, warn: (line: string) => void = () => {}): Promise<string[]> {
   const files = await publishedSite(store);
   // A link that would lead nowhere is not published quietly either (ADR 0029).
-  const { problems, warnings } = describeCheck(checkSite(files));
+  const { problems, warnings } = describeCheck({ ...checkSite(files), untranslated: await store.untranslated() });
   if (problems.length) throw new Error(`Nothing was exported. A link leads to an address the site does not have:\n${problems.map((p) => `  ${p}`).join('\n')}`);
   for (const line of warnings) warn(line);
 

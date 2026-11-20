@@ -23,6 +23,8 @@ export interface MenuPage {
   slug: string;
   title: string;
   inMenu?: boolean;
+  /** The main page this one is a translation of, when its address does not say (ADR 0032). */
+  of?: string;
 }
 
 /** A list of entries the menu can lead to: the blog, or another content type that has something to show. */

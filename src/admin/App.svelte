@@ -40,8 +40,9 @@ import {
   slugIn,
   pagesIn,
   languageName,
+  prefixOf,
 } from '../core/index.ts';
-import { api, type Doc, type Kind, type State } from './api.ts';
+import { api, type Doc, type Kind, type State, type TranslationInfo } from './api.ts';
 import ContentList from './ContentList.svelte';
 import Extensions from './Extensions.svelte';
 import ExtensionScreen from './ExtensionScreen.svelte';
@@ -67,6 +68,9 @@ let site = $state.raw<State | null>(null);
 /** What is open in the editor: a page or a blog post. */
 let page = $state.raw<Doc | null>(null);
 let kind = $state<Kind>('page');
+/** The page being written is a translation of another (ADR 0032): its words only, unless it is split. */
+let translation = $state<TranslationInfo | null>(null);
+const fixed = $derived(translation !== null && !translation.split);
 /** Which section of the admin is showing: a list, or the builder with one page or post open. */
 let view = $state<'pages' | 'media' | 'messages' | 'people' | 'types' | 'import' | 'extensions' | 'edit' | `list:${string}` | `ext:${string}`>('pages');
 let selected = $state<string | null>(null);
@@ -167,7 +171,8 @@ async function save(): Promise<void> {
   const sent = page;
   saving = 'saving';
   try {
-    site = { ...site, ...(await api.save(sent, false, kind)), site: site.site };
+    const { pages, posts, entries, templates } = await api.save(sent, false, kind, translation);
+    site = { ...site, pages, posts, entries, templates };
     // Something may have changed while the request was out; then it is not saved yet.
     saving = page === sent ? 'saved' : 'unsaved';
     failure = '';
@@ -214,6 +219,7 @@ function redo(): void {
 
 /** Puts a new block at a place. Deeper than a page allows, it is refused and the author is told. */
 function insert(type: BlockType, parent: string | null, index: number): void {
+  if (layoutFixed()) return;
   if (!page) return;
   const fresh = createBlock(type);
   if (!fits(page.blocks, parent, fresh)) {
@@ -243,6 +249,7 @@ function add(type: BlockType): void {
 
 /** A block dropped at a place on the page. `index` counts the blocks there with the moved one left out. */
 function move(id: string, parent: string | null, index: number): void {
+  if (layoutFixed()) return;
   if (!page) return;
   const moved = findById(page.blocks, id);
   if (!moved) return;
@@ -260,7 +267,7 @@ function move(id: string, parent: string | null, index: number): void {
 }
 
 function act(id: string, action: 'up' | 'down' | 'duplicate' | 'delete'): void {
-  if (!page) return;
+  if (!page || layoutFixed()) return;
   if (action === 'up') setBlocks(nudge(page.blocks, id, -1));
   else if (action === 'down') setBlocks(nudge(page.blocks, id, 1));
   else if (action === 'duplicate') setBlocks(duplicate(page.blocks, id));
@@ -304,9 +311,10 @@ function onFrameMessage(event: MessageEvent): void {
 async function open(slug: string, next: Kind = 'page'): Promise<void> {
   try {
     if (saving !== 'saved') await save();
-    const opened = (await api.page(slug, next)).page;
+    const opened = await api.page(slug, next);
     kind = next;
-    page = opened;
+    page = opened.page;
+    translation = opened.translation ?? null;
     selected = null;
     past = [];
     future = [];
@@ -344,18 +352,37 @@ async function createPage(title: string, newKind: Kind): Promise<void> {
   }
 }
 
-/** A page's translation (ADR 0024): a copy of it under the language, to be written over in that language. */
+/** A page in another language (ADR 0032): its words written over the main page's, opened in the builder. */
 async function translatePage(slug: string, language: string): Promise<void> {
   if (!site) return;
   try {
-    const { page: original } = await api.page(slug);
-    const copy = { ...(original as Page), slug: slugIn(site.site, language, slug) };
-    const { pages, posts, entries, templates } = await api.save(copy, true, 'page');
+    const { page: started, pages, posts, entries, templates } = await api.translate(slug, language);
     site = { ...site, pages, posts, entries, templates };
-    await edit(copy.slug, 'page');
+    await edit(started.slug, 'page');
   } catch (error) {
     fail(error);
   }
+}
+
+/** Splits the translation being written (ADR 0032 d4): its blocks become its own. */
+async function splitPage(): Promise<void> {
+  if (!site || !translation) return;
+  try {
+    await save();
+    const { page: split, translation: now, pages, posts, entries, templates } = await api.split(translation.of, translation.language);
+    site = { ...site, pages, posts, entries, templates };
+    page = split;
+    translation = now;
+    await draw();
+  } catch (error) {
+    fail(error);
+  }
+}
+
+/** A translation keeps the main page's blocks: what would change them is said, not done. */
+function layoutFixed(): boolean {
+  if (fixed) failure = t.inspector.translationNote;
+  return fixed;
 }
 
 async function removePage(): Promise<void> {
@@ -749,6 +776,26 @@ onMount(() => {
             <ImageField label={t.posts.cover} value={post.cover} onchange={(cover) => change({ ...post, cover: cover.src ? cover : null }, { step: false })} />
           </div>
           <EntryFieldsForm {type} values={post.fields} onchange={(fields) => change({ ...post, fields }, { step: false })} />
+        {:else if 'inMenu' in page && translation}
+          {@const within = translation}
+          {@const languageLabel = languageName(within.language)}
+          <label class="field">
+            <span>{say(t.inspector.address, { language: languageLabel })}</span>
+            <input
+              type="text"
+              value={page.slug.slice(prefixOf(within.language).length + 1)}
+              disabled={within.of === ''}
+              onchange={(e) => page && site && change({ ...page, slug: slugIn(site.site, within.language, slugify(e.currentTarget.value) || within.of) }, { step: false, redraw: false })}
+              data-translation-address
+            />
+          </label>
+          {#if within.split}
+            <p class="hint" data-split-note>{say(t.inspector.splitNote, { language: languageLabel })}</p>
+          {:else}
+            <p class="hint">{t.inspector.translationNote}</p>
+            <button type="button" onclick={splitPage} data-split>{say(t.inspector.split, { language: languageLabel })}</button>
+            <small>{t.inspector.splitHint}</small>
+          {/if}
         {:else if 'inMenu' in page}
           <label class="check" class:off={site.site.menu !== null} title={site.site.menu !== null ? t.inspector.inMenuOff : undefined}>
             <input type="checkbox" disabled={site.site.menu !== null} checked={page.inMenu} onchange={(e) => page && 'inMenu' in page && change({ ...page, inMenu: e.currentTarget.checked }, { step: false })} />
@@ -765,7 +812,7 @@ onMount(() => {
           {#key `${kind}/${page.slug}`}<Versions slug={page.slug} {kind} onrestore={(doc) => change(doc)} />{/key}
         {/if}
         {#if type || page.slug !== ''}
-          <button type="button" class="danger" onclick={removePage}>{!type ? t.inspector.deletePage : kind === POSTS_TYPE ? t.posts.deletePost : t.ctypes.deleteEntry}</button>
+          <button type="button" class="danger" onclick={removePage}>{translation ? say(t.inspector.deleteTranslation, { language: languageName(translation.language) }) : !type ? t.inspector.deletePage : kind === POSTS_TYPE ? t.posts.deletePost : t.ctypes.deleteEntry}</button>
         {/if}
       {/if}
       {#if failure && saving !== 'error'}<p class="bad" role="alert">{failure}</p>{/if}

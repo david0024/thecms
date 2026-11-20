@@ -13,6 +13,8 @@ export interface SiteCheck {
   broken: { href: string; from: string[] }[];
   /** A picture with no description, and the pages that show it. Said, not stopped. */
   unnamed: { src: string; on: string[] }[];
+  /** A translation that still shows words of the main language (ADR 0032 d6): its address, and how many. Said, not stopped. */
+  untranslated?: { slug: string; language: string; missing: number }[];
 }
 
 const LINK = /<a\b[^>]*?\shref="([^"]*)"/g;
@@ -72,6 +74,9 @@ export function describeCheck(check: SiteCheck): { problems: string[]; warnings:
   const pages = (list: readonly string[]): string => (list.length > 3 ? `${list.slice(0, 3).join(', ')} and ${list.length - 3} more` : list.join(', '));
   return {
     problems: check.broken.map((b) => `${b.href} does not exist; linked from ${pages(b.from)}`),
-    warnings: check.unnamed.map((u) => `${u.src} has no description, on ${pages(u.on)}`),
+    warnings: [
+      ...check.unnamed.map((u) => `${u.src} has no description, on ${pages(u.on)}`),
+      ...(check.untranslated ?? []).map((u) => `/${u.slug}/ shows ${u.missing === 1 ? '1 text' : `${u.missing} texts`} in the main language, not translated into ${u.language}`),
+    ],
   };
 }
