@@ -32,6 +32,17 @@ img{max-width:100%;height:auto;display:block}
 .site-languages a[aria-current]{opacity:1;font-weight:700}
 .site-footer p{margin:0}
 
+/* A layout (ADR 0035): how wide the blocks run, and a sidebar beside them. A block's own width still wins. */
+.layout-narrow .b{--b-width:var(--t-width-narrow)}
+.layout-wide .b{--b-width:var(--t-width-wide)}
+.layout-full .b{--b-width:none}
+.layout-body{display:grid;grid-template-columns:minmax(0,1fr) minmax(12rem,18rem);gap:var(--t-space-lg);max-width:var(--t-width-wide);margin-inline:auto;padding-inline:var(--t-space-md)}
+.layout-body>main .b{padding-inline:0}
+[data-sidebar="left"] .layout-body{grid-template-columns:minmax(12rem,18rem) minmax(0,1fr)}
+[data-sidebar="left"] .layout-aside{order:-1}
+.layout-aside .b{padding-inline:0;padding-block:var(--t-space-md)}
+.layout-aside .b-in{max-width:none}
+
 /* A block: a full-width band; its content sits in a centred column. */
 .b{--b-width:var(--t-width-content);--b-gap:var(--t-space-md);padding-block:var(--t-space-lg);padding-inline:var(--t-space-md)}
 .b-in{max-width:var(--b-width);margin-inline:auto}
@@ -157,6 +168,8 @@ summary.faq-question{cursor:pointer}
 .menu-check,.menu-button{display:none}
 /* A narrow screen: the menu folds away behind its button, and panels open in place. */
 @media (max-width:48rem){
+.layout-body,[data-sidebar="left"] .layout-body{grid-template-columns:minmax(0,1fr)}
+[data-sidebar="left"] .layout-aside{order:0}
 .menu-check{display:block;position:absolute;opacity:0;width:1px;height:1px}
 .menu-button{display:inline-block;cursor:pointer;padding:.4em .9em;border:1px solid var(--t-color-border);border-radius:var(--t-radius-sm)}
 .menu-check:focus-visible+.menu-button{outline:2px solid var(--t-color-primary);outline-offset:2px}

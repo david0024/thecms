@@ -22,6 +22,9 @@ import {
   type Block,
   type ExtensionPackage,
   fillTranslation,
+  areaBlock,
+  LAYOUT_AREAS,
+  READY_LAYOUTS,
   parseExtension,
   imageExt,
   imageSources,
@@ -388,6 +391,14 @@ export class Store {
       const gone = (await this.site()).types.find((t) => t.id === first.type);
       throw new Error(`"${gone?.name ?? first.type}" still has ${n === 1 ? '1 entry' : `${n} entries`}; delete what it holds before removing the content type`);
     }
+    // A layout a page or a content type is drawn in stays while they are (ADR 0035).
+    const layouts = new Set((site.layouts ?? READY_LAYOUTS).map((l) => l.id));
+    const before = (await this.site()).layouts ?? READY_LAYOUTS;
+    const gone = (id: string | undefined): string => (id && !layouts.has(id) ? (before.find((l) => l.id === id)?.name ?? id) : '');
+    const page = (await this.drafts()).find((p) => gone(p.layout));
+    if (page) throw new Error(`"${page.title}" is drawn in the layout "${gone(page.layout)}"; give it another layout before removing this one`);
+    const type = site.types.find((t) => gone(t.layout));
+    if (type) throw new Error(`"${type.name}" is drawn in the layout "${gone(type.layout)}"; give it another layout before removing this one`);
     await this.setMeta('site', site);
     return site;
   }
@@ -758,6 +769,8 @@ export class Store {
       }
       add([...((await this.template(type.id)) ?? []), ...((await this.publishedTemplate(type.id)) ?? [])], listPath(type));
     }
+    // A layout's places show sections too (ADR 0035).
+    for (const layout of site.layouts ?? READY_LAYOUTS) add(LAYOUT_AREAS.map((area) => layout[area]).filter(Boolean).map(areaBlock), `the layout "${layout.name}"`);
     return new Map([...uses].map(([name, at]) => [name, [...at].sort()]));
   }
 

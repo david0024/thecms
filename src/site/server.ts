@@ -16,7 +16,7 @@
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { compile } from 'svelte/compiler';
-import { SECTION_KIND, type Block, fillSections, takeWords, siteIn, type PlacedPage, translatedPage, cleanRow, EXTENSION_MAX_BYTES, type ExtensionManifest, extensionAsks, isObject, languageOf, normalizeBlocks, shownRow, str, type ContentType, DISPLAY_NAME, type LanguagePack, defaultTemplate, MEDIA_MAX_BYTES, MEDIA_PREFIX, normalizePage, type Page, type Post, contentTypes, listPath, type MenuList, normalizePost, parseTheme, pagesIn, POSTS_TYPE, reservedSlugs, slugProblem, type Theme, themeCss } from '../core/index.ts';
+import { SECTION_KIND, type Block, fillSections, takeWords, withAreas, type Site, siteIn, type PlacedPage, translatedPage, cleanRow, EXTENSION_MAX_BYTES, type ExtensionManifest, extensionAsks, isObject, languageOf, normalizeBlocks, shownRow, str, type ContentType, DISPLAY_NAME, type LanguagePack, defaultTemplate, MEDIA_MAX_BYTES, MEDIA_PREFIX, normalizePage, type Page, type Post, contentTypes, listPath, type MenuList, normalizePost, parseTheme, pagesIn, POSTS_TYPE, reservedSlugs, slugProblem, type Theme, themeCss } from '../core/index.ts';
 import type { EntryLists } from '../blocks/editing.ts';
 import { type FetchImage, fetchImage as fetchOverNetwork, IMPORT_MAX_BYTES, type ImportReport, runImport } from '../import/run.ts';
 import { type ImportPlan, planImport } from '../import/wxr.ts';
@@ -253,6 +253,11 @@ export async function startEditor(
     templates: await templates(),
   });
   /** Blocks as the canvas draws them: each section block with its section's drafts, in the language (ADR 0033). */
+  /** The site with what its layouts' sections hold (ADR 0035), from the drafts, in its language. */
+  const framed = async (site?: Site): Promise<Site> => {
+    const drawn = site ?? (await store.site());
+    return withAreas(drawn, await store.draftSections(), drawn.language);
+  };
   const filled = async (blocks: Block[], language?: string): Promise<Block[]> => fillSections(blocks, await store.draftSections(), language ?? (await store.site()).language);
   /** A page at its address as the builder edits it: no more than a page. */
   const asPage = (p: PlacedPage): Page => ({ slug: p.slug, title: p.title, description: p.description, inMenu: p.inMenu, blocks: p.blocks });
@@ -564,7 +569,7 @@ export async function startEditor(
           return json(await lists());
         case 'POST /api/render': {
           const { page } = normalizePage({ ...(body.page as object), title: 'template' });
-          return json(renderPostParts(await store.site(), await theme(), await sampleEntry(type), await menu(), true, type, await entryLists(), await filled(page.blocks), true));
+          return json(renderPostParts(await framed(), await theme(), await sampleEntry(type), await menu(), true, type, await entryLists(), await filled(page.blocks), true));
         }
       }
     }
@@ -604,7 +609,7 @@ export async function startEditor(
         case 'POST /api/render':
           const post = normalizePost(body.page, new Date().toISOString().slice(0, 10), type).post;
           const template = await store.template(type.id);
-          return json(renderPostParts(await store.site(), await theme(), { ...post, blocks: await filled(post.blocks) }, await menu(), true, type, await entryLists(), template && (await filled(template))));
+          return json(renderPostParts(await framed(), await theme(), { ...post, blocks: await filled(post.blocks) }, await menu(), true, type, await entryLists(), template && (await filled(template))));
       }
     }
     switch (route) {
@@ -657,7 +662,7 @@ export async function startEditor(
         const { page } = normalizePage(body.page);
         // Drawn in its own language, with that language's menu and words (ADR 0024).
         const setting = pageSetting(await store.site(), page.slug, await store.pages(), await menuLists());
-        return json(renderParts(setting.site, await theme(), { ...page, blocks: await filled(page.blocks, setting.site.language) }, setting.menu, true, await entryLists(), setting.alternates));
+        return json(renderParts(await framed(setting.site), await theme(), { ...page, blocks: await filled(page.blocks, setting.site.language) }, setting.menu, true, await entryLists(), setting.alternates));
       }
       case 'PUT /api/theme':
         await store.setTheme(body.theme);

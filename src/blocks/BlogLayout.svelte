@@ -28,7 +28,7 @@ const kind = $derived(type ?? postsType());
 const words = $derived(wordsFor(site.language));
 </script>
 
-<Shell {site} {menu} current={listPath(kind)}>
+<Shell {site} {menu} current={listPath(kind)} layout={kind.layout}>
   <section class="b blog">
     <div class="b-in">
       <h1>{heading}</h1>

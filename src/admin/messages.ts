@@ -9,7 +9,7 @@ import { applyPack, type Catalog, format, isPlural, type LanguagePack, type Mess
 
 export const en = {
   app: { pages: 'Pages', blocks: 'Add a block', blocksHint: 'Click to add, or drag onto the page.', tooDeep: 'Groups nest at most four deep; it cannot go there.', newPage: 'New page', pageTitle: 'Page title', create: 'Create', cancel: 'Cancel', home: 'Home page' },
-  nav: { pages: 'Pages', posts: 'Posts', media: 'Media', messages: 'Messages', settings: 'Menu and settings', theme: 'Theme', label: 'Sections', back: 'All', import: 'Import', people: 'People', sections: 'Sections' },
+  nav: { pages: 'Pages', posts: 'Posts', media: 'Media', messages: 'Messages', settings: 'Menu and settings', theme: 'Theme', label: 'Sections', back: 'All', import: 'Import', people: 'People', sections: 'Sections', layouts: 'Layouts' },
   door: {
     key: 'Open the address that the editor printed when it started; it carries the key to this editor.',
     signIn: 'Sign in',
@@ -51,6 +51,29 @@ export const en = {
     pick: 'Choose a section',
     one: 'Section',
     delete: 'Delete this section',
+  },
+  layouts: {
+    heading: 'Layouts',
+    intro: 'How a page is arranged around its blocks: with or without the header and footer, how wide, with a sidebar or not, and a section above or below the blocks. A page picks its layout; what it looks like is the theme\'s.',
+    add: 'New layout',
+    name: 'Name',
+    header: 'Header',
+    footer: 'Footer',
+    width: 'Width of the content',
+    widths: { narrow: 'Narrow', normal: 'Normal', wide: 'Wide', full: 'Full screen' } as Record<string, string>,
+    sidebar: 'Sidebar',
+    sidebars: { none: 'No sidebar', left: 'Sidebar on the left', right: 'Sidebar on the right' } as Record<string, string>,
+    top: 'Above the blocks',
+    side: 'In the sidebar',
+    bottom: 'Below the blocks',
+    nothing: 'Nothing',
+    noSections: 'To show something in the sidebar or above and below the blocks, write it first as a section.',
+    content: 'The page',
+    sideShort: 'Sidebar',
+    remove: 'Delete this layout',
+    pick: 'Layout',
+    ofType: 'Layout of its entries',
+    ready: { standard: 'Standard', landing: 'Landing page', sidebar: 'With a sidebar', article: 'Article' } as Record<string, string>,
   },
   versions: {
     heading: 'Published versions',

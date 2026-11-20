@@ -38,6 +38,8 @@ export interface ContentType {
   categories: boolean;
   feed: boolean;
   fields: TypeField[];
+  /** The layout its entries and lists are drawn in (ADR 0035); absent: the standard one. */
+  layout?: string;
 }
 
 /** The blog a new site starts with, and the type a site made before ADR 0025 kept its posts in. */
@@ -106,6 +108,7 @@ export function normalizeTypes(input: unknown): ContentType[] {
       categories: raw.categories === true,
       feed: raw.feed === true && raw.dated === true,
       fields: cleanFields(raw.fields),
+      ...(slugify(raw.layout) ? { layout: slugify(raw.layout) } : {}),
     });
   }
   return out;

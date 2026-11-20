@@ -1,5 +1,6 @@
 /** A page and the site it belongs to, as documents. */
 import { type Block, blocksText, cleanImage, cleanLink, type ImageValue, type LinkValue, normalizeBlocks } from './blocks.ts';
+import { type Layout, normalizeLayouts } from './layout.ts';
 import { normalizeTranslations, type PageTranslation } from './localize.ts';
 import { type MenuNode, normalizeMenu } from './menu.ts';
 import { pageSlug, prefixOf } from './translation.ts';
@@ -16,6 +17,8 @@ export interface Page {
   blocks: Block[];
   /** The page in the site's other languages, by language (ADR 0032). Always there once the page is cleaned. */
   translations?: Record<string, PageTranslation>;
+  /** The layout it is drawn in (ADR 0035); absent: its type's, or the standard one. */
+  layout?: string;
 }
 
 export interface Site {
@@ -45,6 +48,10 @@ export interface Site {
   languages: string[];
   /** What the header and footer say in each other language, by language. */
   translations: Record<string, SiteText>;
+  /** The site's layouts (ADR 0035); absent while it has the ready ones. */
+  layouts?: Layout[];
+  /** What each section a layout shows holds, in the language being drawn: filled in to draw a page, never kept. */
+  areas?: Record<string, Block[]>;
 }
 
 /** The site's own words in another language: the footer and the header's button. */
@@ -89,6 +96,7 @@ export function normalizePage(input: unknown): { page: Page; issues: Issue[] } {
       inMenu: raw.inMenu !== false,
       blocks,
       translations: normalizeTranslations(raw.translations),
+      ...(slugify(raw.layout) ? { layout: slugify(raw.layout) } : {}),
     },
     issues,
   };
@@ -110,6 +118,7 @@ export function normalizeSite(input: unknown): Site {
     types: siteTypes(raw),
     forms: cleanFormsAddress(raw.forms),
     ...siteLanguages(raw),
+    ...(Array.isArray(raw.layouts) ? { layouts: normalizeLayouts(raw.layouts) } : {}),
     keepMessages: Number.isInteger(raw.keepMessages) && (raw.keepMessages as number) >= 1 && (raw.keepMessages as number) <= 3650 ? (raw.keepMessages as number) : KEEP_MESSAGES_DAYS,
   };
 }

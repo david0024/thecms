@@ -15,7 +15,7 @@ let {
 }: { site: Site; page: Page; menu: MenuLink[]; editing?: boolean; lists?: EntryLists } = $props();
 </script>
 
-<Shell {site} {menu} current={pagePath(page.slug)} {editing} {lists}>
+<Shell {site} {menu} current={pagePath(page.slug)} {editing} {lists} layout={page.layout}>
   {#each page.blocks as block (block.id)}<BlockView {block} />{/each}
   {#if editing && page.blocks.length === 0}<div class="cms-empty" data-empty="page"></div>{/if}
 </Shell>

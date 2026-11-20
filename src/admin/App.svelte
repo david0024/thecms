@@ -43,9 +43,14 @@ import {
   prefixOf,
   SECTION_KIND,
   languageOf,
+  type Layout,
+  READY_LAYOUTS,
+  STANDARD,
 } from '../core/index.ts';
 import { api, type Doc, type Kind, type State, type TranslationInfo } from './api.ts';
 import ContentList from './ContentList.svelte';
+import Layouts from './Layouts.svelte';
+import { layoutName } from './layouts.ts';
 import Extensions from './Extensions.svelte';
 import ExtensionScreen from './ExtensionScreen.svelte';
 import { findView } from '../view/index.ts';
@@ -75,7 +80,7 @@ let kind = $state<Kind>('page');
 let translation = $state<TranslationInfo | null>(null);
 const fixed = $derived(translation !== null && !translation.split);
 /** Which section of the admin is showing: a list, or the builder with one page or post open. */
-let view = $state<'pages' | 'sections' | 'media' | 'messages' | 'people' | 'types' | 'import' | 'extensions' | 'edit' | `list:${string}` | `ext:${string}`>('pages');
+let view = $state<'pages' | 'sections' | 'layouts' | 'media' | 'messages' | 'people' | 'types' | 'import' | 'extensions' | 'edit' | `list:${string}` | `ext:${string}`>('pages');
 let selected = $state<string | null>(null);
 let tab = $state<'content' | 'style'>('content');
 let saving = $state<'saved' | 'saving' | 'unsaved' | 'error'>('saved');
@@ -361,12 +366,12 @@ async function panel(which: 'site' | 'theme'): Promise<void> {
   if (which === 'theme' && !themeMode) await toggleTheme();
 }
 
-async function createPage(title: string, newKind: Kind): Promise<void> {
+async function createPage(title: string, newKind: Kind, layout = ''): Promise<void> {
   const slug = slugify(title);
   if (!site || !title || !slug) return;
   try {
     // An entry without a date is dated today by the server.
-    const fresh = newKind === 'page' || newKind === SECTION_KIND ? { slug, title, description: '', inMenu: newKind === 'page', blocks: [] } : ({ slug, title, blocks: [] } as unknown as Post);
+    const fresh = newKind === 'page' || newKind === SECTION_KIND ? { slug, title, description: '', inMenu: newKind === 'page', blocks: [], ...(layout && layout !== STANDARD ? { layout } : {}) } : ({ slug, title, blocks: [] } as unknown as Post);
     const { pages, sections, posts, entries, templates } = await api.save(fresh, true, newKind);
     site = { ...site, pages, sections, posts, entries, templates };
     await edit(slug, newKind);
@@ -501,6 +506,17 @@ async function setAdminLanguage(adminLanguage: string): Promise<void> {
   }
 }
 
+/** The layouts as the owner set them (ADR 0035). Answers with the reason when the site refuses, '' when it took them. */
+async function saveLayouts(next: Layout[]): Promise<string> {
+  if (!site) return '';
+  try {
+    site = await api.setSite({ ...site.site, layouts: next });
+    return '';
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  }
+}
+
 /** The content types as the owner set them. Answers with the reason when the site refuses, '' when it took them. */
 async function saveTypes(next: ContentType[]): Promise<string> {
   if (!site) return '';
@@ -600,6 +616,7 @@ onMount(() => {
         <button type="button" aria-current={view === 'messages' ? 'page' : undefined} onclick={() => (view = 'messages')} data-nav="messages">{t.nav.messages}</button>
         <button type="button" onclick={() => panel('site')} data-nav="settings">{t.nav.settings}</button>
         <button type="button" onclick={() => panel('theme')} data-nav="theme">{t.nav.theme}</button>
+        <button type="button" aria-current={view === 'layouts' ? 'page' : undefined} onclick={() => (view = 'layouts')} data-nav="layouts">{t.nav.layouts}</button>
         <button type="button" aria-current={view === 'types' ? 'page' : undefined} onclick={() => (view = 'types')} data-nav="types">{t.ctypes.heading}</button>
         <button type="button" aria-current={view === 'import' ? 'page' : undefined} onclick={() => (view = 'import')} data-nav="import">{t.nav.import}</button>
         <button type="button" aria-current={view === 'extensions' || view.startsWith('ext:') ? 'page' : undefined} onclick={() => (view = 'extensions')} data-nav="extensions">{t.ext.heading}</button>
@@ -616,11 +633,13 @@ onMount(() => {
 
     {#if view === 'pages'}
       <div class="stack">
-        <ContentList kind="page" items={site.pages} site={site.site} onopen={(slug) => edit(slug, 'page')} oncreate={(title) => createPage(title, 'page')} ontranslate={translatePage} />
+        <ContentList kind="page" items={site.pages} site={site.site} onopen={(slug) => edit(slug, 'page')} layouts={site.site.layouts ?? READY_LAYOUTS} oncreate={(title, layout) => createPage(title, 'page', layout)} ontranslate={translatePage} />
         <SiteCheck />
       </div>
     {:else if view === 'sections'}
       <Sections sections={site.sections} site={site.site} onopen={(slug) => edit(slug, SECTION_KIND)} oncreate={(title) => createPage(title, SECTION_KIND)} ontranslate={(slug, language) => translatePage(slug, language, SECTION_KIND)} />
+    {:else if view === 'layouts'}
+      <Layouts site={site.site} sections={site.sections} onsave={saveLayouts} />
     {:else if view === 'types'}
       <ContentTypes site={site.site} counts={Object.fromEntries(types.map((ty) => [ty.id, site?.entries[ty.id]?.length ?? 0]))} templates={site.templates} onsave={saveTypes} ondesign={(id) => edit(id, `template:${id}`)} />
     {:else if view.startsWith('list:')}
@@ -832,6 +851,12 @@ onMount(() => {
           <label class="check" class:off={site.site.menu !== null} title={site.site.menu !== null ? t.inspector.inMenuOff : undefined}>
             <input type="checkbox" disabled={site.site.menu !== null} checked={page.inMenu} onchange={(e) => page && 'inMenu' in page && change({ ...page, inMenu: e.currentTarget.checked }, { step: false })} />
             <span>{t.inspector.inMenu}</span>
+          </label>
+          <label class="field">
+            <span>{t.layouts.pick}</span>
+            <select value={page.layout ?? STANDARD} onchange={(e) => page && 'inMenu' in page && change({ ...page, layout: e.currentTarget.value === STANDARD ? undefined : e.currentTarget.value })} data-page-layout>
+              {#each site.site.layouts ?? READY_LAYOUTS as layout (layout.id)}<option value={layout.id}>{layoutName(layout)}</option>{/each}
+            </select>
           </label>
         {/if}
         {#if freeOnPage > 0}

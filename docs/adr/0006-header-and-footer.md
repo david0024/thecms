@@ -77,7 +77,7 @@ the public page.
 
 - ~~A menu for small screens, menu order and sub-menus.~~ Done in ADR 0008.
 - **Several footer columns**, a logo with the name beside it, a favicon.
-- **Page templates** (a landing page without header, a page with a sidebar).
+- ~~**Page templates** (a landing page without header, a page with a sidebar).~~ Done as layouts in ADR 0035.
 
 ## Verification
 
