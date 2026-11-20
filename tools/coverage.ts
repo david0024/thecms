@@ -35,7 +35,7 @@ interface Ran {
   functions: { ranges: Range[] }[];
 }
 
-const SOURCES = ['src/**/*.ts', 'src/**/*.svelte', 'tools/**/*.ts'];
+const SOURCES = ['src/**/*.ts', 'src/**/*.svelte', 'tools/**/*.ts', 'extensions/**/*.ts'];
 /** Files with no code of their own to run. */
 const NOTHING_TO_RUN = /\.d\.ts$/;
 

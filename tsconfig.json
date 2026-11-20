@@ -13,5 +13,5 @@
     "noEmit": true,
     "skipLibCheck": true
   },
-  "include": ["src", "test", "tools"]
+  "include": ["src", "test", "tools", "extensions"]
 }

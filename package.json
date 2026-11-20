@@ -19,6 +19,7 @@
     "svelte": "^5.57.3"
   },
   "devDependencies": {
+    "@anthropic-ai/sdk": "^1.10.0",
     "@jridgewell/trace-mapping": "^0.3.31",
     "@types/bun": "^1.4.4",
     "svelte-check": "^4.7.8",
