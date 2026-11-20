@@ -39,4 +39,11 @@ export const actions = {
   async crash() {
     process.exit(3);
   },
+  async rotate(input: { id?: string; note?: string }, host: Host) {
+    await host.collections.insert('log', { what: `new key for ${input.id ?? 'none'}: ${input.note ?? ''}` });
+    return { reveal: `sk-${input.id ?? 'none'}-${(input.note ?? '').length}` };
+  },
+  async open() {
+    return { view: 'shout.log' };
+  },
 };

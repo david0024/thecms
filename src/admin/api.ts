@@ -3,7 +3,8 @@
  * the key from the address the command printed; on a served admin, the
  * session cookie and a header only the admin's own page sends (ADR 0022).
  */
-import type { Block, ExtensionAction, ExtensionCollection, ExtensionView, Page, Post, Site, Theme } from '../core/index.ts';
+import type { Block, ExtensionAction, ExtensionCollection, Page, Post, Site, Theme } from '../core/index.ts';
+import type { ViewDocument } from '../view/index.ts';
 import type { ExtensionOffer } from '../site/extensions.ts';
 import type { ImportPreview, ImportProgress } from '../site/server.ts';
 
@@ -95,7 +96,7 @@ export interface ExtensionInfo {
   messages: Record<string, Record<string, string>>;
   sha256?: string;
   asks?: ExtensionOffer['asks'];
-  views?: ExtensionView[];
+  views?: ViewDocument[];
   collections?: ExtensionCollection[];
 }
 export type { ExtensionOffer };
@@ -152,6 +153,7 @@ export const api = {
   extensionRows: (name: string, collection: string) => call<{ rows: Record<string, unknown>[] }>('GET', `/api/extensions/${name}/rows/${collection}`),
   saveExtensionRow: (name: string, collection: string, row: Record<string, unknown>, id: string | null) => call<{ rows: Record<string, unknown>[] }>('PUT', `/api/extensions/${name}/rows/${collection}`, { id, row }),
   deleteExtensionRow: (name: string, collection: string, id: string) => call<{ rows: Record<string, unknown>[] }>('DELETE', `/api/extensions/${name}/rows/${collection}?id=${encodeURIComponent(id)}`),
+  runExtensionAction: (name: string, action: string, input: Record<string, unknown>) => call<{ answer: unknown }>('POST', `/api/extensions/${name}/run/${action}`, { input }),
   runOnBlock: (name: string, action: string, block: Block, slug: string, ask: Record<string, string>) => call<{ block: Block }>('POST', `/api/extensions/${name}/run/${action}`, { block, slug, ask }),
   runOnPage: (name: string, action: string, page: Doc, ask: Record<string, string>) => call<{ page: Page }>('POST', `/api/extensions/${name}/run/${action}`, { page, ask }),
   state: () => call<State>('GET', '/api/state'),

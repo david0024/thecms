@@ -45,6 +45,7 @@ import { api, type Doc, type Kind, type State } from './api.ts';
 import ContentList from './ContentList.svelte';
 import Extensions from './Extensions.svelte';
 import ExtensionScreen from './ExtensionScreen.svelte';
+import { findView } from '../view/index.ts';
 import ExtensionTools from './ExtensionTools.svelte';
 import SiteCheck from './SiteCheck.svelte';
 import Versions from './Versions.svelte';
@@ -585,14 +586,13 @@ onMount(() => {
     {:else if view === 'people'}
       <People />
     {:else if view === 'extensions'}
-      <Extensions extensions={site.extensions} onchange={(next) => site && (site = { ...site, extensions: next })} onopen={(name, collection) => (view = `ext:${name}/${collection}`)} />
+      <Extensions extensions={site.extensions} onchange={(next) => site && (site = { ...site, extensions: next })} onopen={(name, screen) => (view = `ext:${name}/${screen}`)} />
     {:else if view.startsWith('ext:')}
-      {@const [name, collection] = view.slice(4).split('/')}
+      {@const [name, screen] = view.slice(4).split('/')}
       {@const extension = site.extensions.find((e) => e.name === name)}
-      {@const shownView = extension?.views?.find((v) => v.collection === collection)}
-      {@const of = extension?.collections?.find((c) => c.name === collection)}
-      {#if extension && shownView && of}
-        {#key view}<ExtensionScreen {extension} view={shownView} collection={of} />{/key}
+      {@const found = extension ? findView(extension.views ?? [], screen ?? '') : null}
+      {#if extension && found}
+        {#key view}<ExtensionScreen {extension} doc={found.view === found.doc ? found.doc : { ...found.view, spec: found.doc.spec, id: screen ?? '', title: found.view.title ?? found.doc.title }} onnavigate={(id) => (view = `ext:${extension.name}/${id}`)} />{/key}
       {/if}
     {/if}
     {#if failure && view !== 'edit'}<p class="bad toast" role="alert">{failure}</p>{/if}

@@ -44,6 +44,7 @@ The decisions behind this, each with its reason:
 - [ADR 0028 — What was published is kept, to bring back](docs/adr/0028-published-versions.md)
 - [ADR 0029 — The site is checked before it is published](docs/adr/0029-check-before-publishing.md)
 - [ADR 0030 — Data for search engines](docs/adr/0030-data-for-search-engines.md)
+- [ADR 0031 — An extension's screens are data: `thecms.view/1`](docs/adr/0031-extension-screens-as-data.md)
 
 ## Where it stands
 

@@ -27,6 +27,7 @@ import { extensionHost, type Spawn } from './extensions.ts';
 import { BUILT_ADMIN } from './built-admin.ts';
 import { BASE_CSS, SHIPPED_THEMES } from './shipped.ts';
 import type { Store, User } from './store.ts';
+import { rowWrites } from '../view/index.ts';
 import { checkSite } from './check.ts';
 import { publishedSite } from './export.ts';
 
@@ -388,21 +389,21 @@ export async function startEditor(
       return json({ extensions: await extensionsFor(me) });
     }
     if (part !== 'rows') return json({ error: 'not found' }, 404);
-    // A screen shows its collection: the owner reads and writes it through it, as the screen allows.
-    const view = installed.manifest.views.find((v) => v.collection === what);
+    // A screen shows its collection: the owner reads and writes it through it, as its screens allow (ADR 0031).
+    const may = rowWrites(installed.manifest.views, what);
     const of = installed.manifest.collections.find((c) => c.name === what);
-    if (!view || !of) return json({ error: 'not found' }, 404);
+    if (!may.read || !of) return json({ error: 'not found' }, 404);
     const rows = async () => json({ rows: (await store.extensionRows(name, of.name)).map((row) => shownRow(of, row)) });
     if (request.method === 'GET') return rows();
     if (request.method === 'DELETE') {
-      if (!view.remove) return json({ error: 'this screen does not remove rows' }, 403);
+      if (!may.delete) return json({ error: 'no screen removes these rows' }, 403);
       await store.deleteExtensionRow(name, of.name, url.searchParams.get('id') ?? '');
       return rows();
     }
     if (request.method !== 'PUT') return json({ error: 'not found' }, 404);
     const body = (await request.json()) as Record<string, unknown>;
     const id = typeof body.id === 'string' && body.id ? body.id : null;
-    if (id ? !view.edit : !view.create) return json({ error: id ? 'this screen does not change rows' : 'this screen does not add rows' }, 403);
+    if (id ? !may.edit : !may.create) return json({ error: id ? 'no screen changes these rows' : 'no screen adds these rows' }, 403);
     const before = id ? await store.extensionRow(name, of.name, id) : null;
     if (id && !before) return json({ error: 'no such row' }, 404);
     const { row, problems } = cleanRow(of, body.row, before);

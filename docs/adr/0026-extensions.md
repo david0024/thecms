@@ -42,8 +42,8 @@ The manifest declares:
   first (a text, one of the site's languages).
 - **egress**: the hosts its code may call, `api.example.com` or
   `*.example.com`.
-- **views**: a collection as a list with a form, drawn by the admin. No code
-  of the extension runs in a browser.
+- **views**: its screens, as data (`thecms.view/1`, ADR 0031), drawn by the
+  admin. No code of the extension runs in a browser.
 - **messages**: its words in other languages.
 
 ### d3. The owner accepts the exact file

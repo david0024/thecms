@@ -29,9 +29,9 @@ describe('a package', () => {
     const { pkg, problems } = parseExtension(raw);
     expect(problems).toEqual([]);
     const m = pkg!.manifest;
-    expect(m.actions.map((a) => `${a.name}:${a.on ?? 'screen'}:${a.timeoutSeconds}`)).toEqual(['louder:block:60', 'title:page:60', 'ping:screen:60', 'sneak:screen:60', 'slow:screen:1', 'crash:screen:60']);
+    expect(m.actions.map((a) => `${a.name}:${a.on ?? 'screen'}:${a.timeoutSeconds}`)).toEqual(['louder:block:60', 'title:page:60', 'ping:screen:60', 'sneak:screen:60', 'slow:screen:1', 'crash:screen:60', 'rotate:screen:60', 'open:screen:60']);
     expect(m.collections[0]?.fields.map((f) => `${f.key}:${f.kind}:${f.initial}`)).toEqual(['name:text:null', 'key:secret:null', 'loud:boolean:true', 'style:choice:caps']);
-    expect(m.views[0]).toEqual({ collection: 'settings', title: 'Settings', columns: ['name', 'key', 'style'], create: true, edit: true, remove: true });
+    expect(m.views.map((v) => `${v.id}:${v.type}`)).toEqual(['shout.settings:list', 'shout.more:tabs']);
     expect(extensionAsks(m)).toEqual({
       collections: ['Settings', 'Log'],
       secrets: ['Settings: Key'],
@@ -64,7 +64,7 @@ describe('a package', () => {
           'nonsense',
         ],
         actions: [{ name: 'go', on: 'everywhere', reads: ['users'], writes: ['rows'] }, { name: 'go' }, { name: 'no-dash' }, 7],
-        views: [{ collection: 'users' }],
+        views: [{ spec: 'thecms.view/1', id: 'bad.users', title: 'Users', type: 'list', collection: 'users' }],
       },
     });
     expect(bad.pkg).toBeNull();
@@ -84,7 +84,7 @@ describe('a package', () => {
       'go: it reads "users", which is not one of its collections',
       'the action "go" is declared twice',
       'an action\'s name is letters and digits ("no-dash")',
-      'a screen shows one of the extension\'s collections ("users")',
+      'views[0]: "users" is not one of the extension\'s collections',
       'it has actions and no code',
     ]);
   });
@@ -214,7 +214,7 @@ describe('extensions in the editor', () => {
       expect((await call('POST', '/api/extensions/install?sha256=nope', PACKAGE, true)).data.error).toContain('not the file that was accepted');
       const installed = (await call('POST', `/api/extensions/install?sha256=${offer.sha256}`, PACKAGE, true)).data.extensions;
       expect(installed.map((e: { name: string; enabled: boolean }) => `${e.name} ${e.enabled}`)).toEqual(['shout true']);
-      expect((await call('GET', '/api/state')).data.extensions[0].views[0].collection).toBe('settings');
+      expect((await call('GET', '/api/state')).data.extensions[0].views[0].id).toBe('shout.settings');
 
       // Its screen: the owner keeps its settings; the secret is never sent back.
       expect((await call('PUT', '/api/extensions/shout/rows/settings', { row: {} })).data.error).toBe('Name is needed');
@@ -224,7 +224,10 @@ describe('extensions in the editor', () => {
       expect((await call('PUT', '/api/extensions/shout/rows/settings', { id, row: { name: 'Main', key: '' } })).data.rows[0].key).toBe('••••••');
       expect(await store.extensionRow('shout', 'settings', id)).toMatchObject({ key: 'sk-1' });
       expect((await call('PUT', '/api/extensions/shout/rows/settings', { id: 'gone', row: { name: 'x' } })).status).toBe(404);
-      expect((await call('GET', '/api/extensions/shout/rows/log')).status).toBe(404);
+      // The log is shown, never written by hand: its list offers no form.
+      expect((await call('GET', '/api/extensions/shout/rows/log')).data.rows).toEqual([]);
+      expect((await call('PUT', '/api/extensions/shout/rows/log', { row: { what: 'x' } })).data.error).toBe('no screen adds these rows');
+      expect((await call('GET', '/api/extensions/shout/rows/nothing')).status).toBe(404);
       expect((await call('GET', '/api/extensions/shout/rows/settings')).data.rows).toHaveLength(1);
 
       // In the editor: what it gives back is a block, with the same id, cleaned by the same rules.
@@ -484,5 +487,11 @@ describe('the runner', () => {
     await Bun.write(join(broken, 'index.ts'), 'export const actions = {};');
     await Bun.write(join(broken, 'manifest.json'), JSON.stringify({ name: 'Broken', version: '1.0.0' }));
     await expect(packExtension(broken)).rejects.toThrow('lower case letters');
+    // A screen that is not thecms.view/1, or names what is not there, is refused before it is packed.
+    const screen = { spec: 'thecms.view/1', id: 'data-only.notes', title: 'Notes', type: 'list', collection: 'notes' };
+    await Bun.write(join(empty, 'manifest.json'), JSON.stringify({ name: 'data-only', version: '1.0.0', collections: [{ name: 'notes', fields: [{ key: 'text', kind: 'text' }] }], views: [{ ...screen, fields: ['colour'] }] }));
+    await expect(packExtension(empty)).rejects.toThrow('"notes" has no field "colour"');
+    await Bun.write(join(empty, 'manifest.json'), JSON.stringify({ name: 'data-only', version: '1.0.0', collections: [{ name: 'notes', fields: [{ key: 'text', kind: 'text' }] }], views: [{ ...screen, css: 'red' }] }));
+    await expect(packExtension(empty)).rejects.toThrow('"css" is not part of thecms.view/1');
   });
 });
