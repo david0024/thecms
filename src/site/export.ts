@@ -27,6 +27,8 @@ import {
   typeTagPath,
   type Redirect,
   redirectFile,
+  redirectsFile,
+  htaccessFile,
   type Site,
   type Theme,
   themeCss,
@@ -38,7 +40,7 @@ import {
 } from '../core/index.ts';
 import { wordsFor } from '../blocks/words.ts';
 import { menuOf, pageSetting, renderBlogList, renderPage, renderPost, STYLESHEET } from './document.ts';
-import { checkSite, describeCheck } from './check.ts';
+import { checkRedirects, checkSite, describeCheck } from './check.ts';
 import { BASE_CSS } from './shipped.ts';
 import type { Store } from './store.ts';
 
@@ -169,9 +171,11 @@ export async function buildSite(
   }
 
   // An old address is kept only where nothing lives now and what it leads to is published.
+  const written: Redirect[] = [];
   for (const { from, to } of redirects) {
     const file = redirectFile(from);
     if (files.has(file) || !paths.includes(to.split('#')[0] as string)) continue;
+    written.push({ from, to });
     const href = xml(to);
     files.set(
       file,
@@ -181,6 +185,11 @@ export async function buildSite(
     );
   }
 
+  // A host that reads a list of redirects answers with a real 301; any other serves the small pages above (ADR 0036).
+  if (written.length) {
+    files.set('_redirects', redirectsFile(written));
+    files.set('.htaccess', htaccessFile(written));
+  }
   files.set(
     '404.html',
     renderPage(framed, theme, { slug: '404', title: wordsFor(site.language).notFound, description: '', inMenu: false, blocks: [] }, menu),
@@ -204,7 +213,7 @@ export async function buildSite(
 export async function exportSite(store: Store, outDir: string, warn: (line: string) => void = () => {}): Promise<string[]> {
   const files = await publishedSite(store);
   // A link that would lead nowhere is not published quietly either (ADR 0029).
-  const { problems, warnings } = describeCheck({ ...checkSite(files), untranslated: await store.untranslated() });
+  const { problems, warnings } = describeCheck({ ...checkSite(files), untranslated: await store.untranslated(), redirects: checkRedirects(files, await store.redirects()) });
   if (problems.length) throw new Error(`Nothing was exported. A link leads to an address the site does not have:\n${problems.map((p) => `  ${p}`).join('\n')}`);
   for (const line of warnings) warn(line);
 

@@ -45,7 +45,7 @@ export const cookieOf = (request: Request, name = SESSION_COOKIE): string => {
 /** Who may do what. The owner may do everything; an editor writes and publishes pages, posts and entries, and uploads images. */
 export function ownerOnly(method: string, path: string): boolean {
   if (path.startsWith('/api/import') || path === '/api/messages' || path.startsWith('/api/users')) return true;
-  return (path === '/api/theme' || path === '/api/theme/publish' || path === '/api/site') && method !== 'GET';
+  return (path === '/api/theme' || path === '/api/theme/publish' || path === '/api/site' || path === '/api/redirects') && method !== 'GET';
 }
 
 /** What the admin may know about the person signed in. */

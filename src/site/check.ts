@@ -15,7 +15,11 @@ export interface SiteCheck {
   unnamed: { src: string; on: string[] }[];
   /** A translation that still shows words of the main language (ADR 0032 d6): its address, and how many. Said, not stopped. */
   untranslated?: { slug: string; language: string; missing: number }[];
+  /** A redirect that loops, leads to another old address, leads nowhere, or is hidden by a page (ADR 0036). Said, not stopped. */
+  redirects?: RedirectProblem[];
 }
+
+import { type Redirect, type RedirectProblem, redirectProblems } from '../core/index.ts';
 
 const LINK = /<a\b[^>]*?\shref="([^"]*)"/g;
 const IMAGE = /<img\b[^>]*>/g;
@@ -69,6 +73,22 @@ export function checkSite(files: Map<string, string | Uint8Array>): SiteCheck {
   };
 }
 
+/** What is wrong with the redirects, against the pages the export wrote (its own redirect pages are not pages). */
+export function checkRedirects(files: Map<string, string | Uint8Array>, redirects: readonly Redirect[]): RedirectProblem[] {
+  const answered = new Set<string>();
+  for (const [file, contents] of files) {
+    if (file.endsWith('.html') && typeof contents === 'string' && !contents.includes('http-equiv="refresh"')) answered.add(addressOf(file));
+  }
+  return redirectProblems(redirects, answered);
+}
+
+const SAID: Record<RedirectProblem['problem'], string> = {
+  loop: 'comes back to itself',
+  chain: 'leads to another old address; point it straight at the new one',
+  missing: 'leads to an address the site does not have',
+  shadowed: 'is never followed: a page lives at the old address',
+};
+
 /** The findings in plain lines, for the command line. */
 export function describeCheck(check: SiteCheck): { problems: string[]; warnings: string[] } {
   const pages = (list: readonly string[]): string => (list.length > 3 ? `${list.slice(0, 3).join(', ')} and ${list.length - 3} more` : list.join(', '));
@@ -76,6 +96,7 @@ export function describeCheck(check: SiteCheck): { problems: string[]; warnings:
     problems: check.broken.map((b) => `${b.href} does not exist; linked from ${pages(b.from)}`),
     warnings: [
       ...check.unnamed.map((u) => `${u.src} has no description, on ${pages(u.on)}`),
+      ...(check.redirects ?? []).map((r) => `the redirect from ${r.from} to ${r.to} ${SAID[r.problem]}`),
       ...(check.untranslated ?? []).map((u) => `/${u.slug}/ shows ${u.missing === 1 ? '1 text' : `${u.missing} texts`} in the main language, not translated into ${u.language}`),
     ],
   };

@@ -28,7 +28,7 @@ import { BUILT_ADMIN } from './built-admin.ts';
 import { BASE_CSS, SHIPPED_THEMES } from './shipped.ts';
 import type { Store, User } from './store.ts';
 import { rowWrites } from '../view/index.ts';
-import { checkSite } from './check.ts';
+import { checkRedirects, checkSite } from './check.ts';
 import { publishedSite } from './export.ts';
 
 const ADMIN = new URL('../admin/', import.meta.url);
@@ -618,7 +618,8 @@ export async function startEditor(
       case 'GET /api/check':
         // The published site, built as an export would build it, and read for what it would get wrong (ADR 0029).
         try {
-          return json({ check: { ...checkSite(await publishedSite(store)), untranslated: await store.untranslated() } });
+          const files = await publishedSite(store);
+          return json({ check: { ...checkSite(files), untranslated: await store.untranslated(), redirects: checkRedirects(files, await store.redirects()) } });
         } catch (error) {
           return json({ error: error instanceof Error ? error.message : String(error) }, 409);
         }
@@ -654,6 +655,15 @@ export async function startEditor(
       case 'DELETE /api/page':
         await store.deletePage(slug);
         return json(await lists());
+      case 'POST /api/move': {
+        // A page at a new address (ADR 0036): what visitors knew leads there.
+        const page = await store.movePage(String(body.from ?? ''), String(body.to ?? ''));
+        return json({ page, ...(await lists()), redirects: await store.redirects() });
+      }
+      case 'GET /api/redirects':
+        return json({ redirects: await store.redirects() });
+      case 'PUT /api/redirects':
+        return json({ redirects: await store.setRedirects(body.redirects) });
       case 'POST /api/publish':
         await store.publish(String(body.slug ?? ''));
         return json(await lists());

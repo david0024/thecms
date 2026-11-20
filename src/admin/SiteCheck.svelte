@@ -33,7 +33,7 @@ async function run(): Promise<void> {
   <button type="button" onclick={run} disabled={working} data-check-run>{working ? t.check.working : t.check.run}</button>
   {#if problem}<p class="bad" role="alert">{problem}</p>{/if}
   {#if check}
-    {#if check.broken.length === 0 && check.unnamed.length === 0 && !check.untranslated?.length}
+    {#if check.broken.length === 0 && check.unnamed.length === 0 && !check.untranslated?.length && !check.redirects?.length}
       <p class="good" data-check-fine>{t.check.fine}</p>
     {/if}
     {#if check.broken.length}
@@ -46,6 +46,12 @@ async function run(): Promise<void> {
       <p>{t.check.unnamed}</p>
       <ul data-check-unnamed>
         {#each check.unnamed as image (image.src)}<li><code>{image.src}</code> <small>{say(t.check.from, { pages: pages(image.on) })}</small></li>{/each}
+      </ul>
+    {/if}
+    {#if check.redirects?.length}
+      <p>{t.check.redirects}</p>
+      <ul data-check-redirects>
+        {#each check.redirects as r (r.from)}<li><code>{r.from}</code> → <code>{r.to}</code> <small>{t.check[r.problem === 'missing' ? 'lost' : r.problem]}</small></li>{/each}
       </ul>
     {/if}
     {#if check.untranslated?.length}

@@ -41,6 +41,7 @@ const addLanguage = (): void => {
   set({ languages: [...site.languages, language] });
   adding = '';
 };
+import Redirects from './Redirects.svelte';
 </script>
 
 <label class="field">
@@ -156,6 +157,8 @@ const addLanguage = (): void => {
   </fieldset>
   <small>{t.site.inLanguageHint}</small>
 {/each}
+
+<Redirects />
 
 <p class="hint">{t.site.live}</p>
 

@@ -49,6 +49,7 @@ The decisions behind this, each with its reason:
 - [ADR 0033 — Sections: blocks written once, shown on many pages](docs/adr/0033-sections.md)
 - [ADR 0034 — Actions on translations, and in every language](docs/adr/0034-actions-on-translations.md)
 - [ADR 0035 — Theme, layout, page, section, site: who decides what](docs/adr/0035-layouts-and-boundaries.md)
+- [ADR 0036 — Old addresses: moved pages and redirects written by hand](docs/adr/0036-redirects.md)
 
 ## Where it stands
 
