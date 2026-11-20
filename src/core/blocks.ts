@@ -25,6 +25,8 @@ export type Field =
   | { kind: 'number'; min: number; max: number }
   /** Which part of an entry a block of an entry's page shows (ADR 0015): its title, its date, one of its fields. */
   | { kind: 'part' }
+  /** A section the block shows (ADR 0033), by its name: blocks written once and shown on many pages. */
+  | { kind: 'section' }
   | { kind: 'list'; max: number; item: Record<string, Field> };
 
 export interface ImageValue {
@@ -163,6 +165,11 @@ export const BLOCKS = {
     fields: { part: { kind: 'part' } },
     create: () => ({ part: 'header' }),
   },
+  /** A section (ADR 0033): its blocks, written once, shown here. */
+  section: {
+    fields: { section: { kind: 'section' } },
+    create: () => ({ section: '' }),
+  },
   group: {
     container: true,
     fields: {},
@@ -238,6 +245,8 @@ function cleanField(field: Field, raw: unknown): unknown {
       return cleanLink(raw);
     case 'source':
       return slugify(raw) || POSTS_TYPE;
+    case 'section':
+      return slugify(raw);
     case 'part': {
       const value = str(raw, 60);
       return ENTRY_PART.test(value) ? value : 'header';

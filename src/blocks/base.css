@@ -35,7 +35,11 @@ img{max-width:100%;height:auto;display:block}
 /* A block: a full-width band; its content sits in a centred column. */
 .b{--b-width:var(--t-width-content);--b-gap:var(--t-space-md);padding-block:var(--t-space-lg);padding-inline:var(--t-space-md)}
 .b-in{max-width:var(--b-width);margin-inline:auto}
+/* A section (ADR 0033) is its blocks, as if they stood on the page: it adds no room of its own. */
+.b-section{padding:0}
+.b-section>.b-in{max-width:none}
 .b .b{padding-inline:0}
+.b-section>.b-in>[data-frozen]>.section>.b,.b-section>.b-in>.section>.b{padding-inline:var(--t-space-md)}
 
 .button{display:inline-block;padding:.7em 1.3em;border-radius:var(--t-radius-md);background:var(--t-color-primary);color:var(--t-color-on-primary);font-weight:600;text-decoration:none}
 .button.quiet{background:transparent;color:inherit;box-shadow:inset 0 0 0 1px currentColor}

@@ -32,6 +32,8 @@ import {
   themeCss,
   alternates,
   pagesIn,
+  fillSections,
+  languageOf,
 } from '../core/index.ts';
 import { wordsFor } from '../blocks/words.ts';
 import { menuOf, pageSetting, renderBlogList, renderPage, renderPost, STYLESHEET } from './document.ts';
@@ -95,9 +97,15 @@ export async function buildSite(
   redirects: Redirect[] = [],
   /** Each type's own page (ADR 0015), by the type's name; a type without one uses the default page. */
   templates: Record<string, Block[] | null> = {},
+  /** Published sections (ADR 0033): drawn where a page shows them, in the page's language. */
+  sections: Page[] = [],
 ): Promise<Map<string, string | Uint8Array>> {
   const files = new Map<string, string | Uint8Array>();
-  const byType = Array.isArray(entries) ? { [POSTS_TYPE]: entries } : entries;
+  // Each section block holds its section's blocks from here on, so the pages, their pictures and their links include them.
+  pages = pages.map((p) => ({ ...p, blocks: fillSections(p.blocks, sections, languageOf(site, p.slug)) }));
+  const filledEntries = Object.fromEntries(Object.entries(Array.isArray(entries) ? { [POSTS_TYPE]: entries } : entries).map(([id, list]) => [id, list.map((post) => ({ ...post, blocks: fillSections(post.blocks, sections, site.language) }))]));
+  templates = Object.fromEntries(Object.entries(templates).map(([id, blocks]) => [id, blocks && fillSections(blocks, sections, site.language)]));
+  const byType = filledEntries;
   const types = contentTypes(site)
     .map((type) => ({ type, posts: listed(type, byType[type.id] ?? []) }))
     .filter((t) => t.posts.length > 0);
@@ -225,5 +233,5 @@ export async function publishedSite(store: Store): Promise<Map<string, string | 
     entries[type.id] = await store.publishedEntries(type.id);
     templates[type.id] = await store.publishedTemplate(type.id);
   }
-  return buildSite(site, theme, pages, async (name) => (await store.mediaFile(name))?.bytes ?? null, entries, await store.redirects(), templates);
+  return buildSite(site, theme, pages, async (name) => (await store.mediaFile(name))?.bytes ?? null, entries, await store.redirects(), templates, await store.publishedSections());
 }

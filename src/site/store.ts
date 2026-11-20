@@ -56,6 +56,12 @@ import {
   type PlacedPage,
   translatedPage,
   wordsFrom,
+  sectionsIn,
+  MAX_SECTIONS,
+  isObject,
+  pagePath,
+  entryPath,
+  listPath,
   typeById,
   type ContentType,
   listed,
@@ -63,6 +69,9 @@ import {
   str,
   type Theme,
 } from '../core/index.ts';
+
+/** What is kept with translations: a page, or a section (ADR 0033). */
+type Kept = 'page' | 'section';
 
 /** An installed extension (ADR 0026). */
 export interface InstalledExtension extends ExtensionPackage {
@@ -108,6 +117,7 @@ const SQLITE: Dialect = {
   schema: [
     'CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)',
     'CREATE TABLE IF NOT EXISTS pages (slug TEXT PRIMARY KEY, position INTEGER NOT NULL, draft TEXT NOT NULL, published TEXT, published_at TEXT, updated_at TEXT NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS sections (slug TEXT PRIMARY KEY, position INTEGER NOT NULL, draft TEXT NOT NULL, published TEXT, published_at TEXT, updated_at TEXT NOT NULL)',
     'CREATE TABLE IF NOT EXISTS entries (type TEXT NOT NULL, slug TEXT NOT NULL, draft TEXT NOT NULL, published TEXT, published_at TEXT, updated_at TEXT NOT NULL, PRIMARY KEY (type, slug))',
     'CREATE TABLE IF NOT EXISTS media (name TEXT PRIMARY KEY, label TEXT NOT NULL, size INTEGER NOT NULL, bytes BLOB NOT NULL, created_at TEXT NOT NULL)',
     'CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, received_at TEXT NOT NULL, form TEXT NOT NULL, page TEXT NOT NULL, name TEXT NOT NULL, email TEXT NOT NULL, body TEXT NOT NULL, consent TEXT NOT NULL)',
@@ -132,6 +142,7 @@ const POSTGRES: Dialect = {
   schema: [
     'CREATE TABLE IF NOT EXISTS meta (key VARCHAR(255) PRIMARY KEY, value TEXT NOT NULL)',
     'CREATE TABLE IF NOT EXISTS pages (slug VARCHAR(255) PRIMARY KEY, position INTEGER NOT NULL, draft TEXT NOT NULL, published TEXT, published_at VARCHAR(40), updated_at VARCHAR(40) NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS sections (slug VARCHAR(255) PRIMARY KEY, position INTEGER NOT NULL, draft TEXT NOT NULL, published TEXT, published_at VARCHAR(40), updated_at VARCHAR(40) NOT NULL)',
     'CREATE TABLE IF NOT EXISTS entries (type VARCHAR(255) NOT NULL, slug VARCHAR(255) NOT NULL, draft TEXT NOT NULL, published TEXT, published_at VARCHAR(40), updated_at VARCHAR(40) NOT NULL, PRIMARY KEY (type, slug))',
     'CREATE TABLE IF NOT EXISTS media (name VARCHAR(255) PRIMARY KEY, label TEXT NOT NULL, size INTEGER NOT NULL, bytes BYTEA NOT NULL, created_at VARCHAR(40) NOT NULL)',
     'CREATE TABLE IF NOT EXISTS messages (id VARCHAR(40) PRIMARY KEY, received_at VARCHAR(40) NOT NULL, form VARCHAR(255) NOT NULL, page TEXT NOT NULL, name TEXT NOT NULL, email TEXT NOT NULL, body TEXT NOT NULL, consent TEXT NOT NULL)',
@@ -155,6 +166,7 @@ const MYSQL: Dialect = {
   schema: [
     `CREATE TABLE IF NOT EXISTS meta (\`key\` VARCHAR(255) PRIMARY KEY, value LONGTEXT NOT NULL) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS pages (slug VARCHAR(255) PRIMARY KEY, position INTEGER NOT NULL, draft LONGTEXT NOT NULL, published LONGTEXT, published_at VARCHAR(40), updated_at VARCHAR(40) NOT NULL) ${MYSQL_TABLE}`,
+    `CREATE TABLE IF NOT EXISTS sections (slug VARCHAR(255) PRIMARY KEY, position INTEGER NOT NULL, draft LONGTEXT NOT NULL, published LONGTEXT, published_at VARCHAR(40), updated_at VARCHAR(40) NOT NULL) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS entries (type VARCHAR(255) NOT NULL, slug VARCHAR(255) NOT NULL, draft LONGTEXT NOT NULL, published LONGTEXT, published_at VARCHAR(40), updated_at VARCHAR(40) NOT NULL, PRIMARY KEY (type, slug)) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS media (name VARCHAR(255) PRIMARY KEY, label TEXT NOT NULL, size INTEGER NOT NULL, bytes LONGBLOB NOT NULL, created_at VARCHAR(40) NOT NULL) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS messages (id VARCHAR(40) PRIMARY KEY, received_at VARCHAR(40) NOT NULL, form VARCHAR(255) NOT NULL, page TEXT NOT NULL, name TEXT NOT NULL, email TEXT NOT NULL, body TEXT NOT NULL, consent TEXT NOT NULL) ${MYSQL_TABLE}`,
@@ -548,76 +560,92 @@ export class Store {
     });
   }
 
-  /** A page's translation into a language, changed by `change` and kept in the page's draft (ADR 0032 d5). */
-  private async withTranslation(of: string, language: string, change: (page: Page, translation: PageTranslation | undefined) => PageTranslation | null): Promise<PlacedPage | null> {
+  /** A page's or a section's translation into a language, changed by `change` and kept in its draft (ADR 0032 d5). */
+  private async withTranslation(of: string, language: string, change: (page: Page, translation: PageTranslation | undefined) => PageTranslation | null, kind: Kept = 'page'): Promise<PlacedPage | null> {
     const site = await this.site();
     if (!site.languages.includes(language)) throw new Error(`${languageName(language)} is not one of the site's languages`);
-    const page = await this.draft(of);
-    if (!page || languageOf(site, of) !== site.language) throw new Error(`no page "${of}"`);
+    const page = kind === 'page' ? await this.draft(of) : await this.sectionDraft(of);
+    if (!page || (kind === 'page' && languageOf(site, of) !== site.language)) throw new Error(`no ${kind} "${of}"`);
     const next = change(page, page.translations?.[language]);
     const translations = { ...page.translations };
     if (next) translations[language] = next;
     else delete translations[language];
     const changed = { ...page, translations };
-    if (next) {
+    if (next && kind === 'page') {
       const at = translatedPage(site, changed, language) as PlacedPage;
       const taken = placePages(site, await this.drafts()).find((p) => p.slug === at.slug && !(p.of === of && p.language === language));
       if (taken) throw new Error(`"/${at.slug}/" is already the address of "${taken.title}"`);
       const problem = slugProblem(site, at.slug, reservedSlugs(site));
       if (problem) throw new Error(problem);
     }
-    await this.savePage(changed);
+    if (kind === 'page') await this.savePage(changed);
+    else await this.saveSection(changed);
     return next ? translatedPage(site, changed, language) : null;
   }
 
-  /** Starts a page in another language: all in the main language's words until they are written. */
-  async translate(of: string, language: string): Promise<PlacedPage> {
-    return (await this.withTranslation(of, language, (_page, had) => {
-      if (had) throw new Error('this page is already in that language');
-      return newTranslation();
-    })) as PlacedPage;
+  /** Starts a page (or a section) in another language: all in the main language's words until they are written. */
+  async translate(of: string, language: string, kind: Kept = 'page'): Promise<PlacedPage> {
+    return (await this.withTranslation(
+      of,
+      language,
+      (_page, had) => {
+        if (had) throw new Error(`this ${kind} is already in that language`);
+        return newTranslation();
+      },
+      kind,
+    )) as PlacedPage;
   }
 
   /**
    * Keeps a translation as written in the builder: its address, title and
    * description, and its words, or its blocks when it is split. A translation
-   * that is not split keeps the main page's blocks (ADR 0032 d3).
+   * that is not split keeps the main blocks (ADR 0032 d3).
    */
-  async saveTranslation(of: string, language: string, input: unknown): Promise<PlacedPage> {
+  async saveTranslation(of: string, language: string, input: unknown, kind: Kept = 'page'): Promise<PlacedPage> {
     const site = await this.site();
     const { page: written } = normalizePage(input);
     if (!written.title) throw new Error('a page has a title');
     if (languageOf(site, written.slug) !== language) throw new Error(`a page in ${languageName(language)} stays under /${prefixOf(language)}/`);
-    return (await this.withTranslation(of, language, (page, had) => {
-      if (!had) throw new Error('this page is not in that language yet');
-      const address = of === '' ? '' : baseSlug(site, written.slug);
-      const next: PageTranslation = {
-        slug: address === of ? '' : address,
-        title: written.title === page.title ? '' : written.title,
-        description: written.description === page.description ? '' : written.description,
-        fields: {},
-        blocks: had.blocks ? written.blocks : null,
-      };
-      if (!had.blocks) {
-        const { fields, problem } = wordsFrom(page.blocks, written.blocks);
-        if (problem) throw new Error(problem);
-        next.fields = fields;
-      }
-      return next;
-    })) as PlacedPage;
+    return (await this.withTranslation(
+      of,
+      language,
+      (page, had) => {
+        if (!had) throw new Error(`this ${kind} is not in that language yet`);
+        const address = of === '' || kind === 'section' ? '' : baseSlug(site, written.slug);
+        const next: PageTranslation = {
+          slug: address === of ? '' : address,
+          title: written.title === page.title ? '' : written.title,
+          description: written.description === page.description ? '' : written.description,
+          fields: {},
+          blocks: had.blocks ? written.blocks : null,
+        };
+        if (!had.blocks) {
+          const { fields, problem } = wordsFrom(page.blocks, written.blocks);
+          if (problem) throw new Error(problem);
+          next.fields = fields;
+        }
+        return next;
+      },
+      kind,
+    )) as PlacedPage;
   }
 
-  /** Splits a page for one language (ADR 0032 d4): the translation keeps its own blocks, as they show now. */
-  async splitTranslation(of: string, language: string): Promise<PlacedPage> {
-    return (await this.withTranslation(of, language, (page, had) => {
-      if (!had) throw new Error('this page is not in that language yet');
-      return had.blocks ? had : { ...had, fields: {}, blocks: localizeBlocks(page.blocks, had.fields) };
-    })) as PlacedPage;
+  /** Splits a page (or a section) for one language (ADR 0032 d4): the translation keeps its own blocks, as they show now. */
+  async splitTranslation(of: string, language: string, kind: Kept = 'page'): Promise<PlacedPage> {
+    return (await this.withTranslation(
+      of,
+      language,
+      (page, had) => {
+        if (!had) throw new Error(`this ${kind} is not in that language yet`);
+        return had.blocks ? had : { ...had, fields: {}, blocks: localizeBlocks(page.blocks, had.fields) };
+      },
+      kind,
+    )) as PlacedPage;
   }
 
-  /** Takes a page out of one language. What is published stays until the page is published again. */
-  async deleteTranslation(of: string, language: string): Promise<void> {
-    await this.withTranslation(of, language, () => null);
+  /** Takes a page (or a section) out of one language. What is published stays until it is published again. */
+  async deleteTranslation(of: string, language: string, kind: Kept = 'page'): Promise<void> {
+    await this.withTranslation(of, language, () => null, kind);
   }
 
   async deletePage(at: string): Promise<void> {
@@ -646,6 +674,95 @@ export class Store {
       const missing = owner && translation ? missingWords(owner, translation).length : 0;
       return missing ? [{ slug: p.slug, language: p.language, missing }] : [];
     });
+  }
+
+  /** A section as it is being written (ADR 0033). */
+  async sectionDraft(slug: string): Promise<Page | null> {
+    const row = await this.row<{ draft: string }>('SELECT draft FROM sections WHERE slug = ?', [slug]);
+    return row ? normalizePage(JSON.parse(row.draft)).page : null;
+  }
+
+  /** Every section as it is being written, in order. */
+  async draftSections(): Promise<Page[]> {
+    return (await this.rows<{ draft: string }>('SELECT draft FROM sections ORDER BY position, slug')).map((row) => normalizePage(JSON.parse(row.draft)).page);
+  }
+
+  /** Every published section, in order: what the export draws. */
+  async publishedSections(): Promise<Page[]> {
+    return (await this.rows<{ published: string }>('SELECT published FROM sections WHERE published IS NOT NULL ORDER BY position, slug')).map((row) => normalizePage(JSON.parse(row.published)).page);
+  }
+
+  /** A section's translation as the builder edits it: by its name under the language's prefix, as a page's would be. */
+  async locateSection(slug: string): Promise<PlacedPage | null> {
+    return placePages(await this.site(), await this.draftSections()).find((p) => p.slug === slug) ?? null;
+  }
+
+  /** Saves a section's draft. It has a name and a title, and holds no section of its own. */
+  async saveSection(input: unknown): Promise<Page> {
+    const { page } = normalizePage({ ...(isObject(input) ? input : {}), inMenu: false });
+    if (!page.title) throw new Error('a section has a title');
+    if (!page.slug || page.slug.includes('/')) throw new Error('a section has a name');
+    if (sectionsIn(page.blocks).length) throw new Error('a section holds no other section');
+    for (const translation of Object.values(page.translations ?? {})) translation.fields = keepWords(page.blocks, translation.fields);
+    const exists = await this.row('SELECT 1 AS found FROM sections WHERE slug = ?', [page.slug]);
+    if (!exists && Number((await this.row<{ n: number | string }>('SELECT COUNT(*) AS n FROM sections'))?.n ?? 0) >= MAX_SECTIONS) throw new Error(`a site keeps at most ${MAX_SECTIONS} sections`);
+    const next = await this.row<{ n: number | string }>('SELECT COALESCE(MAX(position), 0) + 1 AS n FROM sections');
+    await this.run(this.dialect.upsert('sections', ['slug', 'position', 'draft', 'updated_at'], ['slug'], ['draft', 'updated_at']), [
+      page.slug,
+      Number(next?.n ?? 1),
+      JSON.stringify(page),
+      new Date().toISOString(),
+    ]);
+    return page;
+  }
+
+  /** Publishes a section: every page that shows it shows this, from the next export. */
+  async publishSection(where: string, now = new Date()): Promise<void> {
+    const found = await this.locateSection(where);
+    const slug = found?.translated ? found.of : where;
+    if (!(await this.row('SELECT 1 AS found FROM sections WHERE slug = ?', [slug]))) throw new Error(`no section "${slug}"`);
+    const at = now.toISOString();
+    await this.run('UPDATE sections SET published = draft, published_at = ? WHERE slug = ?', [at, slug]);
+    const row = await this.row<{ published: string }>('SELECT published FROM sections WHERE slug = ?', [slug]);
+    await this.keepVersion('section', slug, String(row?.published), at);
+  }
+
+  /** Where each section is shown: the title and address of every page, entry or type's page that has it, drafts and published alike. */
+  async sectionUses(): Promise<Map<string, string[]>> {
+    const uses = new Map<string, Set<string>>();
+    const add = (blocks: Block[], where: string): void => {
+      for (const name of sectionsIn(blocks)) uses.set(name, (uses.get(name) ?? new Set()).add(where));
+    };
+    for (const row of await this.rows<{ slug: string; draft: string; published: string | null }>('SELECT slug, draft, published FROM pages ORDER BY position, slug')) {
+      for (const doc of [row.draft, row.published]) if (doc) add(normalizePage(JSON.parse(doc)).page.blocks, pagePath(String(row.slug)));
+    }
+    const site = await this.site();
+    for (const type of contentTypes(site)) {
+      for (const row of await this.rows<{ slug: string; draft: string; published: string | null }>('SELECT slug, draft, published FROM entries WHERE type = ?', [type.id])) {
+        for (const doc of [row.draft, row.published]) if (doc) add(normalizePost(JSON.parse(doc), undefined, type).post.blocks, entryPath(type, String(row.slug)));
+      }
+      add([...((await this.template(type.id)) ?? []), ...((await this.publishedTemplate(type.id)) ?? [])], listPath(type));
+    }
+    return new Map([...uses].map(([name, at]) => [name, [...at].sort()]));
+  }
+
+  /** Every section, with whether it differs from what is published, where it is shown, and its translations. */
+  async sections(): Promise<{ slug: string; title: string; published: boolean; changed: boolean; usedOn: string[]; languages: string[] }[]> {
+    const uses = await this.sectionUses();
+    return (await this.rows<{ slug: string; draft: string; published: string | null }>('SELECT slug, draft, published FROM sections ORDER BY position, slug')).map((row) => {
+      const page = normalizePage(JSON.parse(row.draft)).page;
+      return { slug: page.slug, title: page.title, published: row.published !== null, changed: row.published !== row.draft, usedOn: uses.get(page.slug) ?? [], languages: Object.keys(page.translations ?? {}) };
+    });
+  }
+
+  /** Deletes a section no page shows (ADR 0033); one still shown is kept, with where. */
+  async deleteSection(at: string): Promise<void> {
+    const found = await this.locateSection(at);
+    if (found?.translated) return this.deleteTranslation(found.of, found.language, 'section');
+    const used = (await this.sectionUses()).get(at) ?? [];
+    if (used.length) throw new Error(`this section is shown on ${used.join(', ')}; take it off there first`);
+    await this.run('DELETE FROM sections WHERE slug = ?', [at]);
+    await this.run('DELETE FROM versions WHERE kind = ? AND slug = ?', ['section', at]);
   }
 
   /** A content type of this site, by name. Asking for one it does not have is an error, not an empty list. */
