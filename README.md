@@ -41,6 +41,7 @@ The decisions behind this, each with its reason:
 - [ADR 0025 — No built-in blog: every content type is the owner's](docs/adr/0025-no-built-in-type.md)
 - [ADR 0026 — Extensions, on the model of Zveltio's third-party extensions](docs/adr/0026-extensions.md)
 - [ADR 0027 — AI writing, as an extension](docs/adr/0027-ai-extension.md)
+- [ADR 0028 — What was published is kept, to bring back](docs/adr/0028-published-versions.md)
 
 ## Where it stands
 
@@ -74,6 +75,7 @@ theme, publish, and export the site as static files.
 | Extensions on the model of Zveltio's third-party ones: one file, accepted by the owner for what it asks; collections, actions on a block or a page, screens as data; code in a process of its own, on a server under a user of its own with no network | done |
 | Pages in more than one language: each translated from the list of pages, at /ro/…, with the header, footer and menu of its language, a switcher and hreflang | done (posts and entries: planned) |
 | AI writing, as an extension with the owner's key (Claude, OpenAI or Ollama): a block written or rewritten as asked, a page translated into its language, a page's description; each comes back as a change to look at | done (image descriptions: planned) |
+| The last twenty publications of each page and entry kept, and one brought back into the editor as a change | done |
 
 ## Install
 

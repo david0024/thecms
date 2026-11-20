@@ -103,6 +103,17 @@ const PORT = 4397;
     if (shots) await page.screenshot({ path: join(shots, 'extension-page.png') });
     assert(true, 'what it offers on a page asks its question, then changes the page');
 
+    // What was published before is kept, and brought back as a change.
+    await page.locator('.bar button.primary').click();
+    await page.waitForFunction(() => document.querySelector('.bar button.primary')?.disabled);
+    await page.locator('[data-versions-show]').click();
+    await page.locator('[data-version]').first().waitFor();
+    assert((await page.locator('[data-version]').first().innerText()).includes('*About* (en)'), 'the publication is listed, newest first');
+    await page.locator('[data-version]').last().locator('[data-version-restore]').click();
+    await page.locator('.doc', { hasText: /^About$/ }).waitFor();
+    if (shots) await page.screenshot({ path: join(shots, 'versions.png') });
+    assert(true, 'an older one comes back into the editor, as a change to publish or undo');
+
     // Removed, with what it kept.
     await page.locator('[data-back]').click();
     await page.locator('[data-nav="extensions"]').click();

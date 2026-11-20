@@ -29,6 +29,13 @@ export const en = {
     save: 'Continue',
     signOut: 'Sign out',
   },
+  versions: {
+    heading: 'Published versions',
+    show: 'Show earlier versions',
+    none: 'Nothing published yet. Each time you publish, that version is kept here.',
+    restore: 'Bring back',
+    hint: 'Brought back into the editor as a change: look at it, undo it, or publish it.',
+  },
   ext: {
     heading: "Extensions",
     intro: "An extension adds to this program: a screen of its own, and things to do in the editor. Its code runs apart from the site, and reaches only what you accept here.",

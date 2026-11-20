@@ -12,11 +12,11 @@ import { afterAll, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { EXTENSION_FORMAT, postsType } from '../src/core/index.ts';
+import { EXTENSION_FORMAT, POSTS_TYPE, postsType } from '../src/core/index.ts';
 import { runImport } from '../src/import/run.ts';
 import { planImport } from '../src/import/wxr.ts';
 import { exportSite } from '../src/site/export.ts';
-import { databaseKind, shownAddress, Store } from '../src/site/store.ts';
+import { databaseKind, shownAddress, Store, VERSIONS_KEPT } from '../src/site/store.ts';
 import plain from '../themes/plain.json';
 
 const PNG = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='), (c) => c.charCodeAt(0));
@@ -46,7 +46,7 @@ for (const [name, address] of databases) {
 
     beforeEach(async () => {
       const old = await Store.open(address);
-      for (const table of ['meta', 'pages', 'entries', 'media', 'messages', 'users', 'sessions', 'links', 'extensions', 'extension_rows']) await old.rawForTests(`DROP TABLE IF EXISTS ${table}`);
+      for (const table of ['meta', 'pages', 'entries', 'media', 'messages', 'users', 'sessions', 'links', 'extensions', 'extension_rows', 'versions']) await old.rawForTests(`DROP TABLE IF EXISTS ${table}`);
       await old.close();
       store = await Store.open(address);
       await store.setTheme(plain);
@@ -83,6 +83,29 @@ for (const [name, address] of databases) {
       expect((await store.published())[0]?.title).toBe('About us');
       await store.deletePage('about');
       expect(await store.draft('about')).toBeNull();
+    });
+
+    test('what was published is kept, the newest twenty, until the page or entry is deleted', async () => {
+      await store.savePage({ slug: 'about', title: 'About', blocks: [] });
+      for (let n = 0; n < VERSIONS_KEPT + 2; n++) {
+        await store.savePage({ slug: 'about', title: `About ${n} ăîș 🌲`, blocks: [] });
+        await store.publish('about', new Date(Date.UTC(2026, 0, 1, 0, n)));
+      }
+      const versions = await store.versions('page', 'about');
+      expect(versions).toHaveLength(VERSIONS_KEPT);
+      expect(versions[0]).toEqual({ at: '2026-01-01T00:21:00.000Z', title: 'About 21 ăîș 🌲' });
+      expect(versions.at(-1)?.title).toBe('About 2 ăîș 🌲');
+      expect(await store.version('page', 'about', '2026-01-01T00:05:00.000Z')).toMatchObject({ slug: 'about', title: 'About 5 ăîș 🌲' });
+      expect(await store.version('page', 'about', '2026-01-01T00:00:00.000Z')).toBeNull();
+      await store.setSite({ name: 'S', types: [postsType()] });
+      await store.saveEntry(POSTS_TYPE, { slug: 'hello', title: 'Hello', date: '2026-01-01' });
+      await store.publishEntry(POSTS_TYPE, 'hello', new Date('2026-02-01T00:00:00Z'));
+      expect(await store.versions(POSTS_TYPE, 'hello')).toEqual([{ at: '2026-02-01T00:00:00.000Z', title: 'Hello' }]);
+      expect(await store.versions('page', 'hello')).toEqual([]);
+      await store.deletePage('about');
+      await store.deleteEntry(POSTS_TYPE, 'hello');
+      expect(await store.versions('page', 'about')).toEqual([]);
+      expect(await store.versions(POSTS_TYPE, 'hello')).toEqual([]);
     });
 
     test('an extension, and the rows it keeps, until it is removed', async () => {
