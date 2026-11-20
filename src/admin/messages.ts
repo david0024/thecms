@@ -303,7 +303,7 @@ export const en = {
     live: 'These are used the next time the site is exported.',
     forms: 'Forms',
     formsAddress: 'Address of the form service (https://forms.example.com)',
-    formsHint: 'Where contact forms send what visitors write: the thecms forms command, running where visitors can reach it. Left empty, forms are not shown on the site.',
+    formsHint: 'Where contact forms send what visitors write. Write /_ when the site is served by the thecms run command; otherwise the address of the thecms forms command. Left empty, forms are not shown on the site.',
     keep: 'Keep messages for (days)',
     otherLanguages: 'Other languages of the site',
     otherLanguagesHint: 'Each page can then be translated into them from the list of pages; a translation lives under the language, like /ro/about/. Posts and entries stay in the main language for now.',

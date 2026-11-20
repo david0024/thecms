@@ -307,7 +307,7 @@
   "admin.site.live": "Se folosesc la următorul export al site-ului.",
   "admin.site.forms": "Formulare",
   "admin.site.formsAddress": "Adresa serviciului de formulare (https://forms.example.com)",
-  "admin.site.formsHint": "Unde trimit formularele de contact ce scriu vizitatorii: comanda thecms forms, pornită unde o pot ajunge vizitatorii. Dacă o lași goală, formularele nu apar pe site.",
+  "admin.site.formsHint": "Unde trimit formularele de contact ce scriu vizitatorii. Scrie /_ când site-ul e servit de comanda thecms run; altfel, adresa comenzii thecms forms. Dacă o lași goală, formularele nu apar pe site.",
   "admin.site.keep": "Păstrează mesajele (zile)",
   "admin.site.otherLanguages": "Celelalte limbi ale site-ului",
   "admin.site.otherLanguagesHint": "Fiecare pagină poate fi apoi tradusă în ele din lista paginilor; o traducere stă sub limba ei, ca /en/despre/. Articolele și intrările rămân deocamdată în limba principală.",

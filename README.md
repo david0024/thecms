@@ -53,6 +53,7 @@ The decisions behind this, each with its reason:
 - [ADR 0035 — Theme, layout, page, section, site: who decides what](docs/adr/0035-layouts-and-boundaries.md)
 - [ADR 0036 — Old addresses: moved pages and redirects written by hand](docs/adr/0036-redirects.md)
 - [ADR 0037 — What thecms is for: anything WordPress does, with its plugins](docs/adr/0037-direction.md)
+- [ADR 0038 — The site's runtime: the published site and what cannot be static, from one address](docs/adr/0038-the-runtime.md)
 
 ## Where it stands
 
@@ -92,6 +93,7 @@ What comes next, in four stages up to a shop, memberships and courses, is in
 | A check before publishing: a link that leads nowhere stops the export, a picture with no description is listed; in the admin under the pages | done |
 | The canvas shown as on a phone, a tablet or a wide screen | done |
 | Data for search engines (schema.org): the site and its business on the home page, an article for each dated entry | done |
+| The site's runtime (`thecms run`): the published site and its forms from one address, old addresses as real 301s; comments, search, a cart and accounts arrive under `/_/` | started |
 
 ## Install
 

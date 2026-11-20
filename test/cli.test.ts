@@ -113,6 +113,31 @@ describe('the command line', () => {
     }
   });
 
+  test('run serves the published site and says how forms reach it', async () => {
+    const db = join(dir, 'site.db');
+    await run('init', db);
+    await expect(run('run', join(dir, 'none.db'))).rejects.toThrow('does not exist');
+    const runtime = await run('run', db, '--port=0');
+    try {
+      expect(said.join('\n')).toContain('Write /_ as the form service in Site settings');
+      expect(said.join('\n')).toContain('Set THECMS_SMTP and THECMS_MAIL_TO to be told by email.');
+      const page = await fetch(`${(runtime as unknown as { url: string }).url}/`);
+      expect(await page.text()).toContain('<h1>Solid wood furniture, made to measure</h1>');
+    } finally {
+      runtime?.stop();
+    }
+    process.env.THECMS_SMTP = 'smtp://127.0.0.1:2525';
+    process.env.THECMS_MAIL_TO = 'owner@example.com';
+    try {
+      const told = await run('run', db, '--port=0');
+      told?.stop();
+      expect(said.join('\n')).toContain('Each message is also sent to owner@example.com.');
+    } finally {
+      delete process.env.THECMS_SMTP;
+      delete process.env.THECMS_MAIL_TO;
+    }
+  });
+
   test('help shows how to use it; an unknown command also does, and fails', async () => {
     await run('help');
     expect(said.join('\n')).toContain('Usage:');
