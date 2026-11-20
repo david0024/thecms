@@ -95,6 +95,13 @@ export interface InstalledExtension extends ExtensionPackage {
 /** A row an extension keeps: its fields and an id. */
 export type ExtensionRow = Record<string, unknown> & { id: string };
 
+/** A publication set for later (ADR 0039): a page (`page`) or an entry of a type, by its address, at an ISO time. */
+export interface Scheduled {
+  kind: string;
+  slug: string;
+  at: string;
+}
+
 /** One stored image, as the editor lists it. */
 export interface MediaItem {
   name: string;
@@ -146,6 +153,7 @@ const SQLITE: Dialect = {
     'CREATE TABLE IF NOT EXISTS extension_rows (extension TEXT NOT NULL, collection TEXT NOT NULL, id TEXT NOT NULL, data TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY (extension, collection, id))',
     'CREATE TABLE IF NOT EXISTS versions (kind TEXT NOT NULL, slug TEXT NOT NULL, at TEXT NOT NULL, doc TEXT NOT NULL, PRIMARY KEY (kind, slug, at))',
     'CREATE TABLE IF NOT EXISTS media_sizes (name TEXT PRIMARY KEY, width INTEGER NOT NULL, height INTEGER NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS schedule (kind TEXT NOT NULL, slug TEXT NOT NULL, at TEXT NOT NULL, PRIMARY KEY (kind, slug))',
     'CREATE TABLE IF NOT EXISTS media_variants (name TEXT PRIMARY KEY, original TEXT NOT NULL, width INTEGER NOT NULL, bytes BLOB NOT NULL)',
   ],
   params: (query) => query,
@@ -173,6 +181,7 @@ const POSTGRES: Dialect = {
     'CREATE TABLE IF NOT EXISTS extension_rows (extension VARCHAR(64) NOT NULL, collection VARCHAR(64) NOT NULL, id VARCHAR(40) NOT NULL, data TEXT NOT NULL, updated_at VARCHAR(40) NOT NULL, PRIMARY KEY (extension, collection, id))',
     'CREATE TABLE IF NOT EXISTS versions (kind VARCHAR(64) NOT NULL, slug VARCHAR(255) NOT NULL, at VARCHAR(40) NOT NULL, doc TEXT NOT NULL, PRIMARY KEY (kind, slug, at))',
     'CREATE TABLE IF NOT EXISTS media_sizes (name VARCHAR(255) PRIMARY KEY, width INTEGER NOT NULL, height INTEGER NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS schedule (kind VARCHAR(64) NOT NULL, slug VARCHAR(255) NOT NULL, at VARCHAR(40) NOT NULL, PRIMARY KEY (kind, slug))',
     'CREATE TABLE IF NOT EXISTS media_variants (name VARCHAR(255) PRIMARY KEY, original VARCHAR(255) NOT NULL, width INTEGER NOT NULL, bytes BYTEA NOT NULL)',
   ],
   params: (query) => {
@@ -199,6 +208,7 @@ const MYSQL: Dialect = {
     `CREATE TABLE IF NOT EXISTS extension_rows (extension VARCHAR(64) NOT NULL, collection VARCHAR(64) NOT NULL, id VARCHAR(40) NOT NULL, data LONGTEXT NOT NULL, updated_at VARCHAR(40) NOT NULL, PRIMARY KEY (extension, collection, id)) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS versions (kind VARCHAR(64) NOT NULL, slug VARCHAR(255) NOT NULL, at VARCHAR(40) NOT NULL, doc LONGTEXT NOT NULL, PRIMARY KEY (kind, slug, at)) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS media_sizes (name VARCHAR(255) PRIMARY KEY, width INTEGER NOT NULL, height INTEGER NOT NULL) ${MYSQL_TABLE}`,
+    `CREATE TABLE IF NOT EXISTS schedule (kind VARCHAR(64) NOT NULL, slug VARCHAR(255) NOT NULL, at VARCHAR(40) NOT NULL, PRIMARY KEY (kind, slug)) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS media_variants (name VARCHAR(255) PRIMARY KEY, original VARCHAR(255) NOT NULL, width INTEGER NOT NULL, bytes LONGBLOB NOT NULL) ${MYSQL_TABLE}`,
   ],
   params: (query) => query,
@@ -550,6 +560,50 @@ export class Store {
     await this.followMoves(before, await this.liveAddresses(slug));
   }
 
+  /**
+   * Publishes a page or an entry at a set time (ADR 0039): what its draft is
+   * then is what is published. One time for each; set again, it moves.
+   */
+  async schedule(kind: string, slug: string, at: string, now = new Date()): Promise<Scheduled[]> {
+    const when = new Date(at);
+    if (Number.isNaN(when.getTime())) throw new Error('give the date and hour to publish at');
+    if (when.getTime() <= now.getTime()) throw new Error('that time has passed; publish it now instead');
+    if (when.getTime() > now.getTime() + 2 * 365 * 24 * 3600 * 1000) throw new Error('a publication is set at most two years ahead');
+    if (kind === 'page') {
+      if (!(await this.row('SELECT 1 AS found FROM pages WHERE slug = ?', [slug]))) throw new Error(`no page "${slug}"`);
+    } else {
+      await this.type(kind);
+      if (!(await this.row('SELECT 1 AS found FROM entries WHERE type = ? AND slug = ?', [kind, slug]))) throw new Error(`no entry "${slug}"`);
+    }
+    await this.run(this.dialect.upsert('schedule', ['kind', 'slug', 'at'], ['kind', 'slug'], ['at']), [kind, slug, when.toISOString()]);
+    return this.scheduled();
+  }
+
+  async unschedule(kind: string, slug: string): Promise<Scheduled[]> {
+    await this.run('DELETE FROM schedule WHERE kind = ? AND slug = ?', [kind, slug]);
+    return this.scheduled();
+  }
+
+  /** Every publication set for later, soonest first. */
+  async scheduled(): Promise<Scheduled[]> {
+    return this.rows<Scheduled>('SELECT kind, slug, at FROM schedule ORDER BY at, kind, slug');
+  }
+
+  /**
+   * Publishes what is due. Each one is claimed by deleting it first, so two
+   * processes with a clock (the editor and the runtime) never both publish it.
+   */
+  async publishDue(now = new Date()): Promise<Scheduled[]> {
+    const done: Scheduled[] = [];
+    for (const due of await this.rows<Scheduled>('SELECT kind, slug, at FROM schedule WHERE at <= ? ORDER BY at', [now.toISOString()])) {
+      if ((await this.changed('DELETE FROM schedule WHERE kind = ? AND slug = ? AND at = ?', [due.kind, due.slug, due.at])) !== 1) continue;
+      if (due.kind === 'page') await this.publish(due.slug, now);
+      else await this.publishEntry(due.kind, due.slug, now);
+      done.push(due);
+    }
+    return done;
+  }
+
   /** Where a page and each of its translations are published, by language. */
   private async liveAddresses(of: string): Promise<Map<string, string>> {
     return new Map((await this.published()).filter((p) => p.of === of).map((p) => [p.language, p.slug]));
@@ -590,6 +644,7 @@ export class Store {
     const published = row?.published ? JSON.stringify({ ...JSON.parse(row.published), slug: to }) : null;
     await this.run('UPDATE pages SET slug = ?, draft = ?, published = ?, updated_at = ? WHERE slug = ?', [to, JSON.stringify(moved), published, new Date().toISOString(), from]);
     await this.run('UPDATE versions SET slug = ? WHERE kind = ? AND slug = ?', [to, 'page', from]);
+    await this.run('UPDATE schedule SET slug = ? WHERE kind = ? AND slug = ?', [to, 'page', from]);
     // The menu names a page by its address: it follows the page.
     if (site.menu) {
       const follow = (nodes: MenuNode[]): MenuNode[] => nodes.map((n) => ({ ...n, target: n.target.kind === 'page' && n.target.slug === from ? { kind: 'page', slug: to } : n.target, children: follow(n.children) }));
@@ -753,6 +808,7 @@ export class Store {
     if (slug === '') throw new Error('the home page cannot be deleted');
     await this.run('DELETE FROM pages WHERE slug = ?', [slug]);
     await this.run('DELETE FROM versions WHERE kind = ? AND slug = ?', ['page', slug]);
+    await this.run('DELETE FROM schedule WHERE kind = ? AND slug = ?', ['page', slug]);
   }
 
   /** Every published page at its address, translations with them, in menu order (ADR 0032). */
@@ -954,6 +1010,7 @@ export class Store {
   async deleteEntry(typeId: string, slug: string): Promise<void> {
     await this.run('DELETE FROM entries WHERE type = ? AND slug = ?', [typeId, slug]);
     await this.run('DELETE FROM versions WHERE kind = ? AND slug = ?', [typeId, slug]);
+    await this.run('DELETE FROM schedule WHERE kind = ? AND slug = ?', [typeId, slug]);
   }
 
   /** Every published entry of a type, in the order its list shows them. */

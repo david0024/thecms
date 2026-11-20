@@ -54,6 +54,7 @@ The decisions behind this, each with its reason:
 - [ADR 0036 — Old addresses: moved pages and redirects written by hand](docs/adr/0036-redirects.md)
 - [ADR 0037 — What thecms is for: anything WordPress does, with its plugins](docs/adr/0037-direction.md)
 - [ADR 0038 — The site's runtime: the published site and what cannot be static, from one address](docs/adr/0038-the-runtime.md)
+- [ADR 0039 — Publish later, and the site's clock](docs/adr/0039-publish-later.md)
 
 ## Where it stands
 
@@ -90,6 +91,7 @@ What comes next, in four stages up to a shop, memberships and courses, is in
 | Pages in more than one language: each translated from the list of pages, at /ro/…, with the header, footer and menu of its language, a switcher and hreflang | done (posts and entries: planned) |
 | AI writing, as an extension with the owner's key (Claude, OpenAI or Ollama): a block written or rewritten as asked, a page translated into its language, a page's description; each comes back as a change to look at | done (image descriptions: planned) |
 | The last twenty publications of each page and entry kept, and one brought back into the editor as a change | done |
+| Publish later: a page or an entry set for an hour, published then by the editor or the runtime | done |
 | A check before publishing: a link that leads nowhere stops the export, a picture with no description is listed; in the admin under the pages | done |
 | The canvas shown as on a phone, a tablet or a wide screen | done |
 | Data for search engines (schema.org): the site and its business on the home page, an article for each dated entry | done |

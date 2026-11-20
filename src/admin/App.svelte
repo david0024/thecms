@@ -57,6 +57,7 @@ import { findView } from '../view/index.ts';
 import ExtensionTools from './ExtensionTools.svelte';
 import SiteCheck from './SiteCheck.svelte';
 import Sections from './Sections.svelte';
+import Schedule from './Schedule.svelte';
 import Versions from './Versions.svelte';
 import ContentTypes from './ContentTypes.svelte';
 import EntryFieldsForm from './EntryFieldsForm.svelte';
@@ -888,6 +889,9 @@ onMount(() => {
         {/if}
         <p class="hint">{t.inspector.nothing}</p>
         <ExtensionTools extensions={site.extensions} on="page" languages={siteLanguages} onrun={runOnPage} oneach={everyLanguage ? runEveryLanguage : undefined} />
+        {#if !designing && !sectioning && !translation}
+          {#key `${kind}/${page.slug}`}<Schedule slug={page.slug} {kind} />{/key}
+        {/if}
         {#if !designing}
           {#key `${kind}/${page.slug}`}<Versions slug={page.slug} {kind} onrestore={(doc) => change(doc)} />{/key}
         {/if}

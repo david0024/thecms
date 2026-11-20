@@ -6,6 +6,7 @@
  */
 import type { Mailer } from './mail.ts';
 import { publishedSite } from './export.ts';
+import { startClock } from './clock.ts';
 import { startForms } from './forms.ts';
 import type { Store } from './store.ts';
 
@@ -112,5 +113,15 @@ export function startRuntime(
           fetch: (request, srv) => handle(request, request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || srv.requestIP(request)?.address || ''),
         });
   if (server?.port) port = server.port;
-  return { url: `http://${options.hostname ?? '127.0.0.1'}:${port}`, port, fetch: handle, stop: () => server?.stop(true) };
+  // The site's clock runs here too: on a server with no editor running, what was set for later is still published (ADR 0039).
+  const clock = startClock(store, { run: server !== null, log: options.log });
+  return {
+    url: `http://${options.hostname ?? '127.0.0.1'}:${port}`,
+    port,
+    fetch: handle,
+    stop: () => {
+      clock.stop();
+      server?.stop(true);
+    },
+  };
 }
