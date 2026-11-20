@@ -10,6 +10,7 @@
  *
  * This file only reads and checks a package. Running one is `src/site/extensions.ts`.
  */
+import { checkViews, type ViewDocument } from '../view/index.ts';
 import { isObject, str } from './util.ts';
 
 /** The format a package says it is in. */
@@ -68,17 +69,6 @@ export interface ExtensionAction {
   timeoutSeconds: number;
 }
 
-/** A screen: one of the extension's collections as a list, with a form for a row. */
-export interface ExtensionView {
-  collection: string;
-  title: string;
-  /** The fields shown in the list. */
-  columns: string[];
-  create: boolean;
-  edit: boolean;
-  remove: boolean;
-}
-
 export interface ExtensionManifest {
   name: string;
   displayName: string;
@@ -91,7 +81,8 @@ export interface ExtensionManifest {
   egress: string[];
   collections: ExtensionCollection[];
   actions: ExtensionAction[];
-  views: ExtensionView[];
+  /** Its screens, as data (ADR 0031): what they show and do, never how. */
+  views: ViewDocument[];
   /** Its words, by language: `{ ro: { "Rewrite": "Rescrie" } }`. */
   messages: Record<string, Record<string, string>>;
 }
@@ -186,25 +177,6 @@ function action(raw: unknown, names: string[], problems: string[]): ExtensionAct
   };
 }
 
-function view(raw: unknown, collections: ExtensionCollection[], problems: string[]): ExtensionView | null {
-  if (!isObject(raw)) return null;
-  const of = collections.find((c) => c.name === raw.collection);
-  if (!of) {
-    problems.push(`a screen shows one of the extension's collections ("${text(raw.collection, 40)}")`);
-    return null;
-  }
-  const keys = of.fields.map((f) => f.key);
-  const columns = list(raw.columns).map((c) => text(c, 40)).filter((c) => keys.includes(c));
-  return {
-    collection: of.name,
-    title: text(raw.title, 80) || of.label,
-    columns: columns.length ? columns : keys.slice(0, 4),
-    create: raw.create !== false,
-    edit: raw.edit !== false,
-    remove: raw.remove !== false,
-  };
-}
-
 /** Reads a package, with every reason it cannot be installed. */
 export function parseExtension(raw: unknown): { pkg: ExtensionPackage | null; problems: string[] } {
   const problems: string[] = [];
@@ -234,10 +206,9 @@ export function parseExtension(raw: unknown): { pkg: ExtensionPackage | null; pr
     if (actions.some((x) => x.name === one.name)) problems.push(`the action "${one.name}" is declared twice`);
     else actions.push(one);
   }
-  const views = list(m.views)
-    .slice(0, 12)
-    .map((v) => view(v, collections, problems))
-    .filter((v): v is ExtensionView => v !== null);
+  // Screens are checked against thecms.view/1 and against what this manifest declares.
+  const { views, problems: viewProblems } = checkViews(m.views, { collections: collections.map((c) => ({ name: c.name, fields: c.fields })), actions });
+  problems.push(...viewProblems);
   const messages: Record<string, Record<string, string>> = {};
   if (isObject(m.messages)) {
     for (const [language, words] of Object.entries(m.messages).slice(0, 40)) {

@@ -29,8 +29,8 @@
     { "name": "describe", "label": "Write the description", "on": "page", "reads": ["providers"], "writes": ["usage"], "timeoutSeconds": 120 }
   ],
   "views": [
-    { "collection": "providers", "title": "AI providers", "columns": ["name", "kind", "model", "api_key", "default"] },
-    { "collection": "usage", "title": "AI usage", "columns": ["action", "provider", "model", "input_tokens", "output_tokens"], "create": false, "edit": false }
+    { "spec": "thecms.view/1", "id": "ai.providers", "title": "AI providers", "type": "list", "collection": "providers", "fields": ["name", { "field": "kind", "display": "badge" }, "model", "api_key", "default"] },
+    { "spec": "thecms.view/1", "id": "ai.usage", "title": "AI usage", "type": "list", "collection": "usage", "fields": ["action", "provider", "model", "input_tokens", "output_tokens"], "create": false, "edit": false }
   ],
   "messages": {
     "ro": {

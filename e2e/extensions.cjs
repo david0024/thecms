@@ -60,9 +60,9 @@ const PORT = 4397;
 
     // Off, it has no screen; on again, its screen keeps its settings, and a secret is never shown again.
     await page.locator('[data-extension-on]').uncheck();
-    await page.locator('[data-extension-view]').waitFor({ state: 'detached' });
+    await page.locator('[data-extension-view]').first().waitFor({ state: 'detached' });
     await page.locator('[data-extension-on]').check();
-    await page.locator('[data-extension-view="settings"]').click();
+    await page.locator('[data-extension-view="shout.settings"]').click();
     await page.locator('[data-extension-add]').click();
     await page.locator('[data-extension-save]').click();
     await page.getByText('Name is needed').waitFor();
@@ -79,6 +79,48 @@ const PORT = 4397;
     await page.locator('[data-field="name"]').fill('Main settings');
     await page.locator('[data-extension-save]').click();
     await page.getByText('Main settings').waitFor();
+    assert((await page.locator('[data-row] .badge[data-tone="warning"]').innerText()) === 'stars', 'a field the screen shows as a badge has the tone it gives its value');
+
+    // Its screen's buttons run its actions. A button shows only on a row that meets its condition.
+    assert((await page.locator('[data-view-button^="rotate/"]').count()) === 0, 'a row that is not loud has no "New key"');
+    await page.locator('[data-extension-edit]').click();
+    await page.locator('[data-field="loud"]').check();
+    await page.locator('[data-extension-save]').click();
+    await page.locator('[data-view-button^="rotate/"]').click();
+    await page.getByText('Make a new key?').waitFor();
+    await page.locator('[data-ask="note"]').fill('lost');
+    await page.locator('[data-view-sure]').click();
+    const rowId = await page.locator('[data-row]').getAttribute('data-row');
+    await page.locator('[data-reveal]', { hasText: `sk-${rowId}-4` }).waitFor();
+    if (shots) await page.screenshot({ path: join(shots, 'extension-reveal.png') });
+    assert(true, 'it asks what the action asks, then for a yes, and shows once what the answer reveals');
+
+    // A button opens another screen; an action's answer can too.
+    await page.locator('[data-view-button="shout.log/"]').click();
+    await page.locator('[data-view-id="shout.log"] [data-row]', { hasText: 'lost' }).waitFor();
+    assert((await page.locator('[data-extension-add]').count()) === 0, 'the log is read, and has no form to add to it');
+    await page.locator('[data-extension-delete]').click();
+    await page.locator('[data-extension-delete-sure]').click();
+    await page.locator('[data-view-id="shout.log"] [data-row]').waitFor({ state: 'detached' });
+    assert(true, 'a row goes only after a second yes');
+    await page.locator('[data-nav="extensions"]').click();
+    await page.locator('[data-extension-view="shout.settings"]').click();
+    await page.locator('[data-view-button="open/"]').click();
+    await page.locator('[data-view-id="shout.log"]').waitFor();
+    assert(true, 'an action that answers with a view opens it');
+
+    // Tabs: one view at a time; a form over an action asks its questions and runs it.
+    await page.locator('[data-nav="extensions"]').click();
+    await page.locator('[data-extension-view="shout.more"]').click();
+    await page.locator('[data-view-id="shout.log"]').waitFor();
+    await page.locator('[data-view-tab="1"]').click();
+    await page.locator('[data-view-form="rotate"] [data-ask="note"]').fill('again');
+    await page.locator('[data-view-submit]').click();
+    await page.locator('[data-reveal]', { hasText: 'sk-none-5' }).waitFor();
+    await page.locator('[data-view-tab="0"]').click();
+    await page.locator('[data-view-id="shout.log"] [data-row]', { hasText: 'again' }).waitFor();
+    if (shots) await page.screenshot({ path: join(shots, 'extension-tabs.png') });
+    assert(true, "tabs show one view at a time, and an action's form runs it");
 
     // In the builder: on the block being edited, and on the page, each answer is a change like any other.
     await page.locator('[data-nav="pages"]').click();

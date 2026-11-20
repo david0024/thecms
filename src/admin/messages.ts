@@ -76,6 +76,9 @@ export const en = {
     tools: "Extensions",
     run: "Run",
     working: "Working…",
+    sure: "Yes, do it",
+    done: "Done.",
+    reveal: "Shown once. Copy it now: it is not shown again.",
     checksum: "SHA-256 {sha}",
   },
   people: {

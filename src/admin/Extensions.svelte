@@ -5,9 +5,9 @@
  * what it asks for and accepted that very file.
  */
 import { api, type ExtensionInfo, type ExtensionOffer } from './api.ts';
-import { say, t } from './messages.ts';
+import { adminLanguage, say, t } from './messages.ts';
 
-let { extensions, onchange, onopen }: { extensions: ExtensionInfo[]; onchange: (next: ExtensionInfo[]) => void; onopen: (name: string, collection: string) => void } = $props();
+let { extensions, onchange, onopen }: { extensions: ExtensionInfo[]; onchange: (next: ExtensionInfo[]) => void; onopen: (name: string, screen: string) => void } = $props();
 
 let problem = $state('');
 let file = $state.raw<File | null>(null);
@@ -68,8 +68,8 @@ async function accept(): Promise<void> {
             <span>{extension.enabled ? t.ext.on : t.ext.off}</span>
           </label>
           {#if extension.enabled}
-            {#each extension.views ?? [] as view (view.collection)}
-              <button type="button" onclick={() => onopen(extension.name, view.collection)} data-extension-view={view.collection}>{view.title}</button>
+            {#each extension.views ?? [] as screen (screen.id)}
+              <button type="button" onclick={() => onopen(extension.name, screen.id)} data-extension-view={screen.id}>{extension.messages[adminLanguage()]?.[screen.title] || screen.title}</button>
             {/each}
           {/if}
           {#if removing === extension.name}

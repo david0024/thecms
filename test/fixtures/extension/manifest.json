@@ -21,8 +21,24 @@
     { "name": "ping", "label": "Ping", "reads": ["settings"] },
     { "name": "sneak", "label": "Sneak", "reads": [] },
     { "name": "slow", "label": "Slow", "timeoutSeconds": 1 },
-    { "name": "crash", "label": "Crash" }
+    { "name": "crash", "label": "Crash" },
+    { "name": "rotate", "label": "New key", "ask": [{ "key": "note", "label": "Why", "kind": "text" }], "reads": ["settings"], "writes": ["log"] },
+    { "name": "open", "label": "Open the log" }
   ],
-  "views": [{ "collection": "settings", "title": "Settings", "columns": ["name", "key", "style"] }],
+  "views": [
+    {
+      "spec": "thecms.view/1", "id": "shout.settings", "title": "Settings", "type": "list", "collection": "settings",
+      "fields": ["name", "key", { "field": "style", "display": "badge", "tones": { "stars": "warning" } }],
+      "rowActions": [{ "label": "New key", "action": "rotate", "input": { "id": { "$record": "id" } }, "prompt": ["note"], "confirm": "Make a new key?", "tone": "danger", "when": [{ "field": "loud", "op": "eq", "value": true }] }],
+      "actions": [{ "label": "See the log", "navigate": "shout.log" }, { "label": "Open the log", "action": "open" }]
+    },
+    {
+      "spec": "thecms.view/1", "id": "shout.more", "title": "More", "type": "tabs",
+      "views": [
+        { "type": "list", "id": "shout.log", "title": "Log", "collection": "log", "create": false, "edit": false },
+        { "type": "form", "id": "shout.ask", "title": "Ask", "action": "rotate", "submit": "Make it" }
+      ]
+    }
+  ],
   "messages": { "ro": { "Louder": "Mai tare", "Settings": "Setări" } }
 }
