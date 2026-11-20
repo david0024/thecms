@@ -4,6 +4,9 @@
 - **Date:** 2026-11-19
 - **Builds on:** ADR 0001 d7 (one list of block types), ADR 0002 (the first slice).
 
+(ADR 0037: thecms is not only for presentation sites; these blocks are the
+first set, not the whole.)
+
 The brief named the blocks a presentation site is made of: hero, services,
 gallery, pricing, testimonials, contact form, FAQ. The first slice built five.
 This adds four, so a typical presentation site can be made without a module.
