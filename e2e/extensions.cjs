@@ -156,6 +156,27 @@ const PORT = 4397;
     if (shots) await page.screenshot({ path: join(shots, 'versions.png') });
     assert(true, 'an older one comes back into the editor, as a change to publish or undo');
 
+    // With a second language, an action for each language fills in every translation of the page (ADR 0034).
+    await page.locator('[data-back]').click();
+    await page.locator('[data-nav="settings"]').click();
+    await page.locator('[data-language-new]').fill('ro');
+    const siteSaved = page.waitForResponse((r) => r.url().endsWith('/api/site') && r.request().method() === 'PUT');
+    await page.locator('[data-language-add]').click();
+    await siteSaved;
+    await page.locator('[data-back]').click();
+    await page.locator('button[data-open="about"]').click();
+    await page.getByRole('button', { name: 'Back to the page' }).click();
+    await page.locator('[data-extension-action="shout/stamp"][data-each-language]').click();
+    await page.locator('[data-each-said]').waitFor();
+    if (shots) await page.screenshot({ path: join(shots, 'extension-each-language.png') });
+    await page.locator('[data-back]').click();
+    await page.locator('button[data-open="ro/about"]').click();
+    await page.locator('.doc', { hasText: '[ro] About' }).waitFor();
+    assert((await page.locator('[data-extension-action="shout/stamp"][data-each-language]').count()) === 0, 'it made the translation; on a translation it is an action like any other');
+    await page.locator('[data-extension-action="shout/stamp"]').click();
+    await page.locator('.doc', { hasText: '[ro] [ro] About' }).waitFor();
+    assert(true, 'run there, it changes that translation as a change to look at');
+
     // Removed, with what it kept.
     await page.locator('[data-back]').click();
     await page.locator('[data-nav="extensions"]').click();

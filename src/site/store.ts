@@ -21,6 +21,7 @@ import { SQL } from 'bun';
 import {
   type Block,
   type ExtensionPackage,
+  fillTranslation,
   parseExtension,
   imageExt,
   imageSources,
@@ -625,6 +626,20 @@ export class Store {
           next.fields = fields;
         }
         return next;
+      },
+      kind,
+    )) as PlacedPage;
+  }
+
+  /** Fills in what a translation does not say yet from a page written in that language (ADR 0034); words already written stay. */
+  async fillTranslation(of: string, language: string, input: unknown, kind: Kept = 'page'): Promise<PlacedPage> {
+    const { page: written } = normalizePage(input);
+    return (await this.withTranslation(
+      of,
+      language,
+      (page, had) => {
+        if (!had || had.blocks) throw new Error(`this ${kind} has no translation into that language to fill in`);
+        return fillTranslation(page, had, written);
       },
       kind,
     )) as PlacedPage;

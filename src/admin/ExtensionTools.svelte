@@ -6,25 +6,41 @@
  */
 import type { ExtensionPoint } from '../core/index.ts';
 import type { ExtensionInfo } from './api.ts';
-import { adminLanguage, t } from './messages.ts';
+import { adminLanguage, say, t } from './messages.ts';
 
 let {
   extensions,
   on,
   languages,
   onrun,
-}: { extensions: ExtensionInfo[]; on: ExtensionPoint; languages: { language: string; name: string }[]; onrun: (extension: string, action: string, ask: Record<string, string>) => Promise<void> } = $props();
+  oneach,
+}: {
+  extensions: ExtensionInfo[];
+  on: ExtensionPoint;
+  languages: { language: string; name: string }[];
+  onrun: (extension: string, action: string, ask: Record<string, string>) => Promise<void>;
+  /** Given on a page of the main language: an action for each language runs on every translation (ADR 0034), and says what it did. */
+  oneach?: (extension: string, action: string, ask: Record<string, string>) => Promise<string>;
+} = $props();
 
 const word = (extension: ExtensionInfo, text: string): string => extension.messages[adminLanguage()]?.[text] || extension.messages[adminLanguage().split('-')[0] ?? '']?.[text] || text;
 const offered = $derived(extensions.filter((e) => e.enabled).flatMap((extension) => extension.actions.filter((a) => a.on === on).map((action) => ({ extension, action }))));
 /** The action whose questions are open, and the answers so far. */
 let asking = $state<{ key: string; answers: Record<string, string> } | null>(null);
 let working = $state('');
+/** What the last action for each language did. */
+let said = $state('');
+
+const each = (action: ExtensionInfo['actions'][number]): boolean => action.each === 'language' && oneach !== undefined;
+const label = (extension: ExtensionInfo, action: ExtensionInfo['actions'][number]): string => (each(action) ? say(t.ext.eachLanguage, { action: word(extension, action.label) }) : word(extension, action.label));
 
 async function run(extension: string, action: string, ask: Record<string, string>): Promise<void> {
   working = `${extension}/${action}`;
+  said = '';
   try {
-    await onrun(extension, action, ask);
+    const found = offered.find((o) => o.extension.name === extension && o.action.name === action);
+    if (found && oneach && each(found.action)) said = await oneach(extension, action, ask);
+    else await onrun(extension, action, ask);
     asking = null;
   } finally {
     working = '';
@@ -40,7 +56,7 @@ async function run(extension: string, action: string, ask: Record<string, string
       {#if asking?.key === key}
         {@const answers = asking.answers}
         <form class="ask" onsubmit={(e) => (e.preventDefault(), run(extension.name, action.name, answers))}>
-          <strong>{word(extension, action.label)}</strong>
+          <strong>{label(extension, action)}</strong>
           {#each action.ask as question (question.key)}
             <label class="field">
               <span>{word(extension, question.label)}</span>
@@ -63,9 +79,11 @@ async function run(extension: string, action: string, ask: Record<string, string
           type="button"
           disabled={working !== ''}
           onclick={() => (action.ask.length ? (asking = { key, answers: Object.fromEntries(action.ask.map((q) => [q.key, q.kind === 'language' ? (languages[0]?.language ?? '') : ''])) }) : run(extension.name, action.name, {}))}
-          data-extension-action={key}>{working === key ? t.ext.working : `✦ ${word(extension, action.label)}`}</button>
+          data-extension-action={key}
+          data-each-language={each(action) ? '' : undefined}>{working === key ? t.ext.working : `✦ ${label(extension, action)}`}</button>
       {/if}
     {/each}
+    {#if said}<p class="said" data-each-said>{said}</p>{/if}
   </div>
 {/if}
 
@@ -76,4 +94,5 @@ async function run(extension: string, action: string, ask: Record<string, string
   .ask { display: grid; gap: 0.5rem; padding: 0.6rem; background: #f0eeff; border-radius: 6px; }
   .field { display: grid; gap: 0.2rem; }
   .row { display: flex; gap: 0.4rem; }
+  .said { margin: 0; font-size: 13px; color: #1b7a43; }
 </style>

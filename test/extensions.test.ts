@@ -29,7 +29,7 @@ describe('a package', () => {
     const { pkg, problems } = parseExtension(raw);
     expect(problems).toEqual([]);
     const m = pkg!.manifest;
-    expect(m.actions.map((a) => `${a.name}:${a.on ?? 'screen'}:${a.timeoutSeconds}`)).toEqual(['louder:block:60', 'title:page:60', 'ping:screen:60', 'sneak:screen:60', 'slow:screen:1', 'crash:screen:60', 'rotate:screen:60', 'open:screen:60']);
+    expect(m.actions.map((a) => `${a.name}:${a.on ?? 'screen'}:${a.timeoutSeconds}`)).toEqual(['louder:block:60', 'title:page:60', 'stamp:page:60', 'ping:screen:60', 'sneak:screen:60', 'slow:screen:1', 'crash:screen:60', 'rotate:screen:60', 'open:screen:60']);
     expect(m.collections[0]?.fields.map((f) => `${f.key}:${f.kind}:${f.initial}`)).toEqual(['name:text:null', 'key:secret:null', 'loud:boolean:true', 'style:choice:caps']);
     expect(m.views.map((v) => `${v.id}:${v.type}`)).toEqual(['shout.settings:list', 'shout.more:tabs']);
     expect(extensionAsks(m)).toEqual({
@@ -39,6 +39,7 @@ describe('a package', () => {
       points: [
         { action: 'Louder', on: 'block' },
         { action: 'Louder title', on: 'page' },
+        { action: 'Stamp', on: 'page' },
       ],
     });
     expect(extensionWord(m, 'ro', 'Louder')).toBe('Mai tare');
@@ -63,7 +64,7 @@ describe('a package', () => {
           { name: 'Nope' },
           'nonsense',
         ],
-        actions: [{ name: 'go', on: 'everywhere', reads: ['users'], writes: ['rows'] }, { name: 'go' }, { name: 'no-dash' }, 7],
+        actions: [{ name: 'go', on: 'everywhere', reads: ['users'], writes: ['rows'] }, { name: 'go' }, { name: 'each', on: 'block', each: 'language' }, { name: 'no-dash' }, 7],
         views: [{ spec: 'thecms.view/1', id: 'bad.users', title: 'Users', type: 'list', collection: 'users' }],
       },
     });
@@ -83,6 +84,7 @@ describe('a package', () => {
       'go: an action is on block or page, or on its own screen',
       'go: it reads "users", which is not one of its collections',
       'the action "go" is declared twice',
+      'each: an action runs for each language only on a page',
       'an action\'s name is letters and digits ("no-dash")',
       'views[0]: "users" is not one of the extension\'s collections',
       'it has actions and no code',
@@ -356,7 +358,10 @@ describe('who may do what with extensions', () => {
     };
     try {
       const seen = (await call('GET', '/api/extensions')).data.extensions[0];
-      expect(seen.actions.map((a: { name: string }) => a.name)).toEqual(['louder', 'title']);
+      expect(seen.actions.map((a: { name: string }) => a.name)).toEqual(['louder', 'title', 'stamp']);
+      expect(seen.actions[2].each).toBe('language');
+      // A section's translations are the owner's to change.
+      expect((await call('POST', '/api/extensions/shout/each/stamp', { slug: 'offer', kind: '_section' })).status).toBe(403);
       expect(seen.sha256).toBeUndefined();
       expect(seen.views).toBeUndefined();
       expect((await call('POST', '/api/extensions/shout/run/louder', { block: { id: 'b_x1', type: 'hero', content: { title: 'Hi' } } })).data.block.content.title).toBe('HI');
