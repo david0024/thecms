@@ -1,0 +1,57 @@
+{
+  "name": "ai",
+  "displayName": "AI writing",
+  "description": "Writes and rewrites a block's words, translates a page into its language, and writes a page's description, with Claude, OpenAI or a model of your own through Ollama. What it writes comes back as a change, to look at before saving.",
+  "version": "1.0.0",
+  "publisher": "thecms",
+  "thecmsMinVersion": "0.1.0",
+  "egress": ["api.anthropic.com", "api.openai.com", "localhost", "127.0.0.1"],
+  "collections": [
+    { "name": "providers", "label": "Providers", "fields": [
+      { "key": "name", "label": "Name", "kind": "text", "required": true },
+      { "key": "kind", "label": "Service", "kind": "choice", "required": true, "options": ["anthropic", "openai", "ollama"], "initial": "anthropic" },
+      { "key": "model", "label": "Model", "kind": "text" },
+      { "key": "api_key", "label": "API key", "kind": "secret" },
+      { "key": "base_url", "label": "Address (Ollama only)", "kind": "text" },
+      { "key": "default", "label": "Use this one", "kind": "boolean", "initial": true }
+    ] },
+    { "name": "usage", "label": "Usage", "fields": [
+      { "key": "action", "label": "What", "kind": "text" },
+      { "key": "provider", "label": "Provider", "kind": "text" },
+      { "key": "model", "label": "Model", "kind": "text" },
+      { "key": "input_tokens", "label": "Tokens read", "kind": "number" },
+      { "key": "output_tokens", "label": "Tokens written", "kind": "number" }
+    ] }
+  ],
+  "actions": [
+    { "name": "write", "label": "Write with AI", "on": "block", "ask": [{ "key": "instruction", "label": "What to write or change", "kind": "text" }], "reads": ["providers"], "writes": ["usage"], "timeoutSeconds": 120 },
+    { "name": "translate", "label": "Translate this page", "on": "page", "reads": ["providers"], "writes": ["usage"], "timeoutSeconds": 300 },
+    { "name": "describe", "label": "Write the description", "on": "page", "reads": ["providers"], "writes": ["usage"], "timeoutSeconds": 120 }
+  ],
+  "views": [
+    { "collection": "providers", "title": "AI providers", "columns": ["name", "kind", "model", "api_key", "default"] },
+    { "collection": "usage", "title": "AI usage", "columns": ["action", "provider", "model", "input_tokens", "output_tokens"], "create": false, "edit": false }
+  ],
+  "messages": {
+    "ro": {
+      "Providers": "Furnizori",
+      "Name": "Nume",
+      "Service": "Serviciu",
+      "Model": "Model",
+      "API key": "Cheie API",
+      "Address (Ollama only)": "Adresă (doar Ollama)",
+      "Use this one": "Folosește-l pe acesta",
+      "Usage": "Folosire",
+      "What": "Ce",
+      "Provider": "Furnizor",
+      "Tokens read": "Tokeni citiți",
+      "Tokens written": "Tokeni scriși",
+      "Write with AI": "Scrie cu AI",
+      "What to write or change": "Ce să scrie sau să schimbe",
+      "Translate this page": "Tradu pagina",
+      "Write the description": "Scrie descrierea",
+      "AI providers": "Furnizori AI",
+      "AI usage": "Folosirea AI"
+    }
+  }
+}

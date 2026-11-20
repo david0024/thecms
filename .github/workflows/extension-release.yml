@@ -1,0 +1,36 @@
+name: Extension release
+
+# A tag <extension>-v<version>, such as ai-v1.0.0, publishes that extension
+# from extensions/<extension>: its package, one file the owner installs from
+# Extensions in the admin, and its SHA-256, which the admin shows before it is
+# accepted (ADR 0026, ADR 0027). The tag must be the version in its manifest.
+on:
+  push:
+    tags: ['*-v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - run: bun install --frozen-lockfile
+      - name: The tag names an extension and its version
+        id: tag
+        run: |
+          name="${GITHUB_REF_NAME%-v*}"
+          version="${GITHUB_REF_NAME##*-v}"
+          test -f "extensions/$name/manifest.json"
+          test "$version" = "$(bun -e "console.log((await Bun.file('extensions/$name/manifest.json').json()).version)")"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+      - run: bun run check
+      - run: mkdir -p dist-ext && bun tools/pack-extension.ts "extensions/${{ steps.tag.outputs.name }}" dist-ext | tee dist-ext/SHA256SUMS
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist-ext/* --title "$GITHUB_REF_NAME" --notes "Install it from Extensions in the admin, or with: thecms extension <site> install <file>. Its SHA-256 is in SHA256SUMS."
