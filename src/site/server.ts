@@ -507,6 +507,12 @@ export async function startEditor(
       }
     }
     const body = request.method === 'GET' || request.method === 'DELETE' ? {} : ((await request.json()) as Record<string, unknown>);
+    if (url.pathname === '/api/locks') {
+      // Pages behind a password (ADR 0043): set, changed or taken away; the password itself is never given back.
+      if (request.method === 'POST') return json({ locked: await store.lockPage(String(body.slug ?? ''), String(body.password ?? '')) });
+      if (request.method === 'DELETE') return json({ locked: await store.lockPage(url.searchParams.get('slug') ?? '', null) });
+      return json({ locked: await store.lockedPages() });
+    }
     if (url.pathname === '/api/schedule') {
       // A page or an entry published at a set time (ADR 0039).
       if (request.method === 'POST') return json({ scheduled: await store.schedule(String(body.kind ?? 'page'), String(body.slug ?? ''), String(body.at ?? '')) });

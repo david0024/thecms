@@ -58,6 +58,7 @@ The decisions behind this, each with its reason:
 - [ADR 0040 — Comments, with moderation](docs/adr/0040-comments.md)
 - [ADR 0041 — Extensions on the server: routes, jobs and events](docs/adr/0041-extensions-on-the-server.md)
 - [ADR 0042 — Search on the site](docs/adr/0042-search.md)
+- [ADR 0043 — Pages behind a password](docs/adr/0043-pages-behind-a-password.md)
 
 ## Where it stands
 
@@ -96,6 +97,7 @@ What comes next, in four stages up to a shop, memberships and courses, is in
 | AI writing, as an extension with the owner's key (Claude, OpenAI or Ollama): a block written or rewritten as asked, a page translated into its language, a page's description; each comes back as a change to look at | done (image descriptions: planned) |
 | The last twenty publications of each page and entry kept, and one brought back into the editor as a change | done |
 | Publish later: a page or an entry set for an hour, published then by the editor or the runtime | done |
+| Pages behind a password, asked by the runtime; left out of the sitemap, the search and any export | done (members-only pages: with stage 2) |
 | Search on the site: a block placed anywhere, answered by the runtime with a page of the site's own; every word, without minding case or accents | done |
 | Comments on the entries of a type that takes them: a plain form, held for the owner's approval, shown without the writer's address, given or erased on request | done |
 | A check before publishing: a link that leads nowhere stops the export, a picture with no description is listed; in the admin under the pages | done |
