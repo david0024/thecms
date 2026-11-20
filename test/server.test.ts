@@ -127,3 +127,21 @@ describe('the editing API', () => {
     expect((await store.theme())!.name).toBe('Plain');
   });
 });
+
+describe('what was published before', () => {
+  test('is listed, and one is given back cleaned, for a page and for an entry', async () => {
+    const listed = (await (await call('/api/versions?slug=about')).json()) as { versions: { at: string; title: string }[] };
+    expect(listed.versions.length).toBeGreaterThan(0);
+    const at = listed.versions[0]?.at ?? '';
+    const one = (await (await call(`/api/version?slug=about&at=${encodeURIComponent(at)}`)).json()) as { page: { slug: string; blocks: unknown[] } };
+    expect(one.page.slug).toBe('about');
+    expect(Array.isArray(one.page.blocks)).toBe(true);
+    expect((await call('/api/version?slug=about&at=never')).status).toBe(404);
+    await call('/api/page', { method: 'PUT', body: { kind: 'post', page: { slug: 'kept', title: 'Kept', date: '2026-01-01' } } });
+    await call('/api/publish', { method: 'POST', body: { kind: 'post', slug: 'kept' } });
+    const entry = (await (await call('/api/versions?kind=post&slug=kept')).json()) as { versions: { at: string; title: string }[] };
+    expect(entry.versions.map((v) => v.title)).toEqual(['Kept']);
+    const back = (await (await call(`/api/version?kind=post&slug=kept&at=${encodeURIComponent(entry.versions[0]?.at ?? '')}`)).json()) as { page: { title: string; date: string } };
+    expect(back.page).toMatchObject({ title: 'Kept', date: '2026-01-01' });
+  });
+});

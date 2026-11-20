@@ -468,6 +468,15 @@ export async function startEditor(
         }
       }
     }
+    // What was published before, kept to be brought back into the editor.
+    if (route === 'GET /api/versions' || route === 'GET /api/version') {
+      const type = asked === 'page' ? null : await store.type(asked === 'post' ? POSTS_TYPE : asked);
+      const kind = type?.id ?? 'page';
+      if (route === 'GET /api/versions') return json({ versions: await store.versions(kind, slug) });
+      const raw = await store.version(kind, slug, url.searchParams.get('at') ?? '');
+      if (!raw) return json({ error: 'no such version' }, 404);
+      return json({ page: type ? normalizePost(raw, undefined, type).post : normalizePage(raw).page });
+    }
     if (asked !== 'page') {
       const type = await store.type(asked === 'post' ? POSTS_TYPE : asked);
       switch (route) {

@@ -105,6 +105,7 @@ const SQLITE: Dialect = {
     'CREATE TABLE IF NOT EXISTS links (id TEXT PRIMARY KEY, kind TEXT NOT NULL, user_id TEXT NOT NULL, expires_at TEXT NOT NULL)',
     'CREATE TABLE IF NOT EXISTS extensions (name TEXT PRIMARY KEY, version TEXT NOT NULL, sha256 TEXT NOT NULL, package TEXT NOT NULL, enabled INTEGER NOT NULL, installed_at TEXT NOT NULL)',
     'CREATE TABLE IF NOT EXISTS extension_rows (extension TEXT NOT NULL, collection TEXT NOT NULL, id TEXT NOT NULL, data TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY (extension, collection, id))',
+    'CREATE TABLE IF NOT EXISTS versions (kind TEXT NOT NULL, slug TEXT NOT NULL, at TEXT NOT NULL, doc TEXT NOT NULL, PRIMARY KEY (kind, slug, at))',
   ],
   params: (query) => query,
   upsert: (table, columns, key, update) =>
@@ -128,6 +129,7 @@ const POSTGRES: Dialect = {
     'CREATE TABLE IF NOT EXISTS links (id VARCHAR(64) PRIMARY KEY, kind VARCHAR(20) NOT NULL, user_id VARCHAR(40) NOT NULL, expires_at VARCHAR(40) NOT NULL)',
     'CREATE TABLE IF NOT EXISTS extensions (name VARCHAR(64) PRIMARY KEY, version VARCHAR(40) NOT NULL, sha256 VARCHAR(64) NOT NULL, package TEXT NOT NULL, enabled INTEGER NOT NULL, installed_at VARCHAR(40) NOT NULL)',
     'CREATE TABLE IF NOT EXISTS extension_rows (extension VARCHAR(64) NOT NULL, collection VARCHAR(64) NOT NULL, id VARCHAR(40) NOT NULL, data TEXT NOT NULL, updated_at VARCHAR(40) NOT NULL, PRIMARY KEY (extension, collection, id))',
+    'CREATE TABLE IF NOT EXISTS versions (kind VARCHAR(64) NOT NULL, slug VARCHAR(255) NOT NULL, at VARCHAR(40) NOT NULL, doc TEXT NOT NULL, PRIMARY KEY (kind, slug, at))',
   ],
   params: (query) => {
     let n = 0;
@@ -150,6 +152,7 @@ const MYSQL: Dialect = {
     `CREATE TABLE IF NOT EXISTS links (id VARCHAR(64) PRIMARY KEY, kind VARCHAR(20) NOT NULL, user_id VARCHAR(40) NOT NULL, expires_at VARCHAR(40) NOT NULL) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS extensions (name VARCHAR(64) PRIMARY KEY, version VARCHAR(40) NOT NULL, sha256 VARCHAR(64) NOT NULL, package LONGTEXT NOT NULL, enabled INTEGER NOT NULL, installed_at VARCHAR(40) NOT NULL) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS extension_rows (extension VARCHAR(64) NOT NULL, collection VARCHAR(64) NOT NULL, id VARCHAR(40) NOT NULL, data LONGTEXT NOT NULL, updated_at VARCHAR(40) NOT NULL, PRIMARY KEY (extension, collection, id)) ${MYSQL_TABLE}`,
+    `CREATE TABLE IF NOT EXISTS versions (kind VARCHAR(64) NOT NULL, slug VARCHAR(255) NOT NULL, at VARCHAR(40) NOT NULL, doc LONGTEXT NOT NULL, PRIMARY KEY (kind, slug, at)) ${MYSQL_TABLE}`,
   ],
   params: (query) => query,
   upsert: (table, columns, _key, update) =>
@@ -206,6 +209,9 @@ export interface User {
 }
 /** What a one-time link is for: the first owner, someone invited, a new password. */
 export type LinkKind = 'setup' | 'invite' | 'reset';
+
+/** How many publications of one page or entry are kept, to bring back. */
+export const VERSIONS_KEPT = 20;
 
 export const PASSWORD_MIN = 10;
 const PASSWORD_MAX = 200;
@@ -440,10 +446,13 @@ export class Store {
   }
 
   /** Freezes the current draft as what visitors see. */
-  async publish(slug: string): Promise<void> {
+  async publish(slug: string, now = new Date()): Promise<void> {
     // Asked before, not counted after: MySQL counts a row that already held these values as unchanged.
     if (!(await this.row('SELECT 1 AS found FROM pages WHERE slug = ?', [slug]))) throw new Error(`no page "${slug}"`);
-    await this.run('UPDATE pages SET published = draft, published_at = ? WHERE slug = ?', [new Date().toISOString(), slug]);
+    const at = now.toISOString();
+    await this.run('UPDATE pages SET published = draft, published_at = ? WHERE slug = ?', [at, slug]);
+    const row = await this.row<{ published: string }>('SELECT published FROM pages WHERE slug = ?', [slug]);
+    await this.keepVersion('page', slug, String(row?.published), at);
   }
 
   async draft(slug: string): Promise<Page | null> {
@@ -462,6 +471,7 @@ export class Store {
   async deletePage(slug: string): Promise<void> {
     if (slug === '') throw new Error('the home page cannot be deleted');
     await this.run('DELETE FROM pages WHERE slug = ?', [slug]);
+    await this.run('DELETE FROM versions WHERE kind = ? AND slug = ?', ['page', slug]);
   }
 
   /** Every published page, in menu order. */
@@ -493,9 +503,36 @@ export class Store {
     return post;
   }
 
-  async publishEntry(typeId: string, slug: string): Promise<void> {
+  async publishEntry(typeId: string, slug: string, now = new Date()): Promise<void> {
     if (!(await this.row('SELECT 1 AS found FROM entries WHERE type = ? AND slug = ?', [typeId, slug]))) throw new Error(`no entry "${slug}"`);
-    await this.run('UPDATE entries SET published = draft, published_at = ? WHERE type = ? AND slug = ?', [new Date().toISOString(), typeId, slug]);
+    const at = now.toISOString();
+    await this.run('UPDATE entries SET published = draft, published_at = ? WHERE type = ? AND slug = ?', [at, typeId, slug]);
+    const row = await this.row<{ published: string }>('SELECT published FROM entries WHERE type = ? AND slug = ?', [typeId, slug]);
+    await this.keepVersion(typeId, slug, String(row?.published), at);
+  }
+
+  /**
+   * What was published, kept: each publication of a page (kind `page`) or of
+   * an entry (kind: its type), the newest {@link VERSIONS_KEPT}. The owner
+   * can bring one back into the editor, as a change to look at before saving.
+   */
+  private async keepVersion(kind: string, slug: string, doc: string, at: string): Promise<void> {
+    await this.run(this.dialect.insertNew('versions', ['kind', 'slug', 'at', 'doc']), [kind, slug, at, doc]);
+    const kept = await this.rows<{ at: string }>('SELECT at FROM versions WHERE kind = ? AND slug = ? ORDER BY at DESC', [kind, slug]);
+    const oldest = kept[VERSIONS_KEPT - 1];
+    if (kept.length > VERSIONS_KEPT && oldest) await this.run('DELETE FROM versions WHERE kind = ? AND slug = ? AND at < ?', [kind, slug, oldest.at]);
+  }
+
+  /** The kept publications of a page or an entry, newest first: when, and the title it had. */
+  async versions(kind: string, slug: string): Promise<{ at: string; title: string }[]> {
+    const rows = await this.rows<{ at: string; doc: string }>('SELECT at, doc FROM versions WHERE kind = ? AND slug = ? ORDER BY at DESC', [kind, slug]);
+    return rows.map((row) => ({ at: row.at, title: String((JSON.parse(row.doc) as { title?: unknown }).title ?? '') }));
+  }
+
+  /** One kept publication, as it was saved; the caller cleans it as a page or an entry. */
+  async version(kind: string, slug: string, at: string): Promise<unknown> {
+    const row = await this.row<{ doc: string }>('SELECT doc FROM versions WHERE kind = ? AND slug = ? AND at = ?', [kind, slug, at]);
+    return row ? JSON.parse(row.doc) : null;
   }
 
   async entryDraft(typeId: string, slug: string): Promise<Post | null> {
@@ -528,6 +565,7 @@ export class Store {
 
   async deleteEntry(typeId: string, slug: string): Promise<void> {
     await this.run('DELETE FROM entries WHERE type = ? AND slug = ?', [typeId, slug]);
+    await this.run('DELETE FROM versions WHERE kind = ? AND slug = ?', [typeId, slug]);
   }
 
   /** Every published entry of a type, in the order its list shows them. */

@@ -46,6 +46,7 @@ import ContentList from './ContentList.svelte';
 import Extensions from './Extensions.svelte';
 import ExtensionScreen from './ExtensionScreen.svelte';
 import ExtensionTools from './ExtensionTools.svelte';
+import Versions from './Versions.svelte';
 import ContentTypes from './ContentTypes.svelte';
 import EntryFieldsForm from './EntryFieldsForm.svelte';
 import ImageField from './ImageField.svelte';
@@ -749,6 +750,9 @@ onMount(() => {
         {/if}
         <p class="hint">{t.inspector.nothing}</p>
         <ExtensionTools extensions={site.extensions} on="page" languages={siteLanguages} onrun={runOnPage} />
+        {#if !designing}
+          {#key `${kind}/${page.slug}`}<Versions slug={page.slug} {kind} onrestore={(doc) => change(doc)} />{/key}
+        {/if}
         {#if type || page.slug !== ''}
           <button type="button" class="danger" onclick={removePage}>{!type ? t.inspector.deletePage : kind === POSTS_TYPE ? t.posts.deletePost : t.ctypes.deleteEntry}</button>
         {/if}
