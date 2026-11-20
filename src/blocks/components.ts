@@ -15,6 +15,7 @@ import Group from './Group.svelte';
 import Hero from './Hero.svelte';
 import Image from './Image.svelte';
 import Pricing from './Pricing.svelte';
+import Section from './Section.svelte';
 import Services from './Services.svelte';
 import Testimonials from './Testimonials.svelte';
 import Text from './Text.svelte';
@@ -32,5 +33,6 @@ export const COMPONENTS: Record<BlockType, Component<{ block: Block }>> = {
   pricing: Pricing,
   entries: Entries,
   entry: Entry,
+  section: Section,
   group: Group,
 };

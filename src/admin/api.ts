@@ -63,6 +63,15 @@ export interface TranslationInfo {
   language: string;
   split: boolean;
 }
+/** A section (ADR 0033): where it is shown, and the languages it is translated into. */
+export interface SectionInfo {
+  slug: string;
+  title: string;
+  published: boolean;
+  changed: boolean;
+  usedOn: string[];
+  languages: string[];
+}
 export interface PostInfo extends PageInfo {
   date: string;
 }
@@ -75,6 +84,7 @@ export interface TemplateInfo {
 interface Lists {
   templates: Record<string, TemplateInfo>;
   pages: PageInfo[];
+  sections: SectionInfo[];
   posts: PostInfo[];
   /** Each content type's entries, by the type's name. */
   entries: Record<string, PostInfo[]>;
@@ -93,6 +103,7 @@ export interface State {
   extensions: ExtensionInfo[];
   templates: Record<string, TemplateInfo>;
   pages: PageInfo[];
+  sections: SectionInfo[];
   posts: PostInfo[];
   entries: Record<string, PostInfo[]>;
 }
@@ -171,8 +182,8 @@ export const api = {
   runOnPage: (name: string, action: string, page: Doc, ask: Record<string, string>) => call<{ page: Page }>('POST', `/api/extensions/${name}/run/${action}`, { page, ask }),
   state: () => call<State>('GET', '/api/state'),
   page: (slug: string, kind: Kind = 'page') => call<{ page: Doc; translation?: TranslationInfo }>('GET', `/api/page?kind=${kind}&slug=${encodeURIComponent(slug)}`),
-  translate: (slug: string, language: string) => call<{ page: Page; translation: TranslationInfo } & Lists>('POST', '/api/translate', { slug, language }),
-  split: (of: string, language: string) => call<{ page: Page; translation: TranslationInfo } & Lists>('POST', '/api/split', { of, language }),
+  translate: (slug: string, language: string, kind: Kind = 'page') => call<{ page: Page; translation: TranslationInfo } & Lists>('POST', '/api/translate', { slug, language, kind }),
+  split: (of: string, language: string, kind: Kind = 'page') => call<{ page: Page; translation: TranslationInfo } & Lists>('POST', '/api/split', { of, language, kind }),
   check: () => call<{ check: { broken: { href: string; from: string[] }[]; unnamed: { src: string; on: string[] }[]; untranslated?: { slug: string; language: string; missing: number }[] } }>('GET', '/api/check'),
   versions: (slug: string, kind: Kind = 'page') => call<{ versions: { at: string; title: string }[] }>('GET', `/api/versions?kind=${kind}&slug=${encodeURIComponent(slug)}`),
   version: (slug: string, at: string, kind: Kind = 'page') => call<{ page: Doc }>('GET', `/api/version?kind=${kind}&slug=${encodeURIComponent(slug)}&at=${encodeURIComponent(at)}`),

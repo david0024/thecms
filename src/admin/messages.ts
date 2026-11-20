@@ -9,7 +9,7 @@ import { applyPack, type Catalog, format, isPlural, type LanguagePack, type Mess
 
 export const en = {
   app: { pages: 'Pages', blocks: 'Add a block', blocksHint: 'Click to add, or drag onto the page.', tooDeep: 'Groups nest at most four deep; it cannot go there.', newPage: 'New page', pageTitle: 'Page title', create: 'Create', cancel: 'Cancel', home: 'Home page' },
-  nav: { pages: 'Pages', posts: 'Posts', media: 'Media', messages: 'Messages', settings: 'Menu and settings', theme: 'Theme', label: 'Sections', back: 'All', import: 'Import', people: 'People' },
+  nav: { pages: 'Pages', posts: 'Posts', media: 'Media', messages: 'Messages', settings: 'Menu and settings', theme: 'Theme', label: 'Sections', back: 'All', import: 'Import', people: 'People', sections: 'Sections' },
   door: {
     key: 'Open the address that the editor printed when it started; it carries the key to this editor.',
     signIn: 'Sign in',
@@ -39,6 +39,18 @@ export const en = {
     from: 'on {pages}',
     untranslated: 'These pages show words of the main language where a translation is missing. They are published as they are:',
     missing: '{count} not translated into {language}',
+  },
+  sections: {
+    heading: 'Sections',
+    intro: 'Blocks you write once and show on many pages: "Get in touch", an offer. Change a section here and every page that shows it changes. Put one on a page with the "Section" block.',
+    add: 'New section',
+    name: 'Name of the new section',
+    none: 'No sections yet.',
+    usedOn: 'Shown on',
+    unused: 'Not shown anywhere yet',
+    pick: 'Choose a section',
+    one: 'Section',
+    delete: 'Delete this section',
   },
   versions: {
     heading: 'Published versions',
@@ -363,8 +375,9 @@ export const en = {
     upload: 'Upload a theme file',
     notATheme: 'This file is not a valid theme.',
   },
-  types: { hero: 'Hero', text: 'Text', image: 'Image', services: 'Services', contact: 'Contact', form: 'Contact form', gallery: 'Gallery', faq: 'Questions and answers', testimonials: 'Testimonials', pricing: 'Prices', entries: 'List of entries', entry: 'Part of the entry', group: 'Group' } as Record<string, string>,
+  types: { hero: 'Hero', text: 'Text', image: 'Image', services: 'Services', contact: 'Contact', form: 'Contact form', gallery: 'Gallery', faq: 'Questions and answers', testimonials: 'Testimonials', pricing: 'Prices', entries: 'List of entries', entry: 'Part of the entry', section: 'Section', group: 'Group' } as Record<string, string>,
   fields: {
+    section: 'Which section',
     part: 'What it shows',
     eyebrow: 'Small line above the title',
     source: 'What to list',
@@ -400,7 +413,7 @@ export const en = {
     period: 'Per (month, project…)',
     features: 'What it includes (one a line)',
   } as Record<string, string>,
-  empty: { image: 'Choose an image in the panel on the right', gallery: 'Add pictures in the panel on the right', form: 'Set the address of the form service in Site settings; until then this form is not shown on the site.', group: 'An empty group. Select it, then add a block.', page: 'An empty page. Add a block from the left.' } as Record<string, string>,
+  empty: { image: 'Choose an image in the panel on the right', gallery: 'Add pictures in the panel on the right', form: 'Set the address of the form service in Site settings; until then this form is not shown on the site.', group: 'An empty group. Select it, then add a block.', section: 'Choose a section in the panel on the right.', page: 'An empty page. Add a block from the left.' } as Record<string, string>,
   actions: { drag: 'Drag to move', up: 'Move up', down: 'Move down', duplicate: 'Duplicate', delete: 'Delete' } as Record<string, string>,
 };
 

@@ -41,6 +41,7 @@ import {
   pagesIn,
   languageName,
   prefixOf,
+  SECTION_KIND,
 } from '../core/index.ts';
 import { api, type Doc, type Kind, type State, type TranslationInfo } from './api.ts';
 import ContentList from './ContentList.svelte';
@@ -49,6 +50,7 @@ import ExtensionScreen from './ExtensionScreen.svelte';
 import { findView } from '../view/index.ts';
 import ExtensionTools from './ExtensionTools.svelte';
 import SiteCheck from './SiteCheck.svelte';
+import Sections from './Sections.svelte';
 import Versions from './Versions.svelte';
 import ContentTypes from './ContentTypes.svelte';
 import EntryFieldsForm from './EntryFieldsForm.svelte';
@@ -72,7 +74,7 @@ let kind = $state<Kind>('page');
 let translation = $state<TranslationInfo | null>(null);
 const fixed = $derived(translation !== null && !translation.split);
 /** Which section of the admin is showing: a list, or the builder with one page or post open. */
-let view = $state<'pages' | 'media' | 'messages' | 'people' | 'types' | 'import' | 'extensions' | 'edit' | `list:${string}` | `ext:${string}`>('pages');
+let view = $state<'pages' | 'sections' | 'media' | 'messages' | 'people' | 'types' | 'import' | 'extensions' | 'edit' | `list:${string}` | `ext:${string}`>('pages');
 let selected = $state<string | null>(null);
 let tab = $state<'content' | 'style'>('content');
 let saving = $state<'saved' | 'saving' | 'unsaved' | 'error'>('saved');
@@ -103,14 +105,16 @@ const types = $derived(site ? contentTypes(site.site) : []);
 /** A content type's own page is open (ADR 0015), not a page or an entry. */
 const designing = $derived(kind.startsWith('template:'));
 const designed = $derived<ContentType | undefined>(designing ? types.find((ty) => `template:${ty.id}` === kind) : undefined);
-const type = $derived<ContentType | undefined>(kind === 'page' || designing ? undefined : types.find((ty) => ty.id === kind));
+/** A section is being written (ADR 0033). */
+const sectioning = $derived(kind === SECTION_KIND);
+const type = $derived<ContentType | undefined>(kind === 'page' || designing || sectioning ? undefined : types.find((ty) => ty.id === kind));
 const info = $derived(designed ? site?.templates[designed.id] : (type ? site?.entries[type.id] : site?.pages)?.find((p) => p.slug === page?.slug));
 /** What the entry block can show on the page being designed: the parts every entry has, then the type's own fields. */
 const parts = $derived(designed ? [...ENTRY_PARTS.map((part) => ({ id: part, name: t.parts[part] ?? part })), ...designed.fields.map((f) => ({ id: `field:${f.key}`, name: f.label }))] : []);
 /** The lists a menu can lead to: each content type that has an entry. */
 const menuLists = $derived<MenuList[]>(types.filter((ty) => (site?.entries[ty.id]?.length ?? 0) > 0).map((ty) => ({ id: ty.id, title: ty.name, href: listPath(ty) })));
 /** The list the open page or entry came from. */
-const home = $derived<typeof view>(designing ? 'types' : kind === 'page' ? 'pages' : `list:${kind}`);
+const home = $derived<typeof view>(designing ? 'types' : sectioning ? 'sections' : kind === 'page' ? 'pages' : `list:${kind}`);
 /** An editor writes and publishes content; the site, the theme and the people are the owner's (ADR 0022). */
 const owner = $derived(site?.me.role === 'owner');
 const freeOnPage = $derived(page ? countFreeValues(page.blocks) : 0);
@@ -171,8 +175,8 @@ async function save(): Promise<void> {
   const sent = page;
   saving = 'saving';
   try {
-    const { pages, posts, entries, templates } = await api.save(sent, false, kind, translation);
-    site = { ...site, pages, posts, entries, templates };
+    const { pages, sections, posts, entries, templates } = await api.save(sent, false, kind, translation);
+    site = { ...site, pages, sections, posts, entries, templates };
     // Something may have changed while the request was out; then it is not saved yet.
     saving = page === sent ? 'saved' : 'unsaved';
     failure = '';
@@ -343,9 +347,9 @@ async function createPage(title: string, newKind: Kind): Promise<void> {
   if (!site || !title || !slug) return;
   try {
     // An entry without a date is dated today by the server.
-    const fresh = newKind === 'page' ? { slug, title, description: '', inMenu: true, blocks: [] } : ({ slug, title, blocks: [] } as unknown as Post);
-    const { pages, posts, entries, templates } = await api.save(fresh, true, newKind);
-    site = { ...site, pages, posts, entries, templates };
+    const fresh = newKind === 'page' || newKind === SECTION_KIND ? { slug, title, description: '', inMenu: newKind === 'page', blocks: [] } : ({ slug, title, blocks: [] } as unknown as Post);
+    const { pages, sections, posts, entries, templates } = await api.save(fresh, true, newKind);
+    site = { ...site, pages, sections, posts, entries, templates };
     await edit(slug, newKind);
   } catch (error) {
     fail(error);
@@ -353,12 +357,12 @@ async function createPage(title: string, newKind: Kind): Promise<void> {
 }
 
 /** A page in another language (ADR 0032): its words written over the main page's, opened in the builder. */
-async function translatePage(slug: string, language: string): Promise<void> {
+async function translatePage(slug: string, language: string, of: Kind = 'page'): Promise<void> {
   if (!site) return;
   try {
-    const { page: started, pages, posts, entries, templates } = await api.translate(slug, language);
-    site = { ...site, pages, posts, entries, templates };
-    await edit(started.slug, 'page');
+    const { page: started, pages, sections, posts, entries, templates } = await api.translate(slug, language, of);
+    site = { ...site, pages, sections, posts, entries, templates };
+    await edit(started.slug, of);
   } catch (error) {
     fail(error);
   }
@@ -369,8 +373,8 @@ async function splitPage(): Promise<void> {
   if (!site || !translation) return;
   try {
     await save();
-    const { page: split, translation: now, pages, posts, entries, templates } = await api.split(translation.of, translation.language);
-    site = { ...site, pages, posts, entries, templates };
+    const { page: split, translation: now, pages, sections, posts, entries, templates } = await api.split(translation.of, translation.language, kind);
+    site = { ...site, pages, sections, posts, entries, templates };
     page = split;
     translation = now;
     await draw();
@@ -390,8 +394,8 @@ async function removePage(): Promise<void> {
   try {
     clearTimeout(saveTimer);
     saving = 'saved';
-    const { pages, posts, entries, templates } = await api.remove(page.slug, kind);
-    site = { ...site, pages, posts, entries, templates };
+    const { pages, sections, posts, entries, templates } = await api.remove(page.slug, kind);
+    site = { ...site, pages, sections, posts, entries, templates };
     view = home;
     await open('');
   } catch (error) {
@@ -404,8 +408,8 @@ async function publish(): Promise<void> {
   try {
     await save();
     if (saving !== 'saved') return;
-    const { pages, posts, entries, templates } = await api.publish(page.slug, kind);
-    site = { ...site, pages, posts, entries, templates };
+    const { pages, sections, posts, entries, templates } = await api.publish(page.slug, kind);
+    site = { ...site, pages, sections, posts, entries, templates };
   } catch (error) {
     fail(error);
   }
@@ -571,6 +575,7 @@ onMount(() => {
       {#each types as ty (ty.id)}
         <button type="button" aria-current={view === `list:${ty.id}` ? 'page' : undefined} onclick={() => (view = `list:${ty.id}`)} data-nav={ty.id}>{ty.name}</button>
       {/each}
+      <button type="button" aria-current={view === 'sections' ? 'page' : undefined} onclick={() => (view = 'sections')} data-nav="sections">{t.nav.sections}</button>
       <button type="button" aria-current={view === 'media' ? 'page' : undefined} onclick={() => (view = 'media')} data-nav="media">{t.nav.media}</button>
       {#if owner}
         <button type="button" aria-current={view === 'messages' ? 'page' : undefined} onclick={() => (view = 'messages')} data-nav="messages">{t.nav.messages}</button>
@@ -595,6 +600,8 @@ onMount(() => {
         <ContentList kind="page" items={site.pages} site={site.site} onopen={(slug) => edit(slug, 'page')} oncreate={(title) => createPage(title, 'page')} ontranslate={translatePage} />
         <SiteCheck />
       </div>
+    {:else if view === 'sections'}
+      <Sections sections={site.sections} site={site.site} onopen={(slug) => edit(slug, SECTION_KIND)} oncreate={(title) => createPage(title, SECTION_KIND)} ontranslate={(slug, language) => translatePage(slug, language, SECTION_KIND)} />
     {:else if view === 'types'}
       <ContentTypes site={site.site} counts={Object.fromEntries(types.map((ty) => [ty.id, site?.entries[ty.id]?.length ?? 0]))} templates={site.templates} onsave={saveTypes} ondesign={(id) => edit(id, `template:${id}`)} />
     {:else if view.startsWith('list:')}
@@ -696,6 +703,7 @@ onMount(() => {
               fields={def.fields}
               content={block.content}
               sources={types}
+              sections={site.sections.filter((one) => !sectioning || one.slug !== page?.slug)}
               {parts}
               onchange={(path, value) => patch(block.id, (b) => ({ ...b, content: setPath(b.content, path, value) }))}
             />
@@ -727,7 +735,7 @@ onMount(() => {
           <small>{t.design.resetHint}</small>
         {/if}
       {:else}
-        <h2>{type ? type.singular : t.inspector.page}</h2>
+        <h2>{type ? type.singular : sectioning ? t.sections.one : t.inspector.page}</h2>
         <label class="field">
           <span>{t.inspector.title}</span>
           <input type="text" maxlength="200" value={page.title} oninput={(e) => page && e.currentTarget.value.trim() && change({ ...page, title: e.currentTarget.value }, { step: false })} />
@@ -779,6 +787,7 @@ onMount(() => {
         {:else if 'inMenu' in page && translation}
           {@const within = translation}
           {@const languageLabel = languageName(within.language)}
+          {#if !sectioning}
           <label class="field">
             <span>{say(t.inspector.address, { language: languageLabel })}</span>
             <input
@@ -789,6 +798,7 @@ onMount(() => {
               data-translation-address
             />
           </label>
+          {/if}
           {#if within.split}
             <p class="hint" data-split-note>{say(t.inspector.splitNote, { language: languageLabel })}</p>
           {:else}
@@ -796,6 +806,9 @@ onMount(() => {
             <button type="button" onclick={splitPage} data-split>{say(t.inspector.split, { language: languageLabel })}</button>
             <small>{t.inspector.splitHint}</small>
           {/if}
+        {:else if sectioning}
+          {@const info = site.sections.find((one) => one.slug === page?.slug)}
+          <p class="hint" data-section-used>{t.sections.usedOn}: {info?.usedOn.length ? info.usedOn.join(', ') : t.sections.unused}</p>
         {:else if 'inMenu' in page}
           <label class="check" class:off={site.site.menu !== null} title={site.site.menu !== null ? t.inspector.inMenuOff : undefined}>
             <input type="checkbox" disabled={site.site.menu !== null} checked={page.inMenu} onchange={(e) => page && 'inMenu' in page && change({ ...page, inMenu: e.currentTarget.checked }, { step: false })} />
@@ -812,7 +825,7 @@ onMount(() => {
           {#key `${kind}/${page.slug}`}<Versions slug={page.slug} {kind} onrestore={(doc) => change(doc)} />{/key}
         {/if}
         {#if type || page.slug !== ''}
-          <button type="button" class="danger" onclick={removePage}>{translation ? say(t.inspector.deleteTranslation, { language: languageName(translation.language) }) : !type ? t.inspector.deletePage : kind === POSTS_TYPE ? t.posts.deletePost : t.ctypes.deleteEntry}</button>
+          <button type="button" class="danger" onclick={removePage}>{translation ? say(t.inspector.deleteTranslation, { language: languageName(translation.language) }) : sectioning ? t.sections.delete : !type ? t.inspector.deletePage : kind === POSTS_TYPE ? t.posts.deletePost : t.ctypes.deleteEntry}</button>
         {/if}
       {/if}
       {#if failure && saving !== 'error'}<p class="bad" role="alert">{failure}</p>{/if}

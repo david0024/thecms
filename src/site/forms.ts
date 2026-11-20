@@ -40,6 +40,11 @@ async function publishedForms(store: Store): Promise<Map<string, string>> {
     for (const entry of await store.publishedEntries(type.id)) walk(entry.blocks);
     walk((await store.publishedTemplate(type.id)) ?? []);
   }
+  // A form in a section is on every page that shows it (ADR 0033), in each language.
+  for (const section of await store.publishedSections()) {
+    walk(section.blocks);
+    for (const translation of Object.values(section.translations ?? {})) walk(translation.blocks ?? []);
+  }
   return found;
 }
 

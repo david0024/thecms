@@ -16,7 +16,7 @@
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { compile } from 'svelte/compiler';
-import { type PlacedPage, translatedPage, cleanRow, EXTENSION_MAX_BYTES, extensionAsks, isObject, languageOf, normalizeBlocks, shownRow, str, type ContentType, DISPLAY_NAME, type LanguagePack, defaultTemplate, MEDIA_MAX_BYTES, MEDIA_PREFIX, normalizePage, type Page, type Post, contentTypes, listPath, type MenuList, normalizePost, parseTheme, pagesIn, POSTS_TYPE, reservedSlugs, slugProblem, type Theme, themeCss } from '../core/index.ts';
+import { SECTION_KIND, type Block, fillSections, siteIn, type PlacedPage, translatedPage, cleanRow, EXTENSION_MAX_BYTES, extensionAsks, isObject, languageOf, normalizeBlocks, shownRow, str, type ContentType, DISPLAY_NAME, type LanguagePack, defaultTemplate, MEDIA_MAX_BYTES, MEDIA_PREFIX, normalizePage, type Page, type Post, contentTypes, listPath, type MenuList, normalizePost, parseTheme, pagesIn, POSTS_TYPE, reservedSlugs, slugProblem, type Theme, themeCss } from '../core/index.ts';
 import type { EntryLists } from '../blocks/editing.ts';
 import { type FetchImage, fetchImage as fetchOverNetwork, IMPORT_MAX_BYTES, type ImportReport, runImport } from '../import/run.ts';
 import { type ImportPlan, planImport } from '../import/wxr.ts';
@@ -245,12 +245,15 @@ export async function startEditor(
     }
     return out;
   };
-  const lists = async (): Promise<{ pages: Awaited<ReturnType<Store['pages']>>; posts: Listed; entries: Record<string, Listed>; templates: Awaited<ReturnType<typeof templates>> }> => ({
+  const lists = async (): Promise<{ pages: Awaited<ReturnType<Store['pages']>>; sections: Awaited<ReturnType<Store['sections']>>; posts: Listed; entries: Record<string, Listed>; templates: Awaited<ReturnType<typeof templates>> }> => ({
     pages: await store.pages(),
+    sections: await store.sections(),
     posts: await store.posts(),
     entries: await allEntries(),
     templates: await templates(),
   });
+  /** Blocks as the canvas draws them: each section block with its section's drafts, in the language (ADR 0033). */
+  const filled = async (blocks: Block[], language?: string): Promise<Block[]> => fillSections(blocks, await store.draftSections(), language ?? (await store.site()).language);
   /** A page at its address as the builder edits it: no more than a page. */
   const asPage = (p: PlacedPage): Page => ({ slug: p.slug, title: p.title, description: p.description, inMenu: p.inMenu, blocks: p.blocks });
   /** What the builder is told of a translation: the page it is of, its language, whether it is split. */
@@ -449,6 +452,58 @@ export async function startEditor(
     const route = `${request.method} ${url.pathname}`;
     // An entry of a content type is edited through the same calls as a page; `kind` names its type.
     const asked = String(url.searchParams.get('kind') ?? body.kind ?? 'page');
+    // A section (ADR 0033) is written through the same calls, as `_section`; its translations as a page's are.
+    if (asked === SECTION_KIND) {
+      switch (route) {
+        case 'GET /api/page': {
+          const section = await store.sectionDraft(slug);
+          if (section) return json({ page: section });
+          const found = await store.locateSection(slug);
+          return found ? json({ page: asPage(found), translation: translationOf(found) }) : json({ error: 'no such section' }, 404);
+        }
+        case 'PUT /api/page': {
+          if (isObject(body.translation)) {
+            const found = await store.saveTranslation(String(body.translation.of ?? ''), String(body.translation.language ?? ''), body.page, 'section');
+            return json({ page: asPage(found), translation: translationOf(found), issues: [], ...(await lists()) });
+          }
+          const { page, issues } = normalizePage(body.page);
+          if (body.create === true && (await store.sectionDraft(page.slug))) return json({ error: 'a section with this name already exists' }, 409);
+          return json({ page: await store.saveSection(body.page), issues, ...(await lists()) });
+        }
+        case 'DELETE /api/page':
+          await store.deleteSection(slug);
+          return json(await lists());
+        case 'POST /api/publish':
+          await store.publishSection(String(body.slug ?? ''));
+          return json(await lists());
+        case 'POST /api/translate': {
+          const found = await store.translate(String(body.slug ?? ''), String(body.language ?? ''), 'section');
+          return json({ page: asPage(found), translation: translationOf(found), ...(await lists()) });
+        }
+        case 'POST /api/split': {
+          const found = await store.splitTranslation(String(body.of ?? ''), String(body.language ?? ''), 'section');
+          return json({ page: asPage(found), translation: translationOf(found), ...(await lists()) });
+        }
+        case 'POST /api/render': {
+          // A section is drawn as a page of its own, in its language, with nothing around it but the site.
+          const { page } = normalizePage(body.page);
+          const site = await store.site();
+          const language = languageOf(site, page.slug);
+          return json(renderParts(siteIn(site, language), await theme(), page, [], true, await entryLists()));
+        }
+        case 'GET /api/versions':
+        case 'GET /api/version': {
+          const found = await store.locateSection(slug);
+          const name = found?.translated ? found.of : slug;
+          if (route === 'GET /api/versions') return json({ versions: await store.versions('section', name) });
+          const raw = await store.version('section', name, url.searchParams.get('at') ?? '');
+          if (!raw) return json({ error: 'no such version' }, 404);
+          const kept = normalizePage(raw).page;
+          const shown = found?.translated ? translatedPage(await store.site(), kept, found.language) : null;
+          return json({ page: shown ? asPage(shown) : kept });
+        }
+      }
+    }
     // A type's own page (ADR 0015) is edited through the same calls, as `template:<type>`.
     if (asked.startsWith('template:')) {
       // How a type's page looks is the owner's; an editor sees it around what they write.
@@ -471,7 +526,7 @@ export async function startEditor(
           return json(await lists());
         case 'POST /api/render': {
           const { page } = normalizePage({ ...(body.page as object), title: 'template' });
-          return json(renderPostParts(await store.site(), await theme(), await sampleEntry(type), await menu(), true, type, await entryLists(), page.blocks, true));
+          return json(renderPostParts(await store.site(), await theme(), await sampleEntry(type), await menu(), true, type, await entryLists(), await filled(page.blocks), true));
         }
       }
     }
@@ -509,7 +564,9 @@ export async function startEditor(
           await store.publishEntry(type.id, String(body.slug ?? ''));
           return json(await lists());
         case 'POST /api/render':
-          return json(renderPostParts(await store.site(), await theme(), normalizePost(body.page, new Date().toISOString().slice(0, 10), type).post, await menu(), true, type, await entryLists(), await store.template(type.id)));
+          const post = normalizePost(body.page, new Date().toISOString().slice(0, 10), type).post;
+          const template = await store.template(type.id);
+          return json(renderPostParts(await store.site(), await theme(), { ...post, blocks: await filled(post.blocks) }, await menu(), true, type, await entryLists(), template && (await filled(template))));
       }
     }
     switch (route) {
@@ -562,7 +619,7 @@ export async function startEditor(
         const { page } = normalizePage(body.page);
         // Drawn in its own language, with that language's menu and words (ADR 0024).
         const setting = pageSetting(await store.site(), page.slug, await store.pages(), await menuLists());
-        return json(renderParts(setting.site, await theme(), page, setting.menu, true, await entryLists(), setting.alternates));
+        return json(renderParts(setting.site, await theme(), { ...page, blocks: await filled(page.blocks, setting.site.language) }, setting.menu, true, await entryLists(), setting.alternates));
       }
       case 'PUT /api/theme':
         await store.setTheme(body.theme);
