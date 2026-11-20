@@ -2,9 +2,9 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { normalizePage, normalizeSite, parseTheme, type Theme } from '../src/core/index.ts';
+import { normalizePage, normalizePost, normalizeSite, parseTheme, postsType, type Theme } from '../src/core/index.ts';
 import { DEMO_PAGES, DEMO_SITE } from '../src/site/demo.ts';
-import { renderPage, renderParts } from '../src/site/document.ts';
+import { renderPage, renderParts, renderPost } from '../src/site/document.ts';
 import { buildSite, exportSite } from '../src/site/export.ts';
 import { Store } from '../src/site/store.ts';
 import plain from '../themes/plain.json';
@@ -82,7 +82,9 @@ describe('what a visitor receives', () => {
   test('a static page: no script, no request to another host, no framework marks', async () => {
     const files = await buildSite(site, themeOf(plain), await store.published());
     for (const [path, contents] of files) {
-      expect(`${path}: ${/<script|<!--|@import|url\(/i.test(String(contents))}`).toBe(`${path}: false`);
+      // The one script element allowed is data for search engines, which no browser runs (ADR 0030).
+      const ran = String(contents).replace(/<script type="application\/ld\+json">[^<]*<\/script>/g, '');
+      expect(`${path}: ${/<script|<!--|@import|url\(/i.test(ran)}`).toBe(`${path}: false`);
     }
     const home = files.get('index.html') as string;
     expect(home).toStartWith('<!doctype html>\n<html lang="en">');
@@ -177,4 +179,51 @@ test('a theme being worked on does not reach the export until it is published', 
   await store.publishTheme();
   expect(await store.themeChanged()).toBe(false);
   expect(await css()).toContain('--t-color-background:#12110f');
+});
+
+describe('data for search engines (ADR 0030)', () => {
+  const data = (html: string): unknown => {
+    const found = html.match(/<script type="application\/ld\+json">(.*?)<\/script>/s)?.[1];
+    return found ? JSON.parse(found) : null;
+  };
+  const home = normalizePage(DEMO_PAGES[0]).page;
+
+  test('the home page says what the site is and whose; no script in a name can close it', () => {
+    const named = { ...site, name: 'Oak </script><b>&', logo: { src: '/media/logo.png', alt: 'Logo' } };
+    const html = renderPage(named, themeOf(plain), home, []);
+    expect(html).not.toContain('</script><b>');
+    expect(data(html)).toEqual({
+      '@context': 'https://schema.org',
+      '@graph': [
+        { '@type': 'WebSite', '@id': 'https://example.com/#website', name: 'Oak </script><b>&', url: 'https://example.com/', inLanguage: site.language, publisher: { '@id': 'https://example.com/#organization' } },
+        { '@type': 'Organization', '@id': 'https://example.com/#organization', name: 'Oak </script><b>&', url: 'https://example.com/', logo: 'https://example.com/media/logo.png' },
+      ],
+    });
+    expect(data(renderPage(site, themeOf(plain), { ...home, slug: 'about' }, []))).toBeNull();
+    expect(data(renderPage({ ...site, url: '' }, themeOf(plain), home, []))).toBeNull();
+  });
+
+  test('a dated entry is an article; an entry of an undated type says nothing more', () => {
+    const post = normalizePost({ slug: 'oak', title: 'Why oak', date: '2026-03-04', description: 'Wood that lasts', categories: ['Wood'], tags: ['oak', 'ash'], cover: { src: 'https://cdn.example/oak.jpg', alt: 'Oak' } }).post;
+    const graph = (data(renderPost(site, themeOf(plain), post, [], postsType())) as { '@graph': Record<string, unknown>[] })['@graph'];
+    expect(graph[0]).toEqual({
+      '@type': 'BlogPosting',
+      headline: 'Why oak',
+      datePublished: '2026-03-04',
+      url: 'https://example.com/blog/oak/',
+      inLanguage: site.language,
+      description: 'Wood that lasts',
+      image: 'https://cdn.example/oak.jpg',
+      articleSection: 'Wood',
+      keywords: 'oak, ash',
+      publisher: { '@id': 'https://example.com/#organization' },
+      author: { '@id': 'https://example.com/#organization' },
+    });
+    expect(graph[1]).toMatchObject({ '@type': 'Organization' });
+    expect(graph[1]).not.toHaveProperty('logo');
+    const bare = normalizePost({ slug: 'x', title: 'X', date: '2026-03-04' }).post;
+    const plainGraph = (data(renderPost(site, themeOf(plain), bare, [], postsType())) as { '@graph': Record<string, unknown>[] })['@graph'];
+    expect(Object.keys(plainGraph[0] ?? {})).not.toContain('image');
+    expect(data(renderPost(site, themeOf(plain), bare, [], { ...postsType(), dated: false }))).toBeNull();
+  });
 });
