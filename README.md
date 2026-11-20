@@ -57,6 +57,7 @@ The decisions behind this, each with its reason:
 - [ADR 0039 — Publish later, and the site's clock](docs/adr/0039-publish-later.md)
 - [ADR 0040 — Comments, with moderation](docs/adr/0040-comments.md)
 - [ADR 0041 — Extensions on the server: routes, jobs and events](docs/adr/0041-extensions-on-the-server.md)
+- [ADR 0042 — Search on the site](docs/adr/0042-search.md)
 
 ## Where it stands
 
@@ -95,11 +96,12 @@ What comes next, in four stages up to a shop, memberships and courses, is in
 | AI writing, as an extension with the owner's key (Claude, OpenAI or Ollama): a block written or rewritten as asked, a page translated into its language, a page's description; each comes back as a change to look at | done (image descriptions: planned) |
 | The last twenty publications of each page and entry kept, and one brought back into the editor as a change | done |
 | Publish later: a page or an entry set for an hour, published then by the editor or the runtime | done |
+| Search on the site: a block placed anywhere, answered by the runtime with a page of the site's own; every word, without minding case or accents | done |
 | Comments on the entries of a type that takes them: a plain form, held for the owner's approval, shown without the writer's address, given or erased on request | done |
 | A check before publishing: a link that leads nowhere stops the export, a picture with no description is listed; in the admin under the pages | done |
 | The canvas shown as on a phone, a tablet or a wide screen | done |
 | Data for search engines (schema.org): the site and its business on the home page, an article for each dated entry | done |
-| The site's runtime (`thecms run`): the published site and its forms from one address, old addresses as real 301s, and comments; search, a cart and accounts arrive under `/_/` | started |
+| The site's runtime (`thecms run`): the published site and its forms from one address, old addresses as real 301s, comments and search; a cart and accounts arrive under `/_/` | started |
 
 ## Install
 

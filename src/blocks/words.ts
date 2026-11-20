@@ -26,6 +26,9 @@ export const en = {
   commentSend: 'Send the comment',
   commentSent: 'Thank you. Your comment is shown here once it is approved.',
   commentFailed: 'The comment was not sent. Check each field and try again.',
+  search: 'Search',
+  searchNone: 'Nothing on this site matches “{query}”.',
+  searchFound: 'Pages that match “{query}”',
   commentConsent: 'Show my name and comment on this page once approved. My email is kept only to reach me about it and is never shown.',
 };
 

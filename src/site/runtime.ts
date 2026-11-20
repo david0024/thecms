@@ -9,6 +9,7 @@ import { publishedSite } from './export.ts';
 import { startClock } from './clock.ts';
 import { type ExtensionHostApi, extensionHost, type Spawn } from './extensions.ts';
 import { startForms } from './forms.ts';
+import { resultsPage, search, SEARCH_MAX_QUERY, type SearchDoc, searchIndex } from './search.ts';
 import type { Store } from './store.ts';
 
 export interface Runtime {
@@ -73,6 +74,9 @@ export function startRuntime(
     return built.files;
   };
 
+  /** What search reads, made once for each build of the site. */
+  const indexes = new WeakMap<Map<string, string | Uint8Array>, SearchDoc[]>();
+
   const file = (path: string, body: string | Uint8Array, status = 200): Response =>
     new Response(body as BodyInit, {
       status,
@@ -95,6 +99,18 @@ export function startRuntime(
     // An extension's own addresses: /_/x/<extension>/<path>.
     const routed = /^\/_\/x\/([a-z][a-z0-9-]{1,39})\/(.+)$/.exec(url.pathname);
     if (routed) return extensions.route(routed[1] as string, routed[2] as string, request);
+    if (url.pathname === '/_/search' && (request.method === 'GET' || request.method === 'HEAD')) {
+      const files = await site();
+      const frame = files.get('404.html');
+      if (typeof frame !== 'string') return new Response('nothing is published yet\n', { status: 404, headers: { 'content-type': 'text/plain; charset=utf-8' } });
+      const index = indexes.get(files) ?? searchIndex(files);
+      indexes.set(files, index);
+      const query = (url.searchParams.get('q') ?? '').trim().slice(0, SEARCH_MAX_QUERY);
+      const language = /<html lang="([^"]+)"/.exec(frame)?.[1] ?? 'en';
+      const page = file('search.html', resultsPage(frame, language, query, search(index, query)));
+      page.headers.set('cache-control', 'no-store');
+      return page;
+    }
     if (url.pathname === '/_' || url.pathname === '/_/') return new Response('thecms runtime\n', { headers: { 'content-type': 'text/plain; charset=utf-8' } });
     if (url.pathname.startsWith('/_/')) return new Response('not found\n', { status: 404, headers: { 'content-type': 'text/plain; charset=utf-8' } });
     if (request.method !== 'GET' && request.method !== 'HEAD') return new Response('a page is read with GET\n', { status: 405, headers: { allow: 'GET, HEAD' } });

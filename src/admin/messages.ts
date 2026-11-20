@@ -440,7 +440,7 @@ export const en = {
     upload: 'Upload a theme file',
     notATheme: 'This file is not a valid theme.',
   },
-  types: { hero: 'Hero', text: 'Text', image: 'Image', services: 'Services', contact: 'Contact', form: 'Contact form', gallery: 'Gallery', faq: 'Questions and answers', testimonials: 'Testimonials', pricing: 'Prices', entries: 'List of entries', entry: 'Part of the entry', section: 'Section', group: 'Group' } as Record<string, string>,
+  types: { hero: 'Hero', text: 'Text', image: 'Image', services: 'Services', contact: 'Contact', form: 'Contact form', search: 'Search', gallery: 'Gallery', faq: 'Questions and answers', testimonials: 'Testimonials', pricing: 'Prices', entries: 'List of entries', entry: 'Part of the entry', section: 'Section', group: 'Group' } as Record<string, string>,
   fields: {
     section: 'Which section',
     part: 'What it shows',
@@ -478,7 +478,7 @@ export const en = {
     period: 'Per (month, project…)',
     features: 'What it includes (one a line)',
   } as Record<string, string>,
-  empty: { image: 'Choose an image in the panel on the right', gallery: 'Add pictures in the panel on the right', form: 'Set the address of the form service in Site settings; until then this form is not shown on the site.', group: 'An empty group. Select it, then add a block.', section: 'Choose a section in the panel on the right.', page: 'An empty page. Add a block from the left.' } as Record<string, string>,
+  empty: { image: 'Choose an image in the panel on the right', gallery: 'Add pictures in the panel on the right', form: 'Set the address of the form service in Site settings; until then this form is not shown on the site.', search: 'Search is answered by the site\'s runtime (thecms run): set the form service to /_ in Site settings; until then this field is not shown on the site.', group: 'An empty group. Select it, then add a block.', section: 'Choose a section in the panel on the right.', page: 'An empty page. Add a block from the left.' } as Record<string, string>,
   actions: { drag: 'Drag to move', up: 'Move up', down: 'Move down', duplicate: 'Duplicate', delete: 'Delete' } as Record<string, string>,
 };
 

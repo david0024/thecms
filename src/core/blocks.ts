@@ -103,6 +103,11 @@ export const BLOCKS = {
       failed: 'The message could not be sent. Please try again, or write to us by email.',
     }),
   },
+  /** A search field (ADR 0042): the site's runtime answers it with the pages that match. */
+  search: {
+    fields: { title: text(200), placeholder: text(120), button: text(60) },
+    create: () => ({ placeholder: 'Search this site', button: 'Search' }),
+  },
   gallery: {
     fields: {
       title: text(200),
