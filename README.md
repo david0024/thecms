@@ -1,6 +1,7 @@
 # thecms
 
-A modern CMS for content sites, built for people coming from WordPress.
+A modern CMS for any site WordPress can make, its plugins included, built for
+people coming from WordPress.
 
 - **You arrange the page visually**, and what is saved is data, not HTML.
 - **Full freedom over the look, without breaking the theme.** A block's content
@@ -8,8 +9,9 @@ A modern CMS for content sites, built for people coming from WordPress.
   your own, and your own ones can always be reset.
 - **A theme is a document you can build yourself**, export and share. It
   contains no code.
-- **The site is published as static files**: fast, nothing to break into, and
-  it runs on any host, including free ones.
+- **The pages are published as static files**: fast, nothing to break into, and
+  they run on any host, including free ones. What cannot be static (comments,
+  a cart, an account) runs in the site's optional runtime.
 - **Modules cannot take the site down.** They declare what they do and run
   isolated.
 
@@ -50,11 +52,14 @@ The decisions behind this, each with its reason:
 - [ADR 0034 — Actions on translations, and in every language](docs/adr/0034-actions-on-translations.md)
 - [ADR 0035 — Theme, layout, page, section, site: who decides what](docs/adr/0035-layouts-and-boundaries.md)
 - [ADR 0036 — Old addresses: moved pages and redirects written by hand](docs/adr/0036-redirects.md)
+- [ADR 0037 — What thecms is for: anything WordPress does, with its plugins](docs/adr/0037-direction.md)
 
 ## Where it stands
 
 Early. What works today: you edit pages visually on the real page, choose a
 theme, publish, and export the site as static files.
+What comes next, in four stages up to a shop, memberships and courses, is in
+[ADR 0037 d4](docs/adr/0037-direction.md#d4-the-order).
 
 | | |
 |---|---|

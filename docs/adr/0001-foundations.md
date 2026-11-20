@@ -38,6 +38,10 @@ Consequences:
 
 ### d2. Content sites only; no commerce in the core
 
+> **Superseded by ADR 0037** (2026-11-20): thecms makes any site WordPress
+> makes, with its plugins: a shop, memberships, bookings, courses. The text
+> below is kept as the earlier reasoning.
+
 No shops, memberships, courses or forums. WordPress itself does not cover these;
 they arrive through plugins. Sites that need them are served by other platforms
 (Zveltio among them).
@@ -150,7 +154,8 @@ its work begins.
 
 - **SQLite, one file per site.** Backup is copying a file.
 - **Static export is the main way to publish.** Only forms and search need a
-  small backend or a service.
+  small backend or a service. (Superseded by ADR 0037 d2: what cannot be
+  static runs in the site's optional runtime.)
 - **Modules declare, run isolated (QuickJS-WASM) and fail alone.** An error
   carries the module's name; the core never falls with it. No easier path
   bypasses the isolation.

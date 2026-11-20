@@ -4,6 +4,9 @@
 - **Date:** 2026-11-19
 - **Builds on:** ADR 0001 d9 (a site is one SQLite file).
 
+(ADR 0037: thecms is not only for presentation sites; the reasoning below
+holds for any site.)
+
 A presentation site is well served by one SQLite file: nothing to install, and
 copying the file is a backup. Some sites are not like that. A newsroom with
 several editors, a host that offers only Postgres or MySQL, or an owner who
