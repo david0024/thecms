@@ -10,6 +10,9 @@ import { type EditorServer, startEditor } from '../src/site/server.ts';
 import { Store } from '../src/site/store.ts';
 import plain from '../themes/plain.json';
 
+/** The page without its data for search engines: the one script element, which no browser runs (ADR 0030). */
+const withoutData = (html: string): string => html.replace(/<script type="application\/ld\+json">[^<]*<\/script>/g, '');
+
 const theme = parseTheme(plain).theme as Theme;
 const site = normalizeSite({ ...DEMO_SITE, url: 'https://example.com' });
 const post = (over: Record<string, unknown> = {}): Post => normalizePost({ title: 'A post', date: '2026-03-04', blocks: [], ...over }).post;
@@ -126,7 +129,7 @@ describe('the blog as files', () => {
     const evil = post({ title: '<script>alert(1)</script> & "co"', excerpt: '</summary><x>', categories: ['<b>Tag</b>'] });
     const files = await buildSite(site, theme, pages, () => null, [evil]);
     for (const [path, contents] of files) {
-      if (typeof contents === 'string') expect(`${path}: ${/<script|<x>|<b>Tag/.test(contents)}`).toBe(`${path}: false`);
+      if (typeof contents === 'string') expect(`${path}: ${/<script|<x>|<b>Tag/.test(withoutData(contents))}`).toBe(`${path}: false`);
     }
     expect(text(files, 'blog/feed.xml')).toContain('<title>&lt;script&gt;alert(1)&lt;/script&gt; &amp; &quot;co&quot;</title>');
   });
@@ -138,7 +141,8 @@ describe('the blog as files', () => {
     expect(html).toContain('<meta property="og:type" content="article">');
     expect(html).toContain('<meta property="og:image" content="https://example.com/media/c.png">');
     expect(html).toContain('<img class="post-cover" src="/media/c.png" alt="Cover"');
-    expect(html).not.toMatch(/data-edit|cms-|<script/);
+    expect(withoutData(html)).not.toMatch(/data-edit|cms-|<script/);
+    expect(html).toContain('<script type="application/ld+json">');
   });
 });
 

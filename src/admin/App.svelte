@@ -80,6 +80,10 @@ let future = $state.raw<Block[][]>([]);
 let frame: HTMLIFrameElement | undefined = $state();
 let frameReady = false;
 let themeVersion = 0;
+/** The canvas as a phone or a tablet shows the page: the same page, narrower. */
+const DEVICES = ['wide', 'tablet', 'phone'] as const;
+const WIDTHS: Record<(typeof DEVICES)[number], string | undefined> = { wide: undefined, tablet: '820px', phone: '390px' };
+let device = $state<(typeof DEVICES)[number]>('wide');
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
 let renderTimer: ReturnType<typeof setTimeout> | undefined;
 let themeTimer: ReturnType<typeof setTimeout> | undefined;
@@ -600,6 +604,9 @@ onMount(() => {
       <strong class="doc">{page.title}</strong>
       <button type="button" onclick={undo} disabled={past.length === 0} title={t.bar.undo} aria-label={t.bar.undo}>↶</button>
       <button type="button" onclick={redo} disabled={future.length === 0} title={t.bar.redo} aria-label={t.bar.redo}>↷</button>
+      <span class="devices" role="group" aria-label={t.bar.device}>
+        {#each DEVICES as d (d)}<button type="button" aria-pressed={device === d} onclick={() => (device = d)} data-device={d}>{t.bar[d]}</button>{/each}
+      </span>
       <span class="status" data-state={saving} role="status">{failure && saving === 'error' ? `${t.bar.error}: ${failure}` : t.bar[saving]}</span>
       <span class="grow"></span>
       {#if owner}
@@ -640,7 +647,7 @@ onMount(() => {
     </aside>
 
     <main class="canvas">
-      <iframe bind:this={frame} src="/preview" title={page.title}></iframe>
+      <iframe bind:this={frame} src="/preview" title={page.title} style:max-width={WIDTHS[device]} data-showing={device}></iframe>
     </main>
 
     <aside class="right">
@@ -797,7 +804,13 @@ onMount(() => {
   .left { grid-area: left; border-right: 1px solid #dddbe6; }
   .right { grid-area: right; border-left: 1px solid #dddbe6; }
   .canvas { grid-area: canvas; padding: 0.9rem; min-width: 0; }
-  iframe { width: 100%; height: 100%; border: 1px solid #dddbe6; border-radius: 8px; background: #fff; }
+  .canvas { display: grid; justify-items: center; }
+  iframe { width: 100%; height: 100%; border: 1px solid #dddbe6; border-radius: 8px; background: #fff; transition: max-width 0.2s; }
+  .devices { display: inline-flex; }
+  .devices button { border-radius: 0; margin-inline-start: -1px; font-size: 0.85rem; padding: 0.3rem 0.55rem; }
+  .devices button:first-child { border-start-start-radius: 6px; border-end-start-radius: 6px; }
+  .devices button:last-child { border-start-end-radius: 6px; border-end-end-radius: 6px; }
+  .devices button[aria-pressed='true'] { background: #f0eeff; border-color: #6d5dfc; position: relative; }
   h2 { margin: 1.1rem 0 0.5rem; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: #6a6880; }
   h2:first-child { margin-top: 0; }
   ul { list-style: none; margin: 0 0 0.6rem; padding: 0; display: grid; gap: 0.25rem; }

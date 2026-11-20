@@ -43,6 +43,7 @@ The decisions behind this, each with its reason:
 - [ADR 0027 — AI writing, as an extension](docs/adr/0027-ai-extension.md)
 - [ADR 0028 — What was published is kept, to bring back](docs/adr/0028-published-versions.md)
 - [ADR 0029 — The site is checked before it is published](docs/adr/0029-check-before-publishing.md)
+- [ADR 0030 — Data for search engines](docs/adr/0030-data-for-search-engines.md)
 
 ## Where it stands
 
@@ -78,6 +79,8 @@ theme, publish, and export the site as static files.
 | AI writing, as an extension with the owner's key (Claude, OpenAI or Ollama): a block written or rewritten as asked, a page translated into its language, a page's description; each comes back as a change to look at | done (image descriptions: planned) |
 | The last twenty publications of each page and entry kept, and one brought back into the editor as a change | done |
 | A check before publishing: a link that leads nowhere stops the export, a picture with no description is listed; in the admin under the pages | done |
+| The canvas shown as on a phone, a tablet or a wide screen | done |
+| Data for search engines (schema.org): the site and its business on the home page, an article for each dated entry | done |
 
 ## Install
 

@@ -90,6 +90,20 @@ const assert = (condition, message) => {
     await page.waitForTimeout(400);
     if (shots) await page.screenshot({ path: join(shots, 'editor-plain.png') });
 
+    // The same page, as a phone and a tablet show it.
+    const frameWidth = () => page.locator('iframe').evaluate((f) => f.getBoundingClientRect().width);
+    const wideFrame = await frameWidth();
+    await page.locator('[data-device="phone"]').click();
+    await page.waitForFunction(() => document.querySelector('iframe').getBoundingClientRect().width <= 390);
+    assert((await page.locator('[data-device="phone"]').getAttribute('aria-pressed')) === 'true', 'the phone is shown as chosen');
+    assert(await canvas.locator('.menu-button').isVisible(), 'as on a phone, the menu folds behind its button');
+    if (shots) await page.screenshot({ path: join(shots, 'editor-phone.png') });
+    await page.locator('[data-device="tablet"]').click();
+    await page.waitForFunction(() => Math.abs(document.querySelector('iframe').getBoundingClientRect().width - 820) < 2);
+    await page.locator('[data-device="wide"]').click();
+    await page.waitForFunction((w) => Math.abs(document.querySelector("iframe").getBoundingClientRect().width - w) < 2, wideFrame);
+    assert(true, 'the canvas shows the page as on a phone, a tablet, and a wide screen');
+
     // Change the theme; the page is drawn again with the same content.
     await page.locator('select[data-theme]').selectOption('Studio');
     await page.waitForFunction(() => getComputedStyle(document.querySelector('iframe').contentDocument.body).backgroundColor === 'rgb(18, 17, 15)');
@@ -482,11 +496,13 @@ const assert = (condition, message) => {
   const out = join(dir, 'out');
   cli('export', db, out);
   const home = readFileSync(join(out, 'index.html'), 'utf8');
+  const withoutData = (html) => html.replace(/<script type="application\/ld\+json">[^<]*<\/script>/g, '');
   assert(home.includes('<h1>Furniture that lasts &lt;b>longer&lt;/b></h1>'), 'the typed title is in the export, as text');
   assert(home.includes('<p>Every piece is drawn first.</p><p>Then it is built.</p>'), 'the typed paragraphs are in the export');
   assert(/\{background-color:var\(--t-color-surface\);padding-block:7rem\}/.test(home), 'the block carries its token and its free value, and nothing else');
   assert(!/display:none|red;/.test(home), 'the refused value never reached the page');
-  assert(!/data-edit|contenteditable|cms-|<script/.test(home), 'nothing of the editor is in the export');
+  // Data for search engines is the one script element, and no browser runs it (ADR 0030).
+  assert(!/data-edit|contenteditable|cms-|<script/.test(withoutData(home)), 'nothing of the editor is in the export');
   const css = readFileSync(join(out, 'assets/site.css'), 'utf8');
   assert(css.includes('--t-color-background:#12110f'), 'the export uses the theme chosen in the editor');
   assert(css.includes('--t-color-primary:#ff0066') && css.includes('.b-services{background-color:var(--t-color-brand)}'), 'the export carries the theme as it was built');
@@ -521,7 +537,7 @@ const assert = (condition, message) => {
   assert(readFileSync(join(out, 'sitemap.xml'), 'utf8').includes('<loc>https://example.com/blog/category/news/</loc>'), 'the sitemap lists the blog too');
 
   // The exported menu, in a browser with scripts switched off: wide, then as narrow as a phone.
-  assert(home.includes('<summary>Workshop</summary>') && home.includes('<a href="/contact/#oak">Oak</a>') && !home.includes('<script'), 'the menu is in every page as plain markup');
+  assert(home.includes('<summary>Workshop</summary>') && home.includes('<a href="/contact/#oak">Oak</a>') && !withoutData(home).includes('<script'), 'the menu is in every page as plain markup');
   const types = { html: 'text/html; charset=utf-8', css: 'text/css', xml: 'application/xml', png: 'image/png', webp: 'image/webp', txt: 'text/plain' };
   const files = require('node:http').createServer((request, response) => {
     const path = join(out, decodeURIComponent(new URL(request.url, 'http://x').pathname).replace(/\/$/, '/index.html'));

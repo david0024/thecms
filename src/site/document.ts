@@ -112,6 +112,28 @@ interface Head {
   feed?: string;
   /** The same page in the site's other languages. */
   alternates?: Alternate[];
+  /** What the page is, said for search engines as schema.org data (ADR 0030). */
+  data?: Record<string, unknown>[];
+}
+
+/** The business behind the site, as schema.org names it: who publishes every page. */
+const organization = (site: Site): Record<string, unknown> => ({
+  '@type': 'Organization',
+  '@id': `${site.url}/#organization`,
+  name: site.name,
+  url: `${site.url}/`,
+  ...(site.logo ? { logo: absolute(site, site.logo.src) } : {}),
+});
+const absolute = (site: Site, src: string): string => (src.startsWith('/') ? `${site.url}${src}` : src);
+
+/**
+ * Data for search engines, in the head (ADR 0030): JSON, never run. `<` is
+ * written as `\u003c` so nothing in a title can close the script element.
+ */
+function structured(site: Site, data: Record<string, unknown>[] | undefined): string {
+  if (!site.url || !data?.length) return '';
+  const json = JSON.stringify({ '@context': 'https://schema.org', '@graph': data }).replace(/</g, '\\u003c');
+  return `<script type="application/ld+json">${json}</script>`;
 }
 
 function documentHtml(site: Site, head: Head, body: string, css: string): string {
@@ -133,6 +155,7 @@ function documentHtml(site: Site, head: Head, body: string, css: string): string
     ...(site.url ? (head.alternates ?? []).map((a) => `<link rel="alternate" hreflang="${esc(a.language)}" href="${esc(`${site.url}${a.href}`)}">`) : []),
     `<link rel="stylesheet" href="${STYLESHEET}">`,
     css ? `<style>${css}</style>` : '',
+    structured(site, head.data),
   ].filter(Boolean);
   return `<!doctype html>\n<html lang="${esc(site.language)}">\n<head>\n${lines.join('\n')}\n</head>\n<body>\n${body}\n</body>\n</html>\n`;
 }
@@ -149,6 +172,8 @@ export function renderPage(site: Site, theme: Theme, page: Page, menu: MenuItem[
       type: 'website',
       // Only a page's own translations: a language's home page is not this page in that language.
       alternates: alternates.filter((a) => a.translated).length > 1 ? alternates.filter((a) => a.translated) : [],
+      // The home page says what the site is, and whose.
+      data: page.slug === '' ? [{ '@type': 'WebSite', '@id': `${site.url}/#website`, name: site.name, url: `${site.url}/`, inLanguage: site.language, publisher: { '@id': `${site.url}/#organization` } }, organization(site)] : undefined,
     },
     body,
     css,
@@ -178,6 +203,25 @@ export function renderPost(
       type: 'article',
       image: post.cover?.src,
       feed: feedOf(site, type),
+      // A dated entry is an article: its headline, its day, its picture, and who published it.
+      data: type.dated
+        ? [
+            {
+              '@type': 'BlogPosting',
+              headline: post.title,
+              datePublished: post.date,
+              url: `${site.url}${entryPath(type, post.slug)}`,
+              inLanguage: site.language,
+              ...(postDescription(post) ? { description: postDescription(post) } : {}),
+              ...(post.cover ? { image: absolute(site, post.cover.src) } : {}),
+              ...(post.categories.length ? { articleSection: post.categories[0] } : {}),
+              ...(post.tags.length ? { keywords: post.tags.join(', ') } : {}),
+              publisher: { '@id': `${site.url}/#organization` },
+              author: { '@id': `${site.url}/#organization` },
+            },
+            organization(site),
+          ]
+        : undefined,
     },
     body,
     css,

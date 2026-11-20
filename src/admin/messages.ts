@@ -179,6 +179,10 @@ export const en = {
     deleteEntry: 'Delete this entry',
   },
   bar: {
+    device: 'Show the page as on',
+    wide: 'Wide',
+    tablet: 'Tablet',
+    phone: 'Phone',
     undo: 'Undo',
     redo: 'Redo',
     publish: 'Publish',
