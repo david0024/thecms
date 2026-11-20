@@ -9,8 +9,8 @@ import type { ExtensionOffer } from '../site/extensions.ts';
 import type { ImportPreview, ImportProgress } from '../site/server.ts';
 
 export type { ImportPreview, ImportProgress };
-import type { Message, Role, User } from '../site/store.ts';
-export type { Message, Role, User };
+import type { Comment, Message, Role, User } from '../site/store.ts';
+export type { Comment, Message, Role, User };
 
 /** The person signed in, as the admin is told. */
 export interface Me {
@@ -207,9 +207,12 @@ export const api = {
   publishTheme: () => call<State>('POST', '/api/theme/publish', {}),
   media: () => call<{ media: MediaItem[] }>('GET', '/api/media'),
   messages: () => call<{ messages: Message[]; keep: number }>('GET', '/api/messages'),
-  messagesFrom: (email: string) => call<{ messages: Message[]; keep: number }>('GET', `/api/messages?email=${encodeURIComponent(email.trim())}`),
+  messagesFrom: (email: string) => call<{ messages: Message[]; comments: Comment[]; keep: number }>('GET', `/api/messages?email=${encodeURIComponent(email.trim())}`),
   removeMessage: (id: string) => call<{ messages: Message[]; keep: number }>('DELETE', `/api/messages?id=${encodeURIComponent(id)}`),
   eraseMessagesFrom: (email: string) => call<{ messages: Message[]; keep: number }>('DELETE', `/api/messages?email=${encodeURIComponent(email.trim())}`),
+  comments: () => call<{ comments: Comment[] }>('GET', '/api/comments'),
+  approveComment: (id: string) => call<{ comments: Comment[] }>('POST', `/api/comments?id=${encodeURIComponent(id)}`),
+  removeComment: (id: string) => call<{ comments: Comment[] }>('DELETE', `/api/comments?id=${encodeURIComponent(id)}`),
   removeMedia: (name: string) => call<{ media: MediaItem[] }>('DELETE', `/api/media?name=${encodeURIComponent(name)}`),
   importPlan: (file: Blob, types: string[], categories: string[]) =>
     send<ImportPreview>(`/api/import/plan?types=${encodeURIComponent(types.join(','))}&categories=${encodeURIComponent(categories.join(','))}`, file),

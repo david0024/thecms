@@ -20,6 +20,13 @@ export const en = {
   formEmail: 'Email',
   formMessage: 'Message',
   languages: 'Languages',
+  comments: 'Comments',
+  commentWrite: 'Leave a comment',
+  comment: 'Comment',
+  commentSend: 'Send the comment',
+  commentSent: 'Thank you. Your comment is shown here once it is approved.',
+  commentFailed: 'The comment was not sent. Check each field and try again.',
+  commentConsent: 'Show my name and comment on this page once approved. My email is kept only to reach me about it and is never shown.',
 };
 
 /** Where a page's other languages reach the header (ADR 0024): set by whatever draws the page. */

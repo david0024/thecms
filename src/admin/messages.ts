@@ -9,7 +9,7 @@ import { applyPack, type Catalog, format, isPlural, type LanguagePack, type Mess
 
 export const en = {
   app: { pages: 'Pages', blocks: 'Add a block', blocksHint: 'Click to add, or drag onto the page.', tooDeep: 'Groups nest at most four deep; it cannot go there.', newPage: 'New page', pageTitle: 'Page title', create: 'Create', cancel: 'Cancel', home: 'Home page' },
-  nav: { pages: 'Pages', posts: 'Posts', media: 'Media', messages: 'Messages', settings: 'Menu and settings', theme: 'Theme', label: 'Sections', back: 'All', import: 'Import', people: 'People', sections: 'Sections', layouts: 'Layouts' },
+  nav: { pages: 'Pages', posts: 'Posts', media: 'Media', messages: 'Messages', comments: 'Comments', settings: 'Menu and settings', theme: 'Theme', label: 'Sections', back: 'All', import: 'Import', people: 'People', sections: 'Sections', layouts: 'Layouts' },
   door: {
     key: 'Open the address that the editor printed when it started; it carries the key to this editor.',
     signIn: 'Sign in',
@@ -214,10 +214,20 @@ export const en = {
     consent: 'What they agreed to',
     remove: 'Delete',
     rights: 'A visitor asks to see or erase what they sent',
-    rightsHint: 'Give the address they wrote from. Download everything sent from it, or erase it all at once.',
+    rightsHint: 'Give the address they wrote from. Download everything sent from it, messages and comments, or erase it all at once.',
     address: 'their@address.example',
     export: 'Download as a file',
     erase: 'Erase everything from this address',
+  },
+  comments: {
+    heading: 'Comments',
+    intro: 'What visitors wrote under entries. A comment is shown on the site once it is approved; a later one from the same address is shown at once. One nobody approves is deleted when messages are.',
+    empty: 'No comments yet. An entry of a type that takes comments has a form for them under it, once the site has a form service.',
+    waiting: 'Waiting',
+    shown: 'Shown',
+    on: 'on {entry}',
+    approve: 'Approve',
+    remove: 'Delete',
   },
   ctypes: {
     heading: 'Content types',
@@ -230,6 +240,7 @@ export const en = {
     dated: 'Entries have a date and are listed newest first',
     categories: 'Entries are grouped by category and tag',
     feed: 'Offer a feed for readers',
+    comments: 'Visitors may comment on entries; you approve what is shown',
     fields: 'Extra fields',
     fieldsHint: 'Shown under the title of each entry.',
     fieldLabel: 'Field name',

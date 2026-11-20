@@ -2,10 +2,11 @@
 /**
  * What visitors sent through the site's forms (ADR 0019): read, answer by
  * email, delete. A visitor's right to see or erase what they sent is answered
- * here too: everything one address sent can be downloaded, or erased at once.
+ * here too: everything one address sent, messages and comments (ADR 0040),
+ * can be downloaded, or erased at once.
  */
 import { onMount } from 'svelte';
-import { api, type Message } from './api.ts';
+import { api, type Comment, type Message } from './api.ts';
 import { say, t } from './messages.ts';
 
 let items = $state.raw<Message[] | null>(null);
@@ -27,9 +28,9 @@ const attempt = async (work: () => Promise<{ messages: Message[]; keep: number }
 const when = (iso: string): string => new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 const subject = (m: Message): string => encodeURIComponent(`Re: ${m.body.slice(0, 60)}`);
 
-function download(list: Message[], name: string): void {
+function download(kept: { messages: Message[]; comments: Comment[] }, name: string): void {
   const link = document.createElement('a');
-  link.href = URL.createObjectURL(new Blob([JSON.stringify(list, null, 2)], { type: 'application/json' }));
+  link.href = URL.createObjectURL(new Blob([JSON.stringify({ messages: kept.messages, comments: kept.comments }, null, 2)], { type: 'application/json' }));
   link.download = name;
   link.click();
   URL.revokeObjectURL(link.href);
@@ -63,7 +64,7 @@ onMount(() => void attempt(api.messages));
   <p class="hint">{t.inbox.rightsHint}</p>
   <div class="rights">
     <input type="email" placeholder={t.inbox.address} bind:value={who} data-rights-email />
-    <button type="button" disabled={!who.trim()} onclick={async () => download((await api.messagesFrom(who)).messages, `messages-${who.trim()}.json`)} data-rights-export>{t.inbox.export}</button>
+    <button type="button" disabled={!who.trim()} onclick={async () => download(await api.messagesFrom(who), `kept-about-${who.trim()}.json`)} data-rights-export>{t.inbox.export}</button>
     <button type="button" class="quiet" disabled={!who.trim()} onclick={() => attempt(() => api.eraseMessagesFrom(who))} data-rights-erase>{t.inbox.erase}</button>
   </div>
 </section>

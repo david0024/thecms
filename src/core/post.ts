@@ -26,6 +26,17 @@ export interface Post {
   /** What its type asks for besides: a client's name, a price, a second picture (ADR 0010). */
   fields: Record<string, unknown>;
   blocks: Block[];
+  /** What visitors wrote under it and the owner approved, oldest first (ADR 0040): filled in to draw it, never kept. */
+  comments?: ShownComment[];
+}
+
+/** A comment as the site shows it: never the address it was sent from. */
+export interface ShownComment {
+  id: string;
+  name: string;
+  body: string;
+  /** When it was sent, as an ISO time. */
+  at: string;
 }
 
 export const POSTS_PER_PAGE = 10;

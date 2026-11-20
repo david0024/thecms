@@ -105,6 +105,7 @@ async function remove(): Promise<void> {
       <label class="check"><input type="checkbox" checked={draft.dated} onchange={(e) => patch({ dated: e.currentTarget.checked, feed: e.currentTarget.checked && (draft?.feed ?? false) })} data-type-dated /><span>{t.ctypes.dated}</span></label>
       <label class="check"><input type="checkbox" checked={draft.categories} onchange={(e) => patch({ categories: e.currentTarget.checked })} data-type-categories /><span>{t.ctypes.categories}</span></label>
       <label class="check" class:off={!draft.dated}><input type="checkbox" disabled={!draft.dated} checked={draft.feed} onchange={(e) => patch({ feed: e.currentTarget.checked })} /><span>{t.ctypes.feed}</span></label>
+      <label class="check"><input type="checkbox" checked={draft.comments === true} onchange={(e) => patch({ comments: e.currentTarget.checked ? true : undefined })} data-type-comments /><span>{t.ctypes.comments}</span></label>
 
       <label class="field">
         <span>{t.layouts.ofType}</span>

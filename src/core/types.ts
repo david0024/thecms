@@ -40,6 +40,8 @@ export interface ContentType {
   fields: TypeField[];
   /** The layout its entries and lists are drawn in (ADR 0035); absent: the standard one. */
   layout?: string;
+  /** Visitors may comment on its entries, and what the owner approves is shown under each (ADR 0040). */
+  comments?: true;
 }
 
 /** The blog a new site starts with, and the type a site made before ADR 0025 kept its posts in. */
@@ -109,6 +111,7 @@ export function normalizeTypes(input: unknown): ContentType[] {
       feed: raw.feed === true && raw.dated === true,
       fields: cleanFields(raw.fields),
       ...(slugify(raw.layout) ? { layout: slugify(raw.layout) } : {}),
+      ...(raw.comments === true ? { comments: true as const } : {}),
     });
   }
   return out;
