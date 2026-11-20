@@ -156,6 +156,7 @@ export const api = {
   runOnPage: (name: string, action: string, page: Doc, ask: Record<string, string>) => call<{ page: Page }>('POST', `/api/extensions/${name}/run/${action}`, { page, ask }),
   state: () => call<State>('GET', '/api/state'),
   page: (slug: string, kind: Kind = 'page') => call<{ page: Doc }>('GET', `/api/page?kind=${kind}&slug=${encodeURIComponent(slug)}`),
+  check: () => call<{ check: { broken: { href: string; from: string[] }[]; unnamed: { src: string; on: string[] }[] } }>('GET', '/api/check'),
   versions: (slug: string, kind: Kind = 'page') => call<{ versions: { at: string; title: string }[] }>('GET', `/api/versions?kind=${kind}&slug=${encodeURIComponent(slug)}`),
   version: (slug: string, at: string, kind: Kind = 'page') => call<{ page: Doc }>('GET', `/api/version?kind=${kind}&slug=${encodeURIComponent(slug)}&at=${encodeURIComponent(at)}`),
   save: (page: Doc, create = false, kind: Kind = 'page') => call<{ page: Doc } & Lists>('PUT', '/api/page', { page, create, kind }),

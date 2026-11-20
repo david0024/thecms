@@ -263,7 +263,7 @@ export async function main(args: string[]): Promise<{ stop: () => void } | undef
         await store.setTheme(await Bun.file(extra).json());
         console.log(`Theme is now "${(await store.publishTheme()).name}".`);
       } else {
-        const files = await exportSite(store, extra);
+        const files = await exportSite(store, extra, (line) => console.log(`Note: ${line}`));
         console.log(`Wrote ${files.length} files to ${extra}.`);
       }
     } finally {

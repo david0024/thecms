@@ -27,6 +27,8 @@ import { extensionHost, type Spawn } from './extensions.ts';
 import { BUILT_ADMIN } from './built-admin.ts';
 import { BASE_CSS, SHIPPED_THEMES } from './shipped.ts';
 import type { Store, User } from './store.ts';
+import { checkSite } from './check.ts';
+import { publishedSite } from './export.ts';
 
 const ADMIN = new URL('../admin/', import.meta.url);
 
@@ -503,6 +505,13 @@ export async function startEditor(
     switch (route) {
       case 'GET /api/state':
         return json(await state(me));
+      case 'GET /api/check':
+        // The published site, built as an export would build it, and read for what it would get wrong (ADR 0029).
+        try {
+          return json({ check: checkSite(await publishedSite(store)) });
+        } catch (error) {
+          return json({ error: error instanceof Error ? error.message : String(error) }, 409);
+        }
       case 'GET /api/page': {
         const page = await store.draft(slug);
         return page ? json({ page }) : json({ error: 'no such page' }, 404);

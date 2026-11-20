@@ -145,3 +145,18 @@ describe('what was published before', () => {
     expect(back.page).toMatchObject({ title: 'Kept', date: '2026-01-01' });
   });
 });
+
+describe('the check before publishing', () => {
+  test('reads the published site as an export would, and says when there is none', async () => {
+    const { check } = (await (await call('/api/check')).json()) as { check: { broken: unknown[]; unnamed: unknown[] } };
+    expect(check.broken).toEqual([]);
+    expect(Array.isArray(check.unnamed)).toBe(true);
+    const home = await store.draft('');
+    await store.rawForTests('UPDATE pages SET published = NULL WHERE slug = ?', ['']);
+    const refused = await call('/api/check');
+    expect(refused.status).toBe(409);
+    expect(((await refused.json()) as { error: string }).error).toBe('the home page is not published');
+    await store.savePage(home);
+    await store.publish('');
+  });
+});
