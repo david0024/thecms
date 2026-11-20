@@ -37,6 +37,8 @@ export const en = {
     broken: 'These links lead to an address the site does not have. The site is not exported until they are fixed:',
     unnamed: 'These pictures have no description, for people who cannot see them:',
     from: 'on {pages}',
+    untranslated: 'These pages show words of the main language where a translation is missing. They are published as they are:',
+    missing: '{count} not translated into {language}',
   },
   versions: {
     heading: 'Published versions',
@@ -100,7 +102,7 @@ export const en = {
     copy: 'Copy',
     copied: 'Copied',
   },
-  list: { address: 'Address', status: 'Status', translations: 'Translations', translate: 'Translate into {language}' },
+  list: { address: 'Address', status: 'Status', translations: 'Translations', translate: 'Translate into {language}', missing: '{count} texts still in the main language' },
   design: {
     heading: 'The page of each {singular}',
     intro: `Every entry of {name} is shown in this page. Add any block around it; "Part of the entry" places the title, the date, a field or the entry's own blocks. The page shows your newest entry as an example.`,
@@ -218,6 +220,12 @@ export const en = {
     imageAlt: 'Describe the image (for people who cannot see it)',
     linkLabel: 'Button text',
     linkHref: 'Where it goes (for example /contact/)',
+    address: 'Address in {language}',
+    translationNote: 'The blocks, pictures and prices are those of the main page: change them there. Here you write the words.',
+    split: 'Split the page for {language}',
+    splitHint: 'Its blocks become its own in this language, and no longer follow the main page.',
+    splitNote: 'This page is split for {language}: its blocks are its own.',
+    deleteTranslation: 'Remove the page from {language}',
   },
   site: {
     edit: 'Site settings',

@@ -4,6 +4,7 @@
  * write it, for links that lead nowhere and pictures with no description.
  */
 import { api } from './api.ts';
+import { languageName } from '../core/index.ts';
 import { say, t } from './messages.ts';
 
 type Check = Awaited<ReturnType<typeof api.check>>['check'];
@@ -32,7 +33,7 @@ async function run(): Promise<void> {
   <button type="button" onclick={run} disabled={working} data-check-run>{working ? t.check.working : t.check.run}</button>
   {#if problem}<p class="bad" role="alert">{problem}</p>{/if}
   {#if check}
-    {#if check.broken.length === 0 && check.unnamed.length === 0}
+    {#if check.broken.length === 0 && check.unnamed.length === 0 && !check.untranslated?.length}
       <p class="good" data-check-fine>{t.check.fine}</p>
     {/if}
     {#if check.broken.length}
@@ -45,6 +46,12 @@ async function run(): Promise<void> {
       <p>{t.check.unnamed}</p>
       <ul data-check-unnamed>
         {#each check.unnamed as image (image.src)}<li><code>{image.src}</code> <small>{say(t.check.from, { pages: pages(image.on) })}</small></li>{/each}
+      </ul>
+    {/if}
+    {#if check.untranslated?.length}
+      <p>{t.check.untranslated}</p>
+      <ul data-check-untranslated>
+        {#each check.untranslated as page (page.slug)}<li><code>/{page.slug}/</code> <small>{say(t.check.missing, { count: String(page.missing), language: languageName(page.language) })}</small></li>{/each}
       </ul>
     {/if}
   {/if}

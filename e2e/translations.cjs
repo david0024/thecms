@@ -1,8 +1,9 @@
 /**
- * The site in a second language, in a real browser (ADR 0024): the language
- * added in the settings with its own footer, a page translated from the list
- * of pages and drawn in that language, and a language that still has pages
- * kept.
+ * The site in a second language, in a real browser (ADR 0024, ADR 0032): the
+ * language added in the settings with its own footer, a page translated from
+ * the list of pages and drawn in that language, its words written over the
+ * main page's blocks, its own address, the page split for the language, and a
+ * language that still has pages kept.
  *
  *   node e2e/translations.cjs [folder for screenshots]
  */
@@ -79,12 +80,55 @@ const PORT = 4398;
     assert((await page.locator('[data-translate]').count()) > 0, 'the list of pages shows each page\'s translations, and what is still to translate');
     if (shots) await page.screenshot({ path: join(shots, 'translation-list.png') });
 
+    // In Romanian only the words are written (ADR 0032): the blocks stay the main page's.
+    const stored = () => page.locator('.status[data-state="saved"]').waitFor();
+    await page.locator('button[data-open="ro/about"]').click();
+    const prose = canvas.locator('.b-text .prose').first();
+    await prose.waitFor();
+    const main = (await prose.innerText()).split('\n')[0];
+    const blocks = await canvas.locator('section.b').count();
+    await prose.click();
+    await page.keyboard.press('ControlOrMeta+a');
+    await page.keyboard.type('Despre atelier');
+    await stored();
+    await page.locator('[data-add="text"]').click();
+    await page.getByText('The blocks, pictures and prices are those of the main page').first().waitFor();
+    assert((await canvas.locator('section.b').count()) === blocks, 'a translation adds no block: the layout is the main page\'s');
+    // Opened again, nothing is chosen on it, and the page itself is in the panel.
+    await page.locator('[data-back]').click();
+    await page.locator('button[data-open="ro/about"]').click();
+    await canvas.locator('.b-text .prose').first().waitFor();
+    const settingsOpen = page.getByRole('button', { name: 'Back to the page' });
+    if (await settingsOpen.isVisible()) await settingsOpen.click();
+    await page.locator('[data-translation-address]').fill('despre');
+    await page.locator('[data-translation-address]').press('Tab');
+    await page.waitForResponse((r) => r.url().endsWith('/api/page') && r.request().method() === 'PUT');
+    await page.locator('[data-back]').click();
+    await page.locator('button[data-open="ro/despre"]').waitFor();
+    assert(true, 'a translation has an address of its own');
+    await page.locator('button[data-open="about"]').click();
+    await canvas.locator('.b-text .prose', { hasText: main }).waitFor();
+    assert(true, 'and the main page keeps its words');
+
+    // Split for Romanian: its blocks become its own.
+    await page.locator('[data-back]').click();
+    await page.locator('button[data-open="ro/despre"]').click();
+    await canvas.locator('.b-text .prose', { hasText: 'Despre atelier' }).waitFor();
+    await page.locator('[data-split]').click();
+    await page.locator('[data-split-note]').waitFor();
+    await canvas.locator('section.b').first().click();
+    await page.locator('[data-add="text"]').click();
+    await canvas.locator('section.b').nth(blocks).waitFor();
+    await stored();
+    assert(true, 'a page split for a language takes blocks of its own');
+    await page.locator('[data-back]').click();
+
     // A language that still has pages is kept.
     await page.locator('[data-nav="settings"]').click();
     saved = siteSaved();
     await page.locator('[data-site-other="ro"] [data-language-remove]').click();
     await saved;
-    await page.getByText('delete the pages of a language before removing it').first().waitFor();
+    await page.getByText('remove its translation before removing the language').first().waitFor();
     await page.locator('[data-site-other="ro"]').waitFor();
     assert(true, 'a language that still has pages is not removed');
     assert(errors.length === 0, `no errors in the browser ${errors.join(' | ')}`);

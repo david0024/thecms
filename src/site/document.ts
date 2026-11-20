@@ -52,7 +52,7 @@ export const STYLESHEET = '/assets/site.css';
  */
 export function pageSetting(site: Site, slug: string, pages: MenuPage[], lists: MenuLists): { site: Site; menu: MenuItem[]; alternates: Alternate[] } {
   const language = languageOf(site, slug);
-  const local = siteIn(site, language);
+  const local = siteIn(site, language, pages);
   return { site: local, menu: menuOf(local, pagesIn(site, language, pages), language === site.language ? lists : []), alternates: alternatesOf(site, slug, pages) };
 }
 

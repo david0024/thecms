@@ -93,25 +93,38 @@ export interface Alternate {
  * or, where it has none, that language's home page. Nothing when the site has
  * one language. `slug` is null where there is no page (a post, a list).
  */
-export function alternates(site: Site, slug: string | null, pages: { slug: string }[], current: string = slug === null ? site.language : languageOf(site, slug)): Alternate[] {
+export function alternates(site: Site, slug: string | null, pages: Placed[], current: string = slug === null ? site.language : languageOf(site, slug)): Alternate[] {
   if (site.languages.length === 0) return [];
   const have = new Set(pages.map((p) => p.slug));
-  const base = slug === null ? null : baseSlug(site, slug);
+  const base = slug === null ? null : ofPage(site, pages.find((p) => p.slug === slug) ?? { slug });
   return [site.language, ...site.languages].flatMap((language) => {
     const home = slugIn(site, language, '');
     if (language !== site.language && !have.has(home)) return [];
     const path = (s: string): string => (s ? `/${s}/` : '/');
-    const own = base === null ? null : slugIn(site, language, base);
-    const translated = own !== null && have.has(own);
-    return [{ language, name: languageName(language), href: path(translated ? own : home), home: path(home), translated, current: language === current }];
+    const own = base === null ? null : addressIn(site, language, base, pages);
+    return [{ language, name: languageName(language), href: path(own ?? home), home: path(home), translated: own !== null, current: language === current }];
   });
 }
 
+/** A page's place among the languages: its address, and the main page it is of when that is not its address after the prefix (ADR 0032). */
+export interface Placed {
+  slug: string;
+  of?: string;
+}
+
+/** The main page a page is of: `ro/despre` is of `about` when it says so; otherwise its address after the prefix. */
+export const ofPage = (site: Site, page: Placed): string => page.of ?? baseSlug(site, page.slug);
+
+/** Where the main page `base` is in a language, among these pages, or null. */
+export function addressIn(site: Site, language: string, base: string, pages: Placed[]): string | null {
+  return pages.find((p) => languageOf(site, p.slug) === language && ofPage(site, p) === base)?.slug ?? null;
+}
+
 /** The main menu in another language: each page swapped for its translation, what has none left out. */
-function menuIn(site: Site, language: string, nodes: MenuNode[]): MenuNode[] {
+function menuIn(site: Site, language: string, nodes: MenuNode[], pages: Placed[]): MenuNode[] {
   return nodes.flatMap((node): MenuNode[] => {
-    const children = menuIn(site, language, node.children);
-    if (node.target.kind === 'page') return [{ ...node, label: '', target: { kind: 'page', slug: slugIn(site, language, node.target.slug) }, children }];
+    const children = menuIn(site, language, node.children, pages);
+    if (node.target.kind === 'page') return [{ ...node, label: '', target: { kind: 'page', slug: addressIn(site, language, node.target.slug, pages) ?? slugIn(site, language, node.target.slug) }, children }];
     if (node.target.kind === 'url') return [{ ...node, children }];
     // A list of entries is in the main language; what it held stays in the menu.
     if (node.target.kind === 'none') return [{ ...node, children }];
@@ -124,7 +137,7 @@ function menuIn(site: Site, language: string, nodes: MenuNode[]): MenuNode[] {
  * footer and button written for it, and its menu. In the main language, the
  * site as it is.
  */
-export function siteIn(site: Site, language: string): Site {
+export function siteIn(site: Site, language: string, pages: Placed[] = []): Site {
   if (language === site.language || !site.languages.includes(language)) return site;
   const own = site.translations[language];
   return {
@@ -134,7 +147,7 @@ export function siteIn(site: Site, language: string): Site {
     action: own?.action ?? null,
     // Links (a privacy page, a profile) are often the same in every language; the main ones stand in until the owner gives others.
     footerLinks: own?.footerLinks.length ? own.footerLinks : site.footerLinks,
-    menu: site.menu ? menuIn(site, language, site.menu) : null,
+    menu: site.menu ? menuIn(site, language, site.menu, pages) : null,
     // Posts and entries are in the main language for now (ADR 0024).
     types: [],
   };

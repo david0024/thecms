@@ -15,7 +15,8 @@ import { POSTS_TYPE } from './types.ts';
 import { type Issue, isId, isObject, newId, safeHref, safeSrc, slugify, str } from './util.ts';
 
 export type Field =
-  | { kind: 'text'; max?: number; multiline?: boolean }
+  /** `common`: the same in every language, never translated (ADR 0032): an e-mail address, a price. */
+  | { kind: 'text'; max?: number; multiline?: boolean; common?: true }
   | { kind: 'richtext' }
   | { kind: 'image' }
   | { kind: 'link' }
@@ -48,6 +49,7 @@ export interface BlockDef {
 
 const text = (max = 300): Field => ({ kind: 'text', max });
 const multiline = (max = 2000): Field => ({ kind: 'text', max, multiline: true });
+const common = (max = 300): Field => ({ kind: 'text', max, common: true });
 
 export const BLOCKS = {
   hero: {
@@ -85,7 +87,7 @@ export const BLOCKS = {
     }),
   },
   contact: {
-    fields: { title: text(200), text: multiline(600), email: text(254), phone: text(40), address: multiline(300) },
+    fields: { title: text(200), text: multiline(600), email: common(254), phone: common(40), address: multiline(300) },
     create: () => ({ title: 'Get in touch' }),
   },
   /** A form a visitor writes to the owner with (ADR 0019): a name, an address to answer, the message, and consent to keep it. */
@@ -141,7 +143,7 @@ export const BLOCKS = {
       plans: {
         kind: 'list',
         max: 6,
-        item: { name: text(120), price: text(40), period: text(40), text: multiline(600), features: multiline(2000), action: { kind: 'link' } },
+        item: { name: text(120), price: common(40), period: text(40), text: multiline(600), features: multiline(2000), action: { kind: 'link' } },
       },
     },
     create: () => ({

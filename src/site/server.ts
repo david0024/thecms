@@ -16,7 +16,7 @@
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { compile } from 'svelte/compiler';
-import { cleanRow, EXTENSION_MAX_BYTES, extensionAsks, isObject, languageOf, normalizeBlocks, shownRow, str, type ContentType, DISPLAY_NAME, type LanguagePack, defaultTemplate, MEDIA_MAX_BYTES, MEDIA_PREFIX, normalizePage, type Page, type Post, contentTypes, listPath, type MenuList, normalizePost, parseTheme, pagesIn, POSTS_TYPE, reservedSlugs, slugProblem, type Theme, themeCss } from '../core/index.ts';
+import { type PlacedPage, translatedPage, cleanRow, EXTENSION_MAX_BYTES, extensionAsks, isObject, languageOf, normalizeBlocks, shownRow, str, type ContentType, DISPLAY_NAME, type LanguagePack, defaultTemplate, MEDIA_MAX_BYTES, MEDIA_PREFIX, normalizePage, type Page, type Post, contentTypes, listPath, type MenuList, normalizePost, parseTheme, pagesIn, POSTS_TYPE, reservedSlugs, slugProblem, type Theme, themeCss } from '../core/index.ts';
 import type { EntryLists } from '../blocks/editing.ts';
 import { type FetchImage, fetchImage as fetchOverNetwork, IMPORT_MAX_BYTES, type ImportReport, runImport } from '../import/run.ts';
 import { type ImportPlan, planImport } from '../import/wxr.ts';
@@ -251,6 +251,10 @@ export async function startEditor(
     entries: await allEntries(),
     templates: await templates(),
   });
+  /** A page at its address as the builder edits it: no more than a page. */
+  const asPage = (p: PlacedPage): Page => ({ slug: p.slug, title: p.title, description: p.description, inMenu: p.inMenu, blocks: p.blocks });
+  /** What the builder is told of a translation: the page it is of, its language, whether it is split. */
+  const translationOf = (p: PlacedPage) => ({ of: p.of, language: p.language, split: p.split });
   /** A type's page as the builder edits it: a page whose blocks are the type's page, named after the type. */
   const templateDoc = async (type: ContentType): Promise<Page> => ({
     slug: type.id,
@@ -478,7 +482,12 @@ export async function startEditor(
       if (route === 'GET /api/versions') return json({ versions: await store.versions(kind, slug) });
       const raw = await store.version(kind, slug, url.searchParams.get('at') ?? '');
       if (!raw) return json({ error: 'no such version' }, 404);
-      return json({ page: type ? normalizePost(raw, undefined, type).post : normalizePage(raw).page });
+      if (type) return json({ page: normalizePost(raw, undefined, type).post });
+      // A translation's versions are its page's (ADR 0032 d5): shown in its language.
+      const found = await store.locate(slug);
+      const kept = normalizePage(raw).page;
+      const shown = found?.translated ? translatedPage(await store.site(), kept, found.language) : null;
+      return json({ page: shown ? asPage(shown) : kept });
     }
     if (asked !== 'page') {
       const type = await store.type(asked === 'post' ? POSTS_TYPE : asked);
@@ -509,15 +518,30 @@ export async function startEditor(
       case 'GET /api/check':
         // The published site, built as an export would build it, and read for what it would get wrong (ADR 0029).
         try {
-          return json({ check: checkSite(await publishedSite(store)) });
+          return json({ check: { ...checkSite(await publishedSite(store)), untranslated: await store.untranslated() } });
         } catch (error) {
           return json({ error: error instanceof Error ? error.message : String(error) }, 409);
         }
       case 'GET /api/page': {
         const page = await store.draft(slug);
-        return page ? json({ page }) : json({ error: 'no such page' }, 404);
+        if (page) return json({ page });
+        // A translation is a page of its own address, written over its page (ADR 0032).
+        const found = await store.locate(slug);
+        return found ? json({ page: asPage(found), translation: translationOf(found) }) : json({ error: 'no such page' }, 404);
+      }
+      case 'POST /api/translate': {
+        const found = await store.translate(String(body.slug ?? ''), String(body.language ?? ''));
+        return json({ page: asPage(found), translation: translationOf(found), ...(await lists()) });
+      }
+      case 'POST /api/split': {
+        const found = await store.splitTranslation(String(body.of ?? ''), String(body.language ?? ''));
+        return json({ page: asPage(found), translation: translationOf(found), ...(await lists()) });
       }
       case 'PUT /api/page': {
+        if (isObject(body.translation)) {
+          const found = await store.saveTranslation(String(body.translation.of ?? ''), String(body.translation.language ?? ''), body.page);
+          return json({ page: asPage(found), translation: translationOf(found), issues: [], ...(await lists()) });
+        }
         const { page, issues } = normalizePage(body.page);
         if (!page.title) return json({ error: 'a page has a title', issues }, 400);
         // A new page may not silently replace an existing one.

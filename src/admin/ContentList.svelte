@@ -29,7 +29,7 @@ let {
 
 const others = $derived(!type && site ? site.languages : []);
 /** Pages are listed in the main language; their translations sit beside them. */
-const shown = $derived(!type && site ? pagesIn(site, site.language, items) : items);
+const shown = $derived(!type && site ? pagesIn(site, site.language, items).filter((i) => !('translated' in i && i.translated)) : items);
 const bySlug = $derived(new Map(items.map((item) => [item.slug, item])));
 
 /** Posts keep the name the rest of the admin knows them by. */
@@ -90,9 +90,17 @@ const status = (item: PageInfo): string => (!item.published ? t.bar.draft : item
               <td class="translations">
                 {#each others as language (language)}
                   {@const slug = slugIn(site, language, item.slug)}
-                  {@const translation = bySlug.get(slug)}
+                  {@const translation = items.find((i) => i.translated && i.of === item.slug && i.language === language) ?? bySlug.get(slug)}
                   {#if translation}
-                    <button type="button" class="chip" title={`${languageName(language)}: ${translation.title} (${status(translation)})`} onclick={() => onopen(slug)} data-open={slug}>{prefixOf(language)}</button>
+                    {@const missing = translation.missing ?? 0}
+                    <button
+                      type="button"
+                      class="chip"
+                      class:partial={missing > 0}
+                      title={`${languageName(language)}: ${translation.title} (${status(translation)})${missing ? ` · ${say(t.list.missing, { count: String(missing) })}` : ''}`}
+                      onclick={() => onopen(translation.slug)}
+                      data-open={translation.slug}>{prefixOf(language)}</button
+                    >
                   {:else}
                     <button type="button" class="chip quiet" title={say(t.list.translate, { language: languageName(language) })} onclick={() => ontranslate?.(item.slug, language)} data-translate={slug}>+ {prefixOf(language)}</button>
                   {/if}
@@ -121,4 +129,5 @@ const status = (item: PageInfo): string => (!item.published ? t.bar.draft : item
   .open:hover { text-decoration: underline; }
   .translations { display: flex; gap: 0.3rem; flex-wrap: wrap; }
   .chip { padding: 0.1rem 0.45rem !important; font-size: 12px; text-transform: uppercase; }
+  .chip.partial { border-style: dashed; }
 </style>
