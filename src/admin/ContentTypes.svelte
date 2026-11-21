@@ -4,7 +4,7 @@
  * besides pages. A type is made here from a name and a few choices; nothing
  * about it is code.
  */
-import { type ContentType, contentTypes, READY_LAYOUTS, STANDARD, type Site, slugify, TYPE_FIELD_KINDS, type TypeField, type TypeFieldKind } from '../core/index.ts';
+import { type ContentType, contentTypes, languageName, prefixOf, READY_LAYOUTS, type TypeTranslation, STANDARD, type Site, slugify, TYPE_FIELD_KINDS, type TypeField, type TypeFieldKind } from '../core/index.ts';
 import { layoutName } from './layouts.ts';
 import { say, t } from './messages.ts';
 
@@ -12,6 +12,7 @@ let {
   site,
   counts,
   templates = {},
+  terms = {},
   onsave,
   ondesign,
 }: {
@@ -19,6 +20,8 @@ let {
   counts: Record<string, number>;
   /** Which types have a page of their own (ADR 0015). */
   templates?: Record<string, { custom: boolean }>;
+  /** The categories and tags each type's entries use: what a language writes its own way (ADR 0054 d3). */
+  terms?: Record<string, string[]>;
   /** Resolves to a reason when the site refuses. */
   onsave: (types: ContentType[]) => Promise<string>;
   /** Opens the page a type shows its entries in. */
@@ -46,6 +49,13 @@ const targets = $derived(contentTypes(site).map((type) => (type.id === editing &
 const kindChange = (kind: TypeFieldKind): Partial<TypeField> =>
   kind === 'choice' ? { kind, options: ['1', '2'] } : kind === 'entries' ? { kind, to: targets[0]?.id ?? '' } : { kind };
 const patchField = (i: number, change: Partial<TypeField>): void => patch({ fields: (draft?.fields ?? []).map((f, j) => (j === i ? { ...f, ...change } : f)) });
+
+/** A type's name, address and words in a language, as typed (ADR 0054 d3). */
+const translationOf = (language: string): TypeTranslation => draft?.translations?.[language] ?? { name: '', singular: '', path: '', words: {} };
+const patchTranslation = (language: string, change: Partial<TypeTranslation>): void =>
+  patch({ translations: { ...(draft?.translations ?? {}), [language]: { ...translationOf(language), ...change } } });
+/** What a language may write its own way: the categories and tags in use, and each choice. */
+const words = $derived(draft ? [...new Set([...(terms[editing] ?? []), ...draft.fields.flatMap((f) => (f.kind === 'choice' ? (f.options ?? []) : []))].filter((w) => w.trim()))] : []);
 
 async function save(): Promise<void> {
   if (!draft) return;
@@ -148,6 +158,37 @@ async function remove(): Promise<void> {
       {/each}
       <button type="button" onclick={() => patch({ fields: [...(draft?.fields ?? []), { key: '', label: '', kind: 'text' }] })} data-type-add-field>+ {t.ctypes.addField}</button>
 
+      {#each site.languages as language (language)}
+        {@const own = translationOf(language)}
+        {@const label = languageName(language)}
+        <h2>{say(t.ctypes.inLanguage, { language: label })}</h2>
+        <p class="hint">{say(t.ctypes.inLanguageHint, { language: label })}</p>
+        <div class="language" data-type-language={language}>
+          <label class="field">
+            <span>{t.ctypes.name}</span>
+            <input type="text" maxlength="60" value={own.name} placeholder={draft.name} oninput={(e) => patchTranslation(language, { name: e.currentTarget.value })} data-type-language-name />
+          </label>
+          <label class="field">
+            <span>{t.ctypes.singular}</span>
+            <input type="text" maxlength="60" value={own.singular} placeholder={draft.singular} oninput={(e) => patchTranslation(language, { singular: e.currentTarget.value })} />
+          </label>
+          <label class="field">
+            <span>{t.ctypes.path}</span>
+            <input type="text" maxlength="80" value={own.path} placeholder={slugify(draft.path) || slugify(draft.name)} oninput={(e) => patchTranslation(language, { path: e.currentTarget.value })} data-type-language-path />
+            <small>/{prefixOf(language)}/{slugify(own.path) || slugify(draft.path) || slugify(draft.name) || '…'}/</small>
+          </label>
+          {#if words.length}
+            <p class="hint">{t.ctypes.words}: {t.ctypes.wordsHint}</p>
+            {#each words as word (word)}
+              <label class="word">
+                <span>{word}</span>
+                <input type="text" maxlength="60" value={own.words[word] ?? ''} placeholder={word} oninput={(e) => patchTranslation(language, { words: { ...own.words, [word]: e.currentTarget.value } })} data-type-word={word} />
+              </label>
+            {/each}
+          {/if}
+        </div>
+      {/each}
+
       {#if problem}<p class="bad" role="alert">{problem}</p>{/if}
       <div class="actions">
         <button type="submit" class="primary" disabled={!slugify(draft.name)} data-type-save>{t.ctypes.save}</button>
@@ -181,6 +222,9 @@ async function remove(): Promise<void> {
   .row .more span { display: block; font-size: 13px; color: #6a6880; margin-bottom: 0.2rem; }
   .row .more .check span { display: inline; margin: 0; }
   .row textarea, .row select { width: 100%; }
+  .language { padding-left: 1rem; border-left: 2px solid #eceaf3; }
+  .word { display: grid; grid-template-columns: 10rem 1fr; gap: 0.4rem; align-items: center; margin-bottom: 0.3rem; }
+  .word span { color: #6a6880; font-size: 13px; overflow: hidden; text-overflow: ellipsis; }
   .actions { display: flex; gap: 0.5rem; align-items: center; margin-top: 1.2rem; }
   .actions :global(.danger) { margin: 0 0 0 auto !important; }
 </style>

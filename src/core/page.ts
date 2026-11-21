@@ -182,7 +182,13 @@ export const contentTypes = (site: Site): ContentType[] => site.types;
 export const typeById = (site: Site, id: string): ContentType | undefined => contentTypes(site).find((t) => t.id === id);
 
 /** Addresses a page may not take: the site's own, and each type's. */
-export const reservedSlugs = (site: Site): string[] => [...RESERVED_SLUGS, ...site.types.map((t) => t.path), ...site.languages.map(prefixOf)];
+export const reservedSlugs = (site: Site): string[] => [
+  ...RESERVED_SLUGS,
+  ...site.types.map((t) => t.path),
+  // A type's address in another language is taken there too (ADR 0054 d3).
+  ...site.types.flatMap((t) => Object.values(t.translations ?? {}).flatMap((own) => (own.path ? [own.path] : []))),
+  ...site.languages.map(prefixOf),
+];
 
 export const pagePath = (slug: string): string => (slug ? `/${slug}/` : '/');
 

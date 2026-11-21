@@ -50,6 +50,7 @@ import {
   type Layout,
   READY_LAYOUTS,
   STANDARD,
+  typeIn,
 } from '../core/index.ts';
 import { api, type Doc, type Kind, type State, type TranslationInfo } from './api.ts';
 import ContentList from './ContentList.svelte';
@@ -129,7 +130,12 @@ const sectioning = $derived(kind === SECTION_KIND);
 const type = $derived<ContentType | undefined>(kind === 'page' || designing || sectioning ? undefined : types.find((ty) => ty.id === kind));
 // The entries that link to the one open (ADR 0052 d4), said beside its delete button.
 const usedBy = $derived<string[]>(type && !designed ? ((site?.entries[type.id]?.find((p) => p.slug === page?.slug)?.usedBy) ?? []) : []);
-const info = $derived(designed ? site?.templates[designed.id] : (type ? site?.entries[type.id] : site?.pages)?.find((p) => p.slug === page?.slug));
+const info = $derived(
+  designed
+    ? site?.templates[designed.id]
+    : // An entry's translation is published with its entry (ADR 0054).
+      (type ? site?.entries[type.id] : site?.pages)?.find((p) => p.slug === page?.slug || (!!type && !!translation && p.slug === translation.of)),
+);
 /** What the entry block can show on the page being designed: the parts every entry has, then the type's own fields. */
 const parts = $derived(designed ? [...ENTRY_PARTS.map((part) => ({ id: part, name: t.parts[part] ?? part })), ...designed.fields.map((f) => ({ id: `field:${f.key}`, name: f.label }))] : []);
 /** The lists a menu can lead to: each content type that has an entry. */
@@ -168,7 +174,7 @@ async function runOnPage(name: string, action: string, ask: Record<string, strin
 }
 
 /** On a page of the main language, an action for each language runs on every translation of it (ADR 0034). */
-const everyLanguage = $derived(!!site && !!page && !translation && (kind === 'page' || sectioning) && site.site.languages.length > 0 && (sectioning || languageOf(site.site, page.slug) === site.site.language));
+const everyLanguage = $derived(!!site && !!page && !translation && !designing && site.site.languages.length > 0 && (sectioning || !!type || (kind === 'page' && languageOf(site.site, page.slug) === site.site.language)));
 /** Saves the page, then fills in what each translation does not say yet; says which languages it did. */
 async function runEveryLanguage(name: string, action: string, ask: Record<string, string>): Promise<string> {
   if (!page || !site) return '';
@@ -684,12 +690,12 @@ onMount(() => {
     {:else if view === 'layouts'}
       <Layouts site={site.site} sections={site.sections} onsave={saveLayouts} />
     {:else if view === 'types'}
-      <ContentTypes site={site.site} counts={Object.fromEntries(types.map((ty) => [ty.id, site?.entries[ty.id]?.length ?? 0]))} templates={site.templates} onsave={saveTypes} ondesign={(id) => edit(id, `template:${id}`)} />
+      <ContentTypes site={site.site} counts={Object.fromEntries(types.map((ty) => [ty.id, site?.entries[ty.id]?.length ?? 0]))} templates={site.templates} terms={Object.fromEntries(types.map((ty) => [ty.id, [...new Set((site?.entries[ty.id] ?? []).flatMap((e) => e.terms ?? []))]]))} onsave={saveTypes} ondesign={(id) => edit(id, `template:${id}`)} />
     {:else if view.startsWith('list:')}
       {@const listed = types.find((ty) => `list:${ty.id}` === view)}
       {#if listed}
         {#key listed.id}
-          <ContentList kind={listed.id} type={listed} items={site.entries[listed.id] ?? []} onopen={(slug) => edit(slug, listed.id)} oncreate={(title) => createPage(title, listed.id)} />
+          <ContentList kind={listed.id} type={listed} items={site.entries[listed.id] ?? []} site={site.site} onopen={(slug) => edit(slug, listed.id)} oncreate={(title) => createPage(title, listed.id)} ontranslate={(slug, language) => translatePage(slug, language, listed.id)} />
         {/key}
       {/if}
     {:else if view === 'media'}
@@ -844,13 +850,54 @@ onMount(() => {
             seo={page}
             title={page.slug || entry ? `${page.title} · ${site.site.name}` : site.site.name}
             description={entry ? postDescription(entry) : pageDescription(page as Page)}
-            address={`${site.site.url || ''}${type && entry ? entryPath(type, page.slug) : pagePath(page.slug)}`}
+            address={`${site.site.url || ''}${type && entry ? (translation ? entryPath(typeIn(site.site, type, translation.language), page.slug.slice(prefixOf(translation.language).length + 1)) : entryPath(type, page.slug)) : pagePath(page.slug)}`}
             fallback={entry?.cover ?? site.site.shareImage ?? null}
             translation={!!translation}
             onchange={(seo) => page && change({ ...page, ...seo }, { step: false, redraw: false })}
           />
         {/if}
-        {#if type && 'date' in page}
+        {#if type && 'date' in page && translation}
+          {@const post = page}
+          {@const within = translation}
+          {@const languageLabel = languageName(within.language)}
+          <label class="field">
+            <span>{say(t.inspector.address, { language: languageLabel })}</span>
+            <input
+              type="text"
+              value={post.slug.slice(prefixOf(within.language).length + 1)}
+              onchange={(e) => site && change({ ...post, slug: slugIn(site.site, within.language, slugify(e.currentTarget.value) || within.of) }, { step: false, redraw: false })}
+              data-translation-address
+            />
+          </label>
+          <label class="field">
+            <span>{t.posts.excerpt}</span>
+            <textarea rows="3" maxlength="400" value={post.excerpt} oninput={(e) => change({ ...post, excerpt: e.currentTarget.value }, { step: false, redraw: false })} data-post-excerpt></textarea>
+          </label>
+          {#if post.cover}
+            {@const cover = post.cover}
+            <label class="field">
+              <span>{say(t.ctypes.coverAlt, { language: languageLabel })}</span>
+              <input type="text" maxlength="300" value={cover.alt} onchange={(e) => change({ ...post, cover: { ...cover, alt: e.currentTarget.value } }, { step: false })} data-cover-alt />
+            </label>
+          {/if}
+          {#each type.fields.filter((f) => f.kind === 'text' || f.kind === 'longtext') as field (field.key)}
+            <label class="field">
+              <span>{field.label}</span>
+              {#if field.kind === 'longtext'}
+                <textarea rows="3" maxlength="2000" value={String(post.fields[field.key] ?? '')} onchange={(e) => change({ ...post, fields: { ...post.fields, [field.key]: e.currentTarget.value } }, { step: false })} data-entry-field={field.key}></textarea>
+              {:else}
+                <input type="text" maxlength="300" value={String(post.fields[field.key] ?? '')} onchange={(e) => change({ ...post, fields: { ...post.fields, [field.key]: e.currentTarget.value } }, { step: false })} data-entry-field={field.key} />
+              {/if}
+            </label>
+          {/each}
+          {#if within.split}
+            <p class="hint" data-split-note>{say(t.ctypes.splitEntryNote, { language: languageLabel })}</p>
+          {:else}
+            <p class="hint">{t.ctypes.translationNote}</p>
+            <button type="button" onclick={splitPage} data-split>{say(t.ctypes.splitEntry, { language: languageLabel })}</button>
+            <small>{t.ctypes.splitEntryHint}</small>
+          {/if}
+        {:else if type && 'date' in page}
           {@const post = page}
           {#if type.dated}
           <label class="field">
@@ -943,7 +990,7 @@ onMount(() => {
           {#key `${kind}/${page.slug}`}<Schedule slug={page.slug} {kind} />{/key}
           {#if kind === 'page' && page.slug !== ''}{#key page.slug}<PageLock slug={page.slug} />{/key}{/if}
         {/if}
-        {#if !designing}
+        {#if !designing && !(type && translation)}
           {#key `${kind}/${page.slug}`}<Versions slug={page.slug} {kind} onrestore={(doc) => change(doc)} />{/key}
         {/if}
         {#if type || page.slug !== ''}

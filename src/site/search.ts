@@ -12,6 +12,8 @@ export interface SearchDoc {
   path: string;
   title: string;
   text: string;
+  /** The language the page is in: a search from a page in one language finds pages in it (ADR 0054). */
+  language?: string;
 }
 
 export interface SearchHit {
@@ -67,7 +69,8 @@ export function searchIndex(files: Map<string, string | Uint8Array>): SearchDoc[
     )
       .replace(/\s+/g, ' ')
       .trim();
-    docs.push({ path: `/${file.slice(0, -'index.html'.length)}`, title, text });
+    const language = /<html lang="([^"]+)"/.exec(body)?.[1] ?? '';
+    docs.push({ path: `/${file.slice(0, -'index.html'.length)}`, title, text, language });
   }
   return docs;
 }
@@ -122,7 +125,7 @@ function snippet(text: string, wanted: string[]): string {
  * does not exist, its title and its `<main>` replaced. Search engines are
  * asked not to keep it.
  */
-export function resultsPage(frame: string, language: string, query: string, hits: SearchHit[]): string {
+export function resultsPage(frame: string, language: string, query: string, hits: SearchHit[], asked = ''): string {
   const said = wordsFor(language);
   const q = escape(query);
   const heading = query ? said.searchFound.replace('{query}', q) : said.search;
@@ -134,7 +137,7 @@ export function resultsPage(frame: string, language: string, query: string, hits
   const main =
     `<section class="b b-search"><div class="b-in"><h1>${heading}</h1>` +
     `<form class="search-form" role="search" method="get" action="/_/search"><label class="search-label" for="search-q">${escape(said.search)}</label>` +
-    `<input id="search-q" name="q" type="search" maxlength="${SEARCH_MAX_QUERY}" value="${q}" required> <button class="button" type="submit">${escape(said.search)}</button></form>` +
+    `${asked ? `<input type="hidden" name="l" value="${escape(asked)}">` : ''}<input id="search-q" name="q" type="search" maxlength="${SEARCH_MAX_QUERY}" value="${q}" required> <button class="button" type="submit">${escape(said.search)}</button></form>` +
     `${list}</div></section>`;
   return frame
     .replace(/<title>[^<]*?(( · [^<]*)?)<\/title>/, (_whole, rest: string) => `<title>${escape(said.search)}${rest}</title>`)

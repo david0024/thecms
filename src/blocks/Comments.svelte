@@ -34,7 +34,8 @@ const action = $derived(`${formsAddress(site)}/comment`);
     <form class="form" method="post" {action} accept-charset="utf-8">
       <input type="hidden" name="back" value={entryPath(type, post.slug)} />
       <input type="hidden" name="type" value={type.id} />
-      <input type="hidden" name="entry" value={post.slug} />
+      <input type="hidden" name="entry" value={post.of ?? post.slug} />
+      {#if post.language}<input type="hidden" name="language" value={post.language} />{/if}
       <!-- Left empty by people; a robot that fills every field gives itself away. -->
       <p class="form-trap" aria-hidden="true"><label>Website <input type="text" name="website" tabindex="-1" autocomplete="off" /></label></p>
       <p class="form-field"><label for="comment-name">{words.formName}</label><input id="comment-name" name="name" type="text" maxlength="120" autocomplete="name" required /></p>

@@ -42,6 +42,14 @@ import {
   fillSections,
   withAreas,
   languageOf,
+  commentKey,
+  entriesIn,
+  entryAlternates,
+  listAlternates,
+  siteIn,
+  slugsIn,
+  typeIn,
+  prefixOf,
 } from '../core/index.ts';
 import { wordsFor } from '../blocks/words.ts';
 import { lockedPage } from './locks.ts';
@@ -128,17 +136,34 @@ export async function buildSite(
   site = { ...site, pictures: { sizes: images, widths: theme.tokens.width } };
   // Each section block holds its section's blocks from here on, so the pages, their pictures and their links include them.
   pages = pages.map((p) => ({ ...p, blocks: fillSections(p.blocks, sections, languageOf(site, p.slug)) }));
-  const filledEntries = Object.fromEntries(Object.entries(Array.isArray(entries) ? { [POSTS_TYPE]: entries } : entries).map(([id, list]) => [id, list.map((post) => ({ ...post, blocks: fillSections(post.blocks, sections, site.language), ...(typeById(site, id)?.comments ? { comments: comments[`${id}/${post.slug}`] ?? [] } : {}) }))]));
-  templates = Object.fromEntries(Object.entries(templates).map(([id, blocks]) => [id, blocks && fillSections(blocks, sections, site.language)]));
-  const byType = filledEntries;
-  const types = contentTypes(site)
-    .map((type) => ({ type, posts: listed(type, byType[type.id] ?? []) }))
-    .filter((t) => t.posts.length > 0);
-  const posts = types.flatMap((t) => t.posts);
-  // A type with nothing published has no list, and so no place in the menu.
-  const lists = types.map(({ type }): MenuList => ({ id: type.id, title: type.name, href: listPath(type) }));
-  // Posts and entries are in the main language (ADR 0024): their menu is its menu, and the switcher leads to each language's home.
-  const menu = menuOf(site, pagesIn(site, site.language, pages), lists);
+  const published = Array.isArray(entries) ? { [POSTS_TYPE]: entries } : entries;
+  /** Where each entry is in each other language, for the links between entries there (ADR 0054). */
+  const slugs = Object.fromEntries(site.languages.map((language) => [language, slugsIn(language, published)]));
+  const commented = (id: string, post: Post, language: string): Post =>
+    typeById(site, id)?.comments ? { ...post, comments: comments[commentKey(id, post.of ?? post.slug, language === site.language ? '' : language)] ?? [] } : post;
+  /**
+   * Each language with its entries (ADR 0054): the main language's as they
+   * are, another's only those translated into it, in its type's words. A type
+   * with nothing published in a language has no list there, and so no place
+   * in its menu.
+   */
+  const languages = [site.language, ...site.languages].map((language) => {
+    const types = contentTypes(site)
+      .map((type) => {
+        const local = typeIn(site, type, language);
+        const own = entriesIn(site, type, published[type.id] ?? [], language, slugs[language] ?? {}).map((post) => commented(type.id, { ...post, blocks: fillSections(post.blocks, sections, language) }, language));
+        return { type: local, main: type, posts: listed(local, own) };
+      })
+      .filter((t) => t.posts.length > 0);
+    const lists = types.map(({ type }): MenuList => ({ id: type.id, title: type.name, href: listPath(type) }));
+    // What a block that lists entries shows: only what is published, in the page's language.
+    const listable = Object.fromEntries(types.map(({ type, posts: own }) => [type.id, { type, entries: own }]));
+    return { language, types, lists, listable };
+  });
+  const main = languages[0] as (typeof languages)[number];
+  const inLanguage = (language: string) => languages.find((l) => l.language === language) ?? main;
+  const posts = languages.flatMap((l) => l.types.flatMap((t) => t.posts));
+  const menu = menuOf(site, pagesIn(site, site.language, pages), main.lists);
   const homes = alternates(site, null, pages);
   /** Every address a visitor can open, for the sitemap. */
   const paths: string[] = [];
@@ -150,11 +175,9 @@ export async function buildSite(
 
   // The structure first, the theme after it: where both set the same thing, the theme wins.
   files.set(STYLESHEET.slice(1), `${BASE_CSS}${themeCss(theme)}`);
-  // What a block that lists entries shows: only what is published.
-  const listable = Object.fromEntries(types.map(({ type, posts: own }) => [type.id, { type, entries: own }]));
   for (const p of pages) {
-    const setting = pageSetting(site, p.slug, pages, lists);
-    page(pagePath(p.slug), renderPage(withAreas(setting.site, sections, setting.site.language), theme, p, setting.menu, listable, setting.alternates), p.noindex);
+    const setting = pageSetting(site, p.slug, pages, main.lists, (language) => inLanguage(language).lists);
+    page(pagePath(p.slug), renderPage(withAreas(setting.site, sections, setting.site.language), theme, p, setting.menu, inLanguage(setting.site.language).listable, setting.alternates), p.noindex);
   }
   // A page behind a password says so to the runtime, which asks for it; search engines are asked to keep none of it.
   for (const [path, slug] of Object.entries(locked)) {
@@ -163,31 +186,44 @@ export async function buildSite(
     files.set(fileOf(path), html.replace('<head>', `<head>\n<meta name="robots" content="noindex">\n<meta name="${LOCK_META}" content="${xml(slug)}">`));
     if (paths.includes(path)) paths.splice(paths.indexOf(path), 1);
   }
-  // Entries and their lists are in the main language, and so is what their layouts show (ADR 0035).
+  // What a layout shows around the main language's entries and lists (ADR 0035).
   const framed = withAreas(site, sections, site.language);
 
-  for (const { type, posts: own } of types) {
-    for (const post of own) page(entryPath(type, post.slug), renderPost(framed, theme, post, menu, type, listable, templates[type.id] ?? null, homes), post.noindex);
-    const lists = [
-      { heading: type.name, path: (n: number) => listPath(type, n), posts: own },
-      ...categoriesOf(own).map((c) => ({ heading: c.name, path: (n: number) => typeCategoryPath(type, c.name, n), posts: c.posts })),
-      ...categoriesOf(own, 'tags').map((c) => ({ heading: `#${c.name}`, path: (n: number) => typeTagPath(type, c.name, n), posts: c.posts })),
-    ];
-    for (const list of lists) {
-      const cut = paginate(list.posts);
-      cut.forEach((some, i) => {
-        const path = list.path(i + 1);
-        page(path, renderBlogList(framed, { heading: list.heading, path, posts: some, newer: i > 0 ? list.path(i) : '', older: i < cut.length - 1 ? list.path(i + 2) : '' }, menu, type, homes));
-      });
+  for (const { language, types, lists: own, listable } of languages) {
+    const local = language === site.language ? site : siteIn(site, language, pages);
+    const frame = language === site.language ? framed : withAreas(local, sections, language);
+    const localMenu = language === site.language ? menu : menuOf(local, pagesIn(site, language, pages), own);
+    const here = alternates(site, null, pages, language);
+    const has = (id: string) => (other: string) => !!languages.find((l) => l.language === other)?.types.some((t) => t.type.id === id);
+    for (const { type, main: original, posts: list } of types) {
+      const template = templates[type.id] ? fillSections(templates[type.id] as Block[], sections, language) : null;
+      const byMain = new Map((published[type.id] ?? []).map((p) => [p.slug, p]));
+      for (const post of list) {
+        const from = byMain.get(post.of ?? post.slug) as Post;
+        page(entryPath(type, post.slug), renderPost(frame, theme, post, localMenu, type, listable, template, site.languages.length ? entryAlternates(site, original, from, here, language) : []), post.noindex);
+      }
+      const listed = site.languages.length ? listAlternates(site, original, has(type.id), here, language) : [];
+      const pagesOf = [
+        { heading: type.name, path: (n: number) => listPath(type, n), posts: list, alternates: listed },
+        ...categoriesOf(list).map((c) => ({ heading: c.name, path: (n: number) => typeCategoryPath(type, c.name, n), posts: c.posts, alternates: here })),
+        ...categoriesOf(list, 'tags').map((c) => ({ heading: `#${c.name}`, path: (n: number) => typeTagPath(type, c.name, n), posts: c.posts, alternates: here })),
+      ];
+      for (const one of pagesOf) {
+        const cut = paginate(one.posts);
+        cut.forEach((some, i) => {
+          const path = one.path(i + 1);
+          page(path, renderBlogList(frame, { heading: one.heading, path, posts: some, newer: i > 0 ? one.path(i) : '', older: i < cut.length - 1 ? one.path(i + 2) : '' }, localMenu, type, i === 0 ? one.alternates : here));
+        });
+      }
+      // A feed names every entry by its full address, so it needs the site's own.
+      if (site.url && type.feed) files.set(feedPath(type).slice(1), feed(local, type, list));
     }
-    // A feed names every entry by its full address, so it needs the site's own.
-    if (site.url && type.feed) files.set(feedPath(type).slice(1), feed(site, type, own));
   }
 
   const shown: [string, string][] = [
     ...pages.flatMap((p) => [...mediaSources(p.blocks), ...(p.shareImage ? [p.shareImage.src] : [])].map((src): [string, string] => [`the page "${p.title}"`, src])),
     ...posts.flatMap((p) => postImageSources(p).map((src): [string, string] => [`the entry "${p.title}"`, src])),
-    ...types.flatMap(({ type }) => mediaSources(templates[type.id] ?? []).map((src): [string, string] => [`the page of "${type.name}"`, src])),
+    ...main.types.flatMap(({ type }) => mediaSources(fillSections(templates[type.id] ?? [], sections, site.language)).map((src): [string, string] => [`the page of "${type.name}"`, src])),
   ];
   for (const [name, blocks] of Object.entries(framed.areas ?? {})) for (const src of mediaSources(blocks)) shown.push([`the section "${name}" of a layout`, src]);
   if (site.logo) shown.push(['the header', site.logo.src]);
@@ -230,6 +266,11 @@ export async function buildSite(
     '404.html',
     renderPage(framed, theme, { slug: '404', title: wordsFor(site.language).notFound, description: '', inMenu: false, blocks: [] }, menu),
   );
+  // Each other language's frame, for what the runtime answers in it, such as search (ADR 0054).
+  for (const { language, lists: own } of languages.slice(1)) {
+    const local = siteIn(site, language, pages);
+    files.set(`${prefixOf(language)}/404.html`, renderPage(withAreas(local, sections, language), theme, { slug: '404', title: wordsFor(language).notFound, description: '', inMenu: false, blocks: [] }, menuOf(local, pagesIn(site, language, pages), own)));
+  }
   if (site.url) {
     const urls = paths.map((path) => `  <url><loc>${xml(`${site.url}${path}`)}</loc></url>`).join('\n');
     files.set('sitemap.xml', `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>\n`);

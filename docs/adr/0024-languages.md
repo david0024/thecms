@@ -1,6 +1,6 @@
 # ADR 0024 — The same page in more than one language
 
-- **Status:** Accepted (owner agreed to the plan and its order: multilingual content after installation); d2 and d3 replaced by ADR 0032 (translation by field)
+- **Status:** Accepted (owner agreed to the plan and its order: multilingual content after installation); d2 and d3 replaced by ADR 0032 (translation by field); posts and entries in ADR 0054
 - **Date:** 2026-11-19
 - **Builds on:** ADR 0008 (the menu), ADR 0021 (language packs)
 

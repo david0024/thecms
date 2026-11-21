@@ -54,10 +54,11 @@ export const STYLESHEET = '/assets/site.css';
  * What a page is drawn with in its own language (ADR 0024): the site's words
  * and menu in that language, and where the page is in the others.
  */
-export function pageSetting(site: Site, slug: string, pages: MenuPage[], lists: MenuLists): { site: Site; menu: MenuItem[]; alternates: Alternate[] } {
+export function pageSetting(site: Site, slug: string, pages: MenuPage[], lists: MenuLists, listsIn: (language: string) => MenuLists = () => []): { site: Site; menu: MenuItem[]; alternates: Alternate[] } {
   const language = languageOf(site, slug);
   const local = siteIn(site, language, pages);
-  return { site: local, menu: menuOf(local, pagesIn(site, language, pages), language === site.language ? lists : []), alternates: alternatesOf(site, slug, pages) };
+  // Each language's lists are those of the entries in it (ADR 0054).
+  return { site: local, menu: menuOf(local, pagesIn(site, language, pages), language === site.language ? lists : listsIn(language)), alternates: alternatesOf(site, slug, pages) };
 }
 
 /** The other languages reach the header through the context of the render. */
@@ -221,6 +222,8 @@ export function renderPost(
       image: post.shareImage?.src ?? post.cover?.src,
       noindex: post.noindex,
       feed: feedOf(site, type),
+      // Each language the entry is in, for search engines (ADR 0054 d5).
+      alternates: alternates.filter((a) => a.translated).length > 1 ? alternates.filter((a) => a.translated) : [],
       // A dated entry is an article: its headline, its day, its picture, and who published it.
       data: type.dated
         ? [
