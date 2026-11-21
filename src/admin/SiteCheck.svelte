@@ -54,6 +54,12 @@ async function run(): Promise<void> {
         {#each check.redirects as r (r.from)}<li><code>{r.from}</code> → <code>{r.to}</code> <small>{t.check[r.problem === 'missing' ? 'lost' : r.problem]}</small></li>{/each}
       </ul>
     {/if}
+    {#if check.server?.length}
+      <p>{t.check.server}</p>
+      <ul data-check-server>
+        {#each check.server as what (what)}<li data-server-only={what}>{t.check.serverOnly[what]}</li>{/each}
+      </ul>
+    {/if}
     {#if check.untranslated?.length}
       <p>{t.check.untranslated}</p>
       <ul data-check-untranslated>

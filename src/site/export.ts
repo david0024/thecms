@@ -45,7 +45,7 @@ import {
 import { wordsFor } from '../blocks/words.ts';
 import { lockedPage } from './locks.ts';
 import { menuOf, pageSetting, renderBlogList, renderPage, renderPost, STYLESHEET } from './document.ts';
-import { checkRedirects, checkSite, describeCheck } from './check.ts';
+import { checkRedirects, checkSite, describeCheck, type SiteCheck, serverOnly } from './check.ts';
 import { BASE_CSS } from './shipped.ts';
 import type { Store } from './store.ts';
 
@@ -246,7 +246,7 @@ export async function buildSite(
 export async function exportSite(store: Store, outDir: string, warn: (line: string) => void = () => {}): Promise<string[]> {
   const files = await publishedSite(store);
   // A link that would lead nowhere is not published quietly either (ADR 0029).
-  const { problems, warnings } = describeCheck({ ...checkSite(files), untranslated: await store.untranslated(), redirects: checkRedirects(files, await store.redirects()) });
+  const { problems, warnings } = describeCheck(await fullCheck(store, files));
   if (problems.length) throw new Error(`Nothing was exported. A link leads to an address the site does not have:\n${problems.map((p) => `  ${p}`).join('\n')}`);
   for (const line of warnings) warn(line);
   // A page behind a password is not written out: a static host cannot ask for it (ADR 0043).
@@ -266,6 +266,17 @@ export async function exportSite(store: Store, outDir: string, warn: (line: stri
     await Bun.write(target, contents);
   }
   return [...files.keys()].sort();
+}
+
+/** What is wrong with the built site, and what of it only its own server answers (ADR 0029, ADR 0044). */
+export async function fullCheck(store: Store, files: Map<string, string | Uint8Array>): Promise<SiteCheck> {
+  const routes = (await store.extensions()).some((e) => e.enabled && e.manifest.routes.length > 0);
+  return {
+    ...checkSite(files),
+    untranslated: await store.untranslated(),
+    redirects: checkRedirects(files, await store.redirects()),
+    server: serverOnly(files, { formsElsewhere: (await store.site()).forms !== '', routes }),
+  };
 }
 
 /** The published site as the files an export writes, in memory: what is checked before anything is written. */

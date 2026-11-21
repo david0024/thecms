@@ -40,6 +40,14 @@ export const en = {
     untranslated: 'These pages show words of the main language where a translation is missing. They are published as they are:',
     missing: '{count} not translated into {language}',
     redirects: 'These old addresses do not lead where they should:',
+    server: 'The site\'s own server does these. If you export it to a static host instead, they will not work:',
+    serverOnly: {
+      forms: 'contact forms (unless a form service is set in Site settings)',
+      comments: 'comments (unless a form service is set in Site settings)',
+      search: 'search',
+      locked: 'pages behind a password',
+      extensions: 'the addresses extensions answer at',
+    } as Record<string, string>,
     loop: 'comes back to itself',
     chain: 'leads to another old address; point it straight at the new one',
     lost: 'leads to an address the site does not have',
@@ -334,7 +342,7 @@ export const en = {
     live: 'These are used the next time the site is exported.',
     forms: 'Forms',
     formsAddress: 'Address of the form service (https://forms.example.com)',
-    formsHint: 'Where contact forms send what visitors write. Write /_ when the site is served by the thecms run command; otherwise the address of the thecms forms command. Left empty, forms are not shown on the site.',
+    formsHint: 'Leave it empty: this site\'s own server answers its forms, comments and search. Only a site exported to a static host needs the address of a form service elsewhere (the thecms forms command); search and pages behind a password do not work there.',
     keep: 'Keep messages for (days)',
     otherLanguages: 'Other languages of the site',
     otherLanguagesHint: 'Each page can then be translated into them from the list of pages; a translation lives under the language, like /ro/about/. Posts and entries stay in the main language for now.',
@@ -488,7 +496,7 @@ export const en = {
     period: 'Per (month, project…)',
     features: 'What it includes (one a line)',
   } as Record<string, string>,
-  empty: { image: 'Choose an image in the panel on the right', gallery: 'Add pictures in the panel on the right', form: 'Set the address of the form service in Site settings; until then this form is not shown on the site.', search: 'Search is answered by the site\'s runtime (thecms run): set the form service to /_ in Site settings; until then this field is not shown on the site.', group: 'An empty group. Select it, then add a block.', section: 'Choose a section in the panel on the right.', page: 'An empty page. Add a block from the left.' } as Record<string, string>,
+  empty: { image: 'Choose an image in the panel on the right', gallery: 'Add pictures in the panel on the right', group: 'An empty group. Select it, then add a block.', section: 'Choose a section in the panel on the right.', page: 'An empty page. Add a block from the left.' } as Record<string, string>,
   actions: { drag: 'Drag to move', up: 'Move up', down: 'Move down', duplicate: 'Duplicate', delete: 'Delete' } as Record<string, string>,
 };
 

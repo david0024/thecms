@@ -20,9 +20,9 @@ const main = (html: string): string => html.slice(html.indexOf('<main'), html.in
 const text = (body: string) => ({ id: `b_${Math.random().toString(36).slice(2, 10)}`, type: 'text', content: { body: [{ type: 'paragraph', children: [{ text: body }] }] } });
 
 describe('the search field', () => {
-  test('is drawn only where the runtime answers it', () => {
+  test('asks the site\'s own server, whatever form service is set', () => {
     const page = { slug: 'find', title: 'Find', description: '', inMenu: true, blocks: [createBlock('search')] };
-    expect(main(renderPage(normalizeSite({ name: 'S', forms: 'https://forms.example.com' }), theme, page, []))).not.toContain('<form');
+    expect(main(renderPage(normalizeSite({ name: 'S', forms: 'https://forms.example.com' }), theme, page, []))).toContain('action="/_/search"');
     const html = main(renderPage(normalizeSite({ name: 'S', language: 'ro', forms: '/_' }), theme, page, []));
     expect(html).toContain('action="/_/search"');
     expect(html).toContain('method="get"');

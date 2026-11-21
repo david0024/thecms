@@ -119,7 +119,7 @@ describe('the command line', () => {
     await expect(run('run', join(dir, 'none.db'))).rejects.toThrow('does not exist');
     const runtime = await run('run', db, '--port=0');
     try {
-      expect(said.join('\n')).toContain('Write /_ as the form service in Site settings');
+      expect(said.join('\n')).toContain('this command serves it without the editor');
       expect(said.join('\n')).toContain('Set THECMS_SMTP and THECMS_MAIL_TO to be told by email.');
       const page = await fetch(`${(runtime as unknown as { url: string }).url}/`);
       expect(await page.text()).toContain('<h1>Solid wood furniture, made to measure</h1>');

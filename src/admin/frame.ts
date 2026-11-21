@@ -153,7 +153,7 @@ window.addEventListener('message', (event) => {
   own.textContent = message.css;
   if (message.themeVersion !== themeVersion) {
     themeVersion = message.themeVersion;
-    themeLink.href = `/assets/site.css?v=${themeVersion}`;
+    themeLink.href = `/admin/site.css?v=${themeVersion}`;
   }
   prepare();
   showSelection();

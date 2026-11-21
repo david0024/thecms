@@ -7,8 +7,8 @@
 #   curl -fsSL https://github.com/david0024/thecms/releases/latest/download/install.sh | sh
 #
 # On a Linux server, as root: the program in /usr/local/bin, a system user, the
-# site in /var/lib/thecms, and a systemd service that serves the editor at your
-# address. It prints the link that makes the first owner's account.
+# site in /var/lib/thecms, and a systemd service that serves the site and its
+# editor at your address. It prints the link that makes the first owner's account.
 #
 #   curl -fsSL https://github.com/david0024/thecms/releases/latest/download/install.sh \
 #     | sh -s -- --server --public=https://cms.example.com
@@ -214,7 +214,7 @@ systemctl enable "$NAME" >/dev/null 2>&1
 systemctl restart "$NAME"
 
 echo
-echo "The editor runs on 127.0.0.1:$port. Point the web server that holds the certificate at it; with Caddy:"
+echo "The site and its editor run on 127.0.0.1:$port. Point the web server that holds the certificate at it; with Caddy:"
 echo
 echo "  ${public#https://} {"
 echo "    reverse_proxy 127.0.0.1:$port"

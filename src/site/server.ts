@@ -14,6 +14,11 @@
  * a header no other site's page can send, and calls only the owner may make.
  */
 import { startClock } from './clock.ts';
+import type { Mailer } from './mail.ts';
+import { startRuntime } from './runtime.ts';
+
+/** The admin's own addresses; every other is the site's (ADR 0044). */
+const ADMIN_PATHS = new Set(['/admin', '/preview']);
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { compile } from 'svelte/compiler';
@@ -29,8 +34,7 @@ import { BUILT_ADMIN } from './built-admin.ts';
 import { BASE_CSS, SHIPPED_THEMES } from './shipped.ts';
 import type { Store, User } from './store.ts';
 import { rowWrites } from '../view/index.ts';
-import { checkRedirects, checkSite } from './check.ts';
-import { publishedSite } from './export.ts';
+import { fullCheck, publishedSite } from './export.ts';
 
 const ADMIN = new URL('../admin/', import.meta.url);
 
@@ -113,7 +117,7 @@ const previewPage = (language: string): string => `<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="stylesheet" href="/assets/site.css" id="cms-theme">
+<link rel="stylesheet" href="/admin/site.css" id="cms-theme">
 <style id="cms-own"></style>
 </head>
 <body>
@@ -192,6 +196,11 @@ export async function startEditor(
     hostname?: string;
     /** How an extension's process is started; the tests give their own. */
     spawnExtension?: Spawn;
+    /** How the owner is told of a message or a comment (ADR 0019). */
+    mailer?: Mailer | null;
+    to?: string;
+    from?: string;
+    log?: (line: string) => void;
   } = {},
 ): Promise<EditorServer> {
   const assets = BUILT_ADMIN ? new Map(Object.entries(BUILT_ADMIN)) : await buildAdmin();
@@ -280,7 +289,9 @@ export async function startEditor(
       new Date().toISOString().slice(0, 10),
       type,
     ).post;
-  const extensions = extensionHost(store, { spawn: options.spawnExtension });
+  const extensions = extensionHost(store, { spawn: options.spawnExtension, log: options.log });
+  // The site itself, at the same address as its admin, as WordPress serves both (ADR 0044).
+  const site = startRuntime(store, { listen: false, extensions, mailer: options.mailer, to: options.to, from: options.from, log: options.log });
   /**
    * The extensions as the admin shows them. The owner sees each one, with what
    * it asked for and its screens; an editor sees what the ones turned on offer
@@ -647,7 +658,7 @@ export async function startEditor(
         // The published site, built as an export would build it, and read for what it would get wrong (ADR 0029).
         try {
           const files = await publishedSite(store);
-          return json({ check: { ...checkSite(files), untranslated: await store.untranslated(), redirects: checkRedirects(files, await store.redirects()) } });
+          return json({ check: await fullCheck(store, files) });
         } catch (error) {
           return json({ error: error instanceof Error ? error.message : String(error) }, 409);
         }
@@ -716,7 +727,7 @@ export async function startEditor(
     }
   }
 
-  async function handle(request: Request): Promise<Response> {
+  async function handle(request: Request, ip = ''): Promise<Response> {
     const url = new URL(request.url);
     // A page that points its own domain at 127.0.0.1 arrives with its own host name.
     const host = request.headers.get('host') ?? url.host;
@@ -744,6 +755,7 @@ export async function startEditor(
         return json({ error: error instanceof Error ? error.message : String(error) }, 400);
       }
     }
+    if (!ADMIN_PATHS.has(url.pathname) && !url.pathname.startsWith('/admin/') && !url.pathname.startsWith(MEDIA_PREFIX)) return site.fetch(request, ip);
     if (request.method !== 'GET') return json({ error: 'not found' }, 404);
     if (url.pathname.startsWith(MEDIA_PREFIX)) {
       // An <img> cannot carry the token, so a stored image is read without it. Its name is the hash of its bytes.
@@ -751,7 +763,6 @@ export async function startEditor(
       return file ? new Response(file.bytes as Uint8Array<ArrayBuffer>, { headers: { 'content-type': file.type, ...SECURITY } }) : json({ error: 'not found' }, 404);
     }
     switch (url.pathname) {
-      case '/':
       case '/admin':
         return new Response(null, { status: 302, headers: { location: '/admin/' } });
       case '/admin/': {
@@ -763,15 +774,23 @@ export async function startEditor(
         return text(assets.get(url.pathname.slice(7)) ?? '', 'text/javascript');
       case '/preview':
         return html(previewPage((await store.site()).language));
-      case '/assets/site.css':
-        // The structure first, the theme after it: where both set the same thing, the theme wins.
+      case '/admin/site.css':
+        // The canvas's: the theme as it is being built. The structure first, the theme after it: where both set the same thing, the theme wins.
         return text(`${baseCss}${themeCss(await theme())}`, 'text/css');
       default:
         return json({ error: 'not found' }, 404);
     }
   }
 
-  const server = options.listen === false ? null : Bun.serve({ hostname: options.hostname ?? '127.0.0.1', port, fetch: handle, maxRequestBodySize: IMPORT_MAX_BYTES + 1024 * 1024 });
+  const server =
+    options.listen === false
+      ? null
+      : Bun.serve({
+          hostname: options.hostname ?? '127.0.0.1',
+          port,
+          fetch: (request, srv) => handle(request, request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || srv.requestIP(request)?.address || ''),
+          maxRequestBodySize: IMPORT_MAX_BYTES + 1024 * 1024,
+        });
   if (server?.port) port = server.port;
   // What was set for later is published while the editor runs (ADR 0039).
   // So are the extensions' jobs, and what happens here is told to the extensions that listen (ADR 0041).
@@ -786,6 +805,7 @@ export async function startEditor(
     stop: () => {
       clock.stop();
       unlisten();
+      site.stop();
       extensions.close();
       server?.stop(true);
     },

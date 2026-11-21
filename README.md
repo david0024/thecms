@@ -9,9 +9,11 @@ people coming from WordPress.
   your own, and your own ones can always be reset.
 - **A theme is a document you can build yourself**, export and share. It
   contains no code.
-- **The pages are published as static files**: fast, nothing to break into, and
-  they run on any host, including free ones. What cannot be static (comments,
-  a cart, an account) runs in the site's optional runtime.
+- **The site is served, as a WordPress site is**, so forms, comments, search
+  and pages behind a password always work, with nothing to set. Pages are
+  built again only when what visitors see has changed, so they are as fast as
+  files. A simple site can still be exported as static files, and is told
+  what it loses.
 - **Modules cannot take the site down.** They declare what they do and run
   isolated.
 
@@ -59,6 +61,7 @@ The decisions behind this, each with its reason:
 - [ADR 0041 — Extensions on the server: routes, jobs and events](docs/adr/0041-extensions-on-the-server.md)
 - [ADR 0042 — Search on the site](docs/adr/0042-search.md)
 - [ADR 0043 — Pages behind a password](docs/adr/0043-pages-behind-a-password.md)
+- [ADR 0044 — The site is served](docs/adr/0044-the-site-is-served.md)
 
 ## Where it stands
 
@@ -73,7 +76,7 @@ What comes next, in four stages up to a shop, memberships and courses, is in
 | Blocks: hero, text, image, services, contact details, gallery, questions and answers, testimonials, prices, a list of entries, groups | done |
 | SQLite store, draft and published kept apart | done |
 | The same site on Postgres or MySQL, chosen by the address | done |
-| Static export with sitemap and robots.txt | done |
+| Static export with sitemap and robots.txt, for a simple site; it says what only the server does | done |
 | Visual editor: add, move, remove, type on the page, style with theme tokens | done |
 | Theme builder: tokens, block defaults and variants, themes as files | done |
 | Images uploaded and kept with the site, each offered at the size that fits a phone or a wide screen (srcset made in the browser); headings, lists and links from a bar on the page; blocks moved by dragging | done |
@@ -103,7 +106,8 @@ What comes next, in four stages up to a shop, memberships and courses, is in
 | A check before publishing: a link that leads nowhere stops the export, a picture with no description is listed; in the admin under the pages | done |
 | The canvas shown as on a phone, a tablet or a wide screen | done |
 | Data for search engines (schema.org): the site and its business on the home page, an article for each dated entry | done |
-| The site's runtime (`thecms run`): the published site and its forms from one address, old addresses as real 301s, comments and search; a cart and accounts arrive under `/_/` | started |
+| The site is served (`thecms`, or `thecms run` without the editor): pages, forms, comments, search and old addresses as real 301s from one address, built again only when something is published; a cart and accounts arrive under `/_/` | started |
+| Valkey on a server for the page cache, jobs and sessions, with a fallback in memory and on disk | planned |
 
 ## Install
 
@@ -120,9 +124,10 @@ irm https://github.com/david0024/thecms/releases/latest/download/install.ps1 | i
 ```
 
 Then, in a folder for your site, run `thecms`. It makes `site.db` with sample
-pages and opens the editor. `thecms update` brings the newest release.
+pages and serves the site, with its editor at `/admin/`. `thecms update` brings the newest release.
 
-On a Linux server, as root, the editor for your client, behind your web server:
+On a Linux server, as root, the site and its editor at your address, behind the
+web server that holds the certificate:
 
 ```sh
 curl -fsSL https://github.com/david0024/thecms/releases/latest/download/install.sh \
@@ -139,12 +144,16 @@ Needs [Bun](https://bun.sh) 1.4 or newer.
 ```sh
 bun install
 bun run cms init site.db              # a sample site, in one file
-bun run cms edit site.db              # the visual editor; open the address it prints
-bun run cms export site.db dist       # the published site as static files
+bun run cms edit site.db              # the site and its editor; open the address it prints
+bun run cms run site.db               # the site alone, for visitors
+bun run cms export site.db dist       # or the published site as static files
 ```
 
-Contact forms send to a small service of the site's own (ADR 0019). Run it where
-visitors can reach it, put its address in Site settings, and export again:
+The site's forms, comments and search are answered by its own server. To be
+told of a message by email, set `THECMS_SMTP` and `THECMS_MAIL_TO`. A site
+exported as files can send its forms to the small form service (ADR 0019): run
+it where visitors can reach it, put its address in Site settings, and export
+again:
 
 ```sh
 THECMS_SMTP=smtps://user:pass@mail.example.com THECMS_MAIL_TO=you@example.com \
@@ -170,7 +179,7 @@ style the selected block on the right, then Publish. **Edit theme** opens the
 theme builder: change the colours, typefaces and spacing, set how each block
 type looks by default, and download the result as a file. A theme is published
 separately from pages, with **Publish theme**. `export` writes what is published; serve `dist` with any static file
-server.
+server, and read what it says a static host cannot do.
 
 To bring a WordPress site: in WordPress choose Tools, Export, All content. Then open
 **Import** in the admin and choose the file; it shows what would come over before

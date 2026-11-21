@@ -1616,6 +1616,56 @@ export class Store {
   async rawForTests(query: string, params: unknown[] = []): Promise<void> {
     await this.run(query, params);
   }
+
+  /**
+   * Which build of the published site is current (ADR 0044): it changes with
+   * anything visitors would see differently. The server builds the site again
+   * only when it has changed, whichever process changed it.
+   */
+  async siteVersion(): Promise<string> {
+    return String((await this.getMeta('published:version')) ?? '');
+  }
+
+  /** Says that what visitors see has changed. */
+  async touch(): Promise<void> {
+    await this.setMeta('published:version', crypto.randomUUID());
+  }
+}
+
+/** What changes what visitors see: each says so once it is done (ADR 0044). */
+const TOUCHING = [
+  'setSite',
+  'setRedirects',
+  'publishTheme',
+  'publishTemplate',
+  'publish',
+  'movePage',
+  'splitTranslation',
+  'deleteTranslation',
+  'deletePage',
+  'lockPage',
+  'publishSection',
+  'deleteSection',
+  'publishEntry',
+  'deleteEntry',
+  'addVariant',
+  'deleteMedia',
+  'addComment',
+  'approveComment',
+  'deleteComment',
+  'deleteCommentsFrom',
+] as const;
+for (const name of TOUCHING) {
+  const done = Store.prototype[name] as (this: Store, ...args: unknown[]) => Promise<unknown>;
+  Object.defineProperty(Store.prototype, name, {
+    value: async function (this: Store, ...args: unknown[]): Promise<unknown> {
+      const result = await done.apply(this, args);
+      await this.touch();
+      return result;
+    },
+    writable: true,
+    configurable: true,
+  });
 }
 
 /** A translation made as a copy (ADR 0024), as the page's translation (ADR 0032 d7). */

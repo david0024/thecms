@@ -94,6 +94,9 @@ export function describeOffer(offer: ExtensionOffer): string {
   return lines.join('\n');
 }
 
+/** How the owner is told of a message or a comment: a mail server's address, as a database is given. */
+const mail = () => ({ mailer: smtpMailer(process.env.THECMS_SMTP), to: process.env.THECMS_MAIL_TO ?? '', from: process.env.THECMS_MAIL_FROM });
+
 /** Runs one command. A command that starts a server gives it back, so a test can stop it. */
 export async function main(args: string[]): Promise<{ stop: () => void } | undefined> {
   const flags = args.filter((a) => a.startsWith('--'));
@@ -169,8 +172,11 @@ export async function main(args: string[]): Promise<{ stop: () => void } | undef
   }
   if (command === 'edit' && dbPath) {
     if (missing()) throw new Error(`${shown} does not exist`);
-    const editor = await startEditor(await Store.open(dbPath), extra ? { port: Number(extra) } : {});
-    console.log(`Editing ${shown}. Open this address (it carries the key to the editor):\n\n  ${editor.url}\n\nPress Ctrl+C to stop.`);
+    const editor = await startEditor(await Store.open(dbPath), { ...mail(), ...(extra ? { port: Number(extra) } : {}) });
+    console.log(
+      `Editing ${shown}. Open this address (it carries the key to the editor):\n\n  ${editor.url}\n\n` +
+        `The site, as visitors see it, is at http://127.0.0.1:${editor.port}/, with its forms, comments and search.\nPress Ctrl+C to stop.`,
+    );
     return editor;
   }
   if (command === 'import' && dbPath && extra) {
@@ -230,7 +236,7 @@ export async function main(args: string[]): Promise<{ stop: () => void } | undef
     console.log(
       `Serving the published site of ${shown} at ${runtime.url}, and its forms at ${runtime.url}/_/send.\n` +
         `${mailer && to ? `Each message is also sent to ${to}.` : 'Messages are kept and shown in the admin. Set THECMS_SMTP and THECMS_MAIL_TO to be told by email.'}\n` +
-        'Write /_ as the form service in Site settings, so the forms send here. A publication shows within a few seconds.',
+        'A publication shows within a second. The editor serves the site this way too; this command serves it without the editor.',
     );
     return runtime;
   }
@@ -238,9 +244,9 @@ export async function main(args: string[]): Promise<{ stop: () => void } | undef
     if (missing()) throw new Error(`${shown} does not exist`);
     if (!option('public')) throw new Error('give the address people will open, like --public=https://cms.example.com');
     const store = await Store.open(dbPath);
-    const editor = await startEditor(store, { public: option('public'), port: option('port') ? Number(option('port')) : 4321, hostname: option('host') || '127.0.0.1' });
+    const editor = await startEditor(store, { ...mail(), public: option('public'), port: option('port') ? Number(option('port')) : 4321, hostname: option('host') || '127.0.0.1' });
     console.log(
-      `Serving the editor of ${shown} on port ${editor.port}, for ${editor.url}\n\n` +
+      `Serving ${shown} on port ${editor.port}: the site at ${option('public').replace(/\/+$/, '')}/, its editor at ${editor.url}\n\n` +
         (editor.setupUrl
           ? `Nobody has an account yet. Open this link within the hour to make the owner's account; it works once. Started again, the editor prints a new one.\n\n  ${editor.setupUrl}\n`
           : 'Sign in there with your account.\n'),

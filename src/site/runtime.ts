@@ -21,8 +21,12 @@ export interface Runtime {
   stop: () => void;
 }
 
-/** How long a built site is served before the store is read again: a publication shows within this. */
-export const FRESH_MS = 5000;
+/**
+ * How often the store is asked whether anything visitors see has changed: a
+ * publication shows within this. Nothing changed, nothing is built again: the
+ * pages are served as they were made (ADR 0044).
+ */
+export const FRESH_MS = 1000;
 
 const TYPES: Record<string, string> = {
   html: 'text/html; charset=utf-8',
@@ -59,20 +63,23 @@ export function startRuntime(
     log?: (line: string) => void;
     now?: () => number;
     spawnExtension?: Spawn;
+    /** The extensions of the editor this runtime is part of, which hears the site's events and runs their jobs itself. */
+    extensions?: ExtensionHostApi;
   } = {},
 ): Runtime {
   const now = options.now ?? Date.now;
   // The extensions' routes, jobs and events (ADR 0041): their code runs apart, as in the editor.
-  const extensions: ExtensionHostApi = extensionHost(store, { spawn: options.spawnExtension, log: options.log });
+  const own = !options.extensions;
+  const extensions: ExtensionHostApi = options.extensions ?? extensionHost(store, { spawn: options.spawnExtension, log: options.log });
   const forms = startForms(store, { listen: false, mailer: options.mailer, to: options.to, from: options.from, log: options.log });
-  let built: { at: number; files: Promise<Map<string, string | Uint8Array>> } | null = null;
+  let built: { version: string; files: Promise<Map<string, string | Uint8Array>> } | null = null;
+  let asked: { at: number; version: Promise<string> } | null = null;
 
-  /** The published site, built again once it is older than FRESH_MS. A site with nothing published yet is no site. */
-  const site = (): Promise<Map<string, string | Uint8Array>> => {
-    if (!built || now() - built.at >= FRESH_MS) {
-      const files = publishedSite(store).catch(() => new Map<string, string | Uint8Array>());
-      built = { at: now(), files };
-    }
+  /** The published site, built again only when what visitors see has changed. A site with nothing published yet is no site. */
+  const site = async (): Promise<Map<string, string | Uint8Array>> => {
+    if (!asked || now() - asked.at >= FRESH_MS) asked = { at: now(), version: store.siteVersion() };
+    const version = await asked.version;
+    if (!built || built.version !== version) built = { version, files: publishedSite(store).catch(() => new Map<string, string | Uint8Array>()) };
     return built.files;
   };
 
@@ -193,7 +200,7 @@ export function startRuntime(
   if (server?.port) port = server.port;
   // The site's clock runs here too: on a server with no editor running, what was set for later is still published (ADR 0039).
   const clock = startClock(store, { run: server !== null, log: options.log, jobs: extensions.jobs });
-  const unlisten = extensions.listen();
+  const unlisten = own ? extensions.listen() : () => {};
   return {
     url: `http://${options.hostname ?? '127.0.0.1'}:${port}`,
     port,
@@ -201,7 +208,7 @@ export function startRuntime(
     stop: () => {
       clock.stop();
       unlisten();
-      extensions.close();
+      if (own) extensions.close();
       server?.stop(true);
     },
   };

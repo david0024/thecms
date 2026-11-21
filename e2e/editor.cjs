@@ -458,9 +458,9 @@ const assert = (condition, message) => {
     await page.locator('.field fieldset').getByRole('button', { name: 'Add' }).click();
     await canvas.locator('.b-faq [data-edit="items.2.question"]').waitFor();
     assert((await canvas.locator('.b-faq details').count()) === 0, 'questions and answers are all open in the editor, each one typed into on the page');
-    // A contact form: its words are typed on the page; without a form service the editor says it is not on the site yet.
+    // A contact form: its words are typed on the page; the site's own server answers it (ADR 0044).
     await page.locator('[data-add="form"]').click();
-    await canvas.locator('.b-form [data-empty="form"]').waitFor();
+    await canvas.locator('.b-form form').waitFor();
     await canvas.locator('.b-form [data-edit="button"]').click();
     await page.keyboard.press('End');
     await page.keyboard.type(' now');
