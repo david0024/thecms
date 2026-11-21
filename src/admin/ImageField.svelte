@@ -26,7 +26,7 @@ async function upload(event: Event): Promise<void> {
   problem = '';
   try {
     const { item, media } = await uploadImage(file);
-    if (library) library = media;
+    if (library) library = media.filter((m) => m.kind === 'image');
     onchange({ src: item.path, alt });
   } catch (error) {
     problem = error instanceof Error ? error.message : String(error);
@@ -42,7 +42,7 @@ async function toggleLibrary(): Promise<void> {
     return;
   }
   try {
-    library = (await api.media()).media;
+    library = (await api.media()).media.filter((item) => item.kind === 'image');
   } catch (error) {
     problem = error instanceof Error ? error.message : String(error);
   }
@@ -51,7 +51,7 @@ async function toggleLibrary(): Promise<void> {
 async function remove(name: string): Promise<void> {
   problem = '';
   try {
-    library = (await api.removeMedia(name)).media;
+    library = (await api.removeMedia(name)).media.filter((item) => item.kind === 'image');
   } catch (error) {
     problem = error instanceof Error ? error.message : String(error);
   }

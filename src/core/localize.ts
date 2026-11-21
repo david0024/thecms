@@ -69,6 +69,14 @@ function spots(blocks: Block[]): Spot[] {
       else if ((field.kind === 'image' && isObject(value)) || (field.kind === 'link' && isObject(value))) {
         const part = field.kind === 'image' ? 'alt' : 'label';
         out.push({ key: `${key}.${part}`, value: typeof value[part] === 'string' ? value[part] : '', set: (v) => (value[part] = v) });
+      } else if (field.kind === 'file' && isObject(value)) {
+        // A document's link words are written in each language; the file is the same (ADR 0047).
+        out.push({ key: `${key}.label`, value: typeof value.label === 'string' ? value.label : '', set: (v) => (value.label = v) });
+      } else if (field.kind === 'table' && isObject(value) && Array.isArray(value.rows)) {
+        // Each cell is translated on its own, so a translation keeps the table's shape (ADR 0047).
+        (value.rows as string[][]).forEach((row, i) =>
+          row.forEach((cell, j) => out.push({ key: `${key}.rows.${i}.${j}`, value: cell, set: (v) => (row[j] = typeof v === 'string' ? v : '') })),
+        );
       } else if (field.kind === 'list' && Array.isArray(value)) value.forEach((item, i) => isObject(item) && fields(field.item, item, `${key}.${i}`));
     }
   };

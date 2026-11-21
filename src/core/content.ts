@@ -1,5 +1,5 @@
 /** What each block type's `content` holds once cleaned: the shapes `BLOCKS` declares. */
-import type { ImageValue, LinkValue } from './blocks.ts';
+import type { FileValue, ImageValue, LinkValue, TableValue } from './blocks.ts';
 import type { RichText } from './richtext.ts';
 
 export interface HeroContent {
@@ -72,4 +72,35 @@ export interface ContactContent {
   email: string;
   phone: string;
   address: string;
+}
+export interface ButtonsContent {
+  items: { action: LinkValue | null }[];
+}
+export interface TableContent {
+  title: string;
+  table: TableValue;
+  caption: string;
+}
+export interface EmbedContent {
+  /** The address the author pasted; `embedOf` makes the player's own. */
+  url: string;
+  /** What the player is, for a reader that cannot see it. */
+  title: string;
+  caption: string;
+}
+export interface VideoContent {
+  video: FileValue | null;
+  title: string;
+  poster: ImageValue | null;
+  caption: string;
+}
+export interface AudioContent {
+  audio: FileValue | null;
+  title: string;
+  caption: string;
+}
+export interface FilesContent {
+  title: string;
+  intro: string;
+  items: { file: FileValue | null; text: string }[];
 }

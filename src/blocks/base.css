@@ -73,6 +73,24 @@ img{max-width:100%;height:auto;display:block}
 .figure img{border-radius:var(--t-radius-md);width:100%}
 .figure figcaption{margin-top:var(--t-space-xs);font-size:var(--t-size-sm);color:var(--t-color-muted)}
 
+/* ADR 0047: a table scrolls inside itself on a phone; players keep their shape; documents as a list. */
+.table-wrap{overflow-x:auto;margin-top:var(--t-space-sm)}
+.table{width:100%;border-collapse:collapse;font-size:var(--t-size-sm)}
+.table caption{caption-side:bottom;text-align:start;padding-top:var(--t-space-xs);color:var(--t-color-muted)}
+.table th,.table td{padding:.5em .75em;border-bottom:1px solid var(--t-color-border);text-align:start;vertical-align:top}
+.table thead th{border-bottom-width:2px}
+.embed iframe,.video{display:block;width:100%;border:0;border-radius:var(--t-radius-md);background:var(--t-color-surface)}
+.embed-video iframe,.video{aspect-ratio:16/9}
+.embed-map iframe{aspect-ratio:4/3}
+.embed-audio iframe{height:166px}
+.embed-audio-tall iframe{height:380px}
+.audio{display:block;width:100%}
+.files{list-style:none;margin:var(--t-space-md) 0 0;padding:0;display:grid;gap:var(--t-space-sm)}
+.files li{padding:var(--t-space-sm) var(--t-space-md);border:1px solid var(--t-color-border);border-radius:var(--t-radius-md);background:var(--t-color-surface)}
+.files a{font-weight:600}
+.files p{margin:.25em 0 0;color:var(--t-color-muted);font-size:var(--t-size-sm)}
+.file-kind{margin-inline-start:.5em;padding:.05em .4em;border:1px solid currentColor;border-radius:var(--t-radius-sm,4px);font-size:.75em;font-weight:600;vertical-align:.1em}
+
 .cards{list-style:none;margin:var(--t-space-md) 0 0;padding:0;display:grid;gap:var(--b-gap);grid-template-columns:repeat(auto-fit,minmax(min(100%,15rem),1fr));text-align:start}
 .card{padding:var(--t-space-md);border:1px solid var(--t-color-border);border-radius:var(--t-radius-md);background:var(--t-color-surface)}
 .card>:last-child{margin-bottom:0}

@@ -11,7 +11,8 @@ import {
   contentTypes,
   entryPath,
   feedPath,
-  imageSources,
+  mediaSources,
+  mediaKindOf,
   mediaNameOf,
   type MediaSize,
   mediaPath,
@@ -183,18 +184,18 @@ export async function buildSite(
   }
 
   const shown: [string, string][] = [
-    ...pages.flatMap((p) => imageSources(p.blocks).map((src): [string, string] => [`the page "${p.title}"`, src])),
+    ...pages.flatMap((p) => mediaSources(p.blocks).map((src): [string, string] => [`the page "${p.title}"`, src])),
     ...posts.flatMap((p) => postImageSources(p).map((src): [string, string] => [`the entry "${p.title}"`, src])),
-    ...types.flatMap(({ type }) => imageSources(templates[type.id] ?? []).map((src): [string, string] => [`the page of "${type.name}"`, src])),
+    ...types.flatMap(({ type }) => mediaSources(templates[type.id] ?? []).map((src): [string, string] => [`the page of "${type.name}"`, src])),
   ];
-  for (const [name, blocks] of Object.entries(framed.areas ?? {})) for (const src of imageSources(blocks)) shown.push([`the section "${name}" of a layout`, src]);
+  for (const [name, blocks] of Object.entries(framed.areas ?? {})) for (const src of mediaSources(blocks)) shown.push([`the section "${name}" of a layout`, src]);
   if (site.logo) shown.push(['the header', site.logo.src]);
   for (const [where, src] of shown) {
     const name = mediaNameOf(src);
     if (!name || files.has(src.slice(1))) continue;
     const bytes = await media(name);
-    // A site that would show a broken picture is not published quietly.
-    if (!bytes) throw new Error(`${where} shows an image this site does not have: ${src}`);
+    // A site that would show a broken picture, or link to a missing file, is not published quietly.
+    if (!bytes) throw new Error(`${where} ${mediaKindOf(name) === 'image' ? 'shows an image' : 'links to a file'} this site does not have: ${src}`);
     files.set(src.slice(1), bytes);
     // Its smaller copies go with it, for the srcset that names them.
     for (const variant of images[name]?.variants ?? []) {
@@ -279,8 +280,13 @@ export async function fullCheck(store: Store, files: Map<string, string | Uint8A
   };
 }
 
-/** The published site as the files an export writes, in memory: what is checked before anything is written. */
-export async function publishedSite(store: Store): Promise<Map<string, string | Uint8Array>> {
+/**
+ * The published site as the files an export writes, in memory: what is checked
+ * before anything is written. `served`: for the runtime, which reads documents,
+ * sound and video from the library as they are asked for, so they are only
+ * checked to be there and stand in the map empty (ADR 0046).
+ */
+export async function publishedSite(store: Store, served = false): Promise<Map<string, string | Uint8Array>> {
   const theme = await store.publishedTheme();
   if (!theme) throw new Error('the theme is not published yet');
   const pages = await store.published();
@@ -295,5 +301,7 @@ export async function publishedSite(store: Store): Promise<Map<string, string | 
   }
   const locks = new Set(await store.lockedPages());
   const locked = Object.fromEntries(pages.filter((p) => locks.has(p.of)).map((p) => [pagePath(p.slug), p.of]));
-  return buildSite(site, theme, pages, async (name) => (await store.mediaFile(name))?.bytes ?? null, entries, await store.redirects(), templates, await store.publishedSections(), await store.mediaSizes(), await store.shownComments(), locked);
+  const media: MediaSource = async (name) =>
+    served && mediaKindOf(name) !== 'image' ? ((await store.hasMedia(name)) ? new Uint8Array(0) : null) : ((await store.mediaFile(name))?.bytes ?? null);
+  return buildSite(site, theme, pages, media, entries, await store.redirects(), templates, await store.publishedSections(), await store.mediaSizes(), await store.shownComments(), locked);
 }

@@ -1,12 +1,14 @@
 /**
- * Images an author uploads (ADR 0005).
+ * Files an author uploads: images (ADR 0005), and documents, sound and video
+ * (ADR 0046).
  *
  * A file is what its bytes say it is, never what its name or the browser
- * claims. Only raster formats are taken: an SVG is a document that can carry
- * script, and it would be served from the site's own address.
+ * claims. Only raster images are taken: an SVG is a document that can carry
+ * script, and it would be served from the site's own address. For the same
+ * reason there is no HTML, no text file and no program among the documents.
  */
 
-export const MEDIA_TYPES = {
+export const IMAGE_TYPES = {
   png: 'image/png',
   jpg: 'image/jpeg',
   gif: 'image/gif',
@@ -14,15 +16,62 @@ export const MEDIA_TYPES = {
   avif: 'image/avif',
 } as const;
 
+/** What else the library holds (ADR 0046): documents a visitor downloads or reads, sound and video a page plays. */
+export const FILE_TYPES = {
+  pdf: 'application/pdf',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  odt: 'application/vnd.oasis.opendocument.text',
+  ods: 'application/vnd.oasis.opendocument.spreadsheet',
+  odp: 'application/vnd.oasis.opendocument.presentation',
+  zip: 'application/zip',
+  mp3: 'audio/mpeg',
+  m4a: 'audio/mp4',
+  ogg: 'audio/ogg',
+  wav: 'audio/wav',
+  mp4: 'video/mp4',
+  webm: 'video/webm',
+} as const;
+
+export const MEDIA_TYPES = { ...IMAGE_TYPES, ...FILE_TYPES } as const;
+
+export type ImageExt = keyof typeof IMAGE_TYPES;
+export type FileExt = keyof typeof FILE_TYPES;
 export type MediaExt = keyof typeof MEDIA_TYPES;
+
+/** What a stored file is for: a picture, a document, sound or video. */
+export type MediaKind = 'image' | 'document' | 'audio' | 'video';
+
+export const mediaKindOf = (name: string): MediaKind => {
+  const type: string = MEDIA_TYPES[name.split('.').pop() as MediaExt] ?? '';
+  if (type.startsWith('image/')) return 'image';
+  if (type.startsWith('audio/')) return 'audio';
+  if (type.startsWith('video/')) return 'video';
+  return 'document';
+};
 
 /** The most one image may weigh. */
 export const MEDIA_MAX_BYTES = 10 * 1024 * 1024;
 
+/**
+ * The most each kind of file may weigh (ADR 0046 d3). Files live in the site's
+ * database, so a long film belongs on a video service and is shown with a link.
+ */
+export const MAX_BYTES: Record<MediaKind, number> = {
+  image: MEDIA_MAX_BYTES,
+  document: 25 * 1024 * 1024,
+  audio: 50 * 1024 * 1024,
+  video: 100 * 1024 * 1024,
+};
+
+/** The most any upload may weigh: what the server reads before it knows what the file is. */
+export const UPLOAD_MAX_BYTES = Math.max(...Object.values(MAX_BYTES));
+
 const ascii = (bytes: Uint8Array, from: number, length: number): string => String.fromCharCode(...bytes.subarray(from, from + length));
 
 /** The image format these bytes are in, or null when they are not an image we take. */
-export function imageExt(bytes: Uint8Array): MediaExt | null {
+export function imageExt(bytes: Uint8Array): ImageExt | null {
   if (bytes.length < 12) return null;
   if (bytes[0] === 0x89 && ascii(bytes, 1, 3) === 'PNG' && bytes[4] === 0x0d && bytes[5] === 0x0a && bytes[6] === 0x1a && bytes[7] === 0x0a) return 'png';
   if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'jpg';
@@ -32,9 +81,57 @@ export function imageExt(bytes: Uint8Array): MediaExt | null {
   return null;
 }
 
-const NAME = /^[a-f0-9]{32}\.(png|jpg|gif|webp|avif)$/;
+/** True when `needle` appears in the first `within` bytes. */
+function holds(bytes: Uint8Array, needle: string, within = bytes.length): boolean {
+  const end = Math.min(bytes.length, within) - needle.length;
+  outer: for (let i = 0; i <= end; i++) {
+    for (let j = 0; j < needle.length; j++) if (bytes[i + j] !== needle.charCodeAt(j)) continue outer;
+    return true;
+  }
+  return false;
+}
 
-/** A stored image is named by its contents: `<hash>.<format>`. */
+/**
+ * What a ZIP file holds, by the names of its first entries: a Word, Excel or
+ * PowerPoint file, an OpenDocument file (whose first entry names its type), or
+ * an archive of anything else.
+ */
+function zipExt(bytes: Uint8Array): FileExt {
+  const odf = /^mimetype(application\/vnd\.oasis\.opendocument\.(text|spreadsheet|presentation))/.exec(ascii(bytes, 30, 90));
+  if (odf) return ({ text: 'odt', spreadsheet: 'ods', presentation: 'odp' } as const)[odf[2] as 'text'];
+  if (holds(bytes, '[Content_Types].xml', 64 * 1024)) {
+    if (holds(bytes, 'word/')) return 'docx';
+    if (holds(bytes, 'xl/')) return 'xlsx';
+    if (holds(bytes, 'ppt/')) return 'pptx';
+  }
+  return 'zip';
+}
+
+/** The kind of document, sound or video these bytes are, or null when they are not one we take (ADR 0046). */
+export function fileExt(bytes: Uint8Array): FileExt | null {
+  if (bytes.length < 12) return null;
+  if (ascii(bytes, 0, 5) === '%PDF-') return 'pdf';
+  if (ascii(bytes, 0, 4) === 'PK\x03\x04') return zipExt(bytes);
+  if (ascii(bytes, 0, 3) === 'ID3') return 'mp3';
+  // An MP3 without tags starts with a frame: eleven bits set, then MPEG layer III.
+  if (bytes[0] === 0xff && ((bytes[1] ?? 0) & 0xe6) === 0xe2) return 'mp3';
+  if (ascii(bytes, 0, 4) === 'OggS') return 'ogg';
+  if (ascii(bytes, 0, 4) === 'RIFF' && ascii(bytes, 8, 4) === 'WAVE') return 'wav';
+  if (bytes[0] === 0x1a && bytes[1] === 0x45 && bytes[2] === 0xdf && bytes[3] === 0xa3) return holds(bytes, 'webm', 64) ? 'webm' : null;
+  if (ascii(bytes, 4, 4) === 'ftyp') {
+    const brand = ascii(bytes, 8, 4);
+    if (brand === 'M4A ' || brand === 'M4B ') return 'm4a';
+    if (['isom', 'iso2', 'iso4', 'iso5', 'iso6', 'mp41', 'mp42', 'avc1', 'dash', 'M4V '].includes(brand)) return 'mp4';
+  }
+  return null;
+}
+
+/** What these bytes are, as the library stores them: an image first, then any other file it takes. */
+export const mediaExt = (bytes: Uint8Array): MediaExt | null => imageExt(bytes) ?? fileExt(bytes);
+
+const NAME = new RegExp(`^[a-f0-9]{32}\\.(${Object.keys(MEDIA_TYPES).join('|')})$`);
+
+/** A stored file is named by its contents: `<hash>.<format>`. */
 export const isMediaName = (v: unknown): v is string => typeof v === 'string' && NAME.test(v);
 
 export const MEDIA_PREFIX = '/media/';

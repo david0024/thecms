@@ -124,7 +124,7 @@ describe('images stored with the site', () => {
   });
 
   test('what is not an image, or is too heavy, is refused', async () => {
-    expect(async () => await store.addMedia(bytes('<svg onload="alert(1)"/>'), 'x.png')).toThrow('not an image');
+    expect(async () => await store.addMedia(bytes('<svg onload="alert(1)"/>'), 'x.png')).toThrow('not a file this site takes');
     const heavy = new Uint8Array(MEDIA_MAX_BYTES + 1);
     heavy.set(PNG);
     await expect(store.addMedia(heavy)).rejects.toThrow('at most 10 MB');

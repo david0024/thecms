@@ -151,6 +151,8 @@ export interface LanguageInfo {
 
 export interface MediaItem {
   name: string;
+  /** What it is (ADR 0046). */
+  kind: 'image' | 'document' | 'audio' | 'video';
   path: string;
   type: string;
   size: number;

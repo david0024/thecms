@@ -4,7 +4,7 @@
  * the same blocks as a page, so everything the editor can do on a page it can
  * do in a post.
  */
-import { type Block, blocksText, cleanImage, type ImageValue, imageSources, normalizeBlocks } from './blocks.ts';
+import { type Block, blocksText, cleanImage, type ImageValue, mediaSources, normalizeBlocks } from './blocks.ts';
 import { BLOG_SLUG, cleanTypeFields, type ContentType, postsType } from './types.ts';
 import { type Issue, isObject, slugify, str } from './util.ts';
 
@@ -146,5 +146,5 @@ export function paginate<T>(items: T[], size = POSTS_PER_PAGE): T[][] {
 export const postImageSources = (post: Post): string[] => [
   ...(post.cover ? [post.cover.src] : []),
   ...Object.values(post.fields).flatMap((v) => (isObject(v) && typeof v.src === 'string' && v.src ? [v.src] : [])),
-  ...imageSources(post.blocks),
+  ...mediaSources(post.blocks),
 ];

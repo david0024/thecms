@@ -108,6 +108,8 @@ What comes next, in four stages up to a shop, memberships and courses, is in
 | Data for search engines (schema.org): the site and its business on the home page, an article for each dated entry | done |
 | The site is served (`thecms`, or `thecms run` without the editor): pages, forms, comments, search and old addresses as real 301s from one address, built again only when something is published; a cart and accounts arrive under `/_/` | started |
 | Valkey on a server for built pages, the clock's lock, sessions and the counters that limit tries, with a fallback in memory and on disk; Settings → Performance tests it | done |
+| Documents (PDF, Word, Excel, PowerPoint, OpenDocument, ZIP), sound and video in the media library, read from their bytes; a page that links to one exports it and keeps it from being deleted | done |
+| Blocks for buttons, tables, video, sound, documents, and players from YouTube, Vimeo, Spotify, SoundCloud, Google Maps and OpenStreetMap, made from the address an author pastes | done |
 
 ## Install
 
