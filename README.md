@@ -113,16 +113,20 @@ What comes next, in four stages up to a shop, memberships and courses, is in
 
 ## Install
 
+thecms is in **alpha** (ADR 0045): it stays there until everything decided is built, then
+goes to beta for testing and fixing, and only then to a stable release. Every release until
+then is a pre-release; the scripts below, and `thecms update`, take the newest one.
+
 On Linux or macOS:
 
 ```sh
-curl -fsSL https://github.com/david0024/thecms/releases/latest/download/install.sh | sh
+curl -fsSL https://github.com/david0024/thecms/releases/download/v0.1.0-alpha.1/install.sh | sh
 ```
 
 On Windows, in PowerShell:
 
 ```powershell
-irm https://github.com/david0024/thecms/releases/latest/download/install.ps1 | iex
+irm https://github.com/david0024/thecms/releases/download/v0.1.0-alpha.1/install.ps1 | iex
 ```
 
 Then, in a folder for your site, run `thecms`. It makes `site.db` with sample
@@ -132,7 +136,7 @@ On a Linux server, as root, the site and its editor at your address, behind the
 web server that holds the certificate:
 
 ```sh
-curl -fsSL https://github.com/david0024/thecms/releases/latest/download/install.sh \
+curl -fsSL https://github.com/david0024/thecms/releases/download/v0.1.0-alpha.1/install.sh \
   | sh -s -- --server --public=https://cms.example.com
 ```
 

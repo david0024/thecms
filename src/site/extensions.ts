@@ -132,7 +132,7 @@ export function extensionHost(store: Store, options: { spawn?: Spawn; fetch?: (u
     }
     const { pkg, problems } = parseExtension(raw);
     if (!pkg) throw new Error(problems.join('; '));
-    if (newer(pkg.manifest.thecmsMinVersion, VERSION)) throw new Error(`${pkg.manifest.displayName} needs version ${pkg.manifest.thecmsMinVersion} of this program; this is ${VERSION} (update it first)`);
+    if (newer(pkg.manifest.thecmsMinVersion, VERSION.split('-')[0] as string)) throw new Error(`${pkg.manifest.displayName} needs version ${pkg.manifest.thecmsMinVersion} of this program; this is ${VERSION} (update it first)`);
     const before = await store.extension(pkg.manifest.name);
     return { manifest: pkg.manifest, sha256: sha256(text), asks: extensionAsks(pkg.manifest), replaces: before?.manifest.version ?? null };
   }

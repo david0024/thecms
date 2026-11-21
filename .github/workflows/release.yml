@@ -3,9 +3,13 @@ name: Release
 # A tag v<version> publishes a release: the program as one file for each
 # platform, the checksums, and the install scripts (tools/build.ts, install.sh,
 # install.ps1). The tag must be the version in package.json.
+#
+# Run by hand ("Run workflow"), it makes that tag itself on the commit it runs
+# on, from the version in package.json, and publishes the same way.
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -20,7 +24,11 @@ jobs:
           bun-version: 1.4.4
       - run: bun install --frozen-lockfile
       - name: The tag is the version
-        run: test "$GITHUB_REF_NAME" = "v$(bun -e 'console.log((await Bun.file("package.json").json()).version)')"
+        id: tag
+        run: |
+          tag="v$(bun -e 'console.log((await Bun.file("package.json").json()).version)')"
+          if [ "$GITHUB_EVENT_NAME" = push ]; then test "$GITHUB_REF_NAME" = "$tag"; fi
+          echo "name=$tag" >> "$GITHUB_OUTPUT"
       - run: bun run check
       - run: bun tools/build.ts dist-bin
       # What people will download, run once before it is published: installed from these files, a site made and exported.
@@ -34,6 +42,10 @@ jobs:
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.tag.outputs.name }}
         run: |
           cp install.sh install.ps1 dist-bin/
-          gh release create "$GITHUB_REF_NAME" dist-bin/* --title "$GITHUB_REF_NAME" --generate-notes
+          # A version with a dash (0.1.0-alpha.1, 0.2.0-beta.3) is a pre-release (ADR 0045).
+          case "$TAG" in *-*) pre=--prerelease ;; *) pre= ;; esac
+          # Run by hand, the tag is made here, on this commit; a version already released is refused.
+          gh release create "$TAG" dist-bin/* --title "$TAG" --generate-notes --target "$GITHUB_SHA" $pre
