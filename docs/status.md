@@ -26,6 +26,7 @@ and in the README.
 | A WordPress category kept as a section of its own: its posts become entries of a new content type | done |
 | Contact form with consent, a small form service of the site's own, email to the owner, messages kept for a set time, exported or erased on request | done |
 | Forms built on a screen of their own and placed by a block: short and long text, email, phone, number, date, list, choices and boxes, each required or not, consent always; translated by field; each field checked by the server; messages by form, as CSV | done (files and steps: later) |
+| Search and sharing per page and entry: a title for search engines, a picture for previews, hidden from search engines (sitemap and search too); a picture for the whole site; breadcrumbs shown or hidden, always said to search engines; the check warns of long or shared titles; Yoast and others imported | done |
 | Language packs: the admin and the site's words in one JSON file a language, checked against English; Romanian ships complete | done |
 | Accounts for a served editor: the first owner from a one-time link, editors invited by the owner, an editor writes content and nothing else | done |
 | Installed with one command: one file a platform from GitHub Releases, checked by its checksum; a server with systemd in one more option; `thecms update` | done |

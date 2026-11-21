@@ -5,10 +5,11 @@
  * do in a post.
  */
 import { type Block, blocksText, cleanImage, type ImageValue, mediaSources, normalizeBlocks } from './blocks.ts';
+import { cleanSeo, type Seo } from './seo.ts';
 import { BLOG_SLUG, cleanTypeFields, type ContentType, postsType } from './types.ts';
 import { type Issue, isObject, slugify, str } from './util.ts';
 
-export interface Post {
+export interface Post extends Seo {
   /** Served at `/blog/<slug>/`. Never empty. */
   slug: string;
   title: string;
@@ -87,6 +88,7 @@ export function normalizePost(input: unknown, today = '1970-01-01', type: Conten
       tags: type.categories ? cleanCategories(raw.tags, MAX_TAGS) : [],
       fields: cleanTypeFields(type, raw.fields, isDate),
       blocks,
+      ...cleanSeo(raw),
     },
     issues,
   };
@@ -145,6 +147,36 @@ export function paginate<T>(items: T[], size = POSTS_PER_PAGE): T[][] {
 /** The address of every image a post shows: its cover, then those in its blocks. */
 export const postImageSources = (post: Post): string[] => [
   ...(post.cover ? [post.cover.src] : []),
+  ...(post.shareImage ? [post.shareImage.src] : []),
   ...Object.values(post.fields).flatMap((v) => (isObject(v) && typeof v.src === 'string' && v.src ? [v.src] : [])),
   ...mediaSources(post.blocks),
 ];
+
+/** One step of the breadcrumbs: its words, and where it leads; the last one leads nowhere. */
+export interface Crumb {
+  name: string;
+  href: string;
+}
+
+/** Where an entry is (d4): home, its type's list, its first category when its type has them, the entry. */
+export function entryTrail(home: string, type: ContentType, post: Post): Crumb[] {
+  const category = type.categories ? post.categories[0] : undefined;
+  return [
+    { name: home, href: '/' },
+    { name: type.name, href: listPath(type) },
+    ...(category ? [{ name: category, href: typeCategoryPath(type, category) }] : []),
+    { name: post.title, href: entryPath(type, post.slug) },
+  ];
+}
+
+/** Where a list of entries is: home, the type's list, and the category or tag when it is one of those. */
+export function listTrail(home: string, type: ContentType, heading: string, path: string): Crumb[] {
+  const own = !path.startsWith(`/${type.path}/category/`) && !path.startsWith(`/${type.path}/tag/`);
+  return [{ name: home, href: '/' }, { name: type.name, href: listPath(type) }, ...(own ? [] : [{ name: heading, href: path }])];
+}
+
+/** The breadcrumbs as schema.org says them, with whole addresses. */
+export const breadcrumbData = (url: string, trail: Crumb[]): Record<string, unknown> => ({
+  '@type': 'BreadcrumbList',
+  itemListElement: trail.map((crumb, i) => ({ '@type': 'ListItem', position: i + 1, name: crumb.name, item: `${url}${crumb.href}` })),
+});

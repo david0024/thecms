@@ -24,7 +24,7 @@ const ADMIN_PATHS = new Set(['/admin', '/preview']);
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { compile } from 'svelte/compiler';
-import { SECTION_KIND, type Block, type Form, fillSections, takeWords, withAreas, type Site, siteIn, type PlacedPage, translatedPage, cleanRow, EXTENSION_MAX_BYTES, type ExtensionManifest, extensionAsks, isObject, languageOf, normalizeBlocks, shownRow, str, type ContentType, DISPLAY_NAME, type LanguagePack, defaultTemplate, MEDIA_MAX_BYTES, MEDIA_PREFIX, UPLOAD_MAX_BYTES, EMBED_ORIGINS, normalizePage, type Page, type Post, contentTypes, listPath, type MenuList, normalizePost, parseTheme, pagesIn, POSTS_TYPE, reservedSlugs, slugProblem, type Theme, themeCss } from '../core/index.ts';
+import { SECTION_KIND, type Block, cleanSeo, type Form, fillSections, takeWords, withAreas, type Site, siteIn, type PlacedPage, translatedPage, cleanRow, EXTENSION_MAX_BYTES, type ExtensionManifest, extensionAsks, isObject, languageOf, normalizeBlocks, shownRow, str, type ContentType, DISPLAY_NAME, type LanguagePack, defaultTemplate, MEDIA_MAX_BYTES, MEDIA_PREFIX, UPLOAD_MAX_BYTES, EMBED_ORIGINS, normalizePage, type Page, type Post, contentTypes, listPath, type MenuList, normalizePost, parseTheme, pagesIn, POSTS_TYPE, reservedSlugs, slugProblem, type Theme, themeCss } from '../core/index.ts';
 import type { EntryLists } from '../blocks/editing.ts';
 import { type FetchImage, fetchImage as fetchOverNetwork, IMPORT_MAX_BYTES, type ImportReport, runImport } from '../import/run.ts';
 import { type ImportPlan, planImport } from '../import/wxr.ts';
@@ -290,7 +290,7 @@ export async function startEditor(
   };
   const filled = async (blocks: Block[], language?: string): Promise<Block[]> => fillSections(blocks, await store.draftSections(), language ?? (await store.site()).language);
   /** A page at its address as the builder edits it: no more than a page. */
-  const asPage = (p: PlacedPage): Page => ({ slug: p.slug, title: p.title, description: p.description, inMenu: p.inMenu, blocks: p.blocks });
+  const asPage = (p: PlacedPage): Page => ({ slug: p.slug, title: p.title, description: p.description, inMenu: p.inMenu, blocks: p.blocks, ...cleanSeo(p) });
   /** What the builder is told of a translation: the page it is of, its language, whether it is split. */
   const translationOf = (p: PlacedPage) => ({ of: p.of, language: p.language, split: p.split });
   /** A type's page as the builder edits it: a page whose blocks are the type's page, named after the type. */

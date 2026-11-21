@@ -164,6 +164,13 @@ summary.faq-question{cursor:pointer}
 .b-pricing{--b-width:var(--t-width-wide)}
 .group{display:grid;gap:var(--b-gap)}
 
+/* Where a page is, from home (ADR 0050 d4). */
+.crumbs{padding-block:var(--t-space-sm) 0;font-size:var(--t-size-sm);color:var(--t-color-muted)}
+.crumbs ol{display:flex;flex-wrap:wrap;gap:var(--t-space-xs);margin-block:0;padding:0;list-style:none}
+.crumbs li+li::before{content:"›";margin-inline-end:var(--t-space-xs)}
+.crumbs a{color:inherit}
+.crumbs:has(+.post>.post-head){--b-width:var(--t-width-narrow)}
+
 /* The blog: a post's head, and the list of posts. */
 .post-head{--b-width:var(--t-width-narrow);padding-bottom:0}
 .post-meta{display:flex;flex-wrap:wrap;gap:var(--t-space-xs) var(--t-space-sm);font-size:var(--t-size-sm);color:var(--t-color-muted)}

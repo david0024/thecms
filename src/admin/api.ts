@@ -226,7 +226,7 @@ export const api = {
   page: (slug: string, kind: Kind = 'page') => call<{ page: Doc; translation?: TranslationInfo }>('GET', `/api/page?kind=${kind}&slug=${encodeURIComponent(slug)}`),
   translate: (slug: string, language: string, kind: Kind = 'page') => call<{ page: Page; translation: TranslationInfo } & Lists>('POST', '/api/translate', { slug, language, kind }),
   split: (of: string, language: string, kind: Kind = 'page') => call<{ page: Page; translation: TranslationInfo } & Lists>('POST', '/api/split', { of, language, kind }),
-  check: () => call<{ check: { broken: { href: string; from: string[] }[]; unnamed: { src: string; on: string[] }[]; untranslated?: { slug: string; language: string; missing: number }[]; redirects?: RedirectProblem[]; server?: string[] } }>('GET', '/api/check'),
+  check: () => call<{ check: { broken: { href: string; from: string[] }[]; unnamed: { src: string; on: string[] }[]; untranslated?: { slug: string; language: string; missing: number }[]; redirects?: RedirectProblem[]; server?: string[]; seo?: { problem: 'long' | 'duplicate' | 'hidden'; pages: string[]; title?: string }[] } }>('GET', '/api/check'),
   scheduled: () => call<{ scheduled: { kind: string; slug: string; at: string }[] }>('GET', '/api/schedule'),
   schedule: (kind: Kind, slug: string, at: string) => call<{ scheduled: { kind: string; slug: string; at: string }[] }>('POST', '/api/schedule', { kind, slug, at }),
   unschedule: (kind: Kind, slug: string) => call<{ scheduled: { kind: string; slug: string; at: string }[] }>('DELETE', `/api/schedule?kind=${encodeURIComponent(kind)}&slug=${encodeURIComponent(slug)}`),

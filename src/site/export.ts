@@ -46,7 +46,7 @@ import {
 import { wordsFor } from '../blocks/words.ts';
 import { lockedPage } from './locks.ts';
 import { menuOf, pageSetting, renderBlogList, renderPage, renderPost, STYLESHEET } from './document.ts';
-import { checkRedirects, checkSite, describeCheck, type SiteCheck, serverOnly } from './check.ts';
+import { checkRedirects, checkSeo, checkSite, describeCheck, type SiteCheck, serverOnly } from './check.ts';
 import { BASE_CSS } from './shipped.ts';
 import type { Store } from './store.ts';
 
@@ -142,9 +142,10 @@ export async function buildSite(
   const homes = alternates(site, null, pages);
   /** Every address a visitor can open, for the sitemap. */
   const paths: string[] = [];
-  const page = (path: string, html: string): void => {
+  const page = (path: string, html: string, hidden = false): void => {
     files.set(fileOf(path), html);
-    paths.push(path);
+    // A page hidden from search engines is not in the sitemap (ADR 0050 d3).
+    if (!hidden) paths.push(path);
   };
 
   // The structure first, the theme after it: where both set the same thing, the theme wins.
@@ -153,20 +154,20 @@ export async function buildSite(
   const listable = Object.fromEntries(types.map(({ type, posts: own }) => [type.id, { type, entries: own }]));
   for (const p of pages) {
     const setting = pageSetting(site, p.slug, pages, lists);
-    page(pagePath(p.slug), renderPage(withAreas(setting.site, sections, setting.site.language), theme, p, setting.menu, listable, setting.alternates));
+    page(pagePath(p.slug), renderPage(withAreas(setting.site, sections, setting.site.language), theme, p, setting.menu, listable, setting.alternates), p.noindex);
   }
   // A page behind a password says so to the runtime, which asks for it; search engines are asked to keep none of it.
   for (const [path, slug] of Object.entries(locked)) {
     const html = files.get(fileOf(path));
     if (typeof html !== 'string') continue;
     files.set(fileOf(path), html.replace('<head>', `<head>\n<meta name="robots" content="noindex">\n<meta name="${LOCK_META}" content="${xml(slug)}">`));
-    paths.splice(paths.indexOf(path), 1);
+    if (paths.includes(path)) paths.splice(paths.indexOf(path), 1);
   }
   // Entries and their lists are in the main language, and so is what their layouts show (ADR 0035).
   const framed = withAreas(site, sections, site.language);
 
   for (const { type, posts: own } of types) {
-    for (const post of own) page(entryPath(type, post.slug), renderPost(framed, theme, post, menu, type, listable, templates[type.id] ?? null, homes));
+    for (const post of own) page(entryPath(type, post.slug), renderPost(framed, theme, post, menu, type, listable, templates[type.id] ?? null, homes), post.noindex);
     const lists = [
       { heading: type.name, path: (n: number) => listPath(type, n), posts: own },
       ...categoriesOf(own).map((c) => ({ heading: c.name, path: (n: number) => typeCategoryPath(type, c.name, n), posts: c.posts })),
@@ -184,12 +185,13 @@ export async function buildSite(
   }
 
   const shown: [string, string][] = [
-    ...pages.flatMap((p) => mediaSources(p.blocks).map((src): [string, string] => [`the page "${p.title}"`, src])),
+    ...pages.flatMap((p) => [...mediaSources(p.blocks), ...(p.shareImage ? [p.shareImage.src] : [])].map((src): [string, string] => [`the page "${p.title}"`, src])),
     ...posts.flatMap((p) => postImageSources(p).map((src): [string, string] => [`the entry "${p.title}"`, src])),
     ...types.flatMap(({ type }) => mediaSources(templates[type.id] ?? []).map((src): [string, string] => [`the page of "${type.name}"`, src])),
   ];
   for (const [name, blocks] of Object.entries(framed.areas ?? {})) for (const src of mediaSources(blocks)) shown.push([`the section "${name}" of a layout`, src]);
   if (site.logo) shown.push(['the header', site.logo.src]);
+  if (site.shareImage) shown.push(['the picture for sharing, in Site settings', site.shareImage.src]);
   for (const [where, src] of shown) {
     const name = mediaNameOf(src);
     if (!name || files.has(src.slice(1))) continue;
@@ -277,6 +279,7 @@ export async function fullCheck(store: Store, files: Map<string, string | Uint8A
     untranslated: await store.untranslated(),
     redirects: checkRedirects(files, await store.redirects()),
     server: serverOnly(files, { formsElsewhere: (await store.site()).forms !== '', routes }),
+    seo: checkSeo(files),
   };
 }
 

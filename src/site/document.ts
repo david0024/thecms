@@ -10,9 +10,13 @@ import BlogLayout from '../blocks/BlogLayout.svelte';
 import type { EntryLists } from '../blocks/editing.ts';
 import Layout from '../blocks/Layout.svelte';
 import PostLayout from '../blocks/PostLayout.svelte';
-import { ALTERNATES } from '../blocks/words.ts';
+import { ALTERNATES, wordsFor } from '../blocks/words.ts';
 import {
   type Alternate,
+  breadcrumbData,
+  type Crumb,
+  entryTrail,
+  listTrail,
   alternates as alternatesOf,
   type Block,
   blocksCss,
@@ -93,10 +97,13 @@ export function renderPostParts(
   alternates: Alternate[] = [],
 ): { body: string; css: string } {
   return {
-    body: clean(render(PostLayout, { props: { site, post, menu, editing, type, lists, template, designing }, context: withAlternates(alternates) }).body),
+    body: clean(render(PostLayout, { props: { site, post, menu, editing, type, lists, template, designing, crumbs: crumbsOf(site, entryTrail(wordsFor(site.language).home, type, post)) }, context: withAlternates(alternates) }).body),
     css: own([...(template ?? []), ...post.blocks], theme),
   };
 }
+
+/** The breadcrumbs a page shows: none when the owner turned them off (ADR 0050 d4). */
+const crumbsOf = (site: Site, trail: Crumb[]): Crumb[] => (site.breadcrumbs === false ? [] : trail);
 
 interface Head {
   /** What the browser's tab says. */
@@ -114,6 +121,8 @@ interface Head {
   alternates?: Alternate[];
   /** What the page is, said for search engines as schema.org data (ADR 0030). */
   data?: Record<string, unknown>[];
+  /** Kept out of search engines (ADR 0050 d3). */
+  noindex?: boolean;
 }
 
 /** The business behind the site, as schema.org names it: who publishes every page. */
@@ -138,11 +147,14 @@ function structured(site: Site, data: Record<string, unknown>[] | undefined): st
 
 function documentHtml(site: Site, head: Head, body: string, css: string): string {
   const canonical = site.url ? `${site.url}${head.path}` : '';
-  const image = head.image ? (head.image.startsWith('/') ? (site.url ? `${site.url}${head.image}` : '') : head.image) : '';
+  // A page without a picture of its own has the site's (ADR 0050 d2).
+  const picture = head.image || site.shareImage?.src || '';
+  const image = picture ? (picture.startsWith('/') ? (site.url ? `${site.url}${picture}` : '') : picture) : '';
   const lines = [
     '<meta charset="utf-8">',
     '<meta name="viewport" content="width=device-width, initial-scale=1">',
     `<title>${esc(head.title)}</title>`,
+    head.noindex ? '<meta name="robots" content="noindex">' : '',
     head.description ? `<meta name="description" content="${esc(head.description)}">` : '',
     canonical ? `<link rel="canonical" href="${esc(canonical)}">` : '',
     `<meta property="og:title" content="${esc(head.shareTitle)}">`,
@@ -150,6 +162,7 @@ function documentHtml(site: Site, head: Head, body: string, css: string): string
     canonical ? `<meta property="og:url" content="${esc(canonical)}">` : '',
     `<meta property="og:type" content="${head.type}">`,
     image ? `<meta property="og:image" content="${esc(image)}">` : '',
+    `<meta name="twitter:card" content="${image ? 'summary_large_image' : 'summary'}">`,
     head.feed ? `<link rel="alternate" type="application/atom+xml" title="${esc(site.name)}" href="${head.feed}">` : '',
     // Search engines are told where each language's page is; only with the site's address, as they want it whole.
     ...(site.url ? (head.alternates ?? []).map((a) => `<link rel="alternate" hreflang="${esc(a.language)}" href="${esc(`${site.url}${a.href}`)}">`) : []),
@@ -165,11 +178,14 @@ export function renderPage(site: Site, theme: Theme, page: Page, menu: MenuItem[
   return documentHtml(
     site,
     {
-      title: page.slug ? `${page.title} · ${site.name}` : site.name,
-      shareTitle: page.slug ? page.title : site.name,
+      // A title for search engines is the whole title (ADR 0050 d1).
+      title: page.seoTitle || (page.slug ? `${page.title} · ${site.name}` : site.name),
+      shareTitle: page.seoTitle || (page.slug ? page.title : site.name),
       description: pageDescription(page),
       path: pagePath(page.slug),
       type: 'website',
+      image: page.shareImage?.src,
+      noindex: page.noindex,
       // Only a page's own translations: a language's home page is not this page in that language.
       alternates: alternates.filter((a) => a.translated).length > 1 ? alternates.filter((a) => a.translated) : [],
       // The home page says what the site is, and whose.
@@ -193,15 +209,17 @@ export function renderPost(
   alternates: Alternate[] = [],
 ): string {
   const { body, css } = renderPostParts(site, theme, post, menu, false, type, lists, template, false, alternates);
+  const trail = breadcrumbData(site.url, entryTrail(wordsFor(site.language).home, type, post));
   return documentHtml(
     site,
     {
-      title: `${post.title} · ${site.name}`,
-      shareTitle: post.title,
+      title: post.seoTitle || `${post.title} · ${site.name}`,
+      shareTitle: post.seoTitle || post.title,
       description: postDescription(post),
       path: entryPath(type, post.slug),
       type: 'article',
-      image: post.cover?.src,
+      image: post.shareImage?.src ?? post.cover?.src,
+      noindex: post.noindex,
       feed: feedOf(site, type),
       // A dated entry is an article: its headline, its day, its picture, and who published it.
       data: type.dated
@@ -220,8 +238,9 @@ export function renderPost(
               author: { '@id': `${site.url}/#organization` },
             },
             organization(site),
+            trail,
           ]
-        : undefined,
+        : [trail],
     },
     body,
     css,
@@ -236,10 +255,12 @@ export function renderBlogList(
   type: ContentType = postsType(),
   alternates: Alternate[] = [],
 ): string {
-  const body = clean(render(BlogLayout, { props: { site, menu, heading: list.heading, posts: list.posts, newer: list.newer, older: list.older, type }, context: withAlternates(alternates) }).body);
+  const trail = listTrail(wordsFor(site.language).home, type, list.heading, list.path);
+  const crumbs = crumbsOf(site, trail);
+  const body = clean(render(BlogLayout, { props: { site, menu, heading: list.heading, posts: list.posts, newer: list.newer, older: list.older, type, crumbs }, context: withAlternates(alternates) }).body);
   return documentHtml(
     site,
-    { title: `${list.heading} · ${site.name}`, shareTitle: list.heading, description: '', path: list.path, type: 'website', feed: feedOf(site, type) },
+    { title: `${list.heading} · ${site.name}`, shareTitle: list.heading, description: '', path: list.path, type: 'website', feed: feedOf(site, type), data: [breadcrumbData(site.url, trail)] },
     body,
     '',
   );

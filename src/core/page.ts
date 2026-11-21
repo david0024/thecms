@@ -5,11 +5,12 @@ import { type Layout, normalizeLayouts } from './layout.ts';
 import { normalizeTranslations, type PageTranslation } from './localize.ts';
 import { type MenuNode, normalizeMenu } from './menu.ts';
 import type { Pictures } from './media.ts';
+import { cleanSeo, type Seo } from './seo.ts';
 import { pageSlug, prefixOf } from './translation.ts';
 import { BLOG_SLUG, type ContentType, normalizeTypes, POSTS_TYPE, postsType, RESERVED_SLUGS } from './types.ts';
 import { type Issue, isObject, safeHref, slugify, str } from './util.ts';
 
-export interface Page {
+export interface Page extends Seo {
   /** '' is the home page; anything else is served at `/<slug>/`. */
   slug: string;
   title: string;
@@ -56,6 +57,10 @@ export interface Site {
   areas?: Record<string, Block[]>;
   /** The site's forms, by name (ADR 0049): filled in to draw a page, never kept. */
   formDefs?: Record<string, Form>;
+  /** The picture of a link preview for every page that has none of its own (ADR 0050 d2). */
+  shareImage?: ImageValue;
+  /** False: the breadcrumbs are said to search engines and not shown (ADR 0050 d4). Absent: shown. */
+  breadcrumbs?: false;
   /** The stored pictures' sizes and smaller copies (ADR 0005 d8): filled in to draw a page for export, never kept. */
   pictures?: Pictures;
 }
@@ -108,6 +113,7 @@ export function normalizePage(input: unknown): { page: Page; issues: Issue[] } {
       blocks,
       translations: normalizeTranslations(raw.translations),
       ...(slugify(raw.layout) ? { layout: slugify(raw.layout) } : {}),
+      ...cleanSeo(raw),
     },
     issues,
   };
@@ -130,6 +136,8 @@ export function normalizeSite(input: unknown): Site {
     forms: cleanFormsAddress(raw.forms),
     ...siteLanguages(raw),
     ...(Array.isArray(raw.layouts) ? { layouts: normalizeLayouts(raw.layouts) } : {}),
+    ...(cleanImage(raw.shareImage) ? { shareImage: cleanImage(raw.shareImage) as ImageValue } : {}),
+    ...(raw.breadcrumbs === false ? { breadcrumbs: false as const } : {}),
     keepMessages: Number.isInteger(raw.keepMessages) && (raw.keepMessages as number) >= 1 && (raw.keepMessages as number) <= 3650 ? (raw.keepMessages as number) : KEEP_MESSAGES_DAYS,
   };
 }

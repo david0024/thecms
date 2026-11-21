@@ -5,11 +5,12 @@
  * own page (ADR 0015) draws that page instead, with the entry's parts where
  * the page puts them.
  */
-import type { Block, ContentType, MenuLink, Post, Site } from '../core/index.ts';
+import type { Block, ContentType, Crumb, MenuLink, Post, Site } from '../core/index.ts';
 import { listPath, pictureIn, postsType } from '../core/index.ts';
 import EntryFields from './EntryFields.svelte';
 import { type EntryLists, setEntry } from './editing.ts';
 import BlockView from './BlockView.svelte';
+import Breadcrumbs from './Breadcrumbs.svelte';
 import Comments from './Comments.svelte';
 import Frozen from './Frozen.svelte';
 import PostMeta from './PostMeta.svelte';
@@ -24,6 +25,7 @@ let {
   lists = {},
   template = null,
   designing = false,
+  crumbs = [],
 }: {
   site: Site;
   post: Post;
@@ -35,6 +37,8 @@ let {
   template?: Block[] | null;
   /** The editor is changing the type's page, not this entry. */
   designing?: boolean;
+  /** Where the entry is, shown above it (ADR 0050 d4); empty: none. */
+  crumbs?: Crumb[];
 } = $props();
 const kind = $derived(type ?? postsType());
 // Read once: a page is drawn for one entry and one type.
@@ -43,6 +47,7 @@ setEntry({ post, type: type ?? postsType(), language: site.language, editing: ed
 </script>
 
 <Shell {site} {menu} current={listPath(kind)} {editing} {lists} layout={kind.layout}>
+  <Breadcrumbs {crumbs} language={site.language} />
   <article class="post">
     {#if template}
       {#if editing && !designing}

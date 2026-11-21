@@ -14,6 +14,8 @@ export const en = {
   newer: 'Newer posts',
   older: 'Older posts',
   pages: 'Pages',
+  home: 'Home',
+  breadcrumbs: 'Where you are',
   noPosts: 'Nothing has been posted yet.',
   feed: 'Feed',
   formName: 'Name',
