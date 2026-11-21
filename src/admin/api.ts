@@ -7,6 +7,8 @@ import type { Block, ExtensionAction, Form, Redirect, RedirectProblem, Extension
 import type { ViewDocument } from '../view/index.ts';
 import type { ExtensionOffer } from '../site/extensions.ts';
 import type { ImportPreview, ImportProgress } from '../site/server.ts';
+import type { BackupSettings, BackupsShown } from '../site/backup.ts';
+export type { BackupSettings, BackupsShown };
 
 export type { ImportPreview, ImportProgress };
 import type { Comment, Message, Role, User } from '../site/store.ts';
@@ -129,6 +131,8 @@ export interface State {
   accounts: boolean;
   /** Where the site's processes share what they keep, and whether Valkey answers (ADR 0044 d4). */
   shared: SharedStatus;
+  /** The last backup failed (ADR 0051 d6); told to the owner only. */
+  backupFailed: boolean;
   extensions: ExtensionInfo[];
   templates: Record<string, TemplateInfo>;
   pages: PageInfo[];
@@ -247,6 +251,19 @@ export const api = {
   performance: () => call<Performance>('GET', '/api/performance'),
   testValkey: (address: string) => call<{ test: { ok: boolean; ms: number; error: string } }>('POST', '/api/performance', { address }),
   setValkey: (address: string) => call<Performance>('PUT', '/api/performance', { address }),
+  backups: () => call<BackupsShown>('GET', '/api/backups'),
+  setBackups: (settings: BackupSettings) => call<BackupsShown>('PUT', '/api/backups', { settings }),
+  backUpNow: () => call<BackupsShown>('POST', '/api/backups'),
+  testBackups: (settings: BackupSettings) => call<{ test: { ok: boolean; error: string } }>('POST', '/api/backups/test', { settings }),
+  removeBackup: (name: string) => call<BackupsShown>('DELETE', `/api/backups/file?name=${encodeURIComponent(name)}`),
+  restoreBackup: (name: string) => call<BackupsShown & { restored: number }>('POST', `/api/backups/restore?name=${encodeURIComponent(name)}`),
+  uploadBackup: (file: Blob) => send<BackupsShown & { restored: number }>('/api/backups/upload', file),
+  /** A backup's bytes, to save: fetched, because a link could not carry the key. */
+  async backupFile(name: string): Promise<Blob> {
+    const response = await fetch(`/api/backups/file?name=${encodeURIComponent(name)}`, { headers: who() });
+    if (!response.ok) await answer(response);
+    return response.blob();
+  },
   locks: () => call<{ locked: string[] }>('GET', '/api/locks'),
   lock: (slug: string, password: string) => call<{ locked: string[] }>('POST', '/api/locks', { slug, password }),
   unlock: (slug: string) => call<{ locked: string[] }>('DELETE', `/api/locks?slug=${encodeURIComponent(slug)}`),
