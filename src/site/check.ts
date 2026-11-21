@@ -35,10 +35,10 @@ export interface SeoProblem {
   title?: string;
 }
 
-export type ServerOnly = 'forms' | 'comments' | 'search' | 'locked' | 'extensions';
+export type ServerOnly = 'forms' | 'comments' | 'search' | 'locked' | 'extensions' | 'stats';
 
 /** What the built site uses that only its own server answers. A form service elsewhere answers forms and comments. */
-export function serverOnly(files: Map<string, string | Uint8Array>, options: { formsElsewhere?: boolean; routes?: boolean } = {}): ServerOnly[] {
+export function serverOnly(files: Map<string, string | Uint8Array>, options: { formsElsewhere?: boolean; routes?: boolean; stats?: boolean } = {}): ServerOnly[] {
   const pages = [...files.values()].filter((f): f is string => typeof f === 'string');
   const uses = (text: string): boolean => pages.some((page) => page.includes(text));
   const found: ServerOnly[] = [];
@@ -47,6 +47,8 @@ export function serverOnly(files: Map<string, string | Uint8Array>, options: { f
   if (uses('action="/_/search"')) found.push('search');
   if (uses('<meta name="thecms-locked"')) found.push('locked');
   if (options.routes) found.push('extensions');
+  // Statistics are counted by the server (ADR 0053 d5): said once the site has some.
+  if (options.stats) found.push('stats');
   return found;
 }
 
@@ -151,6 +153,7 @@ const STATIC: Record<ServerOnly, string> = {
   search: 'the search field finds nothing',
   locked: 'the pages behind a password cannot be opened',
   extensions: 'the addresses extensions answer at, under /_/x/, do not exist',
+  stats: 'visits are no longer counted in Statistics',
 };
 
 const SAID: Record<RedirectProblem['problem'], string> = {

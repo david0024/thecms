@@ -71,6 +71,7 @@ import MediaLibrary from './MediaLibrary.svelte';
 import People from './People.svelte';
 import Messages from './Messages.svelte';
 import Backups from './Backups.svelte';
+import Stats from './Stats.svelte';
 import Forms from './Forms.svelte';
 import Comments from './Comments.svelte';
 import PageLock from './PageLock.svelte';
@@ -90,7 +91,7 @@ let kind = $state<Kind>('page');
 let translation = $state<TranslationInfo | null>(null);
 const fixed = $derived(translation !== null && !translation.split);
 /** Which section of the admin is showing: a list, or the builder with one page or post open. */
-let view = $state<'pages' | 'sections' | 'forms' | 'layouts' | 'media' | 'messages' | 'backups' | 'comments' | 'people' | 'types' | 'import' | 'extensions' | 'edit' | `list:${string}` | `ext:${string}`>('pages');
+let view = $state<'pages' | 'sections' | 'forms' | 'layouts' | 'media' | 'messages' | 'backups' | 'stats' | 'comments' | 'people' | 'types' | 'import' | 'extensions' | 'edit' | `list:${string}` | `ext:${string}`>('pages');
 let selected = $state<string | null>(null);
 /** The form the Forms screen opens on, when a form block asked for it (ADR 0049). */
 let formAsked = $state('');
@@ -648,6 +649,7 @@ onMount(() => {
       {/each}
       <button type="button" aria-current={view === 'sections' ? 'page' : undefined} onclick={() => (view = 'sections')} data-nav="sections">{t.nav.sections}</button>
       <button type="button" aria-current={view === 'media' ? 'page' : undefined} onclick={() => (view = 'media')} data-nav="media">{t.nav.media}</button>
+      <button type="button" aria-current={view === 'stats' ? 'page' : undefined} onclick={() => (view = 'stats')} data-nav="stats">{t.nav.stats}</button>
       {#if types.some((ty) => ty.comments)}
         <button type="button" aria-current={view === 'comments' ? 'page' : undefined} onclick={() => (view = 'comments')} data-nav="comments">{t.nav.comments}</button>
       {/if}
@@ -698,6 +700,8 @@ onMount(() => {
       <Messages />
     {:else if view === 'backups'}
       <Backups />
+    {:else if view === 'stats'}
+      <Stats />
     {:else if view === 'comments'}
       <Comments site={site.site} entries={site.entries} />
     {:else if view === 'import'}

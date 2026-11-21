@@ -15,12 +15,15 @@ import { type ExtensionHostApi, extensionHost, type Spawn } from './extensions.t
 import { startForms } from './forms.ts';
 import { localShared, type Shared } from './shared.ts';
 import { resultsPage, search, SEARCH_MAX_QUERY, type SearchDoc, searchIndex } from './search.ts';
+import { visits as countVisits, type Visits } from './stats.ts';
 import type { Store } from './store.ts';
 
 export interface Runtime {
   url: string;
   port: number;
   fetch: (request: Request, ip?: string) => Promise<Response>;
+  /** What the runtime counts for the statistics (ADR 0053). */
+  visits: Visits;
   stop: () => void;
 }
 
@@ -81,6 +84,8 @@ export function startRuntime(
   // The extensions' routes, jobs and events (ADR 0041): their code runs apart, as in the editor.
   const own = !options.extensions;
   const extensions: ExtensionHostApi = options.extensions ?? extensionHost(store, { spawn: options.spawnExtension, log: options.log });
+  // The statistics (ADR 0053): a page counted as it is sent, apart from everything else here.
+  const visits = countVisits(store, shared, { now, log: options.log });
   const forms = startForms(store, { listen: false, mailer: options.mailer, to: options.to, from: options.from, log: options.log, shared });
   type Files = Map<string, string | Uint8Array>;
   let built: { version: string; files: Promise<Files>; ready: boolean } | null = null;
@@ -175,6 +180,7 @@ export function startRuntime(
       const index = indexes.get(files) ?? searchIndex(files);
       indexes.set(files, index);
       const query = (url.searchParams.get('q') ?? '').trim().slice(0, SEARCH_MAX_QUERY);
+      void visits.searched(request, query).catch(() => {});
       const language = /<html lang="([^"]+)"/.exec(frame)?.[1] ?? 'en';
       const page = file('search.html', resultsPage(frame, language, query, search(index, query)));
       page.headers.set('cache-control', 'no-store');
@@ -203,6 +209,7 @@ export function startRuntime(
       const given = Buffer.from(cookieOf(request, lockCookie(locked)));
       const opened = key !== null && given.length === key.length && timingSafeEqual(given, Buffer.from(key));
       const page = opened ? file(own, body as string) : file(own, lockedPage(String(await fileOf('404.html')), url.pathname), 403);
+      if (opened) void visits.seen(request, ip, url.pathname).catch(() => {});
       page.headers.set('cache-control', 'private, no-store');
       return page;
     }
@@ -212,7 +219,10 @@ export function startRuntime(
       const kept = await store.mediaFile(stored);
       if (kept) return mediaResponse(request, stored, kept, { ...HEADERS, 'cache-control': 'public, max-age=31536000, immutable' });
     }
-    if (body !== undefined) return file(own, body);
+    if (body !== undefined) {
+      if (own.endsWith('.html')) void visits.seen(request, ip, url.pathname).catch(() => {});
+      return file(own, body);
+    }
     const files = await site();
     // An address without its last slash leads to the page that has one.
     if (files.has(`${path}/index.html`)) return new Response(null, { status: 301, headers: { location: `${url.pathname}/${url.search}` } });
@@ -237,7 +247,9 @@ export function startRuntime(
     url: `http://${options.hostname ?? '127.0.0.1'}:${port}`,
     port,
     fetch: handle,
+    visits,
     stop: () => {
+      void visits.stop();
       clock.stop();
       unlisten();
       if (own) extensions.close();

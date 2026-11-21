@@ -176,6 +176,7 @@ const SQLITE: Dialect = {
     'CREATE TABLE IF NOT EXISTS extension_jobs (extension TEXT NOT NULL, action TEXT NOT NULL, last_at TEXT NOT NULL, PRIMARY KEY (extension, action))',
     'CREATE TABLE IF NOT EXISTS comments (id TEXT PRIMARY KEY, type TEXT NOT NULL, entry TEXT NOT NULL, name TEXT NOT NULL, email TEXT NOT NULL, body TEXT NOT NULL, consent TEXT NOT NULL, at TEXT NOT NULL, approved INTEGER NOT NULL)',
     'CREATE TABLE IF NOT EXISTS message_answers (id TEXT PRIMARY KEY, answers TEXT NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS visits (day TEXT NOT NULL, kind TEXT NOT NULL, name TEXT NOT NULL, hits INTEGER NOT NULL, PRIMARY KEY (day, kind, name))',
   ],
   params: (query) => query,
   upsert: (table, columns, key, update) =>
@@ -208,6 +209,7 @@ const POSTGRES: Dialect = {
     'CREATE TABLE IF NOT EXISTS extension_jobs (extension VARCHAR(64) NOT NULL, action VARCHAR(64) NOT NULL, last_at VARCHAR(40) NOT NULL, PRIMARY KEY (extension, action))',
     'CREATE TABLE IF NOT EXISTS comments (id VARCHAR(40) PRIMARY KEY, type VARCHAR(255) NOT NULL, entry VARCHAR(255) NOT NULL, name TEXT NOT NULL, email TEXT NOT NULL, body TEXT NOT NULL, consent TEXT NOT NULL, at VARCHAR(40) NOT NULL, approved INTEGER NOT NULL)',
     'CREATE TABLE IF NOT EXISTS message_answers (id VARCHAR(40) PRIMARY KEY, answers TEXT NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS visits (day VARCHAR(10) NOT NULL, kind VARCHAR(20) NOT NULL, name VARCHAR(255) NOT NULL, hits INTEGER NOT NULL, PRIMARY KEY (day, kind, name))',
   ],
   params: (query) => {
     let n = 0;
@@ -239,6 +241,7 @@ const MYSQL: Dialect = {
     `CREATE TABLE IF NOT EXISTS extension_jobs (extension VARCHAR(64) NOT NULL, action VARCHAR(64) NOT NULL, last_at VARCHAR(40) NOT NULL, PRIMARY KEY (extension, action)) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS comments (id VARCHAR(40) PRIMARY KEY, type VARCHAR(255) NOT NULL, entry VARCHAR(255) NOT NULL, name TEXT NOT NULL, email TEXT NOT NULL, body TEXT NOT NULL, consent TEXT NOT NULL, at VARCHAR(40) NOT NULL, approved INTEGER NOT NULL) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS message_answers (id VARCHAR(40) PRIMARY KEY, answers LONGTEXT NOT NULL) ${MYSQL_TABLE}`,
+    `CREATE TABLE IF NOT EXISTS visits (day VARCHAR(10) NOT NULL, kind VARCHAR(20) NOT NULL, name VARCHAR(255) NOT NULL, hits INTEGER NOT NULL, PRIMARY KEY (day, kind, name)) ${MYSQL_TABLE}`,
   ],
   params: (query) => query,
   upsert: (table, columns, _key, update) =>
@@ -279,6 +282,20 @@ export interface Message {
   consent: string;
   /** What was sent, field by field, with each label as the visitor read it (ADR 0049 d5). A message from before has none. */
   answers?: Answer[];
+}
+
+/**
+ * One total of the statistics (ADR 0053): on a day, how many visitors, pages
+ * seen, times a page was read, arrivals from a source, visitors on a kind of
+ * device, or times a search was made. Nothing else is kept.
+ */
+export interface VisitRow {
+  /** YYYY-MM-DD, in the owner's time zone. */
+  day: string;
+  kind: 'visitors' | 'views' | 'page' | 'source' | 'device' | 'search';
+  /** The page's address, the source, the device or the words searched; empty for the day's totals. */
+  name: string;
+  hits: number;
 }
 
 /** Something that happened in the site, for the extensions that listen to it (ADR 0041). Never a visitor's address. */
@@ -1825,6 +1842,36 @@ export class Store {
     await this.setMeta(BACKUP_LAST, value);
   }
 
+  /** The day's totals of the statistics (ADR 0053), added to what each day already has. */
+  async addVisits(rows: readonly VisitRow[]): Promise<void> {
+    const add =
+      this.kind === 'mysql'
+        ? 'INSERT INTO visits (day, kind, name, hits) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE hits = hits + VALUES(hits)'
+        : 'INSERT INTO visits (day, kind, name, hits) VALUES (?, ?, ?, ?) ON CONFLICT (day, kind, name) DO UPDATE SET hits = visits.hits + excluded.hits';
+    for (const row of rows) await this.run(add, [row.day, row.kind, row.name.slice(0, 255), row.hits]);
+  }
+
+  /** The totals of the days from `from` to `to`, both given as YYYY-MM-DD. */
+  async visits(from: string, to: string): Promise<VisitRow[]> {
+    const rows = await this.rows<{ day: string; kind: string; name: string; hits: number | string }>('SELECT day, kind, name, hits FROM visits WHERE day >= ? AND day <= ?', [from, to]);
+    return rows.map((r) => ({ day: r.day, kind: r.kind as VisitRow['kind'], name: r.name, hits: Number(r.hits) }));
+  }
+
+  /** Whether anything was ever counted: an export is told what it loses only then. */
+  async hasVisits(): Promise<boolean> {
+    return (await this.row('SELECT 1 AS found FROM visits LIMIT 1')) !== null;
+  }
+
+  /** The owner's time zone, in which the statistics' days begin (ADR 0053 d3); UTC until the owner opens them. */
+  async statsZone(): Promise<string> {
+    const zone = await this.getMeta('stats:zone');
+    return typeof zone === 'string' ? zone : 'UTC';
+  }
+
+  async setStatsZone(zone: string): Promise<void> {
+    await this.setMeta('stats:zone', zone);
+  }
+
   /**
    * Every row a backup holds (ADR 0051 d1), table by table, a few at a time so
    * that a site with many pictures is never all in memory. Bytes come as
@@ -1904,6 +1951,7 @@ export const BACKUP_TABLES = [
   'extensions',
   'extension_rows',
   'extension_jobs',
+  'visits',
 ] as const;
 /** Each table's columns and key, read from the schema, which says them once. */
 const TABLE_COLUMNS: Record<string, string[]> = {};
