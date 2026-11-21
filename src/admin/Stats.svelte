@@ -13,13 +13,17 @@ let range = $state<Range>('30');
 let shown = $state<StatsShown | null>(null);
 let problem = $state('');
 
+/** Counts the loads, so that an answer for a range clicked earlier never replaces the last one's. */
+let loads = 0;
 async function load(next: Range): Promise<void> {
+  const mine = ++loads;
   range = next;
   problem = '';
   try {
-    shown = await api.stats(next);
+    const answer = await api.stats(next);
+    if (mine === loads) shown = answer;
   } catch (error) {
-    problem = error instanceof Error ? error.message : String(error);
+    if (mine === loads) problem = error instanceof Error ? error.message : String(error);
   }
 }
 onMount(() => void load('30'));

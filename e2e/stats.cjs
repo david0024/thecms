@@ -70,7 +70,8 @@ const GOOGLEBOT = 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.co
     await page.locator('[data-stats-chart]').waitFor();
     assert((await page.locator('[data-stats-visitors]').textContent()) === '3', 'three visitors, the robot left out');
     assert((await page.locator('[data-stats-views]').textContent()) === '4', 'four pages seen');
-    await page.locator('[data-stats-chart]').waitFor();
+    // The chart of 7 days is still drawn until the answer for 30 comes.
+    await page.waitForFunction(() => document.querySelectorAll('[data-stats-chart] rect.visitors').length === 30, null, { timeout: 5000 }).catch(() => {});
     assert((await page.locator('[data-stats-chart] rect.visitors').count()) === 30, 'a chart of 30 days');
     const pages = await page.locator('[data-stats-list="pages"] li').allTextContents();
     assert(pages.length === 2 && pages.every((p) => p.endsWith('2')), `the pages read most: ${pages.join(' | ')}`);
@@ -85,7 +86,7 @@ const GOOGLEBOT = 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.co
 
     // Each range.
     await page.locator('[data-stats-range="7"]').click();
-    await page.locator('[data-stats-chart] rect.visitors >> nth=6').waitFor();
+    await page.waitForFunction(() => document.querySelectorAll('[data-stats-chart] rect.visitors').length === 7, null, { timeout: 5000 }).catch(() => {});
     assert((await page.locator('[data-stats-chart] rect.visitors').count()) === 7, 'a chart of 7 days');
     await page.locator('[data-stats-range="365"]').click();
     await page.waitForFunction(() => document.querySelectorAll('[data-stats-chart] rect.visitors').length >= 12);
