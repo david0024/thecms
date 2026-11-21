@@ -36,4 +36,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           cp install.sh install.ps1 dist-bin/
-          gh release create "$GITHUB_REF_NAME" dist-bin/* --title "$GITHUB_REF_NAME" --generate-notes
+          # A version with a dash (0.1.0-alpha.1, 0.2.0-beta.3) is a pre-release (ADR 0045).
+          case "$GITHUB_REF_NAME" in *-*) pre=--prerelease ;; *) pre= ;; esac
+          gh release create "$GITHUB_REF_NAME" dist-bin/* --title "$GITHUB_REF_NAME" --generate-notes $pre

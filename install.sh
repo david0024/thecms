@@ -4,18 +4,18 @@
 #
 # On your own computer (Linux or macOS), into ~/.local/bin:
 #
-#   curl -fsSL https://github.com/david0024/thecms/releases/latest/download/install.sh | sh
+#   curl -fsSL https://github.com/david0024/thecms/releases/download/v0.1.0-alpha.1/install.sh | sh
 #
 # On a Linux server, as root: the program in /usr/local/bin, a system user, the
 # site in /var/lib/thecms, and a systemd service that serves the site and its
 # editor at your address. It prints the link that makes the first owner's account.
 #
-#   curl -fsSL https://github.com/david0024/thecms/releases/latest/download/install.sh \
+#   curl -fsSL https://github.com/david0024/thecms/releases/download/v0.1.0-alpha.1/install.sh \
 #     | sh -s -- --server --public=https://cms.example.com
 #
 # Options: --server, --public=URL, --port=4321, --database=postgres://... (the
 # site in a database server instead of a SQLite file), --no-valkey (no Valkey;
-# each process keeps its own pages and counters), --version=0.1.0.
+# each process keeps its own pages and counters), --version=0.1.0-alpha.1. Without it, the newest release, pre-releases too.
 # Run again to update; the site is left as it is.
 set -eu
 
@@ -72,7 +72,15 @@ fi
 if [ -n "${RELEASE_URL:-}" ]; then
   base=$RELEASE_URL
 elif [ "$version" = latest ]; then
-  base="https://github.com/$REPOSITORY/releases/latest/download"
+  # The newest release, a pre-release among them: during alpha and beta those are all there is (ADR 0045).
+  if command -v curl >/dev/null 2>&1; then
+    listed=$(curl -fsSL "https://api.github.com/repos/$REPOSITORY/releases?per_page=1") || fail "could not ask GitHub for the newest release"
+  else
+    listed=$(wget -qO- "https://api.github.com/repos/$REPOSITORY/releases?per_page=1") || fail "could not ask GitHub for the newest release"
+  fi
+  tag=$(printf '%s' "$listed" | grep -o '"tag_name": *"[^"]*"' | head -n 1 | sed 's/.*"\([^"]*\)"$/\1/')
+  [ -n "$tag" ] || fail "GitHub lists no release of $REPOSITORY yet"
+  base="https://github.com/$REPOSITORY/releases/download/$tag"
 else
   base="https://github.com/$REPOSITORY/releases/download/v${version#v}"
 fi

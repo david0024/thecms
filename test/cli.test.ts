@@ -191,7 +191,7 @@ describe('the command line', () => {
 
   test('update says it runs from the sources, and never replaces them', async () => {
     const real = globalThis.fetch;
-    globalThis.fetch = (async () => Response.json({ tag_name: 'v999.0.0' })) as unknown as typeof fetch;
+    globalThis.fetch = (async () => Response.json([{ tag_name: 'v999.0.0' }])) as unknown as typeof fetch;
     try {
       await run('update', '--check');
       expect(said.join('\n')).toContain('999.0.0 is out');
