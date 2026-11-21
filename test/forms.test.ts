@@ -20,9 +20,9 @@ const formBlock = (): Block => normalizeBlocks([{ type: 'form', content: { title
 const main = (html: string): string => html.slice(html.indexOf('<main'), html.indexOf('</main>'));
 
 describe('the form on the page', () => {
-  test('without a form service it is not drawn on the site, and the editor says why', () => {
+  test('without a form service set, it posts to the site\'s own server (ADR 0044)', () => {
     const page = { slug: 'contact', title: 'Contact', description: '', inMenu: true, blocks: [formBlock()] };
-    expect(main(renderPage(normalizeSite({ name: 'S' }), theme, page, []))).not.toContain('<form');
+    expect(main(renderPage(normalizeSite({ name: 'S' }), theme, page, []))).toContain('action="/_/send"');
   });
 
   test('with one, it is plain HTML that posts there and comes back to this page, in the site\'s language', () => {

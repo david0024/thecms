@@ -41,7 +41,7 @@ export interface Site {
   menu: MenuNode[] | null;
   /** The content types the owner added. Posts are always there and are not listed here (ADR 0010). */
   types: ContentType[];
-  /** Where the site's forms send what visitors write (ADR 0019): the address of this site's form service. Empty: no form is drawn. */
+  /** Where the site's forms send what visitors write (ADR 0019): a form service elsewhere, for a site exported to a static host. Empty: the site's own server (ADR 0044). */
   forms: string;
   /** How many days a message a visitor sent is kept before it is deleted (ADR 0019). */
   keepMessages: number;
@@ -81,6 +81,9 @@ export function cleanFormsAddress(value: unknown): string {
     return '';
   }
 }
+
+/** Where forms, comments and search are answered: the form service set, or the site's own server (ADR 0044). */
+export const formsAddress = (site: Pick<Site, 'forms'>): string => site.forms || '/_';
 
 export const KEEP_MESSAGES_DAYS = 180;
 

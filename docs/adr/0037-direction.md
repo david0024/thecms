@@ -2,6 +2,7 @@
 
 - **Status:** Accepted (owner, 2026-11-20: "dar nu facem doar site de prezentare… thecms trebuie sa fie un cms. nu exista limita… trebuie sa poata face orice poate face wordpress ca atare dar si wordpress cu extensii"; on the plan that follows from it: "mergem pe propunerile tale")
 - **Date:** 2026-11-20
+- **Superseded in part by:** ADR 0044 (the site is served; d2 no longer makes static files the main way)
 - **Supersedes:** ADR 0001 d2 (content sites only; no commerce in the core) and the line of ADR 0001 d9 that only forms and search need a backend
 - **Builds on:** ADR 0019 (the site's form service), ADR 0026 (extensions), ADR 0035 (who decides what)
 

@@ -49,7 +49,7 @@ export const POSTS_TYPE = 'posts';
 /** Where that blog lives. */
 export const BLOG_SLUG = 'blog';
 /** Addresses the site itself uses, whatever types it has. */
-export const RESERVED_SLUGS: readonly string[] = ['media', 'assets'];
+export const RESERVED_SLUGS: readonly string[] = ['media', 'assets', 'admin'];
 
 export const MAX_TYPES = 12;
 export const MAX_TYPE_FIELDS = 12;

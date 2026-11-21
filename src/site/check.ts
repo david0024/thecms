@@ -17,6 +17,26 @@ export interface SiteCheck {
   untranslated?: { slug: string; language: string; missing: number }[];
   /** A redirect that loops, leads to another old address, leads nowhere, or is hidden by a page (ADR 0036). Said, not stopped. */
   redirects?: RedirectProblem[];
+  /**
+   * What only the site's own server does, which an export to a static host
+   * would lose (ADR 0044): said, so the owner knows before choosing one.
+   */
+  server?: ServerOnly[];
+}
+
+export type ServerOnly = 'forms' | 'comments' | 'search' | 'locked' | 'extensions';
+
+/** What the built site uses that only its own server answers. A form service elsewhere answers forms and comments. */
+export function serverOnly(files: Map<string, string | Uint8Array>, options: { formsElsewhere?: boolean; routes?: boolean } = {}): ServerOnly[] {
+  const pages = [...files.values()].filter((f): f is string => typeof f === 'string');
+  const uses = (text: string): boolean => pages.some((page) => page.includes(text));
+  const found: ServerOnly[] = [];
+  if (!options.formsElsewhere && uses('action="/_/send"')) found.push('forms');
+  if (!options.formsElsewhere && uses('action="/_/comment"')) found.push('comments');
+  if (uses('action="/_/search"')) found.push('search');
+  if (uses('<meta name="thecms-locked"')) found.push('locked');
+  if (options.routes) found.push('extensions');
+  return found;
 }
 
 import { type Redirect, type RedirectProblem, redirectProblems } from '../core/index.ts';
@@ -82,6 +102,14 @@ export function checkRedirects(files: Map<string, string | Uint8Array>, redirect
   return redirectProblems(redirects, answered);
 }
 
+const STATIC: Record<ServerOnly, string> = {
+  forms: 'the contact forms have nowhere to send (set a form service in Site settings)',
+  comments: 'comments cannot be sent (set a form service in Site settings)',
+  search: 'the search field finds nothing',
+  locked: 'the pages behind a password cannot be opened',
+  extensions: 'the addresses extensions answer at, under /_/x/, do not exist',
+};
+
 const SAID: Record<RedirectProblem['problem'], string> = {
   loop: 'comes back to itself',
   chain: 'leads to another old address; point it straight at the new one',
@@ -97,6 +125,7 @@ export function describeCheck(check: SiteCheck): { problems: string[]; warnings:
     warnings: [
       ...check.unnamed.map((u) => `${u.src} has no description, on ${pages(u.on)}`),
       ...(check.redirects ?? []).map((r) => `the redirect from ${r.from} to ${r.to} ${SAID[r.problem]}`),
+      ...(check.server ?? []).map((what) => `on a static host, ${STATIC[what]}`),
       ...(check.untranslated ?? []).map((u) => `/${u.slug}/ shows ${u.missing === 1 ? '1 text' : `${u.missing} texts`} in the main language, not translated into ${u.language}`),
     ],
   };

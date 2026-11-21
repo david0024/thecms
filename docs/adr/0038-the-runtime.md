@@ -2,6 +2,7 @@
 
 - **Status:** Accepted (owner, 2026-11-20: "mergem pe propunerile tale", on the plan of ADR 0037, whose stage 1 begins here)
 - **Date:** 2026-11-20
+- **Superseded in part by:** ADR 0044 (the runtime is no longer optional: it is how a site is served)
 - **Builds on:** ADR 0037 d2 (static where it can be, a server where it must), ADR 0019 (the form service), ADR 0036 (old addresses)
 
 ADR 0037 puts what cannot be static in an optional runtime, under the site's

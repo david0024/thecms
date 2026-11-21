@@ -157,16 +157,15 @@ describe('a comment', () => {
     }
   });
 
-  test('without a form service, what was approved is shown and no form is drawn', async () => {
+  test('without a form service set, the site\'s own server takes it, under what was approved', async () => {
     const store = await site('static', '');
     try {
-      expect(String((await publishedSite(store)).get('blog/oak/index.html'))).not.toContain('id="comments"');
+      expect(String((await publishedSite(store)).get('blog/oak/index.html'))).toContain('action="/_/comment"');
       const kept = await store.addComment({ type: 'posts', entry: 'oak', name: 'Ion', email: 'ion@example.org', body: 'Hello', consent: 'ok' });
       await store.approveComment(kept.id);
       const html = String((await publishedSite(store)).get('blog/oak/index.html'));
       expect(html).toContain('id="comments"');
-      expect(html).toContain('Hello');
-      expect(html).not.toContain('<form');
+      expect(html.indexOf('Hello')).toBeLessThan(html.indexOf('<form'));
     } finally {
       await store.close();
     }
