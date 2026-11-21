@@ -180,6 +180,10 @@ summary.faq-question{cursor:pointer}
 .entry-field dt{font-size:var(--t-size-sm);color:var(--t-color-muted)}
 .entry-field dd{margin:0}
 .entry-field img{max-width:100%;border-radius:var(--t-radius-md)}
+.entry-links{list-style:none;margin:0;padding:0;display:grid;gap:var(--t-space-xs)}
+.entry-links a{display:flex;align-items:center;gap:var(--t-space-sm)}
+.entry-links img{width:3rem;height:3rem;object-fit:cover;flex:none}
+.entry-related h2{font-size:var(--t-size-xl)}
 .posts{list-style:none;margin:var(--t-space-md) 0 0;padding:0;display:grid;gap:var(--t-space-lg)}
 .post-card img{width:100%;aspect-ratio:2;object-fit:cover;border-radius:var(--t-radius-md);margin-bottom:var(--t-space-sm)}
 .post-card h2{font-size:var(--t-size-xl)}

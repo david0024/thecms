@@ -6,7 +6,7 @@
  * the page puts them.
  */
 import type { Block, ContentType, Crumb, MenuLink, Post, Site } from '../core/index.ts';
-import { listPath, pictureIn, postsType } from '../core/index.ts';
+import { listPath, pictureIn, placesRelated, postsType } from '../core/index.ts';
 import EntryFields from './EntryFields.svelte';
 import { type EntryLists, setEntry } from './editing.ts';
 import BlockView from './BlockView.svelte';
@@ -14,6 +14,7 @@ import Breadcrumbs from './Breadcrumbs.svelte';
 import Comments from './Comments.svelte';
 import Frozen from './Frozen.svelte';
 import PostMeta from './PostMeta.svelte';
+import Related from './Related.svelte';
 import Shell from './Shell.svelte';
 
 let {
@@ -41,6 +42,8 @@ let {
   crumbs?: Crumb[];
 } = $props();
 const kind = $derived(type ?? postsType());
+// The entries linked to this one are drawn after it, unless its type's page puts them somewhere (ADR 0052 d3).
+const placed = $derived(!!template && placesRelated(template));
 // Read once: a page is drawn for one entry and one type.
 // svelte-ignore state_referenced_locally
 setEntry({ post, type: type ?? postsType(), language: site.language, editing: editing ? (designing ? 'template' : 'entry') : null });
@@ -68,6 +71,7 @@ setEntry({ post, type: type ?? postsType(), language: site.language, editing: ed
       {#each post.blocks as block (block.id)}<BlockView {block} />{/each}
       {#if editing && post.blocks.length === 0}<div class="cms-empty" data-empty="page"></div>{/if}
     {/if}
+    {#if !placed}<Related type={kind} {post} language={site.language} />{/if}
   </article>
   {#if kind.comments && !editing}<Comments {site} type={kind} {post} />{/if}
 </Shell>

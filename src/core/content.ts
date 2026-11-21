@@ -35,6 +35,8 @@ export interface EntriesContent {
   count: number;
   /** The words of the link to the whole list; empty for no link. */
   more: string;
+  /** Only the entries linked to the entry the page is drawn for, either way (ADR 0052 d3). */
+  related: boolean;
 }
 export interface FormContent {
   title: string;

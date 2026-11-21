@@ -88,6 +88,11 @@ const input = (e: Event): string => (e.currentTarget as HTMLInputElement | HTMLT
         <span>{t.fields[name] ?? name}</span>
         <input type="number" min={field.min} max={field.max} value={getPath(content, name) as number} onchange={(e) => onchange(at(name), Number(e.currentTarget.value))} />
       </label>
+    {:else if field.kind === 'check'}
+      <label class="check">
+        <input type="checkbox" checked={getPath(content, name) === true} onchange={(e) => onchange(at(name), e.currentTarget.checked)} data-field-check={name} />
+        <span>{t.fields[name] ?? name}</span>
+      </label>
     {:else if field.kind === 'richtext'}
       <p class="hint">{t.inspector.onPage}</p>
     {:else if field.kind === 'image'}
@@ -122,3 +127,8 @@ const input = (e: Event): string => (e.currentTarget as HTMLInputElement | HTMLT
     {/if}
   </div>
 {/each}
+
+<style>
+  .check { display: flex; align-items: center; gap: 0.5rem; }
+  .check span { margin: 0; }
+</style>

@@ -50,7 +50,8 @@ renaming a field loses nothing.
 There are no relations between entries, no queries, no computed fields and no
 permissions per type. Those make a data platform, which is another product.
 This one is for presentation sites. (Superseded by ADR 0037: relations
-between entries and more kinds of field come in its stage 2.)
+between entries and more kinds of field come in its stage 2; they came in
+ADR 0052.)
 
 ### d5. Each type has a list and a page for every entry, under its address
 

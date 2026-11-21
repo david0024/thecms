@@ -126,6 +126,8 @@ const designed = $derived<ContentType | undefined>(designing ? types.find((ty) =
 /** A section is being written (ADR 0033). */
 const sectioning = $derived(kind === SECTION_KIND);
 const type = $derived<ContentType | undefined>(kind === 'page' || designing || sectioning ? undefined : types.find((ty) => ty.id === kind));
+// The entries that link to the one open (ADR 0052 d4), said beside its delete button.
+const usedBy = $derived<string[]>(type && !designed ? ((site?.entries[type.id]?.find((p) => p.slug === page?.slug)?.usedBy) ?? []) : []);
 const info = $derived(designed ? site?.templates[designed.id] : (type ? site?.entries[type.id] : site?.pages)?.find((p) => p.slug === page?.slug));
 /** What the entry block can show on the page being designed: the parts every entry has, then the type's own fields. */
 const parts = $derived(designed ? [...ENTRY_PARTS.map((part) => ({ id: part, name: t.parts[part] ?? part })), ...designed.fields.map((f) => ({ id: `field:${f.key}`, name: f.label }))] : []);
@@ -882,7 +884,7 @@ onMount(() => {
           <div class="field">
             <ImageField label={t.posts.cover} value={post.cover} onchange={(cover) => change({ ...post, cover: cover.src ? cover : null }, { step: false })} />
           </div>
-          <EntryFieldsForm {type} values={post.fields} onchange={(fields) => change({ ...post, fields }, { step: false })} />
+          <EntryFieldsForm {type} {types} entries={site.entries} own={post.slug} values={post.fields} onchange={(fields) => change({ ...post, fields }, { step: false })} />
         {:else if 'inMenu' in page && translation}
           {@const within = translation}
           {@const languageLabel = languageName(within.language)}
@@ -941,6 +943,7 @@ onMount(() => {
           {#key `${kind}/${page.slug}`}<Versions slug={page.slug} {kind} onrestore={(doc) => change(doc)} />{/key}
         {/if}
         {#if type || page.slug !== ''}
+          {#if usedBy.length}<p class="hint" data-used-by>{say(t.ctypes.usedBy, { count: usedBy.length, titles: usedBy.join(', ') })}</p>{/if}
           <button type="button" class="danger" onclick={removePage}>{translation ? say(t.inspector.deleteTranslation, { language: languageName(translation.language) }) : sectioning ? t.sections.delete : !type ? t.inspector.deletePage : kind === POSTS_TYPE ? t.posts.deletePost : t.ctypes.deleteEntry}</button>
         {/if}
       {/if}

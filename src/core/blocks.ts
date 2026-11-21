@@ -39,7 +39,9 @@ export type Field =
    */
   | { kind: 'file'; accept: 'document' | 'audio' | 'video' }
   /** A table: rows of cells, plain text each, the first row its headings when `header` (ADR 0047). */
-  | { kind: 'table' };
+  | { kind: 'table' }
+  /** A box to tick: on or off. */
+  | { kind: 'check' };
 
 export interface ImageValue {
   src: string;
@@ -219,8 +221,8 @@ export const BLOCKS = {
     }),
   },
   entries: {
-    fields: { title: text(200), source: { kind: 'source' }, count: { kind: 'number', min: 1, max: 24 }, more: text(80) },
-    create: () => ({ title: 'Latest posts', source: POSTS_TYPE, count: 3, more: 'See all' }),
+    fields: { title: text(200), source: { kind: 'source' }, count: { kind: 'number', min: 1, max: 24 }, more: text(80), related: { kind: 'check' } },
+    create: () => ({ title: 'Latest posts', source: POSTS_TYPE, count: 3, more: 'See all', related: false }),
   },
   /** A part of the entry being shown, on the page a content type designs for its entries (ADR 0015). Draws nothing anywhere else. */
   entry: {
@@ -244,10 +246,11 @@ export type BlockType = keyof typeof BLOCKS;
 /**
  * The parts of an entry a page can show: everything above its own blocks as
  * the default page draws it (`header`), each piece of that alone, the
- * entry's own blocks (`body`), or one field of its type (`field:client`).
+ * entry's own blocks (`body`), the entries linked to it (`related`, ADR 0052
+ * d3), or one field of its type (`field:client`).
  */
-export const ENTRY_PARTS = ['header', 'title', 'meta', 'cover', 'fields', 'body'] as const;
-export const ENTRY_PART = /^(header|title|meta|cover|fields|body|field:[a-z0-9_]{1,40})$/;
+export const ENTRY_PARTS = ['header', 'title', 'meta', 'cover', 'fields', 'body', 'related'] as const;
+export const ENTRY_PART = /^(header|title|meta|cover|fields|body|related|field:[a-z0-9_]{1,40})$/;
 
 /** What a type's page starts as when the owner first opens it: the default page, as blocks to change. */
 export const defaultTemplate = (): Block[] => [
@@ -353,6 +356,8 @@ function cleanField(field: Field, raw: unknown): unknown {
       return cleanFile(field.accept, raw);
     case 'table':
       return cleanTable(raw);
+    case 'check':
+      return raw === true;
   }
 }
 

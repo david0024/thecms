@@ -14,8 +14,8 @@ const posts = [post('First', '2026-01-01'), post('Second', '2026-02-01', { excer
 
 describe('a block that lists entries', () => {
   test('holds which type and how many, never the entries themselves', async () => {
-    expect(createBlock('entries').content).toEqual({ title: 'Latest posts', source: 'posts', count: 3, more: 'See all' });
-    expect(list({ source: 'Projects!', count: 400, entries: [{ title: 'smuggled' }] })[0]?.content).toEqual({ title: '', source: 'projects', count: 24, more: '' });
+    expect(createBlock('entries').content).toEqual({ title: 'Latest posts', source: 'posts', count: 3, more: 'See all', related: false });
+    expect(list({ source: 'Projects!', count: 400, entries: [{ title: 'smuggled' }] })[0]?.content).toEqual({ title: '', source: 'projects', count: 24, more: '', related: false });
     expect(list({ count: 'many' })[0]?.content).toMatchObject({ source: 'posts', count: 1 });
     expect(list({ count: -5 })[0]?.content.count).toBe(1);
     expect(blocksText(list({ title: 'News', source: 'posts', count: 3 }))).toBe('News');

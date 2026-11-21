@@ -11,17 +11,29 @@
  * its type asks for. So the editor, the store and the export treat every type
  * alike, and a type is data, not code.
  */
-import { cleanImage, cleanLink } from './blocks.ts';
+import { cleanFile, cleanImage, cleanLink } from './blocks.ts';
 import { isObject, slugify, str } from './util.ts';
 
-export const TYPE_FIELD_KINDS = ['text', 'longtext', 'date', 'image', 'link'] as const;
+/** What a type's field may hold (ADR 0010 d4, ADR 0052 d1 and d5). */
+export const TYPE_FIELD_KINDS = ['text', 'longtext', 'number', 'date', 'yesno', 'choice', 'image', 'file', 'link', 'entries'] as const;
 export type TypeFieldKind = (typeof TYPE_FIELD_KINDS)[number];
+
+/** The most entries one link field holds (ADR 0052 d1). */
+export const MAX_LINKED = 20;
+/** The most choices a choice field offers (ADR 0052 d5). */
+export const MAX_CHOICES = 30;
 
 export interface TypeField {
   /** How the value is stored in an entry. Made from the label once, then kept, so renaming a field loses nothing. */
   key: string;
   label: string;
   kind: TypeFieldKind;
+  /** A choice field's choices, in the order offered. */
+  options?: string[];
+  /** A link field's type: the entries it links to (ADR 0052 d1). */
+  to?: string;
+  /** A link field holds several entries, up to {@link MAX_LINKED}; otherwise one. */
+  many?: true;
 }
 
 export interface ContentType {
@@ -79,7 +91,25 @@ function cleanFields(input: unknown): TypeField[] {
     const key = keyOf(raw.key) || keyOf(label);
     if (!label || !key || seen.has(key)) continue;
     seen.add(key);
-    out.push({ key, label, kind: isKind(raw.kind) ? raw.kind : 'text' });
+    const kind = isKind(raw.kind) ? raw.kind : 'text';
+    const field: TypeField = { key, label, kind };
+    if (kind === 'choice') field.options = choicesOf(raw.options);
+    if (kind === 'entries') {
+      field.to = slugify(raw.to);
+      if (raw.many === true) field.many = true;
+    }
+    out.push(field);
+  }
+  return out;
+}
+
+/** A choice field's choices: one per line or one per item, each once, none empty. */
+function choicesOf(input: unknown): string[] {
+  const given = Array.isArray(input) ? input : typeof input === 'string' ? input.split('\n') : [];
+  const out: string[] = [];
+  for (const raw of given) {
+    const choice = str(raw, 60).replace(/\s+/g, ' ').trim();
+    if (choice && !out.includes(choice) && out.length < MAX_CHOICES) out.push(choice);
   }
   return out;
 }
@@ -114,6 +144,8 @@ export function normalizeTypes(input: unknown): ContentType[] {
       ...(raw.comments === true ? { comments: true as const } : {}),
     });
   }
+  // A link field leads to a type the site has; one whose type is gone goes with it (ADR 0052 d1).
+  for (const type of out) type.fields = type.fields.filter((field) => field.kind !== 'entries' || ids.has(field.to ?? ''));
   return out;
 }
 
@@ -126,8 +158,29 @@ export function cleanTypeFields(type: ContentType, input: unknown, isDate: (v: u
     if (field.kind === 'text') out[field.key] = str(value, 300).replace(/\s*\n\s*/g, ' ').trim();
     else if (field.kind === 'longtext') out[field.key] = str(value, 2000).trim();
     else if (field.kind === 'date') out[field.key] = isDate(value) ? value : '';
+    else if (field.kind === 'number') out[field.key] = numberOf(value);
+    else if (field.kind === 'yesno') out[field.key] = typeof value === 'boolean' ? value : null;
+    else if (field.kind === 'choice') out[field.key] = typeof value === 'string' && field.options?.includes(value) ? value : '';
     else if (field.kind === 'image') out[field.key] = cleanImage(value);
+    else if (field.kind === 'file') out[field.key] = cleanFile('document', value);
+    else if (field.kind === 'entries') out[field.key] = linkedOf(value, field.many ? MAX_LINKED : 1);
     else out[field.key] = cleanLink(value);
+  }
+  return out;
+}
+
+/** A number as typed or stored, or null: `12,5` is read as `12.5`, as many languages write it. */
+function numberOf(value: unknown): number | null {
+  const n = typeof value === 'number' ? value : typeof value === 'string' && value.trim() ? Number(value.trim().replace(',', '.')) : Number.NaN;
+  return Number.isFinite(n) ? n : null;
+}
+
+/** The addresses of linked entries: each once, in the order given, at most `max`. */
+function linkedOf(value: unknown, max: number): string[] {
+  const out: string[] = [];
+  for (const raw of Array.isArray(value) ? value : []) {
+    const slug = slugify(raw);
+    if (slug && !out.includes(slug) && out.length < max) out.push(slug);
   }
   return out;
 }

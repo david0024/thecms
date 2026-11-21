@@ -85,6 +85,9 @@ import {
   entryPath,
   listPath,
   typeById,
+  linkFields,
+  linkedSlugs,
+  unlinked,
   type ContentType,
   listed,
   type ExtensionEventName,
@@ -1205,9 +1208,56 @@ export class Store {
 
   async deleteEntry(typeId: string, slug: string): Promise<void> {
     await this.run('DELETE FROM entries WHERE type = ? AND slug = ?', [typeId, slug]);
+    await this.unlink(typeId, slug);
     await this.run('DELETE FROM versions WHERE kind = ? AND slug = ?', [typeId, slug]);
     await this.run('DELETE FROM schedule WHERE kind = ? AND slug = ?', [typeId, slug]);
     await this.run('DELETE FROM comments WHERE type = ? AND entry = ?', [typeId, slug]);
+  }
+
+  /**
+   * Takes a deleted entry out of every entry that links to it (ADR 0052 d4),
+   * in the draft and in what is published, so nothing is left pointing
+   * nowhere, and a later entry at the same address is not linked by mistake.
+   */
+  private async unlink(typeId: string, slug: string): Promise<void> {
+    for (const type of contentTypes(await this.site())) {
+      if (!linkFields(type, typeId).length) continue;
+      const rows = await this.rows<{ slug: string; draft: string; published: string | null }>('SELECT slug, draft, published FROM entries WHERE type = ?', [type.id]);
+      for (const row of rows) {
+        const draft = this.without(type, row.draft, typeId, slug);
+        const published = row.published === null ? null : this.without(type, row.published, typeId, slug);
+        if (draft === null && published === null) continue;
+        // A draft that was what is published stays so: both are written the same.
+        await this.run('UPDATE entries SET draft = ?, published = ? WHERE type = ? AND slug = ?', [draft ?? row.draft, published ?? row.published, type.id, row.slug]);
+      }
+    }
+  }
+
+  /** A stored entry without the link to `typeId/slug`, as stored again; null when it had none. */
+  private without(type: ContentType, doc: string, typeId: string, slug: string): string | null {
+    const raw = JSON.parse(doc) as Record<string, unknown>;
+    const fields = unlinked(type, isObject(raw.fields) ? raw.fields : {}, typeId, slug);
+    return fields ? JSON.stringify({ ...raw, fields }) : null;
+  }
+
+  /** Which entries link to which (ADR 0052 d4): by `type/slug`, the titles of the drafts that link to it. */
+  async linkedFrom(): Promise<Map<string, string[]>> {
+    const out = new Map<string, string[]>();
+    for (const type of contentTypes(await this.site())) {
+      const fields = linkFields(type);
+      if (!fields.length) continue;
+      for (const post of await this.draftEntries(type.id)) {
+        for (const field of fields) {
+          for (const target of linkedSlugs(post, field)) {
+            const key = `${field.to}/${target}`;
+            const titles = out.get(key) ?? [];
+            if (!titles.includes(post.title)) titles.push(post.title);
+            out.set(key, titles);
+          }
+        }
+      }
+    }
+    return out;
   }
 
   /** Every published entry of a type, in the order its list shows them. */
