@@ -1,8 +1,8 @@
 /**
- * The site's runtime (ADR 0037 d2, ADR 0038): the published site and what
- * cannot be static, from one address. The pages are the files the export
- * writes, served from memory; what a visitor sends goes under `/_/`. A site
- * that needs nothing dynamic can still be exported to any host instead.
+ * The site's runtime (ADR 0038, ADR 0044): the published site and what cannot
+ * be static, from one address. The pages are the files the export writes,
+ * built once for each version of the site and kept where the site's processes
+ * share them (Valkey on a server); what a visitor sends goes under `/_/`.
  */
 import { timingSafeEqual } from 'node:crypto';
 import type { Mailer } from './mail.ts';
@@ -11,6 +11,7 @@ import { lockCookie, lockedPage } from './locks.ts';
 import { startClock } from './clock.ts';
 import { type ExtensionHostApi, extensionHost, type Spawn } from './extensions.ts';
 import { startForms } from './forms.ts';
+import { localShared, type Shared } from './shared.ts';
 import { resultsPage, search, SEARCH_MAX_QUERY, type SearchDoc, searchIndex } from './search.ts';
 import type { Store } from './store.ts';
 
@@ -27,6 +28,9 @@ export interface Runtime {
  * pages are served as they were made (ADR 0044).
  */
 export const FRESH_MS = 1000;
+
+/** How long a built page is kept where the processes share it: a version nobody asks for any more is gone after this. */
+export const PAGE_MS = 3_600_000;
 
 const TYPES: Record<string, string> = {
   html: 'text/html; charset=utf-8',
@@ -65,34 +69,54 @@ export function startRuntime(
     spawnExtension?: Spawn;
     /** The extensions of the editor this runtime is part of, which hears the site's events and runs their jobs itself. */
     extensions?: ExtensionHostApi;
+    /** What the site's processes share (ADR 0044 d4); this process alone when not given. */
+    shared?: Shared;
   } = {},
 ): Runtime {
   const now = options.now ?? Date.now;
+  const shared = options.shared ?? localShared({ now });
   // The extensions' routes, jobs and events (ADR 0041): their code runs apart, as in the editor.
   const own = !options.extensions;
   const extensions: ExtensionHostApi = options.extensions ?? extensionHost(store, { spawn: options.spawnExtension, log: options.log });
-  const forms = startForms(store, { listen: false, mailer: options.mailer, to: options.to, from: options.from, log: options.log });
-  let built: { version: string; files: Promise<Map<string, string | Uint8Array>> } | null = null;
+  const forms = startForms(store, { listen: false, mailer: options.mailer, to: options.to, from: options.from, log: options.log, shared });
+  type Files = Map<string, string | Uint8Array>;
+  let built: { version: string; files: Promise<Files>; ready: boolean } | null = null;
   let asked: { at: number; version: Promise<string> } | null = null;
 
-  /** The published site, built again only when what visitors see has changed. A site with nothing published yet is no site. */
-  const site = async (): Promise<Map<string, string | Uint8Array>> => {
+  /** The site's version, asked at most once in FRESH_MS. */
+  const version = (): Promise<string> => {
     if (!asked || now() - asked.at >= FRESH_MS) asked = { at: now(), version: store.siteVersion() };
-    const version = await asked.version;
-    if (!built || built.version !== version) built = { version, files: publishedSite(store).catch(() => new Map<string, string | Uint8Array>()) };
+    return asked.version;
+  };
+
+  /** The published site, built again only when what visitors see has changed. A site with nothing published yet is no site. */
+  const site = async (): Promise<Files> => {
+    const at = await version();
+    if (!built || built.version !== at) {
+      const made: { version: string; files: Promise<Files>; ready: boolean } = { version: at, files: publishedSite(store).catch(() => new Map() as Files), ready: false };
+      built = made;
+      void made.files.then(async (files) => {
+        made.ready = true;
+        // Kept where the other processes find it, so they serve this version without building it.
+        const pages = [...files].filter((entry): entry is [string, string] => typeof entry[1] === 'string');
+        for (let i = 0; i < pages.length; i += 50) await Promise.all(pages.slice(i, i + 50).map(([path, body]) => shared.set(`page:${at}:${path}`, body, PAGE_MS)));
+      });
+    }
     return built.files;
   };
 
-  /** Passwords a visitor may try in a window: enough for a person, too few to guess one. */
-  const tries = new Map<string, number[]>();
-  const tooMany = (ip: string): boolean => {
-    const at = now();
-    const recent = (tries.get(ip) ?? []).filter((t) => at - t < 10 * 60_000);
-    tries.set(ip, recent);
-    if (recent.length >= 10) return true;
-    recent.push(at);
-    return false;
+  /** One file of the published site: from this process's build once it has one, before that from what the processes share. */
+  const fileOf = async (path: string): Promise<string | Uint8Array | undefined> => {
+    const at = await version();
+    if (!(built?.version === at && built.ready)) {
+      const kept = await shared.get(`page:${at}:${path}`);
+      if (kept !== null) return kept;
+    }
+    return (await site()).get(path);
   };
+
+  /** Passwords a visitor may try in a window: enough for a person, too few to guess one. */
+  const tooMany = async (ip: string): Promise<boolean> => (await shared.hit(`unlock:${ip}`, 10 * 60_000)) > 10;
   const cookieOf = (request: Request, name: string): string => {
     for (const part of (request.headers.get('cookie') ?? '').split(';')) {
       const [key, ...value] = part.trim().split('=');
@@ -131,10 +155,9 @@ export function startRuntime(
       if (Number(request.headers.get('content-length') ?? 0) > 4096) return new Response('too large\n', { status: 413 });
       const fields = new URLSearchParams((await request.text()).slice(0, 4096));
       const back = /^\/(?!\/)[^\s\\#?]*$/.test(fields.get('back') ?? '') ? (fields.get('back') as string) : '/';
-      const files = await site();
-      const body = files.get(back.endsWith('/') ? `${back.slice(1)}index.html` : back.slice(1));
+      const body = await fileOf(back.endsWith('/') ? `${back.slice(1)}index.html` : back.slice(1));
       const slug = typeof body === 'string' ? lockOf(body) : null;
-      const key = slug !== null && !tooMany(ip || 'unknown') ? await store.unlockPage(slug, fields.get('password') ?? '') : null;
+      const key = slug !== null && !(await tooMany(ip || 'unknown')) ? await store.unlockPage(slug, fields.get('password') ?? '') : null;
       if (slug === null || key === null) return new Response(null, { status: 303, headers: { location: `${back}#locked-wrong` } });
       const secure = url.protocol === 'https:' || request.headers.get('x-forwarded-proto') === 'https';
       return new Response(null, {
@@ -158,7 +181,6 @@ export function startRuntime(
     if (url.pathname.startsWith('/_/')) return new Response('not found\n', { status: 404, headers: { 'content-type': 'text/plain; charset=utf-8' } });
     if (request.method !== 'GET' && request.method !== 'HEAD') return new Response('a page is read with GET\n', { status: 405, headers: { allow: 'GET, HEAD' } });
 
-    const files = await site();
     let path: string;
     try {
       path = decodeURIComponent(url.pathname).slice(1);
@@ -167,7 +189,7 @@ export function startRuntime(
     }
     if (path.split('/').some((part) => part === '..' || part.startsWith('.')) || HIDDEN.has(path)) path = '\0';
     const own = path === '' || path.endsWith('/') ? `${path}index.html` : path;
-    const body = files.get(own);
+    const body = await fileOf(own);
     // An old address the export keeps answers here with a real 301, as Cloudflare and Apache do with its lists (ADR 0036).
     const moved = typeof body === 'string' ? /<meta http-equiv="refresh" content="0; url=([^"]+)">/.exec(body)?.[1] : undefined;
     if (moved) return new Response(null, { status: 301, headers: { location: moved.replaceAll('&amp;', '&') } });
@@ -177,11 +199,12 @@ export function startRuntime(
       const key = await store.pageKey(locked);
       const given = Buffer.from(cookieOf(request, lockCookie(locked)));
       const opened = key !== null && given.length === key.length && timingSafeEqual(given, Buffer.from(key));
-      const page = opened ? file(own, body as string) : file(own, lockedPage(String(files.get('404.html')), url.pathname), 403);
+      const page = opened ? file(own, body as string) : file(own, lockedPage(String(await fileOf('404.html')), url.pathname), 403);
       page.headers.set('cache-control', 'private, no-store');
       return page;
     }
     if (body !== undefined) return file(own, body);
+    const files = await site();
     // An address without its last slash leads to the page that has one.
     if (files.has(`${path}/index.html`)) return new Response(null, { status: 301, headers: { location: `${url.pathname}/${url.search}` } });
     const missing = files.get('404.html');
@@ -199,7 +222,7 @@ export function startRuntime(
         });
   if (server?.port) port = server.port;
   // The site's clock runs here too: on a server with no editor running, what was set for later is still published (ADR 0039).
-  const clock = startClock(store, { run: server !== null, log: options.log, jobs: extensions.jobs });
+  const clock = startClock(store, { run: server !== null, log: options.log, jobs: extensions.jobs, claim: (key, ms) => shared.claim(key, ms) });
   const unlisten = own ? extensions.listen() : () => {};
   return {
     url: `http://${options.hostname ?? '127.0.0.1'}:${port}`,

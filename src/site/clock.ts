@@ -16,7 +16,18 @@ export interface Clock {
   stop: () => void;
 }
 
-export function startClock(store: Store, options: { every?: number; log?: (line: string) => void; now?: () => Date; run?: boolean; jobs?: (now: Date) => Promise<unknown> } = {}): Clock {
+export function startClock(
+  store: Store,
+  options: {
+    every?: number;
+    log?: (line: string) => void;
+    now?: () => Date;
+    run?: boolean;
+    jobs?: (now: Date) => Promise<unknown>;
+    /** Takes the tick for this process, where several share one site (ADR 0044 d4): one looks, the others wait for the next. */
+    claim?: (key: string, ms: number) => Promise<boolean>;
+  } = {},
+): Clock {
   const log = options.log ?? ((line: string) => console.log(line));
   let busy = false;
   const tick = async (): Promise<string[]> => {
@@ -24,6 +35,8 @@ export function startClock(store: Store, options: { every?: number; log?: (line:
     busy = true;
     try {
       const now = options.now?.() ?? new Date();
+      const every = options.every ?? TICK_MS;
+      if (options.claim && !(await options.claim(`clock:${Math.floor(now.getTime() / every)}`, every))) return [];
       const done = await store.publishDue(now);
       const said = done.map((d) => (d.kind === 'page' ? `/${d.slug}${d.slug ? '/' : ''}` : `${d.kind}/${d.slug}`));
       if (said.length) log(`Published as set: ${said.join(', ')}`);

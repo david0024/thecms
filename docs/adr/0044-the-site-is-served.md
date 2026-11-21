@@ -90,5 +90,22 @@ fallback is used and nothing warns: that is the normal state of a laptop.
 
 ## Order of work
 
-d1 to d3 come first, in one change. d4 follows in its own: the layer and its
-fallback, Valkey in the installer, the setting and its test, the warning.
+d1 to d3 came first, in one change. d4 followed in its own: the layer and its
+fallback (`src/site/shared.ts`), Valkey in the installer (`--no-valkey` leaves
+it out), the setting and its test, the warning.
+
+What d4 settled on the way:
+
+- A page is kept under the site's version, for an hour, so a version nobody
+  asks for any more goes by itself.
+- The fallback writes to disk only what is kept for longer than a minute
+  (the built pages), in `.thecms-cache` beside a site that is a file. Who is
+  signed in and the counters stay in memory.
+- Who a session signs in is kept for a minute, under a generation of the
+  people that signing out, a link used and any change to the accounts renew,
+  so a person removed is out at once.
+- The clock's tick is claimed for its interval; the claims of each
+  publication and each job in the database stay, so even two processes that
+  cannot reach Valkey do each thing once.
+- A Valkey address may come from THECMS_VALKEY_URL, which the admin shows and
+  cannot change, or from Settings → Performance, kept in the database.

@@ -25,12 +25,14 @@
  *   thecms version
  */
 import { existsSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { DEMO_PAGES, DEMO_POSTS, DEMO_SITE } from './demo.ts';
 import { fetchImage, runImport } from '../import/run.ts';
 import { planImport } from '../import/wxr.ts';
 import { exportSite } from './export.ts';
 import { startForms } from './forms.ts';
 import { startRuntime } from './runtime.ts';
+import { openShared } from './shared.ts';
 import { smtpMailer } from './mail.ts';
 import { cleanPublicAddress } from './accounts.ts';
 import { startEditor } from './server.ts';
@@ -96,6 +98,12 @@ export function describeOffer(offer: ExtensionOffer): string {
 
 /** How the owner is told of a message or a comment: a mail server's address, as a database is given. */
 const mail = () => ({ mailer: smtpMailer(process.env.THECMS_SMTP), to: process.env.THECMS_MAIL_TO ?? '', from: process.env.THECMS_MAIL_FROM });
+
+/** Where the site's processes share what they keep (ADR 0044 d4): Valkey from THECMS_VALKEY_URL, and a folder beside a site that is a file. */
+const kept = (dbPath: string) => ({
+  valkey: process.env.THECMS_VALKEY_URL ?? '',
+  cacheDir: databaseKind(dbPath) === 'sqlite' ? join(dirname(dbPath.replace(/^sqlite:\/\//i, '')), '.thecms-cache') : undefined,
+});
 
 /** Runs one command. A command that starts a server gives it back, so a test can stop it. */
 export async function main(args: string[]): Promise<{ stop: () => void } | undefined> {
@@ -172,7 +180,7 @@ export async function main(args: string[]): Promise<{ stop: () => void } | undef
   }
   if (command === 'edit' && dbPath) {
     if (missing()) throw new Error(`${shown} does not exist`);
-    const editor = await startEditor(await Store.open(dbPath), { ...mail(), ...(extra ? { port: Number(extra) } : {}) });
+    const editor = await startEditor(await Store.open(dbPath), { ...mail(), ...kept(dbPath), ...(extra ? { port: Number(extra) } : {}) });
     console.log(
       `Editing ${shown}. Open this address (it carries the key to the editor):\n\n  ${editor.url}\n\n` +
         `The site, as visitors see it, is at http://127.0.0.1:${editor.port}/, with its forms, comments and search.\nPress Ctrl+C to stop.`,
@@ -232,7 +240,14 @@ export async function main(args: string[]): Promise<{ stop: () => void } | undef
     const mailer = smtpMailer(process.env.THECMS_SMTP);
     const to = process.env.THECMS_MAIL_TO ?? '';
     const store = await Store.open(dbPath);
-    const runtime = startRuntime(store, { port: option('port') ? Number(option('port')) : 4323, hostname: option('host') || '127.0.0.1', mailer, to, from: process.env.THECMS_MAIL_FROM });
+    const { valkey, cacheDir } = kept(dbPath);
+    const shared = openShared(valkey || (await store.valkeyAddress()), { dir: cacheDir });
+    const runtime = startRuntime(store, { port: option('port') ? Number(option('port')) : 4323, hostname: option('host') || '127.0.0.1', mailer, to, from: process.env.THECMS_MAIL_FROM, shared });
+    const stop = runtime.stop;
+    runtime.stop = () => {
+      stop();
+      shared.close();
+    };
     console.log(
       `Serving the published site of ${shown} at ${runtime.url}, and its forms at ${runtime.url}/_/send.\n` +
         `${mailer && to ? `Each message is also sent to ${to}.` : 'Messages are kept and shown in the admin. Set THECMS_SMTP and THECMS_MAIL_TO to be told by email.'}\n` +
@@ -244,7 +259,7 @@ export async function main(args: string[]): Promise<{ stop: () => void } | undef
     if (missing()) throw new Error(`${shown} does not exist`);
     if (!option('public')) throw new Error('give the address people will open, like --public=https://cms.example.com');
     const store = await Store.open(dbPath);
-    const editor = await startEditor(store, { ...mail(), public: option('public'), port: option('port') ? Number(option('port')) : 4321, hostname: option('host') || '127.0.0.1' });
+    const editor = await startEditor(store, { ...mail(), ...kept(dbPath), public: option('public'), port: option('port') ? Number(option('port')) : 4321, hostname: option('host') || '127.0.0.1' });
     console.log(
       `Serving ${shown} on port ${editor.port}: the site at ${option('public').replace(/\/+$/, '')}/, its editor at ${editor.url}\n\n` +
         (editor.setupUrl

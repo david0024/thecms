@@ -13,6 +13,21 @@ import type { Comment, Message, Role, User } from '../site/store.ts';
 export type { Comment, Message, Role, User };
 
 /** The person signed in, as the admin is told. */
+export interface SharedStatus {
+  kind: 'valkey' | 'local';
+  address: string;
+  up: boolean;
+  error: string;
+}
+
+/** Settings → Performance: what is in use, and the address set (its password left out). */
+export interface Performance {
+  status: SharedStatus;
+  address: string;
+  /** Set by THECMS_VALKEY_URL on the server, which the admin cannot change. */
+  fromEnvironment: boolean;
+}
+
 export interface Me {
   id: string;
   email: string;
@@ -100,6 +115,8 @@ export interface State {
   me: Me;
   /** The admin is served to others, with accounts; false on one's own computer. */
   accounts: boolean;
+  /** Where the site's processes share what they keep, and whether Valkey answers (ADR 0044 d4). */
+  shared: SharedStatus;
   extensions: ExtensionInfo[];
   templates: Record<string, TemplateInfo>;
   pages: PageInfo[];
@@ -210,6 +227,9 @@ export const api = {
   messagesFrom: (email: string) => call<{ messages: Message[]; comments: Comment[]; keep: number }>('GET', `/api/messages?email=${encodeURIComponent(email.trim())}`),
   removeMessage: (id: string) => call<{ messages: Message[]; keep: number }>('DELETE', `/api/messages?id=${encodeURIComponent(id)}`),
   eraseMessagesFrom: (email: string) => call<{ messages: Message[]; keep: number }>('DELETE', `/api/messages?email=${encodeURIComponent(email.trim())}`),
+  performance: () => call<Performance>('GET', '/api/performance'),
+  testValkey: (address: string) => call<{ test: { ok: boolean; ms: number; error: string } }>('POST', '/api/performance', { address }),
+  setValkey: (address: string) => call<Performance>('PUT', '/api/performance', { address }),
   locks: () => call<{ locked: string[] }>('GET', '/api/locks'),
   lock: (slug: string, password: string) => call<{ locked: string[] }>('POST', '/api/locks', { slug, password }),
   unlock: (slug: string) => call<{ locked: string[] }>('DELETE', `/api/locks?slug=${encodeURIComponent(slug)}`),

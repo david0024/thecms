@@ -107,7 +107,7 @@ What comes next, in four stages up to a shop, memberships and courses, is in
 | The canvas shown as on a phone, a tablet or a wide screen | done |
 | Data for search engines (schema.org): the site and its business on the home page, an article for each dated entry | done |
 | The site is served (`thecms`, or `thecms run` without the editor): pages, forms, comments, search and old addresses as real 301s from one address, built again only when something is published; a cart and accounts arrive under `/_/` | started |
-| Valkey on a server for the page cache, jobs and sessions, with a fallback in memory and on disk | planned |
+| Valkey on a server for built pages, the clock's lock, sessions and the counters that limit tries, with a fallback in memory and on disk; Settings → Performance tests it | done |
 
 ## Install
 
@@ -134,7 +134,9 @@ curl -fsSL https://github.com/david0024/thecms/releases/latest/download/install.
   | sh -s -- --server --public=https://cms.example.com
 ```
 
-It prints the link that makes the owner's account. Add
+It installs Valkey and starts it, listening only on the server, for what the
+site's processes share (`--no-valkey` leaves it out). It prints the link that
+makes the owner's account. Add
 `--database=postgres://…` to keep the site in a database server (ADR 0023).
 
 ## Try it from the sources

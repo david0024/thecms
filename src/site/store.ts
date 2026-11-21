@@ -1630,6 +1630,15 @@ export class Store {
   async touch(): Promise<void> {
     await this.setMeta('published:version', crypto.randomUUID());
   }
+
+  /** Valkey's address set in Settings → Performance (ADR 0044 d4); THECMS_VALKEY_URL, when set, comes first. */
+  async valkeyAddress(): Promise<string> {
+    return String((await this.getMeta('valkey')) ?? '');
+  }
+
+  async setValkeyAddress(address: string): Promise<void> {
+    await this.setMeta('valkey', address);
+  }
 }
 
 /** What changes what visitors see: each says so once it is done (ADR 0044). */

@@ -16,6 +16,7 @@
 import { startClock } from './clock.ts';
 import type { Mailer } from './mail.ts';
 import { startRuntime } from './runtime.ts';
+import { isValkeyAddress, openShared, type Shared, shownAddress, switchable, testValkey } from './shared.ts';
 
 /** The admin's own addresses; every other is the site's (ADR 0044). */
 const ADMIN_PATHS = new Set(['/admin', '/preview']);
@@ -201,6 +202,12 @@ export async function startEditor(
     to?: string;
     from?: string;
     log?: (line: string) => void;
+    /** Valkey's address from THECMS_VALKEY_URL (ADR 0044 d4): it comes before the one saved in Settings → Performance, which cannot change it. */
+    valkey?: string;
+    /** Where what is kept without Valkey is also written to disk. */
+    cacheDir?: string;
+    /** What the site's processes share, given whole; the tests give their own. */
+    shared?: Shared;
   } = {},
 ): Promise<EditorServer> {
   const assets = BUILT_ADMIN ? new Map(Object.entries(BUILT_ADMIN)) : await buildAdmin();
@@ -210,7 +217,11 @@ export async function startEditor(
   let port = options.port ?? 4321;
   const publicAddress = options.public ? cleanPublicAddress(options.public) : '';
   if (options.public && !publicAddress) throw new Error('the public address is https://, with nothing after the host (http:// only on this machine)');
-  const people = publicAddress ? accounts(store, publicAddress) : null;
+  // What the site's processes share: Valkey when an address is set, this process otherwise (ADR 0044 d4).
+  const fromEnvironment = options.valkey ?? '';
+  const keptAt = { dir: options.cacheDir, log: options.log };
+  const shared = switchable(options.shared ?? openShared(fromEnvironment || (await store.valkeyAddress()), keptAt));
+  const people = publicAddress ? accounts(store, publicAddress, shared) : null;
   /** On one's own computer, whoever has the key is the owner. */
   const LOCAL_OWNER: User = { id: 'local', email: '', name: '', role: 'owner', active: true, createdAt: '' };
 
@@ -291,7 +302,7 @@ export async function startEditor(
     ).post;
   const extensions = extensionHost(store, { spawn: options.spawnExtension, log: options.log });
   // The site itself, at the same address as its admin, as WordPress serves both (ADR 0044).
-  const site = startRuntime(store, { listen: false, extensions, mailer: options.mailer, to: options.to, from: options.from, log: options.log });
+  const site = startRuntime(store, { listen: false, extensions, shared, mailer: options.mailer, to: options.to, from: options.from, log: options.log });
   /**
    * The extensions as the admin shows them. The owner sees each one, with what
    * it asked for and its screens; an editor sees what the ones turned on offer
@@ -320,6 +331,7 @@ export async function startEditor(
     languages: languages(),
     me: shown(me),
     accounts: people !== null,
+    shared: shared.status(),
     ...(await lists()),
   });
 
@@ -518,6 +530,27 @@ export async function startEditor(
       }
     }
     const body = request.method === 'GET' || request.method === 'DELETE' ? {} : ((await request.json()) as Record<string, unknown>);
+    if (url.pathname === '/api/performance') {
+      // Settings → Performance (ADR 0044 d4): where the processes share what they keep, a test, and a new address.
+      const saved = await store.valkeyAddress();
+      const described = () => ({ status: shared.status(), address: shownAddress(fromEnvironment || saved), fromEnvironment: fromEnvironment !== '' });
+      if (request.method === 'POST') {
+        const asked = String(body.address ?? '').trim();
+        return json({ test: await testValkey(asked && !asked.includes('***') ? asked : fromEnvironment || saved) });
+      }
+      if (request.method === 'PUT') {
+        if (fromEnvironment) return json({ error: 'Valkey is set by THECMS_VALKEY_URL on the server; change it there' }, 409);
+        const address = String(body.address ?? '').trim();
+        if (address.includes('***') && shownAddress(saved) === address) return json(described());
+        if (address && !isValkeyAddress(address)) return json({ error: 'an address starts with redis:// or valkey://' }, 400);
+        await store.setValkeyAddress(address);
+        shared.use(openShared(address, keptAt));
+        // Asked once now, so what the owner sees is whether it answers.
+        await shared.count('performance:asked');
+        return json({ ...described(), address: shownAddress(address) });
+      }
+      return json(described());
+    }
     if (url.pathname === '/api/locks') {
       // Pages behind a password (ADR 0043): set, changed or taken away; the password itself is never given back.
       if (request.method === 'POST') return json({ locked: await store.lockPage(String(body.slug ?? ''), String(body.password ?? '')) });
@@ -794,7 +827,7 @@ export async function startEditor(
   if (server?.port) port = server.port;
   // What was set for later is published while the editor runs (ADR 0039).
   // So are the extensions' jobs, and what happens here is told to the extensions that listen (ADR 0041).
-  const clock = startClock(store, { run: server !== null, jobs: extensions.jobs });
+  const clock = startClock(store, { run: server !== null, jobs: extensions.jobs, claim: (key, ms) => shared.claim(key, ms) });
   const unlisten = extensions.listen();
   return {
     url: people ? `${publicAddress}/admin/` : `http://127.0.0.1:${port}/admin/#token=${token}`,
@@ -807,6 +840,7 @@ export async function startEditor(
       unlisten();
       site.stop();
       extensions.close();
+      shared.close();
       server?.stop(true);
     },
   };

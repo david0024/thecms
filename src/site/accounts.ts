@@ -7,7 +7,9 @@
  * makes, and each signs in with an address and a password. A session is a
  * secret in a cookie the page's script cannot read, sent only to this site.
  */
+import { createHash } from 'node:crypto';
 import { NAME } from '../core/index.ts';
+import { localShared, type Shared } from './shared.ts';
 import { cleanEmail, type LinkKind, passwordProblem, type Role, type Store, type User } from './store.ts';
 
 const OPEN_ROUTES = ['POST /api/session', 'DELETE /api/session', 'POST /api/link', 'POST /api/link/use'];
@@ -19,7 +21,9 @@ const INVITE_HOURS = 72;
 /** Wrong passwords for one address in a window: enough for a person who mistypes, too few to guess. */
 const TRIES = 10;
 const TRIES_WINDOW_MS = 15 * 60 * 1000;
-const FORGET_AFTER = 10_000;
+/** How long who a session signs in is kept where the processes share it, before the database is asked again. */
+const SESSION_KEPT_MS = 60_000;
+const hashed = (value: string): string => createHash('sha256').update(value).digest('hex');
 
 /** The admin's public address: https, or http on this machine for trying it out. Nothing after the host. */
 export function cleanPublicAddress(value: string): string {
@@ -45,15 +49,14 @@ export const cookieOf = (request: Request, name = SESSION_COOKIE): string => {
 /** Who may do what. The owner may do everything; an editor writes and publishes pages, posts and entries, and uploads images. */
 export function ownerOnly(method: string, path: string): boolean {
   if (path.startsWith('/api/import') || path === '/api/messages' || path.startsWith('/api/users')) return true;
-  return (path === '/api/theme' || path === '/api/theme/publish' || path === '/api/site' || path === '/api/redirects') && method !== 'GET';
+  return (path === '/api/theme' || path === '/api/theme/publish' || path === '/api/site' || path === '/api/redirects' || path === '/api/performance') && method !== 'GET';
 }
 
 /** What the admin may know about the person signed in. */
 export const shown = (user: User): { id: string; email: string; name: string; role: Role } => ({ id: user.id, email: user.email, name: user.name, role: user.role });
 
-export function accounts(store: Store, publicAddress: string) {
+export function accounts(store: Store, publicAddress: string, shared: Shared = localShared()) {
   const secure = publicAddress.startsWith('https:');
-  const failures = new Map<string, number[]>();
   const json = (data: unknown, status = 200, headers: Record<string, string> = {}): Response =>
     new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', ...headers } });
   const cookie = (secret: string, seconds: number): string =>
@@ -62,16 +65,25 @@ export function accounts(store: Store, publicAddress: string) {
   const linkUrl = (secret: string): string => `${publicAddress}/admin/#link=${secret}`;
   const hasOwner = async (): Promise<boolean> => (await store.users()).some((u) => u.role === 'owner' && u.active);
 
-  const tooMany = (email: string, now: number): boolean => {
-    const recent = (failures.get(email) ?? []).filter((at) => now - at < TRIES_WINDOW_MS);
-    if (recent.length) failures.set(email, recent);
-    else failures.delete(email);
-    return recent.length >= TRIES;
-  };
-  const failed = (email: string, now: number): void => {
-    failures.set(email, [...(failures.get(email) ?? []), now]);
-    // Addresses made up by the thousand do not fill the memory: the oldest is forgotten first.
-    if (failures.size > FORGET_AFTER) failures.delete(failures.keys().next().value as string);
+  // Wrong passwords are counted where the site's processes share them (ADR 0044 d4), by the address's hash.
+  const tooMany = async (email: string): Promise<boolean> => (await shared.count(`tries:${hashed(email)}`)) >= TRIES;
+  const failed = (email: string): Promise<number> => shared.hit(`tries:${hashed(email)}`, TRIES_WINDOW_MS);
+
+  /**
+   * Who a session signs in is kept for a minute under the people's generation:
+   * signing out, a link used and any change to the people start a new one, so
+   * nothing kept outlives what it was made from.
+   */
+  const generation = async (): Promise<string> => (await shared.get('people:generation')) ?? '0';
+  const changed = async (): Promise<void> => shared.set('people:generation', crypto.randomUUID(), SESSION_SECONDS * 1000);
+  const sessionUser = async (secret: string): Promise<User | null> => {
+    if (!secret) return null;
+    const key = `session:${await generation()}:${hashed(secret)}`;
+    const kept = await shared.get(key);
+    if (kept !== null) return JSON.parse(kept) as User;
+    const user = await store.sessionUser(secret);
+    if (user) await shared.set(key, JSON.stringify(user), SESSION_KEPT_MS);
+    return user;
   };
 
   return {
@@ -82,7 +94,7 @@ export function accounts(store: Store, publicAddress: string) {
     },
 
     /** The person a request's session signs in, or null. */
-    user: (request: Request): Promise<User | null> => store.sessionUser(cookieOf(request)),
+    user: (request: Request): Promise<User | null> => sessionUser(cookieOf(request)),
 
     /** The calls anyone may make: signing in and out, and a link's form. Null when the path is not one of them. */
     async open(request: Request, url: URL): Promise<Response | null> {
@@ -94,18 +106,18 @@ export function accounts(store: Store, publicAddress: string) {
       switch (route) {
         case 'POST /api/session': {
           const email = text('email').trim().toLowerCase();
-          const now = Date.now();
-          if (tooMany(email, now)) return json({ error: 'too many wrong passwords; wait a quarter of an hour', signIn: true }, 429);
+          if (await tooMany(email)) return json({ error: 'too many wrong passwords; wait a quarter of an hour', signIn: true }, 429);
           const user = await store.checkPassword(email, text('password'));
           if (!user) {
-            failed(email, now);
+            await failed(email);
             return json({ error: 'that address and password do not match', signIn: true }, 401);
           }
-          failures.delete(email);
+          await shared.del(`tries:${hashed(email)}`);
           return signedIn(user);
         }
         case 'DELETE /api/session':
           await store.endSession(cookieOf(request));
+          await changed();
           return json({ signedOut: true }, 200, { 'set-cookie': cookie('', 0) });
         case 'POST /api/link': {
           const link = await store.link(text('secret'));
@@ -134,35 +146,42 @@ export function accounts(store: Store, publicAddress: string) {
         await store.setPassword((user as User).id, password, kind === 'invite' ? name : undefined);
         who = (await store.user((user as User).id)) as User;
       }
+      await changed();
       return signedIn(who);
     },
 
-    /** The owner's calls about people: who has an account, inviting, links, roles, removing. */
+    /** The owner's calls about people: who has an account, inviting, links, roles, removing. Each change starts a new generation of sessions kept. */
     async people(request: Request, url: URL, me: User): Promise<Response> {
-      const body = request.method === 'POST' || request.method === 'PUT' ? ((await request.json()) as Record<string, unknown>) : {};
-      const listed = async () => ({ users: await store.users(), me: shown(me) });
-      if (url.pathname === '/api/users/link' && request.method === 'POST') {
-        const user = await store.user(String(body.id ?? ''));
-        if (!user) return json({ error: 'nobody has that account' }, 404);
-        return json({ link: linkUrl(await store.makeLink(user.active ? 'reset' : 'invite', user.id, INVITE_HOURS)), ...(await listed()) });
-      }
-      if (url.pathname !== '/api/users') return json({ error: 'not found' }, 404);
-      switch (request.method) {
-        case 'GET':
-          return json(await listed());
-        case 'POST': {
-          const user = await store.addUser({ email: String(body.email ?? ''), role: body.role === 'owner' ? 'owner' : 'editor' });
-          return json({ link: linkUrl(await store.makeLink('invite', user.id, INVITE_HOURS)), ...(await listed()) });
-        }
-        case 'PUT':
-          await store.setRole(String(body.id ?? ''), body.role === 'owner' ? 'owner' : 'editor');
-          return json(await listed());
-        case 'DELETE':
-          await store.removeUser(url.searchParams.get('id') ?? '');
-          return json(await listed());
-        default:
-          return json({ error: 'not found' }, 404);
-      }
+      const answer = await people(request, url, me);
+      if (request.method !== 'GET') await changed();
+      return answer;
     },
   };
+
+  async function people(request: Request, url: URL, me: User): Promise<Response> {
+    const body = request.method === 'POST' || request.method === 'PUT' ? ((await request.json()) as Record<string, unknown>) : {};
+    const listed = async () => ({ users: await store.users(), me: shown(me) });
+    if (url.pathname === '/api/users/link' && request.method === 'POST') {
+      const user = await store.user(String(body.id ?? ''));
+      if (!user) return json({ error: 'nobody has that account' }, 404);
+      return json({ link: linkUrl(await store.makeLink(user.active ? 'reset' : 'invite', user.id, INVITE_HOURS)), ...(await listed()) });
+    }
+    if (url.pathname !== '/api/users') return json({ error: 'not found' }, 404);
+    switch (request.method) {
+      case 'GET':
+        return json(await listed());
+      case 'POST': {
+        const user = await store.addUser({ email: String(body.email ?? ''), role: body.role === 'owner' ? 'owner' : 'editor' });
+        return json({ link: linkUrl(await store.makeLink('invite', user.id, INVITE_HOURS)), ...(await listed()) });
+      }
+      case 'PUT':
+        await store.setRole(String(body.id ?? ''), body.role === 'owner' ? 'owner' : 'editor');
+        return json(await listed());
+      case 'DELETE':
+        await store.removeUser(url.searchParams.get('id') ?? '');
+        return json(await listed());
+      default:
+        return json({ error: 'not found' }, 404);
+    }
+  }
 }

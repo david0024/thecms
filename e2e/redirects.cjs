@@ -113,6 +113,23 @@ const PORT = 4395;
     if (shots) await page.screenshot({ path: join(shots, 'redirects.png') });
     assert(true, 'one written by hand is kept, cleaned; one that leads to itself is not');
 
+    // Settings → Performance: each process keeps its own until Valkey is set; one that does not answer is said so.
+    await page.locator('[data-valkey-state="local"]').waitFor();
+    await page.locator('[data-valkey-address]').fill('redis://127.0.0.1:1');
+    await page.locator('[data-valkey-test]').click();
+    await page.locator('[data-valkey-tested]', { hasText: 'No answer' }).waitFor();
+    await page.locator('[data-valkey-save]').click();
+    await page.locator('[data-valkey-state="down"]').waitFor();
+    assert(true, 'a Valkey address is tested, and one that does not answer is shown as such');
+    await page.reload();
+    await page.locator('[data-valkey-down]').waitFor();
+    assert(true, 'the admin warns while Valkey does not answer');
+    await page.locator('[data-nav="settings"]').click();
+    await page.locator('[data-valkey-address]').fill('');
+    await page.locator('[data-valkey-save]').click();
+    await page.locator('[data-valkey-state="local"]').waitFor();
+    assert(true, 'without an address, each process keeps its own again');
+
     // The check before publishing says which lead nowhere; one is removed.
     await page.getByRole('button', { name: 'Back to the page' }).click().catch(() => {});
     await page.locator('[data-back]').click();

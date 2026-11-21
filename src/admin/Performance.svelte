@@ -1,0 +1,74 @@
+<script lang="ts">
+/**
+ * Settings → Performance (ADR 0044 d4): where the site's processes share the
+ * pages they built, the counters that limit tries, the clock's lock and who is
+ * signed in. Valkey on a server; without it, each process keeps its own.
+ */
+import { onMount } from 'svelte';
+import { api, type Performance } from './api.ts';
+import { say, t } from './messages.ts';
+
+let shown = $state<Performance | null>(null);
+let address = $state('');
+let tested = $state('');
+let good = $state(false);
+let problem = $state('');
+
+onMount(async () => {
+  try {
+    shown = await api.performance();
+    address = shown.address;
+  } catch (error) {
+    problem = error instanceof Error ? error.message : String(error);
+  }
+});
+
+async function test(): Promise<void> {
+  tested = '…';
+  const { test: answer } = await api.testValkey(address.trim());
+  good = answer.ok;
+  tested = answer.ok ? say(t.performance.answered, { ms: answer.ms }) : say(t.performance.silent, { error: answer.error });
+}
+
+async function save(): Promise<void> {
+  try {
+    shown = await api.setValkey(address.trim());
+    address = shown.address;
+    problem = '';
+  } catch (error) {
+    problem = error instanceof Error ? error.message : String(error);
+  }
+}
+</script>
+
+<h3>{t.performance.heading}</h3>
+{#if shown}
+  <p class="hint" data-valkey-state={shown.status.kind === 'local' ? 'local' : shown.status.up ? 'up' : 'down'}>
+    {#if shown.status.kind === 'local'}
+      {t.performance.local}
+    {:else if shown.status.up}
+      {say(t.performance.up, { address: shown.status.address })}
+    {:else}
+      <strong class="bad">{say(t.performance.down, { address: shown.status.address, error: shown.status.error })}</strong>
+    {/if}
+  </p>
+  <label class="field">
+    <span>{t.performance.address}</span>
+    <input type="text" inputmode="url" bind:value={address} placeholder="redis://127.0.0.1:6379" readonly={shown.fromEnvironment} data-valkey-address />
+  </label>
+  {#if shown.fromEnvironment}<small>{t.performance.fromEnvironment}</small>{/if}
+  <div class="row">
+    <button type="button" onclick={test} data-valkey-test>{t.performance.test}</button>
+    {#if !shown.fromEnvironment}<button type="button" onclick={save} disabled={address.trim() === shown.address} data-valkey-save>{t.performance.save}</button>{/if}
+  </div>
+  {#if tested}<p class:bad={!good && tested !== '…'} role="status" data-valkey-tested>{tested}</p>{/if}
+{/if}
+{#if problem}<p class="bad" role="alert">{problem}</p>{/if}
+
+<style>
+  h3 { margin: 1.1rem 0 0.5rem; font-size: 13px; }
+  .field { display: grid; gap: 0.15rem; font-size: 12px; }
+  .row { display: flex; gap: 0.4rem; margin-top: 0.4rem; }
+  p { font-size: 13px; }
+  .bad { color: #b42318; }
+</style>

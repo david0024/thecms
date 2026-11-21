@@ -41,6 +41,7 @@ const addLanguage = (): void => {
   set({ languages: [...site.languages, language] });
   adding = '';
 };
+import Performance from './Performance.svelte';
 import Redirects from './Redirects.svelte';
 </script>
 
@@ -159,6 +160,8 @@ import Redirects from './Redirects.svelte';
 {/each}
 
 <Redirects />
+
+<Performance />
 
 <p class="hint">{t.site.live}</p>
 
