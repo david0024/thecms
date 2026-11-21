@@ -692,6 +692,7 @@ onMount(() => {
       {/if}
     {/if}
     {#if failure && view !== 'edit'}<p class="bad toast" role="alert">{failure}</p>{/if}
+    {#if site.shared.kind === 'valkey' && !site.shared.up && view !== 'edit'}<p class="bad toast" role="alert" data-valkey-down>{t.performance.warning}</p>{/if}
 
     <!-- The builder stays in the page while a list shows, so the canvas is ready when a page is chosen. -->
     <div class="builder" hidden={view !== 'edit'}>

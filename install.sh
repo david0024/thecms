@@ -14,7 +14,8 @@
 #     | sh -s -- --server --public=https://cms.example.com
 #
 # Options: --server, --public=URL, --port=4321, --database=postgres://... (the
-# site in a database server instead of a SQLite file), --version=0.1.0.
+# site in a database server instead of a SQLite file), --no-valkey (no Valkey;
+# each process keeps its own pages and counters), --version=0.1.0.
 # Run again to update; the site is left as it is.
 set -eu
 
@@ -26,6 +27,7 @@ server=no
 public=
 port=4321
 database=
+valkey=yes
 version=latest
 for arg in "$@"; do
   case "$arg" in
@@ -34,6 +36,7 @@ for arg in "$@"; do
     --port=*) port=${arg#--port=} ;;
     --database=*) database=${arg#--database=} ;;
     --version=*) version=${arg#--version=} ;;
+    --no-valkey) valkey=no ;;
     *) echo "$NAME install: unknown option $arg" >&2; exit 2 ;;
   esac
 done
@@ -131,12 +134,46 @@ mkdir -p "$home" "/etc/$NAME"
 chown "$NAME:$NAME" "$home"
 chmod 750 "$home"
 site=${database:-$home/site.db}
+
+# Valkey (ADR 0044 d4): what the site's processes share, listening only on this machine. Without it the
+# site still works, from what each process keeps, so a system without the package is told and goes on.
+valkey_url=
+install_valkey() {
+  if command -v apt-get >/dev/null 2>&1; then
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -q valkey-server >/dev/null 2>&1 || return 1
+  elif command -v dnf >/dev/null 2>&1; then
+    dnf install -y -q valkey >/dev/null 2>&1 || return 1
+  elif command -v apk >/dev/null 2>&1; then
+    apk add -q valkey >/dev/null 2>&1 || return 1
+  else
+    return 1
+  fi
+}
+if [ "$valkey" = yes ]; then
+  if command -v valkey-server >/dev/null 2>&1 || install_valkey; then
+    for conf in /etc/valkey/valkey.conf /etc/valkey.conf; do
+      [ -f "$conf" ] || continue
+      sed -i 's/^#\{0,1\} *bind .*/bind 127.0.0.1 -::1/; s/^#\{0,1\} *protected-mode .*/protected-mode yes/' "$conf"
+      grep -q '^bind ' "$conf" || echo 'bind 127.0.0.1 -::1' >>"$conf"
+      break
+    done
+    for unit in valkey-server valkey; do
+      if systemctl enable "$unit" >/dev/null 2>&1 && systemctl restart "$unit" >/dev/null 2>&1; then
+        valkey_url=redis://127.0.0.1:6379
+        break
+      fi
+    done
+  fi
+  [ -n "$valkey_url" ] || echo "Valkey could not be installed here; the site keeps its pages and counters in its own memory. Install it later and set THECMS_VALKEY_URL in /etc/$NAME/env."
+fi
+
 umask 077
 cat >"/etc/$NAME/env" <<EOF
 THECMS_SITE=$site
 THECMS_PUBLIC=$public
 THECMS_EXTENSION_RUNNER=/run/$NAME-extensions/runner.sock
 EOF
+[ -z "$valkey_url" ] || echo "THECMS_VALKEY_URL=$valkey_url" >>"/etc/$NAME/env"
 chown "root:$NAME" "/etc/$NAME/env"
 chmod 640 "/etc/$NAME/env"
 umask 022
@@ -149,7 +186,7 @@ as_service() {
 cat >"/etc/systemd/system/$NAME.service" <<EOF
 [Unit]
 Description=$NAME, the editor of the site at $public
-After=network-online.target
+After=network-online.target valkey-server.service valkey.service
 Wants=network-online.target
 
 [Service]

@@ -15,6 +15,7 @@
 import { type Block, contentTypes, entryPath, type Site } from '../core/index.ts';
 import { wordsFor } from '../blocks/words.ts';
 import { isEmail, type Mailer } from './mail.ts';
+import { localShared, type Shared } from './shared.ts';
 import type { Store } from './store.ts';
 import './languages.ts';
 
@@ -57,17 +58,12 @@ async function publishedForms(store: Store): Promise<Map<string, string>> {
 
 export function startForms(
   store: Store,
-  options: { port?: number; listen?: boolean; hostname?: string; mailer?: Mailer | null; to?: string; from?: string; log?: (line: string) => void } = {},
+  options: { port?: number; listen?: boolean; hostname?: string; mailer?: Mailer | null; to?: string; from?: string; log?: (line: string) => void; shared?: Shared } = {},
 ): FormsServer {
   const log = options.log ?? ((line: string) => console.error(line));
-  const sent = new Map<string, number[]>();
-  const tooMany = (ip: string, now: number): boolean => {
-    const recent = (sent.get(ip) ?? []).filter((at) => now - at < WINDOW_MS);
-    sent.set(ip, recent);
-    if (recent.length >= PER_VISITOR) return true;
-    recent.push(now);
-    return false;
-  };
+  // What a visitor sent is counted where the site's processes share it (ADR 0044 d4).
+  const shared = options.shared ?? localShared();
+  const tooMany = async (ip: string): Promise<boolean> => (await shared.hit(`sent:${ip}`, WINDOW_MS)) > PER_VISITOR;
 
   async function handle(request: Request, ip = ''): Promise<Response> {
     const url = new URL(request.url);
@@ -98,7 +94,7 @@ export function startForms(
     const email = field('email');
     const body = field('message');
     if (consent === undefined || !name || name.length > 120 || !isEmail(email) || !body || body.length > 5000 || field('consent') !== 'yes') return answer(false);
-    if (tooMany(ip || 'unknown', Date.now())) return answer(false);
+    if (await tooMany(ip || 'unknown')) return answer(false);
 
     await store.forgetOldMessages();
     const message = await store.addMessage({ form, page: back, name, email, body, consent });
@@ -134,7 +130,7 @@ export function startForms(
     const email = field('email');
     const body = field('comment');
     if (!type || !entry || !name || name.length > 120 || !isEmail(email) || !body || body.length > MAX_COMMENT || field('consent') !== 'yes') return answer(false);
-    if (tooMany(ip || 'unknown', Date.now())) return answer(false);
+    if (await tooMany(ip || 'unknown')) return answer(false);
 
     await store.forgetOldMessages();
     const kept = await store.addComment({ type: type.id, entry: entry.slug, name, email, body, consent: wordsFor(site.language).commentConsent });
