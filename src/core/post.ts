@@ -4,6 +4,7 @@
  * the same blocks as a page, so everything the editor can do on a page it can
  * do in a post.
  */
+import type { Byline } from './archive.ts';
 import { type Block, blocksText, cleanImage, type ImageValue, mediaSources, normalizeBlocks } from './blocks.ts';
 import type { Words } from './localize.ts';
 import { normalizeRichText } from './richtext.ts';
@@ -30,7 +31,7 @@ export interface Post extends Seo {
   fields: Record<string, unknown>;
   blocks: Block[];
   /** Who wrote it, as the site shows them (ADR 0055 d3): filled in to draw it, never kept. */
-  author?: { name: string; bio: string };
+  author?: Byline;
   /** What visitors wrote under it and the owner approved, oldest first (ADR 0040): filled in to draw it, never kept. */
   comments?: ShownComment[];
   /** The entry in the site's other languages, by language (ADR 0054). */
@@ -239,9 +240,10 @@ export function entryTrail(home: string, type: ContentType, post: Post): Crumb[]
   ];
 }
 
-/** Where a list of entries is: home, the type's list, and the category or tag when it is one of those. */
+/** Where a list of entries is: home, the type's list, and the category, tag, author or period when it is one of those. */
 export function listTrail(home: string, type: ContentType, heading: string, path: string): Crumb[] {
-  const own = !path.startsWith(`/${type.path}/category/`) && !path.startsWith(`/${type.path}/tag/`);
+  // The type's own list, or a later page of it; anything else (a category, a tag, an author, a month) is one more step.
+  const own = path === listPath(type) || path.startsWith(`/${type.path}/page/`);
   return [{ name: home, href: homeOf(type) }, { name: type.name, href: listPath(type) }, ...(own ? [] : [{ name: heading, href: path }])];
 }
 

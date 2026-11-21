@@ -9,7 +9,18 @@ import { api, type MediaItem, signedIn } from './api.ts';
 import { t } from './messages.ts';
 import { uploadImage } from './sizes.ts';
 
-let { label, value, onchange }: { label: string; value: ImageValue | null; onchange: (value: ImageValue) => void } = $props();
+let {
+  label,
+  value,
+  onchange,
+  library: only = false,
+}: {
+  label: string;
+  value: ImageValue | null;
+  onchange: (value: ImageValue) => void;
+  /** Only an image of the media library, without words of its own: a person's picture (ADR 0056 d2). */
+  library?: boolean;
+} = $props();
 
 let library = $state.raw<MediaItem[] | null>(null);
 let busy = $state(false);
@@ -84,15 +95,17 @@ async function remove(name: string): Promise<void> {
       </ul>
     {/if}
   {/if}
-  <label><span>{t.inspector.imageAlt}</span>
-    <input type="text" maxlength="300" value={alt} oninput={(e) => onchange({ src, alt: e.currentTarget.value })} data-image-alt />
-  </label>
-  <details>
-    <summary>{t.media.elsewhere}</summary>
-    <label><span>{t.inspector.imageSrc}</span>
-      <input type="url" value={src} oninput={(e) => onchange({ src: e.currentTarget.value, alt })} data-image-src />
+  {#if !only}
+    <label><span>{t.inspector.imageAlt}</span>
+      <input type="text" maxlength="300" value={alt} oninput={(e) => onchange({ src, alt: e.currentTarget.value })} data-image-alt />
     </label>
-  </details>
+    <details>
+      <summary>{t.media.elsewhere}</summary>
+      <label><span>{t.inspector.imageSrc}</span>
+        <input type="url" value={src} oninput={(e) => onchange({ src: e.currentTarget.value, alt })} data-image-src />
+      </label>
+    </details>
+  {/if}
 </fieldset>
 
 <style>

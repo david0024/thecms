@@ -28,6 +28,12 @@ export interface EntryContent {
   part: string;
 }
 
+/** What an archive block holds (ADR 0056 d4): which dated type, and whether by year rather than by month. */
+export interface ArchiveContent {
+  title: string;
+  source: string;
+  years: boolean;
+}
 export interface EntriesContent {
   title: string;
   /** A content type's name. One the site does not have lists nothing. */

@@ -52,7 +52,7 @@ describe('an import from the admin (ADR 0012)', () => {
     const response = await call('/api/import/plan', { method: 'POST', body: WXR });
     expect(response.status).toBe(200);
     const preview = (await response.json()) as ImportPreview;
-    expect(preview).toMatchObject({ pages: 4, posts: 2, images: 2, redirects: 4, menu: true, types: [], others: [{ type: 'product', count: 1 }] });
+    expect(preview).toMatchObject({ pages: 4, posts: 2, images: 2, redirects: 7, menu: true, types: [], others: [{ type: 'product', count: 1 }] });
     expect(preview.site.url).toStartWith('http');
     expect(preview.notes.length).toBeGreaterThan(0);
     expect(JSON.stringify([await store.pages(), await store.posts(), await store.site(), await store.media(), await store.redirects()])).toBe(before);

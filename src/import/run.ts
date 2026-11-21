@@ -6,8 +6,8 @@
  * taken is left as it is and named in the report, so running an import twice,
  * or into a site someone has started, loses no work.
  */
-import { MEDIA_MAX_BYTES, type MenuNode, POSTS_TYPE, postsType, reservedSlugs } from '../core/index.ts';
-import type { Store } from '../site/store.ts';
+import { authorPath, authorSlugs, MEDIA_MAX_BYTES, type MenuNode, POSTS_TYPE, postsType, reservedSlugs, slugify } from '../core/index.ts';
+import { cleanEmail, type Store } from '../site/store.ts';
 import type { ImportPlan } from './wxr.ts';
 
 /** Gets the bytes at an address. Throws, with a reason a person can read, when it cannot. */
@@ -138,24 +138,39 @@ export async function runImport(store: Store, plan: ImportPlan, options: ImportO
     else drafts++;
     pages++;
   }
-  for (const { publish, ...post } of postsKept ? plan.posts : []) {
+  // Who wrote what comes as a person without access, or as the one here with the same address (ADR 0056 d6).
+  const people = new Map<string, string>();
+  let addedPeople = 0;
+  for (const author of plan.authors) {
+    const email = cleanEmail(author.email) || `${slugify(author.login) || 'author'}@authors.invalid`;
+    const found = (await store.users()).find((u) => u.email === email);
+    if (found) people.set(author.login, found.id);
+    else {
+      people.set(author.login, (await store.addUser({ email, name: author.name, role: 'author' })).id);
+      addedPeople++;
+    }
+  }
+  const signed: [string, string, string][] = [];
+  for (const { publish, author, ...post } of postsKept ? plan.posts : []) {
     if (await store.postDraft(post.slug)) {
       kept.push(`the post "${post.title}"`);
       continue;
     }
     const saved = await store.savePost(repoint(post, src));
+    if (author && people.has(author)) signed.push([POSTS_TYPE, saved.slug, people.get(author) as string]);
     if (publish) await store.publishPost(saved.slug);
     else drafts++;
     posts++;
   }
   let entries = 0;
   for (const type of added) {
-    for (const { publish, ...entry } of plan.entries[type.id] ?? []) {
+    for (const { publish, author, ...entry } of plan.entries[type.id] ?? []) {
       if (await store.entryDraft(type.id, entry.slug)) {
         kept.push(`"${entry.title}" (${type.name})`);
         continue;
       }
       const saved = await store.saveEntry(type.id, repoint(entry, src));
+      if (author && people.has(author)) signed.push([type.id, saved.slug, people.get(author) as string]);
       if (publish) await store.publishEntry(type.id, saved.slug);
       else drafts++;
       entries++;
@@ -170,8 +185,16 @@ export async function runImport(store: Store, plan: ImportPlan, options: ImportO
   } else if (plan.menu) {
     notes.push('The site already had its settings, so its name, address and menu were left alone.');
   }
+  for (const [type, slug, id] of signed) await store.setEntryAuthor(type, slug, id);
+  if (addedPeople) notes.push(`${addedPeople === 1 ? 'One person who wrote here was' : `${addedPeople} people who wrote here were`} added under People, without access, so their posts keep their names. Invite them from there if they should write here again.`);
+  // Each old author archive leads to that person's page here.
+  const slugs = authorSlugs(await store.users());
+  const authorRedirects = plan.authors.flatMap((a) => {
+    const slug = slugs.get(people.get(a.login) ?? '');
+    return slug && slugify(a.login) ? [{ from: `/author/${slugify(a.login)}/`, to: authorPath('', slug) }] : [];
+  });
   const before = await store.redirects();
-  const redirects = (await store.setRedirects([...before, ...plan.redirects])).length - before.length;
+  const redirects = (await store.setRedirects([...before, ...plan.redirects, ...authorRedirects])).length - before.length;
 
   return { pages, posts, entries, drafts, images: stored.size, redirects, menu: menu !== null, notes };
 }

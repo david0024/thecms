@@ -644,9 +644,9 @@ export async function startEditor(
     }
     const body = request.method === 'GET' || request.method === 'DELETE' ? {} : ((await request.json()) as Record<string, unknown>);
     if (url.pathname === '/api/me' && request.method === 'PUT') {
-      // Their own name and the few words about them (ADR 0055 d3).
+      // Their own name, the few words about them (ADR 0055 d3) and their picture (ADR 0056 d2).
       if (!people) return json({ error: 'accounts are for a served admin' }, 404);
-      await store.setProfile(me.id, body.name, body.bio);
+      await store.setProfile(me.id, body.name, body.bio, body.picture ?? '');
       await people.changed();
       return json(await state((await store.user(me.id)) as User));
     }

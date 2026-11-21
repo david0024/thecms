@@ -3,6 +3,7 @@
  * It imports nothing from a database, a framework or a runtime, and
  * `test/gates.test.ts` holds it to that.
  */
+export * from './archive.ts';
 export * from './blocks.ts';
 export * from './content.ts';
 export * from './css.ts';

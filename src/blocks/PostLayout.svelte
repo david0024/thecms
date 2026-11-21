@@ -6,7 +6,7 @@
  * the page puts them.
  */
 import type { Block, ContentType, Crumb, MenuLink, Post, Site } from '../core/index.ts';
-import { listPath, pictureIn, placesRelated, postsType } from '../core/index.ts';
+import { listPath, pictureIn, placesRelated, postsType, typeAuthorPath } from '../core/index.ts';
 import EntryFields from './EntryFields.svelte';
 import { type EntryLists, setEntry } from './editing.ts';
 import BlockView from './BlockView.svelte';
@@ -72,9 +72,15 @@ setEntry({ post, type: type ?? postsType(), language: site.language, editing: ed
       {#if editing && post.blocks.length === 0}<div class="cms-empty" data-empty="page"></div>{/if}
     {/if}
     {#if !placed}<Related type={kind} {post} language={site.language} />{/if}
-    {#if kind.dated && post.author?.bio}
+    {#if kind.dated && post.author && (post.author.bio || post.author.picture)}
       <aside class="b post-bio" data-author>
-        <div class="b-in"><p><strong>{post.author.name}</strong></p><p>{post.author.bio}</p></div>
+        <div class="b-in">
+          {#if post.author.picture}<img class="author-picture" src={post.author.picture.src} alt="" width="64" height="64" loading="lazy" />{/if}
+          <div>
+            <p><strong>{#if post.author.slug}<a href={typeAuthorPath(kind, post.author.slug)} rel="author">{post.author.name}</a>{:else}{post.author.name}{/if}</strong></p>
+            {#if post.author.bio}<p>{post.author.bio}</p>{/if}
+          </div>
+        </div>
       </aside>
     {/if}
   </article>

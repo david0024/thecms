@@ -13,6 +13,8 @@ import PostLayout from '../blocks/PostLayout.svelte';
 import { ALTERNATES, wordsFor } from '../blocks/words.ts';
 import {
   type Alternate,
+  type Byline,
+  typeAuthorPath,
   breadcrumbData,
   type Crumb,
   entryTrail,
@@ -113,7 +115,7 @@ interface Head {
   shareTitle: string;
   description: string;
   path: string;
-  type: 'website' | 'article';
+  type: 'website' | 'article' | 'profile';
   /** A picture for link previews: an address on this site or elsewhere. */
   image?: string;
   /** The feed to point a reader at, when this part of the site has one. */
@@ -239,7 +241,7 @@ export function renderPost(
               ...(post.tags.length ? { keywords: post.tags.join(', ') } : {}),
               publisher: { '@id': `${site.url}/#organization` },
               // Who wrote it, when the site names them (ADR 0055 d3); otherwise the business.
-              author: post.author ? { '@type': 'Person', name: post.author.name } : { '@id': `${site.url}/#organization` },
+              author: post.author ? { '@type': 'Person', name: post.author.name, ...(post.author.slug ? { url: `${site.url}${typeAuthorPath(type, post.author.slug)}` } : {}) } : { '@id': `${site.url}/#organization` },
             },
             organization(site),
             trail,
@@ -251,20 +253,50 @@ export function renderPost(
   );
 }
 
-/** One page of a list of posts: the blog itself, or one category of it. */
+/** How a list is more than a type's list (ADR 0056): whose it is, of which types, and whether search engines keep it. */
+export interface ListOptions {
+  /** Whose entries these are: their page says who they are, for visitors and for search engines. */
+  person?: Byline | null;
+  /** Each entry's own type, when they are of several. */
+  kinds?: ContentType[];
+  /** Where the list is, when it is not under one type. */
+  trail?: Crumb[];
+  /** What the menu marks as where the visitor is. */
+  current?: string;
+  /** A list that repeats what is listed elsewhere, as a month's: kept out of search engines. */
+  noindex?: boolean;
+}
+
+/** One page of a list of entries: a type's own, one category or tag of it, one person's or one period's. */
 export function renderBlogList(
   site: Site,
   list: { heading: string; path: string; posts: Post[]; newer?: string; older?: string },
   menu: MenuItem[],
   type: ContentType = postsType(),
   alternates: Alternate[] = [],
+  options: ListOptions = {},
 ): string {
-  const trail = listTrail(wordsFor(site.language).home, type, list.heading, list.path);
+  const trail = options.trail ?? listTrail(wordsFor(site.language).home, type, list.heading, list.path);
   const crumbs = crumbsOf(site, trail);
-  const body = clean(render(BlogLayout, { props: { site, menu, heading: list.heading, posts: list.posts, newer: list.newer, older: list.older, type, crumbs }, context: withAlternates(alternates) }).body);
+  const { person = null, kinds = [], current = null } = options;
+  const body = clean(render(BlogLayout, { props: { site, menu, heading: list.heading, posts: list.posts, newer: list.newer, older: list.older, type, crumbs, kinds, person, current }, context: withAlternates(alternates) }).body);
+  // A person's page is about them (schema.org ProfilePage).
+  const profile = person
+    ? [{ '@type': 'ProfilePage', url: `${site.url}${list.path}`, mainEntity: { '@type': 'Person', name: person.name, ...(person.bio ? { description: person.bio } : {}), ...(person.picture ? { image: absolute(site, person.picture.src) } : {}) } }]
+    : [];
   return documentHtml(
     site,
-    { title: `${list.heading} · ${site.name}`, shareTitle: list.heading, description: '', path: list.path, type: 'website', feed: feedOf(site, type), data: [breadcrumbData(site.url, trail)] },
+    {
+      title: `${list.heading} · ${site.name}`,
+      shareTitle: list.heading,
+      description: person?.bio ?? '',
+      path: list.path,
+      type: person ? 'profile' : 'website',
+      image: person?.picture?.src,
+      feed: options.kinds ? '' : feedOf(site, type),
+      noindex: options.noindex,
+      data: [...profile, breadcrumbData(site.url, trail)],
+    },
     body,
     '',
   );
