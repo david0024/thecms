@@ -15,6 +15,7 @@
  */
 import { mediaResponse } from './serve-media.ts';
 import { startClock } from './clock.ts';
+import { backups, type Remote, type S3Settings } from './backup.ts';
 import type { Mailer } from './mail.ts';
 import { startRuntime } from './runtime.ts';
 import { isValkeyAddress, openShared, type Shared, shownAddress, switchable, testValkey } from './shared.ts';
@@ -210,6 +211,10 @@ export async function startEditor(
     cacheDir?: string;
     /** What the site's processes share, given whole; the tests give their own. */
     shared?: Shared;
+    /** The folder backups are kept in (ADR 0051); without it, the site makes none. */
+    backups?: string;
+    /** Where a copy of each backup is sent; S3 unless a test gives its own. */
+    backupRemote?: (s3: S3Settings) => Remote;
   } = {},
 ): Promise<EditorServer> {
   const assets = BUILT_ADMIN ? new Map(Object.entries(BUILT_ADMIN)) : await buildAdmin();
@@ -310,6 +315,7 @@ export async function startEditor(
       type,
     ).post;
   const extensions = extensionHost(store, { spawn: options.spawnExtension, log: options.log });
+  const backed = options.backups ? backups(store, { dir: options.backups, remote: options.backupRemote, claim: (key, ms) => shared.claim(key, ms), log: options.log }) : null;
   // The site itself, at the same address as its admin, as WordPress serves both (ADR 0044).
   const site = startRuntime(store, { listen: false, extensions, shared, mailer: options.mailer, to: options.to, from: options.from, log: options.log });
   /**
@@ -341,6 +347,8 @@ export async function startEditor(
     me: shown(me),
     accounts: people !== null,
     shared: shared.status(),
+    // A backup that failed is said at the top of the admin until one succeeds (ADR 0051 d6).
+    backupFailed: me.role === 'owner' && backed !== null && (await backed.last())?.ok === false,
     ...(await lists()),
   });
 
@@ -498,6 +506,7 @@ export async function startEditor(
   async function api(request: Request, url: URL, me: User): Promise<Response> {
     if (url.pathname === '/api/extensions' || url.pathname.startsWith('/api/extensions/')) return extensionsApi(request, url, me);
     if (url.pathname.startsWith('/api/import')) return importApi(request, url);
+    if (url.pathname === '/api/backups' || url.pathname.startsWith('/api/backups/')) return backed ? backed.api(request, url) : json({ error: 'backups are not kept here' }, 404);
     if (url.pathname === '/api/messages') {
       const email = url.searchParams.get('email') ?? '';
       if (request.method === 'DELETE') {
@@ -847,7 +856,12 @@ export async function startEditor(
   if (server?.port) port = server.port;
   // What was set for later is published while the editor runs (ADR 0039).
   // So are the extensions' jobs, and what happens here is told to the extensions that listen (ADR 0041).
-  const clock = startClock(store, { run: server !== null, jobs: extensions.jobs, claim: (key, ms) => shared.claim(key, ms) });
+  // A backup that is due is made beside them, without holding up a publication (ADR 0051 d2).
+  const jobs = async (now: Date): Promise<void> => {
+    if (backed) void backed.tick(now).catch((error: unknown) => (options.log ?? console.log)(`The backup could not be made: ${error instanceof Error ? error.message : String(error)}`));
+    await extensions.jobs(now);
+  };
+  const clock = startClock(store, { run: server !== null, jobs, claim: (key, ms) => shared.claim(key, ms) });
   const unlisten = extensions.listen();
   return {
     url: people ? `${publicAddress}/admin/` : `http://127.0.0.1:${port}/admin/#token=${token}`,

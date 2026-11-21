@@ -1756,6 +1756,114 @@ export class Store {
   async setValkeyAddress(address: string): Promise<void> {
     await this.setMeta('valkey', address);
   }
+
+  /** The backup settings as saved (ADR 0051); the backup module reads them whole. */
+  async backupSettings(): Promise<unknown> {
+    return this.getMeta(BACKUP_SETTINGS);
+  }
+
+  async setBackupSettings(value: unknown): Promise<void> {
+    await this.setMeta(BACKUP_SETTINGS, value);
+  }
+
+  /** How the last backup went (ADR 0051 d6). */
+  async lastBackup(): Promise<unknown> {
+    return this.getMeta(BACKUP_LAST);
+  }
+
+  async setLastBackup(value: unknown): Promise<void> {
+    await this.setMeta(BACKUP_LAST, value);
+  }
+
+  /**
+   * Every row a backup holds (ADR 0051 d1), table by table, a few at a time so
+   * that a site with many pictures is never all in memory. Bytes come as
+   * Uint8Array, whichever database gave them.
+   */
+  async *backupRows(): AsyncGenerator<{ table: string; row: Row }> {
+    for (const table of BACKUP_TABLES) {
+      const key = TABLE_KEYS[table] as string[];
+      const order = key.map((column) => (column === 'key' ? this.dialect.key : column)).join(', ');
+      const step = table === 'media' || table === 'media_variants' ? 20 : 500;
+      for (let offset = 0; ; offset += step) {
+        const rows = await this.rows(`SELECT * FROM ${table} ORDER BY ${order} LIMIT ${step} OFFSET ${offset}`);
+        for (const row of rows) {
+          if (table === 'meta' && NOT_BACKED_UP_META.includes(String(row.key))) continue;
+          // Only a file's bytes are bytes; a text a database gives as bytes is read as text, so it goes back into any of the three.
+          const asRead = (column: string, value: unknown): unknown =>
+            !(value instanceof Uint8Array) ? value : column === 'bytes' ? new Uint8Array(value) : new TextDecoder().decode(value);
+          yield { table, row: Object.fromEntries(Object.entries(row).map(([column, value]) => [column, asRead(column, value)])) };
+        }
+        if (rows.length < step) break;
+      }
+    }
+  }
+
+  /**
+   * Replaces everything the site keeps with the rows given (ADR 0051 d5), in
+   * one transaction: rows that cannot be read leave the site as it was. What
+   * belongs to this server and not to the site stays: who is signed in (while
+   * their account is still there), the backup settings and Valkey's address.
+   * A row of a table or a column this program does not know is refused.
+   */
+  async restoreRows(rows: AsyncIterable<{ table: string; row: Row }>): Promise<number> {
+    let count = 0;
+    await this.sql.begin(async (tx) => {
+      const run = (query: string, params: unknown[] = []) => tx.unsafe(this.dialect.params(query), params);
+      await run(`DELETE FROM meta WHERE ${this.dialect.key} NOT IN (${marks(NOT_BACKED_UP_META)})`, NOT_BACKED_UP_META);
+      for (const table of BACKUP_TABLES) if (table !== 'meta') await run(`DELETE FROM ${table}`);
+      for await (const { table, row } of rows) {
+        const columns = TABLE_COLUMNS[table];
+        if (!columns || !(BACKUP_TABLES as readonly string[]).includes(table)) throw new Error(`a backup holds a table this program does not know: ${table}`);
+        if (table === 'meta' && NOT_BACKED_UP_META.includes(String(row.key))) continue;
+        const names = Object.keys(row);
+        const unknown = names.find((name) => !columns.includes(name));
+        if (unknown) throw new Error(`a backup holds a column this program does not know: ${table}.${unknown}`);
+        await run(`INSERT INTO ${table} (${names.map((n) => (n === 'key' ? this.dialect.key : n)).join(', ')}) VALUES (${marks(names)})`, names.map((n) => row[n]));
+        count++;
+      }
+      await run('DELETE FROM sessions WHERE user_id NOT IN (SELECT id FROM users)');
+      await run('DELETE FROM links WHERE user_id NOT IN (SELECT id FROM users) AND user_id <> ?', ['']);
+    });
+    await this.touch();
+    return count;
+  }
+}
+
+/** Where the backup settings and the last backup are kept; neither is in a backup (ADR 0051 d1). */
+const BACKUP_SETTINGS = 'backups';
+const BACKUP_LAST = 'backups:last';
+/** Meta that belongs to the server the site runs on, not to the site. */
+const NOT_BACKED_UP_META = [BACKUP_SETTINGS, BACKUP_LAST, 'valkey'];
+/** Every table a backup holds, in the order it is written and read back. Sessions and one-time links are not in it. */
+export const BACKUP_TABLES = [
+  'meta',
+  'pages',
+  'sections',
+  'entries',
+  'versions',
+  'schedule',
+  'media',
+  'media_sizes',
+  'media_variants',
+  'messages',
+  'message_answers',
+  'comments',
+  'users',
+  'page_locks',
+  'extensions',
+  'extension_rows',
+  'extension_jobs',
+] as const;
+/** Each table's columns and key, read from the schema, which says them once. */
+const TABLE_COLUMNS: Record<string, string[]> = {};
+const TABLE_KEYS: Record<string, string[]> = {};
+for (const statement of SQLITE.schema) {
+  const [, table, inside] = statement.match(/^CREATE TABLE IF NOT EXISTS (\w+) \((.*)\)$/) as RegExpMatchArray;
+  const parts = (inside as string).split(/, (?![^()]*\))/);
+  const key = parts.find((p) => p.startsWith('PRIMARY KEY'));
+  TABLE_COLUMNS[table as string] = parts.filter((p) => !p.startsWith('PRIMARY KEY')).map((p) => p.split(' ')[0] as string);
+  TABLE_KEYS[table as string] = key ? (key.match(/\((.*)\)/)?.[1] ?? '').split(', ') : parts.filter((p) => p.includes('PRIMARY KEY')).map((p) => p.split(' ')[0] as string);
 }
 
 /** What changes what visitors see: each says so once it is done (ADR 0044). */

@@ -21,12 +21,15 @@
  *   thecms extension <site.db> install <file> [--yes]
  *                                         what an extension asks for, and with --yes, installed (ADR 0026)
  *   thecms extension <site.db> list | on|off|remove <name>
+ *   thecms backup <site.db> [folder]     the whole site in one file, now (ADR 0051)
+ *   thecms restore <site.db> <file>      a backup put back, after a backup of what is there
  *   thecms check-database <address>       whether a database answers, for the installer (ADR 0048)
  *   thecms update [--check]               the newest release, in place of this program
  *   thecms version
  */
-import { existsSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { copyFileSync, existsSync, mkdirSync } from 'node:fs';
+import { basename, dirname, join, resolve } from 'node:path';
+import { backupHeader, backupName, backups, backupsFolder, isBackupName } from './backup.ts';
 import { DEMO_PAGES, DEMO_POSTS, DEMO_SITE } from './demo.ts';
 import { fetchImage, runImport } from '../import/run.ts';
 import { planImport } from '../import/wxr.ts';
@@ -64,11 +67,14 @@ Usage:
   ${NAME} extension <site.db> list
   ${NAME} extension <site.db> install <file> [--yes]
   ${NAME} extension <site.db> on|off|remove <name>
+  ${NAME} backup <site.db> [folder]
+  ${NAME} restore <site.db> <file.thecms-backup>
   ${NAME} check-database <postgres://... | mysql://...>
   ${NAME} update [--check]
   ${NAME} version
 
-THECMS_SITE and THECMS_PUBLIC stand for the site and the public address when they are not given.`;
+THECMS_SITE and THECMS_PUBLIC stand for the site and the public address when they are not given.
+Backups are kept in THECMS_BACKUPS, or in "backups" beside the site's file.`;
 
 /** Fills a new site with the sample pages and posts. False when it already holds one: then nothing is written. */
 async function fill(store: Store): Promise<boolean> {
@@ -105,6 +111,7 @@ const mail = () => ({ mailer: smtpMailer(process.env.THECMS_SMTP), to: process.e
 const kept = (dbPath: string) => ({
   valkey: process.env.THECMS_VALKEY_URL ?? '',
   cacheDir: databaseKind(dbPath) === 'sqlite' ? join(dirname(dbPath.replace(/^sqlite:\/\//i, '')), '.thecms-cache') : undefined,
+  backups: backupsFolder(dbPath),
 });
 
 /** Runs one command. A command that starts a server gives it back, so a test can stop it. */
@@ -177,6 +184,36 @@ export async function main(args: string[]): Promise<{ stop: () => void } | undef
       } else throw new Error(`unknown: extension ${extra}; see ${NAME} help`);
     } finally {
       host.close();
+      await store.close();
+    }
+    return;
+  }
+  if ((command === 'backup' || command === 'restore') && dbPath) {
+    if (missing()) throw new Error(`${shown} does not exist`);
+    if (command === 'restore' && !extra) throw new Error(`give the backup file: ${NAME} restore <site.db> <file.thecms-backup>`);
+    const store = await Store.open(dbPath);
+    try {
+      if (command === 'backup') {
+        const dir = extra ? resolve(extra) : backupsFolder(dbPath);
+        const done = await backups(store, { dir, log: () => {} }).make();
+        if (!done.ok) throw new Error(`the backup could not be made: ${done.error}`);
+        console.log(`Backed up ${shown} to ${join(dir, done.name)} (${Math.ceil(done.size / 1024)} KB).${done.sent === 'yes' ? ' A copy was sent to S3.' : done.sent === 'failed' ? ` It was not sent to S3: ${done.sendError}` : ''}`);
+      } else {
+        const file = resolve(extra as string);
+        if (!existsSync(file)) throw new Error(`${extra} does not exist`);
+        // A file from elsewhere is put back from the site's own folder, as the admin does, after a backup of what is there.
+        const dir = backupsFolder(dbPath);
+        await backupHeader(file);
+        let name = basename(file);
+        if (dirname(file) !== dir || !isBackupName(name)) {
+          mkdirSync(dir, { recursive: true });
+          name = backupName('uploaded', new Date());
+          copyFileSync(file, join(dir, name));
+        }
+        const count = await backups(store, { dir, log: (line) => console.log(line) }).restore(name);
+        console.log(`Put back ${count} rows into ${shown}.`);
+      }
+    } finally {
       await store.close();
     }
     return;

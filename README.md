@@ -79,6 +79,12 @@ ever breaking it.
   block written or rewritten, a page translated, a description suggested. Each
   comes back as a change for you to accept.
 
+**Backups**
+- The whole site in one file, made by itself every night (or every week), the
+  last seven kept on the server and a copy sent to any S3 storage. One click
+  downloads one or puts it back, after a backup of what is there now; it also
+  moves a site to another server or another database.
+
 **Moving from another CMS**
 - Bring a WordPress site from its export file: pages, posts, images, menu and
   categories, with links rewritten and old addresses still working. You see
@@ -134,7 +140,7 @@ Four stages, each ending with something you can use
 1. **The foundation:** the site served, scheduled publishing, comments, search,
    pages behind a password, media and new blocks. *Done.*
 2. **What almost every site needs:** a form builder (*done*), complete SEO (*done*), scheduled
-   backups, relations between entries, statistics without cookies, entries in
+   backups (*done*), relations between entries, statistics without cookies, entries in
    more than one language, more roles, a complete export. *In progress.*
 3. **Commerce and members:** visitor accounts, a shop (products, cart, orders,
    VAT), payments (Stripe and Netopia first), couriers, e-invoicing,

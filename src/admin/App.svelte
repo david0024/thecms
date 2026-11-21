@@ -70,6 +70,7 @@ import ImportScreen from './ImportScreen.svelte';
 import MediaLibrary from './MediaLibrary.svelte';
 import People from './People.svelte';
 import Messages from './Messages.svelte';
+import Backups from './Backups.svelte';
 import Forms from './Forms.svelte';
 import Comments from './Comments.svelte';
 import PageLock from './PageLock.svelte';
@@ -89,7 +90,7 @@ let kind = $state<Kind>('page');
 let translation = $state<TranslationInfo | null>(null);
 const fixed = $derived(translation !== null && !translation.split);
 /** Which section of the admin is showing: a list, or the builder with one page or post open. */
-let view = $state<'pages' | 'sections' | 'forms' | 'layouts' | 'media' | 'messages' | 'comments' | 'people' | 'types' | 'import' | 'extensions' | 'edit' | `list:${string}` | `ext:${string}`>('pages');
+let view = $state<'pages' | 'sections' | 'forms' | 'layouts' | 'media' | 'messages' | 'backups' | 'comments' | 'people' | 'types' | 'import' | 'extensions' | 'edit' | `list:${string}` | `ext:${string}`>('pages');
 let selected = $state<string | null>(null);
 /** The form the Forms screen opens on, when a form block asked for it (ADR 0049). */
 let formAsked = $state('');
@@ -657,6 +658,7 @@ onMount(() => {
         <button type="button" aria-current={view === 'types' ? 'page' : undefined} onclick={() => (view = 'types')} data-nav="types">{t.ctypes.heading}</button>
         <button type="button" aria-current={view === 'import' ? 'page' : undefined} onclick={() => (view = 'import')} data-nav="import">{t.nav.import}</button>
         <button type="button" aria-current={view === 'extensions' || view.startsWith('ext:') ? 'page' : undefined} onclick={() => (view = 'extensions')} data-nav="extensions">{t.ext.heading}</button>
+        <button type="button" aria-current={view === 'backups' ? 'page' : undefined} onclick={() => (view = 'backups')} data-nav="backups">{t.nav.backups}</button>
         {#if site.accounts}
           <button type="button" aria-current={view === 'people' ? 'page' : undefined} onclick={() => (view = 'people')} data-nav="people">{t.nav.people}</button>
         {/if}
@@ -692,6 +694,8 @@ onMount(() => {
       {#key formAsked}<Forms site={site.site} open={formAsked} onchange={(forms) => site && (site = { ...site, forms: forms.map((f) => ({ name: f.name, title: f.title })) })} />{/key}
     {:else if view === 'messages'}
       <Messages />
+    {:else if view === 'backups'}
+      <Backups />
     {:else if view === 'comments'}
       <Comments site={site.site} entries={site.entries} />
     {:else if view === 'import'}
@@ -710,6 +714,7 @@ onMount(() => {
     {/if}
     {#if failure && view !== 'edit'}<p class="bad toast" role="alert">{failure}</p>{/if}
     {#if site.shared.kind === 'valkey' && !site.shared.up && view !== 'edit'}<p class="bad toast" role="alert" data-valkey-down>{t.performance.warning}</p>{/if}
+    {#if site.backupFailed && view !== 'edit' && view !== 'backups'}<p class="bad toast" role="alert" data-backup-failed>{t.backups.warning}</p>{/if}
 
     <!-- The builder stays in the page while a list shows, so the canvas is ready when a page is chosen. -->
     <div class="builder" hidden={view !== 'edit'}>
