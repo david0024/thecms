@@ -9,6 +9,7 @@
  */
 import { createHash } from 'node:crypto';
 import { NAME } from '../core/index.ts';
+import { languages } from './languages.ts';
 import { localShared, type Shared } from './shared.ts';
 import { cleanEmail, type LinkKind, passwordProblem, type Role, type Store, type User } from './store.ts';
 
@@ -122,26 +123,41 @@ export function accounts(store: Store, publicAddress: string, shared: Shared = l
         case 'POST /api/link': {
           const link = await store.link(text('secret'));
           if (!link || (link.kind === 'setup' && (await hasOwner()))) return json({ error: 'this link has been used or has run out' }, 410);
-          return json({ kind: link.kind, email: link.user?.email ?? '', name: link.user?.name ?? '' });
+          if (link.kind !== 'setup') return json({ kind: link.kind, email: link.user?.email ?? '', name: link.user?.name ?? '' });
+          // The first page of a new site (ADR 0048 d4): its name and language are chosen here, with the owner's account.
+          const site = await store.site();
+          return json({ kind: link.kind, email: '', name: '', site: { name: site.name, language: site.adminLanguage || site.language }, languages: languages().map((l) => ({ language: l.language, name: l.name })) });
         }
         default: {
           // POST /api/link/use, the last of OPEN_ROUTES.
           const link = await store.link(text('secret'));
           if (!link) return json({ error: 'this link has been used or has run out' }, 410);
-          return this.useLink(link.kind, link.user, text('secret'), text('name'), text('email'), text('password'));
+          return this.useLink(link.kind, link.user, text('secret'), text('name'), text('email'), text('password'), { siteName: text('siteName'), language: text('language') });
         }
       }
     },
 
-    async useLink(kind: LinkKind, user: User | null, secret: string, name: string, email: string, password: string): Promise<Response> {
+    async useLink(kind: LinkKind, user: User | null, secret: string, name: string, email: string, password: string, first: { siteName?: string; language?: string } = {}): Promise<Response> {
       // What was typed is checked before the link is spent, so a short password can be tried again.
-      const problem = passwordProblem(password) || (kind === 'setup' && !cleanEmail(email) ? 'that is not an email address' : '');
+      const siteName = (first.siteName ?? '').trim().slice(0, 120);
+      const language = first.language && languages().some((l) => l.language === first.language) ? first.language : '';
+      const problem =
+        passwordProblem(password) ||
+        (kind === 'setup' && !cleanEmail(email) ? 'that is not an email address' : '') ||
+        (kind === 'setup' && first.language !== undefined && first.language !== '' && !language ? 'that language is not one this program has' : '');
       if (problem) return json({ error: problem }, 400);
       if (kind === 'setup' ? await hasOwner() : !user) return json({ error: 'this link has been used or has run out' }, 410);
       // Spending it is the database's one answer: two requests with the same link do not both get in.
       if (!(await store.link(secret, true))) return json({ error: 'this link has been used or has run out' }, 410);
       let who: User;
-      if (kind === 'setup') who = await store.addUser({ email, name, role: 'owner', password });
+      if (kind === 'setup') {
+        who = await store.addUser({ email, name, role: 'owner', password });
+        // The site's name and language, as the first page asked (ADR 0048 d4); left as they were when not given.
+        if (siteName || language) {
+          const site = await store.site();
+          await store.setSite({ ...site, ...(siteName ? { name: siteName } : {}), ...(language ? { language, adminLanguage: language } : {}) });
+        }
+      }
       else {
         await store.setPassword((user as User).id, password, kind === 'invite' ? name : undefined);
         who = (await store.user((user as User).id)) as User;

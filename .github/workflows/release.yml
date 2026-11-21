@@ -2,7 +2,8 @@ name: Release
 
 # A tag v<version> publishes a release: the program as one file for each
 # platform, the checksums, and the install scripts (tools/build.ts, install.sh,
-# install.ps1). The tag must be the version in package.json.
+# install.ps1, and for Docker, docker/). The tag must be the version in package.json.
+# Then the image the ready platforms run (ADR 0048), at ghcr.io/<repository>:<version>.
 #
 # Run by hand ("Run workflow"), it makes that tag itself on the commit it runs
 # on, from the version in package.json, and publishes the same way.
@@ -44,8 +45,43 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.tag.outputs.name }}
         run: |
-          cp install.sh install.ps1 dist-bin/
+          cp install.sh install.ps1 docker/Dockerfile docker/compose.yaml dist-bin/
+          # What install.sh fetches beside the program for Docker (ADR 0048) is checked the same way.
+          (cd dist-bin && sha256sum Dockerfile compose.yaml install.sh >>checksums.sha256)
           # A version with a dash (0.1.0-alpha.1, 0.2.0-beta.3) is a pre-release (ADR 0045).
           case "$TAG" in *-*) pre=--prerelease ;; *) pre= ;; esac
           # Run by hand, the tag is made here, on this commit; a version already released is refused.
           gh release create "$TAG" dist-bin/* --title "$TAG" --generate-notes --target "$GITHUB_SHA" $pre
+
+  # The image Railway, Render and Fly.io run: the Dockerfile from docker/, the program from the release just
+  # published, for x64 and arm64. Tagged with the version, and latest (pre-releases too, as install.sh does).
+  image:
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: The version
+        id: version
+        run: |
+          echo "name=$(jq -r .version package.json)" >> "$GITHUB_OUTPUT"
+          echo "image=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+      - run: cp install.sh docker/
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: docker
+          platforms: linux/amd64,linux/arm64
+          build-args: VERSION=${{ steps.version.outputs.name }}
+          push: true
+          tags: |
+            ${{ steps.version.outputs.image }}:${{ steps.version.outputs.name }}
+            ${{ steps.version.outputs.image }}:latest

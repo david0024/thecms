@@ -30,6 +30,12 @@ afterEach(async () => {
 });
 
 describe('the command line', () => {
+  test('check-database says whether a database answers, without printing its password (ADR 0048 d2)', async () => {
+    await run('check-database', join(dir, 'tried.db'));
+    expect(said.join('\n')).toBe(`${join(dir, 'tried.db')} answers; the site can live there.`);
+    await expect(run('check-database', 'postgres://ana:secret@127.0.0.1:1/shop')).rejects.toThrow(/^postgres:\/\/ana:\*\*\*@127\.0\.0\.1:1\/shop does not answer: /);
+  });
+
   test('init makes a sample site once, and export writes it as files', async () => {
     const db = join(dir, 'site.db');
     await run('init', db);

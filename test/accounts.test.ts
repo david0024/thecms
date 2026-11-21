@@ -153,11 +153,16 @@ describe('the served editor', () => {
     expect(editor.setupUrl).toStartWith(`${PUBLIC}/admin/#link=`);
     const secret = secretOf(editor.setupUrl);
     expect((await call('GET', '/api/state')).status).toBe(401);
-    expect((await call('POST', '/api/link', { secret })).data).toEqual({ kind: 'setup', email: '', name: '' });
-    // A short password or a wrong address does not spend the link.
+    // The first page asks the site's name and language too (ADR 0048 d4), offering every language the program has.
+    const first = (await call('POST', '/api/link', { secret })).data;
+    expect(first).toMatchObject({ kind: 'setup', email: '', name: '', site: { name: (await store.site()).name, language: 'en' } });
+    expect((first.languages as { language: string }[]).map((l) => l.language)).toEqual(['en', 'ro']);
+    // A short password, a wrong address or a language the program lacks does not spend the link.
     expect((await call('POST', '/api/link/use', { secret, name: 'Ana', email: 'ana@example.com', password: 'short' })).data.error).toContain('at least 10');
     expect((await call('POST', '/api/link/use', { secret, name: 'Ana', email: 'ana', password: PASSWORD })).data.error).toBe('that is not an email address');
-    const used = await call('POST', '/api/link/use', { secret, name: 'Ana', email: 'ana@example.com', password: PASSWORD });
+    expect((await call('POST', '/api/link/use', { secret, name: 'Ana', email: 'ana@example.com', password: PASSWORD, language: 'xx' })).data.error).toBe('that language is not one this program has');
+    const used = await call('POST', '/api/link/use', { secret, name: 'Ana', email: 'ana@example.com', password: PASSWORD, siteName: '  Atelierul Anei  ', language: 'ro' });
+    expect(await store.site()).toMatchObject({ name: 'Atelierul Anei', language: 'ro', adminLanguage: 'ro' });
     expect(used.status).toBe(200);
     expect(used.data.me).toMatchObject({ email: 'ana@example.com', name: 'Ana', role: 'owner' });
     expect(used.cookie).toMatch(/^thecms_session=[\w-]+; Path=\/; HttpOnly; SameSite=Strict; Max-Age=2592000; Secure$/);

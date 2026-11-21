@@ -14,7 +14,10 @@ import { say, t } from './messages.ts';
 const PASSWORD_MIN = 10;
 
 let stage = $state<'waiting' | 'in' | 'signIn' | 'link' | 'key' | 'failed'>('waiting');
-let link = $state.raw<{ kind: 'setup' | 'invite' | 'reset'; email: string; name: string } | null>(null);
+let link = $state.raw<Awaited<ReturnType<typeof api.link>> | null>(null);
+/** The first page of a new site (ADR 0048 d4): its name and language, beside the owner's account. */
+let siteName = $state('');
+let language = $state('');
 let email = $state('');
 let password = $state('');
 let name = $state('');
@@ -45,7 +48,14 @@ const signIn = (event: SubmitEvent): void => {
 
 const useLink = (event: SubmitEvent): void => {
   event.preventDefault();
-  void attempt(() => api.useLink(linkSecret, { name, email, password }));
+  if (link?.kind !== 'setup') return void attempt(() => api.useLink(linkSecret, { name, email, password }));
+  const before = link.site?.language ?? '';
+  void attempt(async () => {
+    const done = await api.useLink(linkSecret, { name, email, password, siteName, language });
+    // The admin speaks the language just chosen: it starts again in it.
+    if (language && language !== before) location.reload();
+    return done;
+  });
 };
 
 onMount(async () => {
@@ -54,6 +64,8 @@ onMount(async () => {
       link = await api.link(linkSecret);
       name = link.name;
       email = link.email;
+      siteName = link.site?.name ?? '';
+      language = link.site?.language ?? '';
       stage = 'link';
     } catch (error) {
       problem = message(error);
@@ -102,6 +114,14 @@ onMount(async () => {
           <label class="field"><span>{t.door.name}</span><input type="text" autocomplete="name" required bind:value={name} data-name /></label>
         {/if}
         {#if link.kind === 'setup'}
+          <label class="field"><span>{t.door.siteName}</span><input type="text" maxlength="120" required bind:value={siteName} data-site-name /></label>
+          {#if (link.languages ?? []).length > 1}
+            <label class="field"><span>{t.door.language}</span>
+              <select bind:value={language} data-language>
+                {#each link.languages ?? [] as choice (choice.language)}<option value={choice.language}>{choice.name}</option>{/each}
+              </select>
+            </label>
+          {/if}
           <label class="field"><span>{t.door.email}</span><input type="email" autocomplete="username" required bind:value={email} data-email /></label>
         {/if}
         <label class="field">
@@ -125,7 +145,7 @@ onMount(async () => {
   h1 { margin: 0 0 0.8rem; font-size: 1.3rem; }
   .field { display: block; margin-bottom: 0.8rem; }
   .field span { display: block; margin-bottom: 0.2rem; font-size: 12.5px; color: #4b4960; }
-  input { box-sizing: border-box; width: 100%; padding: 0.5rem; border: 1px solid #cfccdc; border-radius: 6px; background: #fff; color: inherit; font: inherit; }
+  input, select { box-sizing: border-box; width: 100%; padding: 0.5rem; border: 1px solid #cfccdc; border-radius: 6px; background: #fff; color: inherit; font: inherit; }
   .hint, small { display: block; color: #6a6880; font-size: 12.5px; }
   small { margin-top: 0.2rem; }
   .bad { color: #b3261e; }

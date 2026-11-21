@@ -256,8 +256,9 @@ export const api = {
   addVariant: (name: string, file: Blob) => send<{ item: MediaItem }>(`/api/media/variant?name=${encodeURIComponent(name)}`, file),
   signIn: (email: string, password: string) => call<{ me: Me }>('POST', '/api/session', { email, password }),
   signOut: () => call<{ signedOut: boolean }>('DELETE', '/api/session'),
-  link: (secret: string) => call<{ kind: 'setup' | 'invite' | 'reset'; email: string; name: string }>('POST', '/api/link', { secret }),
-  useLink: (secret: string, fields: { name?: string; email?: string; password: string }) => call<{ me: Me }>('POST', '/api/link/use', { secret, ...fields }),
+  link: (secret: string) =>
+    call<{ kind: 'setup' | 'invite' | 'reset'; email: string; name: string; site?: { name: string; language: string }; languages?: { language: string; name: string }[] }>('POST', '/api/link', { secret }),
+  useLink: (secret: string, fields: { name?: string; email?: string; password: string; siteName?: string; language?: string }) => call<{ me: Me }>('POST', '/api/link/use', { secret, ...fields }),
   people: () => call<People>('GET', '/api/users'),
   invite: (email: string, role: Role) => call<People>('POST', '/api/users', { email, role }),
   newLink: (id: string) => call<People>('POST', '/api/users/link', { id }),
