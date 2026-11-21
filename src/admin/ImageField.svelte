@@ -5,7 +5,7 @@
  * it is used, so they are kept with the block, not with the file.
  */
 import type { ImageValue } from '../core/index.ts';
-import { api, type MediaItem } from './api.ts';
+import { api, type MediaItem, signedIn } from './api.ts';
 import { t } from './messages.ts';
 import { uploadImage } from './sizes.ts';
 
@@ -78,7 +78,7 @@ async function remove(name: string): Promise<void> {
             <button type="button" class="pick" class:current={item.path === src} onclick={() => onchange({ src: item.path, alt })} title={item.label} data-media={item.name}>
               <img src={item.path} alt={item.label} loading="lazy" />
             </button>
-            <button type="button" class="quiet drop" onclick={() => remove(item.name)} title={t.media.remove} aria-label={`${t.media.remove}: ${item.label}`}>✕</button>
+            {#if signedIn.staff}<button type="button" class="quiet drop" onclick={() => remove(item.name)} title={t.media.remove} aria-label={`${t.media.remove}: ${item.label}`}>✕</button>{/if}
           </li>
         {/each}
       </ul>

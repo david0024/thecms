@@ -238,7 +238,8 @@ export function renderPost(
               ...(post.categories.length ? { articleSection: post.categories[0] } : {}),
               ...(post.tags.length ? { keywords: post.tags.join(', ') } : {}),
               publisher: { '@id': `${site.url}/#organization` },
-              author: { '@id': `${site.url}/#organization` },
+              // Who wrote it, when the site names them (ADR 0055 d3); otherwise the business.
+              author: post.author ? { '@type': 'Person', name: post.author.name } : { '@id': `${site.url}/#organization` },
             },
             organization(site),
             trail,

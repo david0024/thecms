@@ -131,6 +131,8 @@ export async function buildSite(
   comments: Record<string, ShownComment[]> = {},
   /** The pages behind a password (ADR 0043): each address, with the page it belongs to. */
   locked: Record<string, string> = {},
+  /** Who wrote each entry, by `type/entry` (ADR 0055 d3): shown under the title of a dated one. */
+  bylines: Record<string, { name: string; bio: string }> = {},
 ): Promise<Map<string, string | Uint8Array>> {
   const files = new Map<string, string | Uint8Array>();
   site = { ...site, pictures: { sizes: images, widths: theme.tokens.width } };
@@ -139,8 +141,11 @@ export async function buildSite(
   const published = Array.isArray(entries) ? { [POSTS_TYPE]: entries } : entries;
   /** Where each entry is in each other language, for the links between entries there (ADR 0054). */
   const slugs = Object.fromEntries(site.languages.map((language) => [language, slugsIn(language, published)]));
-  const commented = (id: string, post: Post, language: string): Post =>
-    typeById(site, id)?.comments ? { ...post, comments: comments[commentKey(id, post.of ?? post.slug, language === site.language ? '' : language)] ?? [] } : post;
+  const commented = (id: string, post: Post, language: string): Post => {
+    const author = bylines[`${id}/${post.of ?? post.slug}`];
+    const signed = author ? { ...post, author } : post;
+    return typeById(site, id)?.comments ? { ...signed, comments: comments[commentKey(id, post.of ?? post.slug, language === site.language ? '' : language)] ?? [] } : signed;
+  };
   /**
    * Each language with its entries (ADR 0054): the main language's as they
    * are, another's only those translated into it, in its type's words. A type
@@ -348,5 +353,5 @@ export async function publishedSite(store: Store, served = false): Promise<Map<s
   const locked = Object.fromEntries(pages.filter((p) => locks.has(p.of)).map((p) => [pagePath(p.slug), p.of]));
   const media: MediaSource = async (name) =>
     served && mediaKindOf(name) !== 'image' ? ((await store.hasMedia(name)) ? new Uint8Array(0) : null) : ((await store.mediaFile(name))?.bytes ?? null);
-  return buildSite(site, theme, pages, media, entries, await store.redirects(), templates, await store.publishedSections(), await store.mediaSizes(), await store.shownComments(), locked);
+  return buildSite(site, theme, pages, media, entries, await store.redirects(), templates, await store.publishedSections(), await store.mediaSizes(), await store.shownComments(), locked, await store.bylines());
 }

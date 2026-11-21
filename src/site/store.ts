@@ -189,6 +189,9 @@ const SQLITE: Dialect = {
     'CREATE TABLE IF NOT EXISTS message_answers (id TEXT PRIMARY KEY, answers TEXT NOT NULL)',
     'CREATE TABLE IF NOT EXISTS comment_languages (id TEXT PRIMARY KEY, language TEXT NOT NULL)',
     'CREATE TABLE IF NOT EXISTS visits (day TEXT NOT NULL, kind TEXT NOT NULL, name TEXT NOT NULL, hits INTEGER NOT NULL, PRIMARY KEY (day, kind, name))',
+    'CREATE TABLE IF NOT EXISTS entry_authors (type TEXT NOT NULL, slug TEXT NOT NULL, user_id TEXT NOT NULL, PRIMARY KEY (type, slug))',
+    'CREATE TABLE IF NOT EXISTS entry_reviews (type TEXT NOT NULL, slug TEXT NOT NULL, state TEXT NOT NULL, note TEXT NOT NULL, at TEXT NOT NULL, PRIMARY KEY (type, slug))',
+    'CREATE TABLE IF NOT EXISTS user_bios (id TEXT PRIMARY KEY, bio TEXT NOT NULL)',
   ],
   params: (query) => query,
   upsert: (table, columns, key, update) =>
@@ -223,6 +226,9 @@ const POSTGRES: Dialect = {
     'CREATE TABLE IF NOT EXISTS message_answers (id VARCHAR(40) PRIMARY KEY, answers TEXT NOT NULL)',
     'CREATE TABLE IF NOT EXISTS comment_languages (id VARCHAR(40) PRIMARY KEY, language VARCHAR(20) NOT NULL)',
     'CREATE TABLE IF NOT EXISTS visits (day VARCHAR(10) NOT NULL, kind VARCHAR(20) NOT NULL, name VARCHAR(255) NOT NULL, hits INTEGER NOT NULL, PRIMARY KEY (day, kind, name))',
+    'CREATE TABLE IF NOT EXISTS entry_authors (type VARCHAR(255) NOT NULL, slug VARCHAR(255) NOT NULL, user_id VARCHAR(40) NOT NULL, PRIMARY KEY (type, slug))',
+    'CREATE TABLE IF NOT EXISTS entry_reviews (type VARCHAR(255) NOT NULL, slug VARCHAR(255) NOT NULL, state VARCHAR(20) NOT NULL, note TEXT NOT NULL, at VARCHAR(40) NOT NULL, PRIMARY KEY (type, slug))',
+    'CREATE TABLE IF NOT EXISTS user_bios (id VARCHAR(40) PRIMARY KEY, bio TEXT NOT NULL)',
   ],
   params: (query) => {
     let n = 0;
@@ -256,6 +262,9 @@ const MYSQL: Dialect = {
     `CREATE TABLE IF NOT EXISTS message_answers (id VARCHAR(40) PRIMARY KEY, answers LONGTEXT NOT NULL) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS comment_languages (id VARCHAR(40) PRIMARY KEY, language VARCHAR(20) NOT NULL) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS visits (day VARCHAR(10) NOT NULL, kind VARCHAR(20) NOT NULL, name VARCHAR(255) NOT NULL, hits INTEGER NOT NULL, PRIMARY KEY (day, kind, name)) ${MYSQL_TABLE}`,
+    `CREATE TABLE IF NOT EXISTS entry_authors (type VARCHAR(255) NOT NULL, slug VARCHAR(255) NOT NULL, user_id VARCHAR(40) NOT NULL, PRIMARY KEY (type, slug)) ${MYSQL_TABLE}`,
+    `CREATE TABLE IF NOT EXISTS entry_reviews (type VARCHAR(255) NOT NULL, slug VARCHAR(255) NOT NULL, state VARCHAR(20) NOT NULL, note TEXT NOT NULL, at VARCHAR(40) NOT NULL, PRIMARY KEY (type, slug)) ${MYSQL_TABLE}`,
+    `CREATE TABLE IF NOT EXISTS user_bios (id VARCHAR(40) PRIMARY KEY, bio TEXT NOT NULL) ${MYSQL_TABLE}`,
   ],
   params: (query) => query,
   upsert: (table, columns, _key, update) =>
@@ -340,7 +349,29 @@ export interface Comment {
  * Someone who may sign in to the admin (ADR 0022). The owner can do
  * everything; an editor writes and publishes content and nothing else.
  */
-export type Role = 'owner' | 'editor';
+export type Role = 'owner' | 'editor' | 'author' | 'contributor';
+/** Every role, from the one who may do most (ADR 0055 d1). */
+export const ROLES: readonly Role[] = ['owner', 'editor', 'author', 'contributor'];
+/** A role as stored or asked for; anything unknown is the one who may do least. */
+export const cleanRole = (value: unknown): Role => (ROLES.includes(value as Role) ? (value as Role) : 'contributor');
+/** Whether a role writes the whole site's content, or only its own entries (ADR 0055 d1). */
+export const writesAll = (role: Role): boolean => role === 'owner' || role === 'editor';
+/** Where an entry is in its review (ADR 0055 d4): sent by its contributor, or sent back with a note. */
+export interface Review {
+  type: string;
+  slug: string;
+  state: 'waiting' | 'returned';
+  note: string;
+  at: string;
+}
+/** Who wrote an entry, as the site shows them (ADR 0055 d3). */
+export interface Byline {
+  name: string;
+  bio: string;
+}
+/** The longest description of a person (ADR 0055 d3), and of a note sent back with an entry (d4). */
+export const BIO_MAX = 300;
+export const NOTE_MAX = 500;
 export interface User {
   id: string;
   email: string;
@@ -349,6 +380,8 @@ export interface User {
   /** False while an invitation has not been taken up. */
   active: boolean;
   createdAt: string;
+  /** A few words about them, shown under what they wrote (ADR 0055 d3). */
+  bio?: string;
 }
 /** What a one-time link is for: the first owner, someone invited, a new password. */
 export type LinkKind = 'setup' | 'invite' | 'reset';
@@ -1190,20 +1223,85 @@ export class Store {
   }
 
   /** Saves an entry's draft. Like a page, what is published is left as it is. An entry with no valid date is dated today. */
-  async saveEntry(typeId: string, input: unknown): Promise<Post> {
+  async saveEntry(typeId: string, input: unknown, author = ''): Promise<Post> {
     const type = await this.type(typeId);
     const { post } = normalizePost(input, new Date().toISOString().slice(0, 10), type);
     if (!post.title) throw new Error('an entry has a title');
     if (!post.slug) throw new Error('an entry has an address');
     // Words kept for a block the entry no longer has are words of nothing (ADR 0032).
     for (const translation of Object.values(post.translations ?? {})) translation.fields = keepWords(post.blocks, translation.fields);
+    // Whoever creates an entry is its author (ADR 0055 d2); saving it again changes nothing of that.
+    const created = author !== '' && !(await this.row('SELECT 1 AS found FROM entries WHERE type = ? AND slug = ?', [type.id, post.slug]));
     await this.run(this.dialect.upsert('entries', ['type', 'slug', 'draft', 'updated_at'], ['type', 'slug'], ['draft', 'updated_at']), [
       type.id,
       post.slug,
       JSON.stringify(post),
       new Date().toISOString(),
     ]);
+    if (created) await this.run(this.dialect.insertNew('entry_authors', ['type', 'slug', 'user_id']), [type.id, post.slug, author]);
     return post;
+  }
+
+  // Authors and review (ADR 0055).
+
+  /** Who wrote each entry, by `type/slug`: their account's id. An entry made before ADR 0055 has none. */
+  async entryAuthors(): Promise<Map<string, string>> {
+    return new Map((await this.rows<Row>('SELECT type, slug, user_id FROM entry_authors')).map((r) => [`${r.type}/${r.slug}`, String(r.user_id)]));
+  }
+
+  /** The id of whoever wrote an entry, '' when nobody is named. */
+  async entryAuthor(typeId: string, slug: string): Promise<string> {
+    return String((await this.row<Row>('SELECT user_id FROM entry_authors WHERE type = ? AND slug = ?', [typeId, slug]))?.user_id ?? '');
+  }
+
+  /** Gives an entry to someone who has an account (ADR 0055 d2); '' leaves it without one. */
+  async setEntryAuthor(typeId: string, slug: string, userId: string): Promise<void> {
+    if (!(await this.row('SELECT 1 AS found FROM entries WHERE type = ? AND slug = ?', [typeId, slug]))) throw new Error(`no entry "${slug}"`);
+    if (!userId) {
+      await this.run('DELETE FROM entry_authors WHERE type = ? AND slug = ?', [typeId, slug]);
+      return;
+    }
+    if (!(await this.user(userId))) throw new Error('nobody has that account');
+    await this.run(this.dialect.upsert('entry_authors', ['type', 'slug', 'user_id'], ['type', 'slug'], ['user_id']), [typeId, slug, userId]);
+  }
+
+  /** Who wrote each entry, as the site shows them, by `type/slug`: only those with a name. */
+  async bylines(): Promise<Record<string, Byline>> {
+    const people = new Map((await this.users()).map((u) => [u.id, u]));
+    const out: Record<string, Byline> = {};
+    for (const [key, id] of await this.entryAuthors()) {
+      const who = people.get(id);
+      if (who?.name) out[key] = { name: who.name, bio: who.bio ?? '' };
+    }
+    return out;
+  }
+
+  /** Whether an entry was ever published: then a contributor's part in it is over (ADR 0055 d1). */
+  async entryPublished(typeId: string, slug: string): Promise<boolean> {
+    return (await this.row('SELECT 1 AS found FROM entries WHERE type = ? AND slug = ? AND published IS NOT NULL', [typeId, slug])) !== null;
+  }
+
+  /** Every entry in review, the oldest sent first. */
+  async reviews(): Promise<Review[]> {
+    return (await this.rows<Row>('SELECT type, slug, state, note, at FROM entry_reviews ORDER BY at, type, slug')).map((r) => ({
+      type: String(r.type),
+      slug: String(r.slug),
+      state: r.state === 'returned' ? 'returned' : 'waiting',
+      note: String(r.note),
+      at: String(r.at),
+    }));
+  }
+
+  /** A contributor's entry, sent to be read and published (ADR 0055 d4). */
+  async askReview(typeId: string, slug: string, now = new Date()): Promise<void> {
+    if (!(await this.row('SELECT 1 AS found FROM entries WHERE type = ? AND slug = ?', [typeId, slug]))) throw new Error(`no entry "${slug}"`);
+    await this.run(this.dialect.upsert('entry_reviews', ['type', 'slug', 'state', 'note', 'at'], ['type', 'slug'], ['state', 'note', 'at']), [typeId, slug, 'waiting', '', now.toISOString()]);
+  }
+
+  /** Sent back to its contributor, with a note on what to change. */
+  async returnReview(typeId: string, slug: string, note: unknown, now = new Date()): Promise<void> {
+    if (!(await this.row("SELECT 1 AS found FROM entry_reviews WHERE type = ? AND slug = ? AND state = 'waiting'", [typeId, slug]))) throw new Error('this entry is not waiting for review');
+    await this.run('UPDATE entry_reviews SET state = ?, note = ?, at = ? WHERE type = ? AND slug = ?', ['returned', str(note, NOTE_MAX).trim(), now.toISOString(), typeId, slug]);
   }
 
   async publishEntry(typeId: string, where: string, now = new Date()): Promise<void> {
@@ -1212,6 +1310,8 @@ export class Store {
     if (!(await this.row('SELECT 1 AS found FROM entries WHERE type = ? AND slug = ?', [typeId, slug]))) throw new Error(`no entry "${slug}"`);
     const at = now.toISOString();
     await this.run('UPDATE entries SET published = draft, published_at = ? WHERE type = ? AND slug = ?', [at, typeId, slug]);
+    // Published, its review is over (ADR 0055 d4).
+    await this.run('DELETE FROM entry_reviews WHERE type = ? AND slug = ?', [typeId, slug]);
     const row = await this.row<{ published: string }>('SELECT published FROM entries WHERE type = ? AND slug = ?', [typeId, slug]);
     await this.keepVersion(typeId, slug, String(row?.published), at);
     this.emit('entry.published', { type: typeId, slug, title: String((JSON.parse(String(row?.published)) as { title?: unknown }).title ?? '') });
@@ -1371,6 +1471,8 @@ export class Store {
 
   async deleteEntry(typeId: string, slug: string): Promise<void> {
     await this.run('DELETE FROM entries WHERE type = ? AND slug = ?', [typeId, slug]);
+    await this.run('DELETE FROM entry_authors WHERE type = ? AND slug = ?', [typeId, slug]);
+    await this.run('DELETE FROM entry_reviews WHERE type = ? AND slug = ?', [typeId, slug]);
     await this.unlink(typeId, slug);
     await this.run('DELETE FROM versions WHERE kind = ? AND slug = ?', [typeId, slug]);
     await this.run('DELETE FROM schedule WHERE kind = ? AND slug = ?', [typeId, slug]);
@@ -1761,8 +1863,8 @@ export class Store {
   // Accounts (ADR 0022).
 
   async users(): Promise<User[]> {
-    const rows = await this.rows<Row>('SELECT id, email, name, role, password, created_at FROM users ORDER BY created_at, email');
-    return rows.map((r) => ({ id: String(r.id), email: String(r.email), name: String(r.name), role: r.role === 'owner' ? 'owner' : 'editor', active: String(r.password) !== '', createdAt: String(r.created_at) }));
+    const rows = await this.rows<Row>('SELECT u.id, u.email, u.name, u.role, u.password, u.created_at, b.bio FROM users u LEFT JOIN user_bios b ON b.id = u.id ORDER BY u.created_at, u.email');
+    return rows.map((r) => ({ id: String(r.id), email: String(r.email), name: String(r.name), role: cleanRole(r.role), active: String(r.password) !== '', createdAt: String(r.created_at), bio: r.bio ? String(r.bio) : '' }));
   }
 
   async user(id: string): Promise<User | null> {
@@ -1780,7 +1882,7 @@ export class Store {
       id,
       email,
       str(input.name ?? '', 120).trim(),
-      input.role === 'owner' ? 'owner' : 'editor',
+      cleanRole(input.role),
       password,
       new Date().toISOString(),
     ]);
@@ -1813,13 +1915,28 @@ export class Store {
   async setRole(id: string, role: Role): Promise<void> {
     const users = await this.users();
     if (role !== 'owner' && users.filter((u) => u.role === 'owner' && u.active && u.id !== id).length === 0) throw new Error('the site needs an owner');
-    await this.run('UPDATE users SET role = ? WHERE id = ?', [role === 'owner' ? 'owner' : 'editor', id]);
+    await this.run('UPDATE users SET role = ? WHERE id = ?', [cleanRole(role), id]);
   }
 
-  /** Removes someone, with their sessions and links. The last owner stays. */
-  async removeUser(id: string): Promise<void> {
+  /** Someone's name and the few words about them (ADR 0055 d3), set by themselves. */
+  async setProfile(id: string, name: unknown, bio: unknown): Promise<User> {
+    if (!(await this.user(id))) throw new Error('nobody has that account');
+    await this.run('UPDATE users SET name = ? WHERE id = ?', [str(name, 120).trim(), id]);
+    await this.run(this.dialect.upsert('user_bios', ['id', 'bio'], ['id'], ['bio']), [id, str(bio, BIO_MAX).trim()]);
+    return (await this.user(id)) as User;
+  }
+
+  /**
+   * Removes someone, with their sessions and links. The last owner stays.
+   * What they wrote passes to `heir` (ADR 0055 d5): nothing is unpublished.
+   */
+  async removeUser(id: string, heir = ''): Promise<void> {
     const users = await this.users();
     if (users.find((u) => u.id === id)?.role === 'owner' && users.filter((u) => u.role === 'owner' && u.active && u.id !== id).length === 0) throw new Error('the site needs an owner');
+    if (heir === id || (heir && !users.some((u) => u.id === heir))) throw new Error('give what they wrote to someone who stays');
+    if (heir) await this.run('UPDATE entry_authors SET user_id = ? WHERE user_id = ?', [heir, id]);
+    else await this.run('DELETE FROM entry_authors WHERE user_id = ?', [id]);
+    await this.run('DELETE FROM user_bios WHERE id = ?', [id]);
     await this.run('DELETE FROM sessions WHERE user_id = ?', [id]);
     await this.run('DELETE FROM links WHERE user_id = ?', [id]);
     await this.run('DELETE FROM users WHERE id = ?', [id]);
@@ -2107,6 +2224,9 @@ export const BACKUP_TABLES = [
   'extension_rows',
   'extension_jobs',
   'visits',
+  'entry_authors',
+  'entry_reviews',
+  'user_bios',
 ] as const;
 /** Each table's columns and key, read from the schema, which says them once. */
 const TABLE_COLUMNS: Record<string, string[]> = {};
@@ -2142,6 +2262,9 @@ const TOUCHING = [
   'approveComment',
   'deleteComment',
   'deleteCommentsFrom',
+  'setEntryAuthor',
+  'setProfile',
+  'removeUser',
 ] as const;
 for (const name of TOUCHING) {
   const done = Store.prototype[name] as (this: Store, ...args: unknown[]) => Promise<unknown>;

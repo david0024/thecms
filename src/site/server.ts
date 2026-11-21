@@ -36,7 +36,7 @@ import { accounts, cleanPublicAddress, ownerOnly, shown } from './accounts.ts';
 import { extensionHost, type Spawn } from './extensions.ts';
 import { BUILT_ADMIN } from './built-admin.ts';
 import { BASE_CSS, SHIPPED_THEMES } from './shipped.ts';
-import type { Store, User } from './store.ts';
+import { type Store, type User, writesAll } from './store.ts';
 import { rowWrites } from '../view/index.ts';
 import { fullCheck, publishedSite } from './export.ts';
 
@@ -244,7 +244,15 @@ export async function startEditor(
     const out: Record<string, Listed> = {};
     // Each entry says which link to it (ADR 0052 d4), so deleting it is never a surprise.
     const uses = await store.linkedFrom();
-    for (const type of contentTypes(await store.site())) out[type.id] = (await store.entries(type.id)).map((entry) => ({ ...entry, ...(uses.get(`${type.id}/${entry.slug}`) ? { usedBy: uses.get(`${type.id}/${entry.slug}`) } : {}) }));
+    // Who wrote each, and where it is in its review (ADR 0055).
+    const authors = await store.entryAuthors();
+    const reviews = new Map((await store.reviews()).map((r) => [`${r.type}/${r.slug}`, { state: r.state, note: r.note, at: r.at }]));
+    for (const type of contentTypes(await store.site())) {
+      out[type.id] = (await store.entries(type.id)).map((entry) => {
+        const key = `${type.id}/${entry.slug}`;
+        return { ...entry, ...(uses.get(key) ? { usedBy: uses.get(key) } : {}), ...(authors.get(key) ? { author: authors.get(key) } : {}), ...(reviews.get(key) ? { review: reviews.get(key) } : {}) };
+      });
+    }
     return out;
   };
   // The menu as the editor shows it: from the drafts, with each content type as soon as it has an entry.
@@ -348,6 +356,8 @@ export async function startEditor(
     themes,
     languages: languages(),
     me: shown(me),
+    // Who may be named an entry's author, and whose name a list shows (ADR 0055 d2).
+    people: (await store.users()).map((u) => ({ id: u.id, name: u.name || (writesAll(me.role) ? u.email : ''), role: u.role })),
     accounts: people !== null,
     shared: shared.status(),
     // A backup that failed is said at the top of the admin until one succeeds (ADR 0051 d6).
@@ -535,7 +545,55 @@ export async function startEditor(
     return rows();
   }
 
+  /**
+   * What an author or a contributor may not do (ADR 0055 d1): a refusal, or
+   * null. They write their own entries; the pages, the sections and the rest
+   * of the site are the owner's and the editors'. Read from a copy of the
+   * request, so the call itself still has its body.
+   */
+  async function refusedTo(request: Request, url: URL, me: User): Promise<Response | null> {
+    if (writesAll(me.role)) return null;
+    const no = (error = 'an author writes their own entries only'): Response => json({ error }, 403);
+    const path = url.pathname;
+    const method = request.method;
+    const reading = method === 'GET';
+    if (path === '/api/me' || path === '/api/state' || path === '/api/check' || path === '/api/render' || path === '/api/versions' || path === '/api/version' || path === '/api/forms') return reading || path === '/api/me' || path === '/api/render' ? null : no();
+    if (path === '/api/media' || path === '/api/media/variant') return method === 'DELETE' ? no('only the owner and the editors delete from the library') : null;
+    if (path.startsWith('/api/extensions')) return path.split('/')[4] === 'each' ? no() : null;
+    if (path === '/api/locks') return reading ? null : no();
+    const body = reading || method === 'DELETE' ? {} : ((await request.clone().json().catch(() => ({}))) as Record<string, unknown>);
+    const kind = String(url.searchParams.get('kind') ?? body.kind ?? 'page');
+    if (path === '/api/schedule') {
+      if (reading) return null;
+      if (me.role === 'contributor') return no('a contributor sends an entry for review; an editor publishes it');
+      return method === 'POST' ? mine(kind, String(body.slug ?? '')) : mine(url.searchParams.get('kind') ?? '', url.searchParams.get('slug') ?? '');
+    }
+    if (path === '/api/review') return method === 'POST' ? mine(kind, String(body.slug ?? '')) : no();
+    if (!['/api/page', '/api/publish', '/api/translate', '/api/split'].includes(path)) return no();
+    if (reading) return null;
+    if (path === '/api/publish' && me.role === 'contributor') return no('a contributor sends an entry for review; an editor publishes it');
+    const translation = isObject(body.translation) ? body.translation : null;
+    const page = isObject(body.page) ? body.page : {};
+    const at =
+      method === 'DELETE' ? (url.searchParams.get('slug') ?? '') : path === '/api/split' ? String(body.of ?? '') : translation ? String(translation.of ?? '') : path === '/api/page' ? String(page.slug ?? '') : String(body.slug ?? '');
+    // A new entry is theirs from the start.
+    if (method === 'PUT' && !translation && body.create === true && kind !== 'page' && kind !== SECTION_KIND && !kind.startsWith('template:')) return null;
+    return mine(kind, at);
+
+    /** Whether the entry at this address is theirs to change: written by them, and for a contributor never published. */
+    async function mine(asked: string, where: string): Promise<Response | null> {
+      if (asked === 'page' || asked === SECTION_KIND || asked.startsWith('template:')) return no('the pages and the sections are the owner\'s and the editors\'');
+      const type = await store.type(asked === 'post' ? POSTS_TYPE : asked);
+      const slug = (await store.locateEntry(type.id, where))?.of ?? where;
+      if ((await store.entryAuthor(type.id, slug)) !== me.id) return no('this entry is someone else\'s');
+      if (me.role === 'contributor' && (await store.entryPublished(type.id, slug))) return no('this entry is published; an editor changes it now');
+      return null;
+    }
+  }
+
   async function api(request: Request, url: URL, me: User): Promise<Response> {
+    const refused = await refusedTo(request, url, me);
+    if (refused) return refused;
     if (url.pathname === '/api/extensions' || url.pathname.startsWith('/api/extensions/')) return extensionsApi(request, url, me);
     if (url.pathname.startsWith('/api/import')) return importApi(request, url);
     if (url.pathname === '/api/stats' && request.method === 'GET') {
@@ -585,6 +643,24 @@ export async function startEditor(
       }
     }
     const body = request.method === 'GET' || request.method === 'DELETE' ? {} : ((await request.json()) as Record<string, unknown>);
+    if (url.pathname === '/api/me' && request.method === 'PUT') {
+      // Their own name and the few words about them (ADR 0055 d3).
+      if (!people) return json({ error: 'accounts are for a served admin' }, 404);
+      await store.setProfile(me.id, body.name, body.bio);
+      await people.changed();
+      return json(await state((await store.user(me.id)) as User));
+    }
+    if (url.pathname === '/api/review' || url.pathname === '/api/review/return' || url.pathname === '/api/author') {
+      const type = await store.type(String(body.kind ?? '') === 'post' ? POSTS_TYPE : String(body.kind ?? ''));
+      const at = String(body.slug ?? '');
+      const slug = (await store.locateEntry(type.id, at))?.of ?? at;
+      if (url.pathname === '/api/author' && request.method === 'PUT') await store.setEntryAuthor(type.id, slug, String(body.id ?? ''));
+      // Sent for review by its contributor, or sent back with a note by an editor (ADR 0055 d4).
+      else if (url.pathname === '/api/review' && request.method === 'POST') await store.askReview(type.id, slug);
+      else if (url.pathname === '/api/review/return' && request.method === 'POST') await store.returnReview(type.id, slug, body.note);
+      else return json({ error: 'not found' }, 404);
+      return json(await lists());
+    }
     if (url.pathname === '/api/performance') {
       // Settings → Performance (ADR 0044 d4): where the processes share what they keep, a test, and a new address.
       const saved = await store.valkeyAddress();
@@ -740,7 +816,7 @@ export async function startEditor(
           const { post, issues } = normalizePost(body.page, undefined, type);
           if (!post.title || !post.slug) return json({ error: 'an entry has a title', issues }, 400);
           if (body.create === true && (await store.entryDraft(type.id, post.slug))) return json({ error: 'an entry with this address already exists' }, 409);
-          return json({ page: await store.saveEntry(type.id, body.page), issues, ...(await lists()) });
+          return json({ page: await store.saveEntry(type.id, body.page, me.id), issues, ...(await lists()) });
         }
         case 'DELETE /api/page': {
           // A translation goes alone; the entry stays (ADR 0054).
@@ -762,7 +838,9 @@ export async function startEditor(
           const post = normalizePost(raw, new Date().toISOString().slice(0, 10), local).post;
           const template = await store.template(type.id);
           const setting = language === site.language ? null : pageSetting(site, prefixOf(language), await store.pages(), await menuLists());
-          return json(renderPostParts(await framed(setting?.site), await theme(), { ...post, blocks: await filled(post.blocks, language) }, setting?.menu ?? (await menu()), true, local, await entryLists(), template && (await filled(template, language))));
+          // Its byline as the site will show it (ADR 0055 d3); a translation's is its entry's.
+          const author = (await store.bylines())[`${type.id}/${(await store.locateEntry(type.id, at))?.of ?? at}`];
+          return json(renderPostParts(await framed(setting?.site), await theme(), { ...post, ...(author ? { author } : {}), blocks: await filled(post.blocks, language) }, setting?.menu ?? (await menu()), true, local, await entryLists(), template && (await filled(template, language))));
         }
       }
     }

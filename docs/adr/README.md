@@ -56,3 +56,4 @@ work it decides. A new one that changes an old one says so at its top.
 - [ADR 0052 — Relations between entries, and more kinds of field](0052-relations-and-more-fields.md)
 - [ADR 0053 — Statistics without a cookie](0053-statistics-without-a-cookie.md)
 - [ADR 0054 — Entries in more than one language](0054-entries-in-more-than-one-language.md)
+- [ADR 0055 — Authors and contributors](0055-authors-and-contributors.md)

@@ -52,7 +52,7 @@ import {
   STANDARD,
   typeIn,
 } from '../core/index.ts';
-import { api, type Doc, type Kind, type State, type TranslationInfo } from './api.ts';
+import { api, signedIn, type Doc, type Kind, type PostInfo, type State, type TranslationInfo } from './api.ts';
 import ContentList from './ContentList.svelte';
 import Layouts from './Layouts.svelte';
 import { layoutName } from './layouts.ts';
@@ -70,6 +70,8 @@ import ImageField from './ImageField.svelte';
 import ImportScreen from './ImportScreen.svelte';
 import MediaLibrary from './MediaLibrary.svelte';
 import People from './People.svelte';
+import Profile from './Profile.svelte';
+import Reviews from './Reviews.svelte';
 import Messages from './Messages.svelte';
 import Backups from './Backups.svelte';
 import Stats from './Stats.svelte';
@@ -92,7 +94,7 @@ let kind = $state<Kind>('page');
 let translation = $state<TranslationInfo | null>(null);
 const fixed = $derived(translation !== null && !translation.split);
 /** Which section of the admin is showing: a list, or the builder with one page or post open. */
-let view = $state<'pages' | 'sections' | 'forms' | 'layouts' | 'media' | 'messages' | 'backups' | 'stats' | 'comments' | 'people' | 'types' | 'import' | 'extensions' | 'edit' | `list:${string}` | `ext:${string}`>('pages');
+let view = $state<'pages' | 'sections' | 'forms' | 'layouts' | 'media' | 'messages' | 'backups' | 'stats' | 'comments' | 'people' | 'me' | 'review' | 'types' | 'import' | 'extensions' | 'edit' | `list:${string}` | `ext:${string}`>('pages');
 let selected = $state<string | null>(null);
 /** The form the Forms screen opens on, when a form block asked for it (ADR 0049). */
 let formAsked = $state('');
@@ -144,6 +146,18 @@ const menuLists = $derived<MenuList[]>(types.filter((ty) => (site?.entries[ty.id
 const home = $derived<typeof view>(designing ? 'types' : sectioning ? 'sections' : kind === 'page' ? 'pages' : `list:${kind}`);
 /** An editor writes and publishes content; the site, the theme and the people are the owner's (ADR 0022). */
 const owner = $derived(site?.me.role === 'owner');
+/** The owner and the editors write the whole site; an author and a contributor only their own entries (ADR 0055 d1). */
+const staff = $derived(site?.me.role === 'owner' || site?.me.role === 'editor');
+/** A contributor publishes nothing: their entries are sent for review (ADR 0055 d4). */
+const contributor = $derived(site?.me.role === 'contributor');
+/** The entries a list shows: all of them, or for an author and a contributor their own. */
+const listedOf = (id: string): PostInfo[] => (site?.entries[id] ?? []).filter((e) => staff || e.author === site?.me.id);
+/** Where the open entry is in its review, if anywhere. */
+const review = $derived(info && 'review' in info ? (info as PostInfo).review : undefined);
+/** The note an editor writes to send an entry back. */
+let returnNote = $state('');
+/** How many entries wait to be read (ADR 0055 d4). */
+const waiting = $derived(site ? Object.values(site.entries).flat().filter((e) => e.review?.state === 'waiting').length : 0);
 const freeOnPage = $derived(page ? countFreeValues(page.blocks) : 0);
 
 /** The site's languages, as a question of an extension offers them. */
@@ -460,6 +474,42 @@ async function publish(): Promise<void> {
   }
 }
 
+/** A contributor's entry, saved and sent to be read (ADR 0055 d4). */
+async function askReview(): Promise<void> {
+  if (!site || !page) return;
+  try {
+    await save();
+    if (saving !== 'saved') return;
+    const { pages, sections, posts, entries, templates } = await api.askReview(page.slug, kind);
+    site = { ...site, pages, sections, posts, entries, templates };
+  } catch (error) {
+    fail(error);
+  }
+}
+
+/** Sent back to its contributor with a note, by an owner or an editor. */
+async function returnReview(note: string): Promise<void> {
+  if (!site || !page) return;
+  try {
+    const { pages, sections, posts, entries, templates } = await api.returnReview(page.slug, kind, note);
+    site = { ...site, pages, sections, posts, entries, templates };
+  } catch (error) {
+    fail(error);
+  }
+}
+
+/** Gives the open entry to someone else (ADR 0055 d2): the owner's and the editors' choice. */
+async function setAuthor(id: string): Promise<void> {
+  if (!site || !page) return;
+  try {
+    const { pages, sections, posts, entries, templates } = await api.setAuthor(page.slug, kind, id);
+    site = { ...site, pages, sections, posts, entries, templates };
+    await draw();
+  } catch (error) {
+    fail(error);
+  }
+}
+
 async function chooseTheme(name: string): Promise<void> {
   const theme = site?.themes.find((th) => th.name === name);
   if (!site || !theme) return;
@@ -632,6 +682,9 @@ onMount(() => {
     try {
       site = await api.state();
       await open('');
+      // An author and a contributor start at their own entries: the pages are not theirs (ADR 0055 d1).
+      signedIn.staff = staff;
+      if (!staff) view = `list:${types.find((ty) => ty.id === POSTS_TYPE)?.id ?? types[0]?.id ?? ''}`;
     } catch (error) {
       fail(error);
     }
@@ -649,14 +702,21 @@ onMount(() => {
     <!-- Like a page builder elsewhere, the builder takes the whole window: the page needs the width. -->
     <nav class="rail" aria-label={t.nav.label} hidden={view === 'edit'}>
       <strong>{site.site.name}</strong>
+      {#if staff}
       <button type="button" aria-current={view === 'pages' ? 'page' : undefined} onclick={() => (view = 'pages')} data-nav="pages">{t.nav.pages}</button>
+      {/if}
       {#each types as ty (ty.id)}
         <button type="button" aria-current={view === `list:${ty.id}` ? 'page' : undefined} onclick={() => (view = `list:${ty.id}`)} data-nav={ty.id}>{ty.name}</button>
       {/each}
+      {#if staff}
+      <button type="button" aria-current={view === 'review' ? 'page' : undefined} onclick={() => (view = 'review')} data-nav="review">{t.nav.review}{waiting ? ` (${waiting})` : ''}</button>
       <button type="button" aria-current={view === 'sections' ? 'page' : undefined} onclick={() => (view = 'sections')} data-nav="sections">{t.nav.sections}</button>
+      {/if}
       <button type="button" aria-current={view === 'media' ? 'page' : undefined} onclick={() => (view = 'media')} data-nav="media">{t.nav.media}</button>
+      {#if staff}
       <button type="button" aria-current={view === 'stats' ? 'page' : undefined} onclick={() => (view = 'stats')} data-nav="stats">{t.nav.stats}</button>
-      {#if types.some((ty) => ty.comments)}
+      {/if}
+      {#if staff && types.some((ty) => ty.comments)}
         <button type="button" aria-current={view === 'comments' ? 'page' : undefined} onclick={() => (view = 'comments')} data-nav="comments">{t.nav.comments}</button>
       {/if}
       {#if owner}
@@ -674,6 +734,7 @@ onMount(() => {
         {/if}
       {/if}
       {#if site.accounts}
+        <button type="button" aria-current={view === 'me' ? 'page' : undefined} onclick={() => (view = 'me')} data-nav="me">{t.nav.me}</button>
         <span class="grow"></span>
         <small class="me">{site.me.name || site.me.email}</small>
         <button type="button" onclick={signOut} data-sign-out>{t.door.signOut}</button>
@@ -695,7 +756,7 @@ onMount(() => {
       {@const listed = types.find((ty) => `list:${ty.id}` === view)}
       {#if listed}
         {#key listed.id}
-          <ContentList kind={listed.id} type={listed} items={site.entries[listed.id] ?? []} site={site.site} onopen={(slug) => edit(slug, listed.id)} oncreate={(title) => createPage(title, listed.id)} ontranslate={(slug, language) => translatePage(slug, language, listed.id)} />
+          <ContentList kind={listed.id} type={listed} items={listedOf(listed.id)} people={site.people} site={site.site} onopen={(slug) => edit(slug, listed.id)} oncreate={(title) => createPage(title, listed.id)} ontranslate={(slug, language) => translatePage(slug, language, listed.id)} />
         {/key}
       {/if}
     {:else if view === 'media'}
@@ -714,6 +775,10 @@ onMount(() => {
       <ImportScreen ondone={reload} />
     {:else if view === 'people'}
       <People />
+    {:else if view === 'review'}
+      <Reviews {types} entries={site.entries} people={site.people} onopen={(slug, of) => edit(slug, of)} />
+    {:else if view === 'me'}
+      <Profile me={site.me} onsaved={(next) => (site = next)} />
     {:else if view === 'extensions'}
       <Extensions extensions={site.extensions} onchange={(next) => site && (site = { ...site, extensions: next })} onopen={(name, screen) => (view = `ext:${name}/${screen}`)} />
     {:else if view.startsWith('ext:')}
@@ -753,8 +818,12 @@ onMount(() => {
       {#if site.themeChanged}<button type="button" onclick={publishTheme} title={t.theme.changed} data-publish-theme>{t.theme.publish}</button>{/if}
       {/if}
       <span class="sep"></span>
-      <span class="state">{!info?.published ? t.bar.draft : info.changed || saving !== 'saved' ? t.bar.changed : t.bar.published}</span>
-      <button type="button" class="primary" onclick={publish} disabled={info?.published && !info.changed && saving === 'saved'}>{t.bar.publish}</button>
+      <span class="state" data-review-state={review?.state ?? ''}>{review ? (review.state === 'waiting' ? t.review.waiting : t.review.returned) : !info?.published ? t.bar.draft : info.changed || saving !== 'saved' ? t.bar.changed : t.bar.published}</span>
+      {#if contributor}
+        <button type="button" class="primary" onclick={askReview} disabled={!type || info?.published || (review?.state === 'waiting' && saving === 'saved')} data-ask-review>{t.review.send}</button>
+      {:else}
+        <button type="button" class="primary" onclick={publish} disabled={info?.published && !info.changed && saving === 'saved'}>{t.bar.publish}</button>
+      {/if}
     </header>
 
     <aside class="left">
@@ -936,6 +1005,30 @@ onMount(() => {
             <ImageField label={t.posts.cover} value={post.cover} onchange={(cover) => change({ ...post, cover: cover.src ? cover : null }, { step: false })} />
           </div>
           <EntryFieldsForm {type} {types} entries={site.entries} own={post.slug} values={post.fields} onchange={(fields) => change({ ...post, fields }, { step: false })} />
+          {@const entry = info as PostInfo | undefined}
+          {#if staff && site.accounts}
+            <label class="field">
+              <span>{t.review.author}</span>
+              <select value={entry?.author ?? ''} onchange={(e) => setAuthor(e.currentTarget.value)} data-entry-author>
+                <option value="">{t.review.nobody}</option>
+                {#each site.people as person (person.id)}<option value={person.id}>{person.name}</option>{/each}
+              </select>
+            </label>
+          {/if}
+          {#if staff && entry?.review?.state === 'waiting'}
+            <label class="field">
+              <span>{t.review.note}</span>
+              <textarea rows="3" maxlength="500" bind:value={returnNote} data-review-note></textarea>
+            </label>
+            <button type="button" onclick={() => returnReview(returnNote).then(() => (returnNote = ''))} data-review-back>{t.review.back}</button>
+          {/if}
+          {#if contributor && entry?.review?.state === 'returned'}
+            <p class="hint" data-review-returned>{say(t.review.returnedNote, { note: entry.review.note })}</p>
+          {:else if contributor && entry?.review?.state === 'waiting'}
+            <p class="hint">{t.review.sent}</p>
+          {:else if contributor && entry?.published}
+            <p class="hint" data-review-published>{t.review.published}</p>
+          {/if}
         {:else if 'inMenu' in page && translation}
           {@const within = translation}
           {@const languageLabel = languageName(within.language)}
@@ -985,15 +1078,15 @@ onMount(() => {
           <button type="button" onclick={() => page && setBlocks(resetToTheme(page.blocks))}>{t.style.resetPage}</button>
         {/if}
         <p class="hint">{t.inspector.nothing}</p>
-        <ExtensionTools extensions={site.extensions} on="page" languages={siteLanguages} onrun={runOnPage} oneach={everyLanguage ? runEveryLanguage : undefined} />
-        {#if !designing && !sectioning && !translation}
+        <ExtensionTools extensions={site.extensions} on="page" languages={siteLanguages} onrun={runOnPage} oneach={everyLanguage && staff ? runEveryLanguage : undefined} />
+        {#if !designing && !sectioning && !translation && !contributor}
           {#key `${kind}/${page.slug}`}<Schedule slug={page.slug} {kind} />{/key}
           {#if kind === 'page' && page.slug !== ''}{#key page.slug}<PageLock slug={page.slug} />{/key}{/if}
         {/if}
         {#if !designing && !(type && translation)}
           {#key `${kind}/${page.slug}`}<Versions slug={page.slug} {kind} onrestore={(doc) => change(doc)} />{/key}
         {/if}
-        {#if type || page.slug !== ''}
+        {#if (type || page.slug !== '') && !(contributor && info?.published)}
           {#if usedBy.length}<p class="hint" data-used-by>{say(t.ctypes.usedBy, { count: usedBy.length, titles: usedBy.join(', ') })}</p>{/if}
           <button type="button" class="danger" onclick={removePage}>{translation ? say(t.inspector.deleteTranslation, { language: languageName(translation.language) }) : sectioning ? t.sections.delete : !type ? t.inspector.deletePage : kind === POSTS_TYPE ? t.posts.deletePost : t.ctypes.deleteEntry}</button>
         {/if}

@@ -4,7 +4,7 @@
  * one opens it in the builder; the list itself changes nothing.
  */
 import { type ContentType, entryPath, type Layout, STANDARD, languageName, pagePath, pagesIn, POSTS_TYPE, prefixOf, type Site, slugIn, slugify } from '../core/index.ts';
-import type { Kind, PageInfo, PostInfo } from './api.ts';
+import type { Kind, PageInfo, Person, PostInfo } from './api.ts';
 import { layoutName } from './layouts.ts';
 import { say, t } from './messages.ts';
 
@@ -17,6 +17,7 @@ let {
   site,
   ontranslate,
   layouts = [],
+  people = [],
 }: {
   kind: Kind;
   /** The content type listed; none for pages. */
@@ -29,6 +30,8 @@ let {
   ontranslate?: (slug: string, language: string) => void;
   /** For pages: the layouts a new page picks from (ADR 0035). */
   layouts?: readonly Layout[];
+  /** Who has an account: each entry's author is named beside it (ADR 0055). */
+  people?: Person[];
 } = $props();
 
 const others = $derived(site ? site.languages : []);
@@ -53,7 +56,12 @@ const words = $derived(
       ? { heading: type.name, add: t.posts.newPost, none: t.posts.none }
       : { heading: type.name, add: say(t.ctypes.newEntry, { singular: type.singular.toLowerCase() }), none: t.ctypes.noEntries },
 );
-const status = (item: PageInfo): string => (!item.published ? t.bar.draft : item.changed ? t.bar.changed : t.bar.published);
+/** Where it is in its review comes before whether it is published (ADR 0055 d4). */
+const status = (item: PageInfo | PostInfo): string =>
+  'review' in item && item.review ? (item.review.state === 'waiting' ? t.review.waiting : t.review.returned) : !item.published ? t.bar.draft : item.changed ? t.bar.changed : t.bar.published;
+/** The list says who wrote each entry when more than one person may write. */
+const authors = $derived(!!type && people.length > 1);
+const nameOf = (item: PageInfo | PostInfo): string => people.find((p) => 'author' in item && p.id === item.author)?.name ?? '';
 </script>
 
 <section class="screen" data-list={mark}>
@@ -90,6 +98,7 @@ const status = (item: PageInfo): string => (!item.published ? t.bar.draft : item
           <th>{t.inspector.title}</th>
           <th>{t.list.address}</th>
           {#if type?.dated}<th>{t.posts.date}</th>{/if}
+          {#if authors}<th>{t.review.author}</th>{/if}
           <th>{t.list.status}</th>
           {#if others.length}<th>{t.list.translations}</th>{/if}
         </tr>
@@ -100,7 +109,8 @@ const status = (item: PageInfo): string => (!item.published ? t.bar.draft : item
             <td><button type="button" class="open" onclick={() => onopen(item.slug)} data-open={item.slug}>{item.title}</button></td>
             <td class="quiet">{type ? entryPath(type, item.slug) : pagePath(item.slug)}</td>
             {#if type?.dated}<td class="quiet">{'date' in item ? item.date : ''}</td>{/if}
-            <td class="quiet" class:live={item.published && !item.changed}>{status(item)}</td>
+            {#if authors}<td class="quiet" data-author-of={item.slug}>{nameOf(item)}</td>{/if}
+            <td class="quiet" class:live={item.published && !item.changed && !('review' in item && item.review)} data-status-of={item.slug}>{status(item)}</td>
             {#if site && others.length}
               <td class="translations">
                 {#each others as language (language)}

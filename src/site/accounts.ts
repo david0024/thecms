@@ -11,7 +11,7 @@ import { createHash } from 'node:crypto';
 import { NAME } from '../core/index.ts';
 import { languages } from './languages.ts';
 import { localShared, type Shared } from './shared.ts';
-import { cleanEmail, type LinkKind, passwordProblem, type Role, type Store, type User } from './store.ts';
+import { cleanEmail, cleanRole, type LinkKind, passwordProblem, type Role, type Store, type User } from './store.ts';
 
 const OPEN_ROUTES = ['POST /api/session', 'DELETE /api/session', 'POST /api/link', 'POST /api/link/use'];
 
@@ -47,14 +47,18 @@ export const cookieOf = (request: Request, name = SESSION_COOKIE): string => {
   return '';
 };
 
-/** Who may do what. The owner may do everything; an editor writes and publishes pages, posts and entries, and uploads images. */
+/**
+ * What only the owner may do. An editor writes and publishes pages, posts and
+ * entries, and uploads images; an author and a contributor are kept to their
+ * own entries by the server's other check (ADR 0055).
+ */
 export function ownerOnly(method: string, path: string): boolean {
   if (path.startsWith('/api/import') || path === '/api/messages' || path.startsWith('/api/users') || path.startsWith('/api/backups')) return true;
   return (path === '/api/theme' || path === '/api/theme/publish' || path === '/api/site' || path === '/api/redirects' || path === '/api/forms' || path === '/api/performance') && method !== 'GET';
 }
 
 /** What the admin may know about the person signed in. */
-export const shown = (user: User): { id: string; email: string; name: string; role: Role } => ({ id: user.id, email: user.email, name: user.name, role: user.role });
+export const shown = (user: User): { id: string; email: string; name: string; role: Role; bio: string } => ({ id: user.id, email: user.email, name: user.name, role: user.role, bio: user.bio ?? '' });
 
 export function accounts(store: Store, publicAddress: string, shared: Shared = localShared()) {
   const secure = publicAddress.startsWith('https:');
@@ -166,6 +170,9 @@ export function accounts(store: Store, publicAddress: string, shared: Shared = l
       return signedIn(who);
     },
 
+    /** Who a session signs in is asked of the database again: a name changed shows at once. */
+    changed,
+
     /** The owner's calls about people: who has an account, inviting, links, roles, removing. Each change starts a new generation of sessions kept. */
     async people(request: Request, url: URL, me: User): Promise<Response> {
       const answer = await people(request, url, me);
@@ -187,14 +194,15 @@ export function accounts(store: Store, publicAddress: string, shared: Shared = l
       case 'GET':
         return json(await listed());
       case 'POST': {
-        const user = await store.addUser({ email: String(body.email ?? ''), role: body.role === 'owner' ? 'owner' : 'editor' });
+        const user = await store.addUser({ email: String(body.email ?? ''), role: cleanRole(body.role) });
         return json({ link: linkUrl(await store.makeLink('invite', user.id, INVITE_HOURS)), ...(await listed()) });
       }
       case 'PUT':
-        await store.setRole(String(body.id ?? ''), body.role === 'owner' ? 'owner' : 'editor');
+        await store.setRole(String(body.id ?? ''), cleanRole(body.role));
         return json(await listed());
       case 'DELETE':
-        await store.removeUser(url.searchParams.get('id') ?? '');
+        // What they wrote passes to the owner removing them, or to whom the owner chose (ADR 0055 d5).
+        await store.removeUser(url.searchParams.get('id') ?? '', url.searchParams.get('to') || me.id);
         return json(await listed());
       default:
         return json({ error: 'not found' }, 404);
