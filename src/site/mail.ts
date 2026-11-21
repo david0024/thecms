@@ -11,6 +11,7 @@
  * A plain connection carries the password in the clear, so it is refused
  * anywhere but on this machine.
  */
+import { isEmail } from '../core/form.ts';
 
 export interface Mail {
   from: string;
@@ -23,9 +24,8 @@ export interface Mail {
 export type Mailer = (mail: Mail) => Promise<void>;
 
 const LOCAL = ['localhost', '127.0.0.1', '[::1]'];
-/** An address one line long, with nothing a header could be split on. */
-const EMAIL = /^[^\s@<>,;:"\\]+@[^\s@<>,;:"\\]+\.[^\s@<>,;:"\\]+$/;
-export const isEmail = (value: string): boolean => value.length <= 254 && EMAIL.test(value);
+/** An address one line long, with nothing a header could be split on: the forms check addresses the same way (ADR 0049). */
+export { isEmail };
 
 /** A header value on one line. */
 const oneLine = (value: string): string => value.replace(/[\r\n]+/g, ' ').trim();

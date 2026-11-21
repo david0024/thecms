@@ -3,7 +3,7 @@
  * the key from the address the command printed; on a served admin, the
  * session cookie and a header only the admin's own page sends (ADR 0022).
  */
-import type { Block, ExtensionAction, Redirect, RedirectProblem, ExtensionCollection, Page, Post, Site, Theme } from '../core/index.ts';
+import type { Block, ExtensionAction, Form, Redirect, RedirectProblem, ExtensionCollection, Page, Post, Site, Theme } from '../core/index.ts';
 import type { ViewDocument } from '../view/index.ts';
 import type { ExtensionOffer } from '../site/extensions.ts';
 import type { ImportPreview, ImportProgress } from '../site/server.ts';
@@ -96,10 +96,22 @@ export interface TemplateInfo {
   published: boolean;
   changed: boolean;
 }
+/** The forms, where each is shown, and how many messages each has (ADR 0049). */
+export interface FormsState {
+  forms: Form[];
+  usedOn: Record<string, string[]>;
+  counts: Record<string, number>;
+}
+/** A form as a block chooses it (ADR 0049). */
+export interface FormInfo {
+  name: string;
+  title: string;
+}
 interface Lists {
   templates: Record<string, TemplateInfo>;
   pages: PageInfo[];
   sections: SectionInfo[];
+  forms: FormInfo[];
   posts: PostInfo[];
   /** Each content type's entries, by the type's name. */
   entries: Record<string, PostInfo[]>;
@@ -121,6 +133,7 @@ export interface State {
   templates: Record<string, TemplateInfo>;
   pages: PageInfo[];
   sections: SectionInfo[];
+  forms: FormInfo[];
   posts: PostInfo[];
   entries: Record<string, PostInfo[]>;
 }
@@ -206,6 +219,8 @@ export const api = {
   runEachLanguage: (name: string, action: string, slug: string, kind: Kind, ask: Record<string, string>) => call<{ done: string[]; skipped: string[] } & Lists>('POST', `/api/extensions/${name}/each/${action}`, { slug, kind, ask }),
   state: () => call<State>('GET', '/api/state'),
   move: (from: string, to: string) => call<{ page: Page } & Lists>('POST', '/api/move', { from, to }),
+  forms: () => call<FormsState>('GET', '/api/forms'),
+  setForms: (forms: Form[]) => call<FormsState>('PUT', '/api/forms', { forms }),
   redirects: () => call<{ redirects: Redirect[] }>('GET', '/api/redirects'),
   setRedirects: (redirects: Redirect[]) => call<{ redirects: Redirect[] }>('PUT', '/api/redirects', { redirects }),
   page: (slug: string, kind: Kind = 'page') => call<{ page: Doc; translation?: TranslationInfo }>('GET', `/api/page?kind=${kind}&slug=${encodeURIComponent(slug)}`),

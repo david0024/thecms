@@ -3,6 +3,7 @@
 - **Status:** Accepted (owner, 2026-11-19: "Server mic al nostru")
 - **Date:** 2026-11-19
 - **Builds on:** ADR 0001 d3 (EU rules are the default: no third party, forms record consent, data can be exported and erased) and d9 (only forms and search need a small backend).
+- **Changed by:** ADR 0049 (forms built on a screen of their own, with the fields the owner chooses; d1 here and the first line of "Not done here")
 
 A static site cannot receive what a visitor writes. Three ways were weighed: a
 small service of our own, an outside form service the owner signs up to, or a

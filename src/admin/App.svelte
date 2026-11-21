@@ -66,6 +66,7 @@ import ImportScreen from './ImportScreen.svelte';
 import MediaLibrary from './MediaLibrary.svelte';
 import People from './People.svelte';
 import Messages from './Messages.svelte';
+import Forms from './Forms.svelte';
 import Comments from './Comments.svelte';
 import PageLock from './PageLock.svelte';
 import Fields from './Fields.svelte';
@@ -83,8 +84,10 @@ let kind = $state<Kind>('page');
 let translation = $state<TranslationInfo | null>(null);
 const fixed = $derived(translation !== null && !translation.split);
 /** Which section of the admin is showing: a list, or the builder with one page or post open. */
-let view = $state<'pages' | 'sections' | 'layouts' | 'media' | 'messages' | 'comments' | 'people' | 'types' | 'import' | 'extensions' | 'edit' | `list:${string}` | `ext:${string}`>('pages');
+let view = $state<'pages' | 'sections' | 'forms' | 'layouts' | 'media' | 'messages' | 'comments' | 'people' | 'types' | 'import' | 'extensions' | 'edit' | `list:${string}` | `ext:${string}`>('pages');
 let selected = $state<string | null>(null);
+/** The form the Forms screen opens on, when a form block asked for it (ADR 0049). */
+let formAsked = $state('');
 let tab = $state<'content' | 'style'>('content');
 let saving = $state<'saved' | 'saving' | 'unsaved' | 'error'>('saved');
 let failure = $state('');
@@ -557,6 +560,12 @@ async function signOut(): Promise<void> {
 }
 
 /** The site was changed by something other than this screen (an import): read it again. */
+/** From a form block to its form, on the Forms screen. */
+function openForm(name: string): void {
+  formAsked = name;
+  view = 'forms';
+}
+
 async function reload(): Promise<void> {
   try {
     site = await api.state();
@@ -635,6 +644,7 @@ onMount(() => {
         <button type="button" aria-current={view === 'comments' ? 'page' : undefined} onclick={() => (view = 'comments')} data-nav="comments">{t.nav.comments}</button>
       {/if}
       {#if owner}
+        <button type="button" aria-current={view === 'forms' ? 'page' : undefined} onclick={() => ((formAsked = ''), (view = 'forms'))} data-nav="forms">{t.nav.forms}</button>
         <button type="button" aria-current={view === 'messages' ? 'page' : undefined} onclick={() => (view = 'messages')} data-nav="messages">{t.nav.messages}</button>
         <button type="button" onclick={() => panel('site')} data-nav="settings">{t.nav.settings}</button>
         <button type="button" onclick={() => panel('theme')} data-nav="theme">{t.nav.theme}</button>
@@ -673,6 +683,8 @@ onMount(() => {
       {/if}
     {:else if view === 'media'}
       <MediaLibrary />
+    {:else if view === 'forms'}
+      {#key formAsked}<Forms site={site.site} open={formAsked} onchange={(forms) => site && (site = { ...site, forms: forms.map((f) => ({ name: f.name, title: f.title })) })} />{/key}
     {:else if view === 'messages'}
       <Messages />
     {:else if view === 'comments'}
@@ -767,6 +779,8 @@ onMount(() => {
               content={block.content}
               sources={types}
               sections={site.sections.filter((one) => !sectioning || one.slug !== page?.slug)}
+              forms={site.forms}
+              onform={owner ? openForm : undefined}
               {parts}
               onchange={(path, value) => patch(block.id, (b) => ({ ...b, content: setPath(b.content, path, value) }))}
             />

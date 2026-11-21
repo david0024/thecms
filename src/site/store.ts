@@ -19,6 +19,11 @@
  */
 import { SQL } from 'bun';
 import {
+  type Answer,
+  contactForm,
+  type Form,
+  formBlocks,
+  normalizeForms,
   type Block,
   type ExtensionPackage,
   fillTranslation,
@@ -88,6 +93,8 @@ import {
   str,
   type Theme,
 } from '../core/index.ts';
+import { wordsFor } from '../blocks/words.ts';
+import './languages.ts';
 
 /** What is kept with translations: a page, or a section (ADR 0033). */
 type Kept = 'page' | 'section';
@@ -165,6 +172,7 @@ const SQLITE: Dialect = {
     'CREATE TABLE IF NOT EXISTS page_locks (slug TEXT PRIMARY KEY, hash TEXT NOT NULL)',
     'CREATE TABLE IF NOT EXISTS extension_jobs (extension TEXT NOT NULL, action TEXT NOT NULL, last_at TEXT NOT NULL, PRIMARY KEY (extension, action))',
     'CREATE TABLE IF NOT EXISTS comments (id TEXT PRIMARY KEY, type TEXT NOT NULL, entry TEXT NOT NULL, name TEXT NOT NULL, email TEXT NOT NULL, body TEXT NOT NULL, consent TEXT NOT NULL, at TEXT NOT NULL, approved INTEGER NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS message_answers (id TEXT PRIMARY KEY, answers TEXT NOT NULL)',
   ],
   params: (query) => query,
   upsert: (table, columns, key, update) =>
@@ -196,6 +204,7 @@ const POSTGRES: Dialect = {
     'CREATE TABLE IF NOT EXISTS page_locks (slug VARCHAR(255) PRIMARY KEY, hash TEXT NOT NULL)',
     'CREATE TABLE IF NOT EXISTS extension_jobs (extension VARCHAR(64) NOT NULL, action VARCHAR(64) NOT NULL, last_at VARCHAR(40) NOT NULL, PRIMARY KEY (extension, action))',
     'CREATE TABLE IF NOT EXISTS comments (id VARCHAR(40) PRIMARY KEY, type VARCHAR(255) NOT NULL, entry VARCHAR(255) NOT NULL, name TEXT NOT NULL, email TEXT NOT NULL, body TEXT NOT NULL, consent TEXT NOT NULL, at VARCHAR(40) NOT NULL, approved INTEGER NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS message_answers (id VARCHAR(40) PRIMARY KEY, answers TEXT NOT NULL)',
   ],
   params: (query) => {
     let n = 0;
@@ -226,6 +235,7 @@ const MYSQL: Dialect = {
     `CREATE TABLE IF NOT EXISTS page_locks (slug VARCHAR(255) PRIMARY KEY, hash TEXT NOT NULL) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS extension_jobs (extension VARCHAR(64) NOT NULL, action VARCHAR(64) NOT NULL, last_at VARCHAR(40) NOT NULL, PRIMARY KEY (extension, action)) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS comments (id VARCHAR(40) PRIMARY KEY, type VARCHAR(255) NOT NULL, entry VARCHAR(255) NOT NULL, name TEXT NOT NULL, email TEXT NOT NULL, body TEXT NOT NULL, consent TEXT NOT NULL, at VARCHAR(40) NOT NULL, approved INTEGER NOT NULL) ${MYSQL_TABLE}`,
+    `CREATE TABLE IF NOT EXISTS message_answers (id VARCHAR(40) PRIMARY KEY, answers LONGTEXT NOT NULL) ${MYSQL_TABLE}`,
   ],
   params: (query) => query,
   upsert: (table, columns, _key, update) =>
@@ -255,7 +265,7 @@ export interface Message {
   id: string;
   /** When it arrived, as an ISO time. */
   receivedAt: string;
-  /** The id of the form block it was sent with. */
+  /** The name of the form it was sent with (ADR 0049). */
   form: string;
   /** The address of the page the form was on. */
   page: string;
@@ -264,6 +274,8 @@ export interface Message {
   body: string;
   /** The words of the consent the visitor ticked. */
   consent: string;
+  /** What was sent, field by field, with each label as the visitor read it (ADR 0049 d5). A message from before has none. */
+  answers?: Answer[];
 }
 
 /** Something that happened in the site, for the extensions that listen to it (ADR 0041). Never a visitor's address. */
@@ -380,6 +392,7 @@ export class Store {
       });
     }
     await this.moveCopies();
+    await this.keepOldContactForm();
   }
 
   /**
@@ -994,19 +1007,93 @@ export class Store {
     const add = (blocks: Block[], where: string): void => {
       for (const name of sectionsIn(blocks)) uses.set(name, (uses.get(name) ?? new Set()).add(where));
     };
+    for (const { blocks, where } of await this.placedBlocks()) add(blocks, where);
+    // A layout's places show sections too (ADR 0035).
+    for (const layout of (await this.site()).layouts ?? READY_LAYOUTS) add(LAYOUT_AREAS.map((area) => layout[area]).filter(Boolean).map(areaBlock), `the layout "${layout.name}"`);
+    return new Map([...uses].map(([name, at]) => [name, [...at].sort()]));
+  }
+
+  /** The blocks of every page, entry and type's page, in their drafts and as published, with where each is. */
+  private async placedBlocks(): Promise<{ blocks: Block[]; where: string }[]> {
+    const out: { blocks: Block[]; where: string }[] = [];
     for (const row of await this.rows<{ slug: string; draft: string; published: string | null }>('SELECT slug, draft, published FROM pages ORDER BY position, slug')) {
-      for (const doc of [row.draft, row.published]) if (doc) add(normalizePage(JSON.parse(doc)).page.blocks, pagePath(String(row.slug)));
+      for (const doc of [row.draft, row.published]) if (doc) out.push({ blocks: normalizePage(JSON.parse(doc)).page.blocks, where: pagePath(String(row.slug)) });
     }
     const site = await this.site();
     for (const type of contentTypes(site)) {
       for (const row of await this.rows<{ slug: string; draft: string; published: string | null }>('SELECT slug, draft, published FROM entries WHERE type = ?', [type.id])) {
-        for (const doc of [row.draft, row.published]) if (doc) add(normalizePost(JSON.parse(doc), undefined, type).post.blocks, entryPath(type, String(row.slug)));
+        for (const doc of [row.draft, row.published]) if (doc) out.push({ blocks: normalizePost(JSON.parse(doc), undefined, type).post.blocks, where: entryPath(type, String(row.slug)) });
       }
-      add([...((await this.template(type.id)) ?? []), ...((await this.publishedTemplate(type.id)) ?? [])], listPath(type));
+      out.push({ blocks: [...((await this.template(type.id)) ?? []), ...((await this.publishedTemplate(type.id)) ?? [])], where: listPath(type) });
     }
-    // A layout's places show sections too (ADR 0035).
-    for (const layout of site.layouts ?? READY_LAYOUTS) add(LAYOUT_AREAS.map((area) => layout[area]).filter(Boolean).map(areaBlock), `the layout "${layout.name}"`);
+    return out;
+  }
+
+  // Forms (ADR 0049).
+
+  /** The site's forms. A site that never saved any has the ready contact form, in its language. */
+  async forms(): Promise<Form[]> {
+    const site = await this.site();
+    const words = wordsFor(site.language);
+    const raw = await this.getMeta('forms');
+    return raw === null ? [contactForm(words)] : normalizeForms(raw, words);
+  }
+
+  /** The forms, by name: what a page is drawn with. */
+  async formsByName(): Promise<Record<string, Form>> {
+    return Object.fromEntries((await this.forms()).map((form) => [form.name, form]));
+  }
+
+  /** Where each form is shown (ADR 0049 d1): pages, entries, types' pages and sections, drafts and published. */
+  async formUses(): Promise<Map<string, string[]>> {
+    const uses = new Map<string, Set<string>>();
+    const add = (blocks: Block[], where: string): void => {
+      for (const { form } of formBlocks(blocks)) uses.set(form, (uses.get(form) ?? new Set()).add(where));
+    };
+    for (const { blocks, where } of await this.placedBlocks()) add(blocks, where);
+    for (const row of await this.rows<{ slug: string; draft: string; published: string | null }>('SELECT slug, draft, published FROM sections ORDER BY position, slug')) {
+      for (const doc of [row.draft, row.published]) if (doc) add(normalizePage(JSON.parse(doc)).page.blocks, `the section "${row.slug}"`);
+    }
     return new Map([...uses].map(([name, at]) => [name, [...at].sort()]));
+  }
+
+  /** Keeps the forms. One a page shows is not taken away: the reason says where it is shown. */
+  async setForms(input: unknown): Promise<Form[]> {
+    const forms = normalizeForms(input, wordsFor((await this.site()).language));
+    const kept = new Set(forms.map((f) => f.name));
+    for (const [name, where] of await this.formUses()) {
+      if (!kept.has(name)) throw new Error(`the form "${name}" is shown on ${where.join(', ')}; take it off there first`);
+    }
+    await this.setMeta('forms', forms);
+    return forms;
+  }
+
+  /**
+   * A site from before forms were built (ADR 0049) had one contact form, its
+   * words written in each block. It becomes the ready Contact form, with the
+   * words of the first such block, and its messages become Contact's.
+   */
+  private async keepOldContactForm(): Promise<void> {
+    if ((await this.getMeta('forms')) !== null || (await this.isEmpty())) return;
+    const site = await this.site();
+    const form = contactForm(wordsFor(site.language));
+    const rows = await this.rows<{ draft: string }>('SELECT draft FROM pages ORDER BY position, slug');
+    // Read as it was written: cleaned now, a form block keeps none of these words.
+    const find = (blocks: unknown): Record<string, unknown> | undefined => {
+      for (const block of Array.isArray(blocks) ? blocks : []) {
+        if (!isObject(block)) continue;
+        if (block.type === 'form' && isObject(block.content)) return block.content;
+        const inner = find(block.children);
+        if (inner) return inner;
+      }
+      return undefined;
+    };
+    const old = rows.map((row) => find((JSON.parse(row.draft) as { blocks?: unknown }).blocks)).find(Boolean);
+    if (old) {
+      for (const key of ['consent', 'button', 'sent', 'failed'] as const) if (typeof old[key] === 'string' && (old[key] as string).trim()) form[key] = (old[key] as string).trim();
+    }
+    await this.setMeta('forms', normalizeForms([form], wordsFor(site.language)));
+    await this.run('UPDATE messages SET form = ?', ['contact']);
   }
 
   /** Every section, with whether it differs from what is published, where it is shown, and its translations. */
@@ -1294,7 +1381,7 @@ export class Store {
    * Keeps what a visitor sent through a form (ADR 0019), with the words of the
    * consent they ticked, exactly as the page showed them.
    */
-  async addMessage(input: { form: string; page: string; name: string; email: string; body: string; consent: string }, at = new Date()): Promise<Message> {
+  async addMessage(input: { form: string; page: string; name: string; email: string; body: string; consent: string; answers?: Answer[] }, at = new Date()): Promise<Message> {
     const message: Message = {
       id: crypto.randomUUID(),
       receivedAt: at.toISOString(),
@@ -1302,8 +1389,9 @@ export class Store {
       page: str(input.page, 300),
       name: str(input.name, 120).trim(),
       email: str(input.email, 254).trim(),
-      body: str(input.body, 5000).trim(),
+      body: str(input.body, 20000).trim(),
       consent: str(input.consent, 600).trim(),
+      ...(input.answers ? { answers: input.answers.map((a) => ({ id: str(a.id, 40), label: str(a.label, 200), value: str(a.value, 5000) })) } : {}),
     };
     await this.run('INSERT INTO messages (id, received_at, form, page, name, email, body, consent) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [
       message.id,
@@ -1315,6 +1403,7 @@ export class Store {
       message.body,
       message.consent,
     ]);
+    if (message.answers) await this.run('INSERT INTO message_answers (id, answers) VALUES (?, ?)', [message.id, JSON.stringify(message.answers)]);
     this.emit('message.received', { id: message.id, form: message.form, page: message.page, name: message.name, body: message.body });
     return message;
   }
@@ -1322,7 +1411,7 @@ export class Store {
   /** Every message kept, newest first; or those one address sent, for answering a request to see or erase them. */
   async messages(email?: string): Promise<Message[]> {
     const rows = await this.rows<Row>(
-      `SELECT id, received_at, form, page, name, email, body, consent FROM messages${email ? ' WHERE LOWER(email) = ?' : ''} ORDER BY received_at DESC, id`,
+      `SELECT m.id, m.received_at, m.form, m.page, m.name, m.email, m.body, m.consent, a.answers FROM messages m LEFT JOIN message_answers a ON a.id = m.id${email ? ' WHERE LOWER(m.email) = ?' : ''} ORDER BY m.received_at DESC, m.id`,
       email ? [email.trim().toLowerCase()] : [],
     );
     return rows.map((r) => ({
@@ -1334,17 +1423,20 @@ export class Store {
       email: String(r.email),
       body: String(r.body),
       consent: String(r.consent),
+      ...(r.answers ? { answers: JSON.parse(String(r.answers)) as Answer[] } : {}),
     }));
   }
 
   async deleteMessage(id: string): Promise<void> {
     await this.run('DELETE FROM messages WHERE id = ?', [id]);
+    await this.forgetLooseAnswers();
   }
 
   /** Erases everything one address sent. Returns how many were erased. */
   async deleteMessagesFrom(email: string): Promise<number> {
     const found = (await this.messages(email)).length;
     await this.run('DELETE FROM messages WHERE LOWER(email) = ?', [email.trim().toLowerCase()]);
+    await this.forgetLooseAnswers();
     return found;
   }
 
@@ -1354,6 +1446,12 @@ export class Store {
     const before = new Date(now.getTime() - days * 86_400_000).toISOString();
     await this.run('DELETE FROM messages WHERE received_at < ?', [before]);
     await this.run('DELETE FROM comments WHERE approved = 0 AND at < ?', [before]);
+    await this.forgetLooseAnswers();
+  }
+
+  /** A message's answers go with it. */
+  private async forgetLooseAnswers(): Promise<void> {
+    await this.run('DELETE FROM message_answers WHERE id NOT IN (SELECT id FROM messages)');
   }
 
   // Comments (ADR 0040).
@@ -1661,6 +1759,7 @@ export class Store {
 /** What changes what visitors see: each says so once it is done (ADR 0044). */
 const TOUCHING = [
   'setSite',
+  'setForms',
   'setRedirects',
   'publishTheme',
   'publishTemplate',

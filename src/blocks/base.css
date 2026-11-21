@@ -105,8 +105,12 @@ img{max-width:100%;height:auto;display:block}
 .form p{margin:0}
 .form-field{display:grid;gap:.3em}
 .form-field label{font-weight:600}
-.form input[type=text],.form input[type=email],.form textarea{font:inherit;color:inherit;background:var(--t-color-background);border:1px solid var(--t-color-border);border-radius:var(--t-radius-sm);padding:.6em .75em;width:100%}
-.form input:focus-visible,.form textarea:focus-visible{outline:2px solid var(--t-color-primary);outline-offset:1px}
+.form input[type=text],.form input[type=email],.form input[type=tel],.form input[type=number],.form input[type=date],.form select,.form textarea{font:inherit;color:inherit;background:var(--t-color-background);border:1px solid var(--t-color-border);border-radius:var(--t-radius-sm);padding:.6em .75em;width:100%}
+.form input:focus-visible,.form select:focus-visible,.form textarea:focus-visible{outline:2px solid var(--t-color-primary);outline-offset:1px}
+.form fieldset{border:0;margin:0;padding:0;display:grid;gap:.3em}
+.form legend{font-weight:600;padding:0;margin-bottom:.2em}
+.form-choice{display:flex;gap:.5em;align-items:baseline;font-weight:400}
+.form-required{color:var(--t-color-primary);margin-inline-start:.2em}
 .form-consent{display:flex;gap:.6em;align-items:flex-start;font-size:var(--t-size-sm)}
 .form-consent input{margin-top:.3em}
 .form button{font:inherit;border:0;cursor:pointer}

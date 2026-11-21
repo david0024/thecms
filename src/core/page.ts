@@ -1,4 +1,5 @@
 /** A page and the site it belongs to, as documents. */
+import type { Form } from './form.ts';
 import { type Block, blocksText, cleanImage, cleanLink, type ImageValue, type LinkValue, normalizeBlocks } from './blocks.ts';
 import { type Layout, normalizeLayouts } from './layout.ts';
 import { normalizeTranslations, type PageTranslation } from './localize.ts';
@@ -53,6 +54,8 @@ export interface Site {
   layouts?: Layout[];
   /** What each section a layout shows holds, in the language being drawn: filled in to draw a page, never kept. */
   areas?: Record<string, Block[]>;
+  /** The site's forms, by name (ADR 0049): filled in to draw a page, never kept. */
+  formDefs?: Record<string, Form>;
   /** The stored pictures' sizes and smaller copies (ADR 0005 d8): filled in to draw a page for export, never kept. */
   pictures?: Pictures;
 }

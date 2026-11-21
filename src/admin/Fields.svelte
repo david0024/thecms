@@ -15,6 +15,8 @@ let {
   sources = [],
   parts = [],
   sections = [],
+  forms = [],
+  onform,
   onchange,
 }: {
   fields: Record<string, Field>;
@@ -23,6 +25,8 @@ let {
   /** The content types a block can list. */ sources?: { id: string; name: string }[];
   /** The parts of an entry a type's page can show. */ parts?: { id: string; name: string }[];
   /** The sections a block can show (ADR 0033). */ sections?: { slug: string; title: string }[];
+  /** The forms a block can show (ADR 0049), and how to open one on its screen. */ forms?: { name: string; title: string }[];
+  onform?: (name: string) => void;
   onchange: (path: string, value: unknown) => void;
 } = $props();
 
@@ -60,6 +64,17 @@ const input = (e: Event): string => (e.currentTarget as HTMLInputElement | HTMLT
           {#each sections as section (section.slug)}<option value={section.slug}>{section.title}</option>{/each}
         </select>
       </label>
+    {:else if field.kind === 'form'}
+      <label>
+        <span>{t.fields[name] ?? name}</span>
+        <select value={text(name)} onchange={(e) => onchange(at(name), e.currentTarget.value)} data-field-form>
+          {#each forms as form (form.name)}<option value={form.name}>{form.title}</option>{/each}
+          {#if !forms.some((f) => f.name === text(name))}<option value={text(name)}>{t.forms.missing}</option>{/if}
+        </select>
+      </label>
+      {#if onform && forms.some((f) => f.name === text(name))}
+        <button type="button" class="quiet" onclick={() => onform(text(name))} data-open-form>{t.forms.open}</button>
+      {/if}
     {:else if field.kind === 'part'}
       <label>
         <span>{t.fields[name] ?? name}</span>

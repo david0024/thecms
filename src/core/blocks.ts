@@ -29,6 +29,8 @@ export type Field =
   | { kind: 'part' }
   /** A section the block shows (ADR 0033), by its name: blocks written once and shown on many pages. */
   | { kind: 'section' }
+  /** A form the block shows (ADR 0049), by its name: built on the Forms screen. */
+  | { kind: 'form' }
   | { kind: 'list'; max: number; item: Record<string, Field> }
   /**
    * A file from the library (ADR 0047): a document, a sound or a video. A
@@ -114,16 +116,10 @@ export const BLOCKS = {
     fields: { title: text(200), text: multiline(600), email: common(254), phone: common(40), address: multiline(300) },
     create: () => ({ title: 'Get in touch' }),
   },
-  /** A form a visitor writes to the owner with (ADR 0019): a name, an address to answer, the message, and consent to keep it. */
+  /** A form a visitor writes to the owner with (ADR 0049): it names a form built on the Forms screen, and may say a few words above it. */
   form: {
-    fields: { title: text(200), intro: multiline(600), consent: multiline(600), button: text(60), sent: text(300), failed: text(300) },
-    create: () => ({
-      title: 'Write to us',
-      consent: 'I agree that what I write here is kept to answer me, and deleted after that.',
-      button: 'Send',
-      sent: 'Thank you. Your message was sent; we will answer soon.',
-      failed: 'The message could not be sent. Please try again, or write to us by email.',
-    }),
+    fields: { form: { kind: 'form' }, title: text(200), intro: multiline(600) },
+    create: () => ({ form: 'contact', title: 'Write to us' }),
   },
   /** A search field (ADR 0042): the site's runtime answers it with the pages that match. */
   search: {
@@ -339,6 +335,8 @@ function cleanField(field: Field, raw: unknown): unknown {
       return slugify(raw) || POSTS_TYPE;
     case 'section':
       return slugify(raw);
+    case 'form':
+      return slugify(raw).slice(0, 60) || 'contact';
     case 'part': {
       const value = str(raw, 60);
       return ENTRY_PART.test(value) ? value : 'header';
