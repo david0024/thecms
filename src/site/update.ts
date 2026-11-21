@@ -16,11 +16,31 @@ export const releaseFile = (platform: string): string => `${NAME}-${platform}${p
 /** Run as the single executable, not from the sources: only then is there a file to replace. */
 export const isCompiled = (main: string = Bun.main): boolean => main.includes('$bunfs') || main.includes('~BUN');
 
-/** 1.2.10 is newer than 1.2.9; anything after a dash is ignored. */
+/**
+ * Whether version `a` is newer than `b`, as semantic versions are ordered
+ * (ADR 0045): 1.2.10 is newer than 1.2.9, and a release is newer than its
+ * pre-releases, which follow one another: 0.1.0-alpha.1, 0.1.0-alpha.2,
+ * 0.1.0-beta.1, 0.1.0.
+ */
 export function newer(a: string, b: string): boolean {
-  const parts = (v: string) => v.replace(/^v/, '').split('-')[0]!.split('.').map((n) => Number(n) || 0);
-  const [x, y] = [parts(a), parts(b)];
-  for (let i = 0; i < Math.max(x.length, y.length); i++) if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) > (y[i] ?? 0);
+  const split = (v: string) => {
+    const [core = '', ...pre] = v.replace(/^v/, '').split('-');
+    return { core: core.split('.').map((n) => Number(n) || 0), pre: pre.join('-') };
+  };
+  const [x, y] = [split(a), split(b)];
+  for (let i = 0; i < Math.max(x.core.length, y.core.length); i++) if ((x.core[i] ?? 0) !== (y.core[i] ?? 0)) return (x.core[i] ?? 0) > (y.core[i] ?? 0);
+  if (x.pre === y.pre) return false;
+  if (!x.pre || !y.pre) return !x.pre;
+  const [p, q] = [x.pre.split('.'), y.pre.split('.')];
+  for (let i = 0; i < Math.max(p.length, q.length); i++) {
+    const [m, n] = [p[i], q[i]];
+    if (m === n) continue;
+    if (m === undefined || n === undefined) return n === undefined;
+    const [mn, nn] = [/^\d+$/.test(m), /^\d+$/.test(n)];
+    if (mn && nn) return Number(m) > Number(n);
+    if (mn !== nn) return nn;
+    return m > n;
+  }
   return false;
 }
 
@@ -48,8 +68,9 @@ export async function update(options: UpdateOptions = {}): Promise<'newest' | 'a
     if (!response.ok) throw new Error(`${url} answered ${response.status}`);
     return response;
   };
-  const latest = (await (await asked(options.api ?? `https://api.github.com/repos/${REPOSITORY}/releases/latest`)).json()) as { tag_name?: string };
-  const tag = String(latest.tag_name ?? '');
+  // The newest release, a pre-release among them: while the program is in alpha or beta, those are all there is (ADR 0045).
+  const list = (await (await asked(options.api ?? `https://api.github.com/repos/${REPOSITORY}/releases?per_page=1`)).json()) as { tag_name?: string }[];
+  const tag = String((Array.isArray(list) ? list[0]?.tag_name : '') ?? '');
   if (!tag) throw new Error('the newest release has no version');
   if (!newer(tag, current)) {
     say(`${NAME} ${current} is the newest.`);

@@ -1,7 +1,7 @@
 # Installs thecms on Windows from its GitHub releases, checked against the
 # release's checksums before anything is put in place.
 #
-#   irm https://github.com/david0024/thecms/releases/latest/download/install.ps1 | iex
+#   irm https://github.com/david0024/thecms/releases/download/v0.1.0-alpha.1/install.ps1 | iex
 #
 # The program goes in %LOCALAPPDATA%\thecms\bin, which is added to your PATH.
 # Run again to update. $env:INSTALL_VERSION picks a version; $env:RELEASE_URL
@@ -16,7 +16,12 @@ if (-not [Environment]::Is64BitOperatingSystem) { throw "$Name needs 64-bit Wind
 $File = "$Name-windows-x64.exe"
 if ($env:RELEASE_URL) { $Base = $env:RELEASE_URL }
 elseif ($env:INSTALL_VERSION) { $Base = "https://github.com/$Repository/releases/download/v$($env:INSTALL_VERSION.TrimStart('v'))" }
-else { $Base = "https://github.com/$Repository/releases/latest/download" }
+else {
+  # The newest release, a pre-release among them: during alpha and beta those are all there is (ADR 0045).
+  $Listed = @(Invoke-RestMethod -UseBasicParsing -Uri "https://api.github.com/repos/$Repository/releases?per_page=1")
+  if (-not $Listed -or -not $Listed[0].tag_name) { throw "GitHub lists no release of $Repository yet" }
+  $Base = "https://github.com/$Repository/releases/download/$($Listed[0].tag_name)"
+}
 
 $Work = Join-Path ([IO.Path]::GetTempPath()) ([Guid]::NewGuid())
 New-Item -ItemType Directory -Path $Work | Out-Null

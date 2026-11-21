@@ -76,7 +76,7 @@ describe('update', () => {
   const program = new TextEncoder().encode('the new program');
   /** A release on GitHub, as fetch sees it. */
   const releases = (tag: string, sums = `${sha256(program)}  ${file}\n`) => async (url: string): Promise<Response> => {
-    if (url.endsWith('/releases/latest')) return Response.json({ tag_name: tag });
+    if (url.endsWith('/releases?per_page=1')) return Response.json(tag ? [{ tag_name: tag }] : []);
     if (url.endsWith(`/${tag}/checksums.sha256`)) return new Response(sums);
     if (url.endsWith(`/${tag}/${file}`)) return new Response(program);
     return new Response('not found', { status: 404 });
@@ -114,6 +114,14 @@ describe('update', () => {
     expect(newer('1.2.9', '1.2.10')).toBe(false);
     expect(newer('1.3', '1.3.0')).toBe(false);
     expect(newer('2.0.0-rc.1', '1.9.9')).toBe(true);
+    // Pre-releases come before their release and after one another (ADR 0045).
+    expect(newer('0.1.0', '0.1.0-alpha.1')).toBe(true);
+    expect(newer('0.1.0-alpha.1', '0.1.0')).toBe(false);
+    expect(newer('0.1.0-alpha.2', '0.1.0-alpha.1')).toBe(true);
+    expect(newer('0.1.0-alpha.10', '0.1.0-alpha.9')).toBe(true);
+    expect(newer('0.1.0-beta.1', '0.1.0-alpha.7')).toBe(true);
+    expect(newer('0.1.0-alpha.1', '0.1.0-alpha')).toBe(true);
+    expect(newer('0.1.0-alpha.1', '0.1.0-alpha.1')).toBe(false);
     expect(platformName('win32', 'x64')).toBe('windows-x64');
     expect(platformName('darwin', 'arm64')).toBe('darwin-arm64');
     expect(releaseFile('linux-arm64')).toBe(`${NAME}-linux-arm64`);
