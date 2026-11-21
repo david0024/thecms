@@ -40,6 +40,12 @@ The release workflow marks a version with a dash as a pre-release. GitHub's
 An extension that needs version `0.1.0` of the program installs on its
 pre-releases too: what it asks for is the version's number, not its phase.
 
+### d4. An update keeps the program it replaces
+
+`thecms update` keeps the program it replaced beside the new one, as
+`thecms.previous`, and says so. Going back to it is one rename. Only the one
+before is kept; the site's data is never touched by an update.
+
 ## The first
 
 `v0.1.0-alpha.1`, from `main` as it is after this record: stage 1 of ADR 0037

@@ -93,15 +93,16 @@ export async function update(options: UpdateOptions = {}): Promise<'newest' | 'a
 
   const executable = options.executable ?? process.execPath;
   const fresh = `${executable}.new`;
-  const old = `${executable}.old`;
+  // The program it replaces is kept beside it, so going back is one rename (ADR 0045 d4).
+  const old = `${executable}.previous`;
   await Bun.write(fresh, bytes);
   await chmod(fresh, 0o755);
   // A running program can be renamed, even on Windows, but not written over.
   await rm(old, { force: true });
   await rename(executable, old);
   await rename(fresh, executable);
-  await rm(old, { force: true }).catch(() => {});
   if ((options.platform ?? platformName()).startsWith('darwin')) Bun.spawnSync(['codesign', '--force', '--sign', '-', executable]);
   say(`${NAME} is now ${tag.replace(/^v/, '')} (it was ${current}). Start it again to use it; installed as a server: systemctl restart ${NAME}`);
+  say(`${current} is kept as ${old}; to go back, put it in place of ${executable}.`);
   return 'updated';
 }

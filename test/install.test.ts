@@ -90,7 +90,10 @@ describe('update', () => {
     await chmod(executable, 0o755);
     expect(await update({ fetch: releases('v1.0.0'), current: '0.9.0', compiled: true, executable, platform: 'linux-x64', say })).toBe('updated');
     expect(await Bun.file(executable).text()).toBe('the new program');
-    expect(said.at(-1)).toContain('is now 1.0.0 (it was 0.9.0)');
+    expect(said.at(-2)).toContain('is now 1.0.0 (it was 0.9.0)');
+    // The program it replaced is kept, to go back to.
+    expect(await Bun.file(`${executable}.previous`).text()).toBe('the old program');
+    expect(said.at(-1)).toContain('0.9.0 is kept as');
     expect(await Bun.file(`${executable}.old`).exists()).toBe(false);
   });
 
