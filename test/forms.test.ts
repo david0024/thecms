@@ -7,7 +7,9 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { type Block, cleanFormsAddress, normalizeBlocks, normalizeSite, parseTheme, type Theme } from '../src/core/index.ts';
+import { type Block, cleanFormsAddress, contactForm, normalizeBlocks, normalizeSite, parseTheme, type Site, type Theme } from '../src/core/index.ts';
+import { wordsFor } from '../src/blocks/words.ts';
+import '../src/site/languages.ts';
 import { renderPage } from '../src/site/document.ts';
 import { startForms } from '../src/site/forms.ts';
 import { type Mail, mailText, smtpMailer } from '../src/site/mail.ts';
@@ -16,25 +18,27 @@ import { Store } from '../src/site/store.ts';
 import plain from '../themes/plain.json';
 
 const theme = parseTheme(plain).theme as Theme;
-const formBlock = (): Block => normalizeBlocks([{ type: 'form', content: { title: 'Write to us', consent: 'Keep this to answer me.', button: 'Send', sent: 'Sent!', failed: 'Not sent.' } }]).blocks[0] as Block;
+const formBlock = (): Block => normalizeBlocks([{ type: 'form', content: { title: 'Write to us', form: 'contact' } }]).blocks[0] as Block;
+/** A site as a page is drawn for: with its forms (ADR 0049). */
+const withForms = (site: Site): Site => ({ ...site, formDefs: { contact: contactForm(wordsFor(site.language)) } });
 const main = (html: string): string => html.slice(html.indexOf('<main'), html.indexOf('</main>'));
 
 describe('the form on the page', () => {
   test('without a form service set, it posts to the site\'s own server (ADR 0044)', () => {
     const page = { slug: 'contact', title: 'Contact', description: '', inMenu: true, blocks: [formBlock()] };
-    expect(main(renderPage(normalizeSite({ name: 'S' }), theme, page, []))).toContain('action="/_/send"');
+    expect(main(renderPage(withForms(normalizeSite({ name: 'S' })), theme, page, []))).toContain('action="/_/send"');
   });
 
   test('with one, it is plain HTML that posts there and comes back to this page, in the site\'s language', () => {
     const block = formBlock();
-    const site = normalizeSite({ name: 'S', language: 'ro', forms: 'https://forms.example.com/' });
+    const site = withForms(normalizeSite({ name: 'S', language: 'ro', forms: 'https://forms.example.com/' }));
     const html = main(renderPage(site, theme, { slug: 'contact', title: 'Contact', description: '', inMenu: true, blocks: [block] }, []));
     expect(html).toContain('action="https://forms.example.com/send"');
     expect(html).toContain('method="post"');
     expect(html).toContain('<input type="hidden" name="back" value="/contact/"');
     expect(html).toContain(`<input type="hidden" name="form" value="${block.id}"`);
     expect(html).toMatch(/name="consent" type="checkbox" value="yes" required/);
-    expect(html).toContain('>Mesaj</label>');
+    expect(html).toContain('>Mesaj<span class="form-required" aria-hidden="true">*</span></label>');
     expect(html).toContain(`id="f-${block.id}-sent"`);
     expect(html).not.toContain('<script');
   });
@@ -76,9 +80,14 @@ describe('the form service', () => {
     expect(response.status).toBe(303);
     expect(response.headers.get('location')).toBe(`${SITE}/contact/#f-${block.id}-sent`);
     const [kept] = await store.messages();
-    expect(kept).toMatchObject({ form: block.id, page: '/contact/', name: 'Ana Pop', email: 'ana@example.org', body: 'Hello.\nA table for 12?', consent: 'Keep this to answer me.' });
+    expect(kept).toMatchObject({ form: 'contact', page: '/contact/', name: 'Ana Pop', email: 'ana@example.org', body: 'Name: Ana Pop\n\nEmail: ana@example.org\n\nMessage:\nHello.\nA table for 12?', consent: wordsFor('en').formConsent });
+    expect(kept?.answers).toEqual([
+      { id: 'name', label: 'Name', value: 'Ana Pop' },
+      { id: 'email', label: 'Email', value: 'ana@example.org' },
+      { id: 'message', label: 'Message', value: 'Hello.\nA table for 12?' },
+    ]);
     await Bun.sleep(1);
-    expect(mails).toEqual([expect.objectContaining({ to: 'owner@example.com', replyTo: 'ana@example.org', subject: 'Atelier: a message from Ana Pop' })]);
+    expect(mails).toEqual([expect.objectContaining({ to: 'owner@example.com', replyTo: 'ana@example.org', subject: 'Atelier: Contact, from Ana Pop' })]);
   });
 
   test('what is not a person writing through a form of this site is not kept', async () => {

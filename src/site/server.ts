@@ -24,7 +24,7 @@ const ADMIN_PATHS = new Set(['/admin', '/preview']);
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { compile } from 'svelte/compiler';
-import { SECTION_KIND, type Block, fillSections, takeWords, withAreas, type Site, siteIn, type PlacedPage, translatedPage, cleanRow, EXTENSION_MAX_BYTES, type ExtensionManifest, extensionAsks, isObject, languageOf, normalizeBlocks, shownRow, str, type ContentType, DISPLAY_NAME, type LanguagePack, defaultTemplate, MEDIA_MAX_BYTES, MEDIA_PREFIX, UPLOAD_MAX_BYTES, EMBED_ORIGINS, normalizePage, type Page, type Post, contentTypes, listPath, type MenuList, normalizePost, parseTheme, pagesIn, POSTS_TYPE, reservedSlugs, slugProblem, type Theme, themeCss } from '../core/index.ts';
+import { SECTION_KIND, type Block, type Form, fillSections, takeWords, withAreas, type Site, siteIn, type PlacedPage, translatedPage, cleanRow, EXTENSION_MAX_BYTES, type ExtensionManifest, extensionAsks, isObject, languageOf, normalizeBlocks, shownRow, str, type ContentType, DISPLAY_NAME, type LanguagePack, defaultTemplate, MEDIA_MAX_BYTES, MEDIA_PREFIX, UPLOAD_MAX_BYTES, EMBED_ORIGINS, normalizePage, type Page, type Post, contentTypes, listPath, type MenuList, normalizePost, parseTheme, pagesIn, POSTS_TYPE, reservedSlugs, slugProblem, type Theme, themeCss } from '../core/index.ts';
 import type { EntryLists } from '../blocks/editing.ts';
 import { type FetchImage, fetchImage as fetchOverNetwork, IMPORT_MAX_BYTES, type ImportReport, runImport } from '../import/run.ts';
 import { type ImportPlan, planImport } from '../import/wxr.ts';
@@ -268,9 +268,16 @@ export async function startEditor(
     }
     return out;
   };
-  const lists = async (): Promise<{ pages: Awaited<ReturnType<Store['pages']>>; sections: Awaited<ReturnType<Store['sections']>>; posts: Listed; entries: Record<string, Listed>; templates: Awaited<ReturnType<typeof templates>> }> => ({
+  /** The forms, where each is shown, and how many messages each has (ADR 0049). */
+  const formsState = async (): Promise<{ forms: Form[]; usedOn: Record<string, string[]>; counts: Record<string, number> }> => {
+    const counts: Record<string, number> = {};
+    for (const m of await store.messages()) counts[m.form] = (counts[m.form] ?? 0) + 1;
+    return { forms: await store.forms(), usedOn: Object.fromEntries(await store.formUses()), counts };
+  };
+  const lists = async (): Promise<{ pages: Awaited<ReturnType<Store['pages']>>; sections: Awaited<ReturnType<Store['sections']>>; forms: { name: string; title: string }[]; posts: Listed; entries: Record<string, Listed>; templates: Awaited<ReturnType<typeof templates>> }> => ({
     pages: await store.pages(),
     sections: await store.sections(),
+    forms: (await store.forms()).map((f) => ({ name: f.name, title: f.title })),
     posts: await store.posts(),
     entries: await allEntries(),
     templates: await templates(),
@@ -278,7 +285,7 @@ export async function startEditor(
   /** Blocks as the canvas draws them: each section block with its section's drafts, in the language (ADR 0033). */
   /** The site with what its layouts' sections hold (ADR 0035), from the drafts, in its language. */
   const framed = async (site?: Site): Promise<Site> => {
-    const drawn = site ?? (await store.site());
+    const drawn = { ...(site ?? (await store.site())), formDefs: await store.formsByName() };
     return withAreas(drawn, await store.draftSections(), drawn.language);
   };
   const filled = async (blocks: Block[], language?: string): Promise<Block[]> => fillSections(blocks, await store.draftSections(), language ?? (await store.site()).language);
@@ -734,6 +741,16 @@ export async function startEditor(
         const page = await store.movePage(String(body.from ?? ''), String(body.to ?? ''));
         return json({ page, ...(await lists()), redirects: await store.redirects() });
       }
+      case 'GET /api/forms':
+        return json(await formsState());
+      case 'PUT /api/forms':
+        // A form a page shows is kept (ADR 0049 d1): the reason says where.
+        try {
+          await store.setForms(body.forms);
+        } catch (error) {
+          return json({ error: error instanceof Error ? error.message : String(error) }, 409);
+        }
+        return json(await formsState());
       case 'GET /api/redirects':
         return json({ redirects: await store.redirects() });
       case 'PUT /api/redirects':

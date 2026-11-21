@@ -9,10 +9,13 @@
  * published page, a page of another site, or a robot that fills the hidden
  * field gets nothing kept.
  *
+ * Each form is built on the Forms screen (ADR 0049); what a visitor sends is
+ * checked field by field as the form says, and kept field by field.
+ *
  * It takes comments the same way (ADR 0040): one on a published entry of a
  * type that takes them is kept until the owner approves it.
  */
-import { type Block, contentTypes, entryPath, type Site } from '../core/index.ts';
+import { answersText, type Block, checkAnswers, contentTypes, entryPath, formBlocks, formIn, prefixOf, type Site } from '../core/index.ts';
 import { wordsFor } from '../blocks/words.ts';
 import { isEmail, type Mailer } from './mail.ts';
 import { localShared, type Shared } from './shared.ts';
@@ -34,14 +37,11 @@ const FORM_ID = /^[A-Za-z0-9_-]{1,60}$/;
 /** A comment is a few paragraphs, not an article. */
 export const MAX_COMMENT = 3000;
 
-/** The consent words of every form on a published page, page, entry or a type's page, by the form's id. */
+/** The form each form block on a published page names, by the block's id: a page, an entry, a type's page or a section. */
 async function publishedForms(store: Store): Promise<Map<string, string>> {
   const found = new Map<string, string>();
   const walk = (blocks: Block[]): void => {
-    for (const block of blocks) {
-      if (block.type === 'form') found.set(block.id, String(block.content.consent ?? ''));
-      if (block.children) walk(block.children);
-    }
+    for (const { block, form } of formBlocks(blocks)) found.set(block.id, form);
   };
   for (const page of await store.published()) walk(page.blocks);
   for (const type of contentTypes(await store.site())) {
@@ -54,6 +54,12 @@ async function publishedForms(store: Store): Promise<Map<string, string>> {
     for (const translation of Object.values(section.translations ?? {})) walk(translation.blocks ?? []);
   }
   return found;
+}
+
+/** The language of the page a form was sent from, by its address: what the consent was shown in. */
+function languageAt(site: Site, back: string): string {
+  const first = back.split('/')[1] ?? '';
+  return site.languages.find((l) => prefixOf(l) === first) ?? site.language;
 }
 
 export function startForms(
@@ -89,16 +95,26 @@ export function startForms(
 
     // The hidden field: a person never fills it. The robot is told it worked, and nothing is kept.
     if (field('website')) return answer(true);
-    const consent = form ? (await publishedForms(store)).get(form) : undefined;
-    const name = field('name');
-    const email = field('email');
-    const body = field('message');
-    if (consent === undefined || !name || name.length > 120 || !isEmail(email) || !body || body.length > 5000 || field('consent') !== 'yes') return answer(false);
+    const name = form ? (await publishedForms(store)).get(form) : undefined;
+    const kept = name ? (await store.forms()).find((f) => f.name === name) : undefined;
+    if (!kept || field('consent') !== 'yes') return answer(false);
+    // Each field as the form says (ADR 0049 d4): one that fails is not kept.
+    const checked = checkAnswers(kept, (n) => fields.getAll(n));
+    if (!('answers' in checked)) return answer(false);
     if (await tooMany(ip || 'unknown')) return answer(false);
 
+    const answers = checked.answers;
+    // The name and the address to answer, when the form asks for them: the field so called, or the first of its kind.
+    const pick = (id: string, kind: string): string =>
+      (answers.find((a) => a.id === id && a.value) ?? answers.find((a) => kept.fields.find((f) => f.id === a.id)?.kind === kind && a.value))?.value ?? '';
+    const from = pick('name', 'text');
+    const email = pick('email', 'email');
+    const body = answersText(answers);
+    const consent = formIn(kept, languageAt(site, back)).consent;
     await store.forgetOldMessages();
-    const message = await store.addMessage({ form, page: back, name, email, body, consent });
-    tell(message.id, { replyTo: email, subject: `${site.name}: a message from ${name}`, text: `${name} <${email}> wrote, on ${site.url}${back}:\n\n${body}\n` });
+    const message = await store.addMessage({ form: kept.name, page: back, name: from, email, body, consent, answers });
+    const who = from ? (email ? `${from} <${email}>` : from) : email || 'A visitor';
+    tell(message.id, { ...(email ? { replyTo: email } : {}), subject: `${site.name}: ${kept.title}${from ? `, from ${from}` : ''}`, text: `${who} wrote, through the form "${kept.title}" on ${site.url}${back}:\n\n${body}\n` });
     return answer(true);
   }
 
@@ -109,7 +125,7 @@ export function startForms(
   }
 
   /** Tells the owner by email, when the site has a way to send one. What was sent is kept either way. */
-  function tell(id: string, mail: { replyTo: string; subject: string; text: string }): void {
+  function tell(id: string, mail: { replyTo?: string; subject: string; text: string }): void {
     if (!options.mailer || !options.to) return;
     options
       .mailer({ from: options.from || options.to, to: options.to, ...mail })

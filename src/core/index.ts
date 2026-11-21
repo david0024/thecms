@@ -8,6 +8,7 @@ export * from './content.ts';
 export * from './css.ts';
 export * from './embed.ts';
 export * from './extension.ts';
+export * from './form.ts';
 export * from './language.ts';
 export * from './layout.ts';
 export * from './localize.ts';

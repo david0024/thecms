@@ -292,7 +292,8 @@ export async function publishedSite(store: Store, served = false): Promise<Map<s
   const pages = await store.published();
   if (pages.length === 0) throw new Error('nothing is published yet');
   if (!pages.some((p) => p.slug === '')) throw new Error('the home page is not published');
-  const site = await store.site();
+  // Each form block is drawn with the form it names (ADR 0049).
+  const site = { ...(await store.site()), formDefs: await store.formsByName() };
   const entries: Record<string, Post[]> = {};
   const templates: Record<string, Block[] | null> = {};
   for (const type of contentTypes(site)) {

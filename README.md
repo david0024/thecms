@@ -54,8 +54,9 @@ ever breaking it.
   PowerPoint, OpenDocument), sound and video, in one library.
 
 **Visitors**
-- A contact form with consent, messages kept for a set time and sent to you by
-  email.
+- Forms you build yourself (contact, a quote request, a booking): text, email,
+  phone, number, date, lists and boxes to tick, with consent; messages by form,
+  sent to you by email and downloaded as CSV.
 - Comments, held for your approval.
 - Search in every word, without minding case or accents.
 - Pages behind a password.
@@ -132,7 +133,7 @@ Four stages, each ending with something you can use
 
 1. **The foundation:** the site served, scheduled publishing, comments, search,
    pages behind a password, media and new blocks. *Done.*
-2. **What almost every site needs:** a form builder, complete SEO, scheduled
+2. **What almost every site needs:** a form builder (*done*), complete SEO, scheduled
    backups, relations between entries, statistics without cookies, entries in
    more than one language, more roles, a complete export. *In progress.*
 3. **Commerce and members:** visitor accounts, a shop (products, cart, orders,
