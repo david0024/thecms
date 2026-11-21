@@ -5,7 +5,7 @@
  * links to is not deleted; the server says where it is used.
  */
 import { onMount } from 'svelte';
-import { api, type MediaItem } from './api.ts';
+import { api, type MediaItem, signedIn } from './api.ts';
 import { say, t } from './messages.ts';
 import { ACCEPT_FILES, missing, prepareAll, uploadFile } from './sizes.ts';
 
@@ -90,7 +90,7 @@ onMount(async () => {
           {#if item.kind === 'audio'}<audio src={item.path} preload="none" controls></audio>{/if}
           <span class="label" title={item.label}>{item.label || item.name}</span>
           <small>{size(item.size)}</small>
-          <button type="button" class="quiet" onclick={() => attempt(() => api.removeMedia(item.name))}>{item.kind === 'image' ? t.media.remove : t.media.removeFile}</button>
+          {#if signedIn.staff}<button type="button" class="quiet" onclick={() => attempt(() => api.removeMedia(item.name))}>{item.kind === 'image' ? t.media.remove : t.media.removeFile}</button>{/if}
         </li>
       {/each}
     </ul>

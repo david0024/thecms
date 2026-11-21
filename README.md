@@ -90,6 +90,12 @@ ever breaking it.
   downloads one or puts it back, after a backup of what is there now; it also
   moves a site to another server or another database.
 
+**People who write**
+- Invite others as owners, editors, authors or contributors. An author writes
+  and publishes their own posts; a contributor sends theirs for review, and an
+  editor publishes them or sends them back with a note. Each post shows who
+  wrote it, with a few words about them.
+
 **Statistics**
 - Who reads the site, which pages, where readers come from and on what device,
   counted by the site's own server: no cookie, no script, no consent banner,
@@ -151,7 +157,7 @@ Four stages, each ending with something you can use
    pages behind a password, media and new blocks. *Done.*
 2. **What almost every site needs:** a form builder (*done*), complete SEO (*done*), scheduled
    backups (*done*), relations between entries (*done*), statistics without cookies (*done*), entries in
-   more than one language (*done*), more roles, a complete export. *In progress.*
+   more than one language (*done*), authors and contributors (*done*), archives by author and date, a complete export. *In progress.*
 3. **Commerce and members:** visitor accounts, a shop (products, cart, orders,
    VAT), payments (Stripe and Netopia first), couriers, e-invoicing,
    memberships and subscriptions, bookings, newsletters, and running on

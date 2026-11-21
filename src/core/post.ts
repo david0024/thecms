@@ -29,6 +29,8 @@ export interface Post extends Seo {
   /** What its type asks for besides: a client's name, a price, a second picture (ADR 0010). */
   fields: Record<string, unknown>;
   blocks: Block[];
+  /** Who wrote it, as the site shows them (ADR 0055 d3): filled in to draw it, never kept. */
+  author?: { name: string; bio: string };
   /** What visitors wrote under it and the owner approved, oldest first (ADR 0040): filled in to draw it, never kept. */
   comments?: ShownComment[];
   /** The entry in the site's other languages, by language (ADR 0054). */

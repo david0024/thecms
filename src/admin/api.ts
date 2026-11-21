@@ -37,6 +37,20 @@ export interface Me {
   email: string;
   name: string;
   role: Role;
+  /** A few words about them, shown under what they wrote (ADR 0055 d3). */
+  bio: string;
+}
+/** Someone who may be named an entry's author (ADR 0055 d2). */
+export interface Person {
+  id: string;
+  name: string;
+  role: Role;
+}
+/** Where an entry is in its review (ADR 0055 d4). */
+export interface ReviewInfo {
+  state: 'waiting' | 'returned';
+  note: string;
+  at: string;
 }
 export interface People {
   users: User[];
@@ -44,6 +58,9 @@ export interface People {
   /** A one-time link just made, for the owner to send. */
   link?: string;
 }
+
+/** Who is signed in, as the screens that hide what the server would refuse ask it (ADR 0055 d1); set once the admin knows. */
+export const signedIn = { staff: true };
 
 /** A call refused because nobody is signed in: the admin shows the sign-in form. */
 export class SignInNeeded extends Error {}
@@ -99,6 +116,10 @@ export interface PostInfo extends PageInfo {
   translations?: { language: string; slug: string; missing: number; split: boolean }[];
   /** Its categories and tags, which each language may write its own way (ADR 0054 d3). */
   terms?: string[];
+  /** The id of whoever wrote it (ADR 0055 d2); none for an entry made before. */
+  author?: string;
+  /** Sent for review, or sent back (ADR 0055 d4). */
+  review?: ReviewInfo;
 }
 /** A content type's own page (ADR 0015): whether it has one, and whether visitors see what is being worked on. */
 export interface TemplateInfo {
@@ -135,6 +156,8 @@ export interface State {
   /** English, and every language pack the installation has (ADR 0021). */
   languages: LanguageInfo[];
   me: Me;
+  /** Who has an account, for an entry's author and the names in the lists (ADR 0055). */
+  people: Person[];
   /** The admin is served to others, with accounts; false on one's own computer. */
   accounts: boolean;
   /** Where the site's processes share what they keep, and whether Valkey answers (ADR 0044 d4). */
@@ -305,5 +328,9 @@ export const api = {
   invite: (email: string, role: Role) => call<People>('POST', '/api/users', { email, role }),
   newLink: (id: string) => call<People>('POST', '/api/users/link', { id }),
   setRole: (id: string, role: Role) => call<People>('PUT', '/api/users', { id, role }),
-  removeUser: (id: string) => call<People>('DELETE', `/api/users?id=${encodeURIComponent(id)}`),
+  removeUser: (id: string, to = '') => call<People>('DELETE', `/api/users?id=${encodeURIComponent(id)}${to ? `&to=${encodeURIComponent(to)}` : ''}`),
+  setProfile: (name: string, bio: string) => call<State>('PUT', '/api/me', { name, bio }),
+  askReview: (slug: string, kind: Kind) => call<Lists>('POST', '/api/review', { slug, kind }),
+  returnReview: (slug: string, kind: Kind, note: string) => call<Lists>('POST', '/api/review/return', { slug, kind, note }),
+  setAuthor: (slug: string, kind: Kind, id: string) => call<Lists>('PUT', '/api/author', { slug, kind, id }),
 };

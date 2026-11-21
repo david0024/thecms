@@ -46,6 +46,7 @@ export const en = {
   searchFound: 'Pages that match “{query}”',
   yes: 'Yes',
   no: 'No',
+  by: 'by {name}',
   commentConsent: 'Show my name and comment on this page once approved. My email is kept only to reach me about it and is never shown.',
 };
 

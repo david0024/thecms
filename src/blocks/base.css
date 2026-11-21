@@ -175,6 +175,8 @@ summary.faq-question{cursor:pointer}
 .post-head{--b-width:var(--t-width-narrow);padding-bottom:0}
 .post-meta{display:flex;flex-wrap:wrap;gap:var(--t-space-xs) var(--t-space-sm);font-size:var(--t-size-sm);color:var(--t-color-muted)}
 .post-meta a{color:inherit}
+.post-bio .b-in{border-top:1px solid var(--t-color-border,#ddd);padding-top:var(--t-space-sm);font-size:var(--t-size-sm)}
+.post-bio p{margin:0 0 var(--t-space-xs)}
 .post-cover{width:100%;border-radius:var(--t-radius-md);margin-top:var(--t-space-md)}
 .entry-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(11rem,1fr));gap:var(--t-space-sm) var(--t-space-md);margin:var(--t-space-md) 0 0;padding:var(--t-space-md) 0 0;border-top:1px solid var(--t-color-border)}
 .entry-field dt{font-size:var(--t-size-sm);color:var(--t-color-muted)}

@@ -72,6 +72,11 @@ setEntry({ post, type: type ?? postsType(), language: site.language, editing: ed
       {#if editing && post.blocks.length === 0}<div class="cms-empty" data-empty="page"></div>{/if}
     {/if}
     {#if !placed}<Related type={kind} {post} language={site.language} />{/if}
+    {#if kind.dated && post.author?.bio}
+      <aside class="b post-bio" data-author>
+        <div class="b-in"><p><strong>{post.author.name}</strong></p><p>{post.author.bio}</p></div>
+      </aside>
+    {/if}
   </article>
   {#if kind.comments && !editing}<Comments {site} type={kind} {post} />{/if}
 </Shell>

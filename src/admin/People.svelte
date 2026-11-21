@@ -15,8 +15,9 @@ let role = $state<Role>('editor');
 /** The link just made, and for whom. */
 let made = $state<{ email: string; link: string } | null>(null);
 let copied = $state(false);
-/** Removing asks once more, on the same button. */
+/** Removing asks once more, on the same button, and to whom what they wrote goes (ADR 0055 d5). */
 let removing = $state('');
+let heir = $state('');
 
 async function attempt(work: () => Promise<People>, linkFor = ''): Promise<void> {
   problem = '';
@@ -77,13 +78,21 @@ onMount(() => void attempt(api.people));
           <select value={user.role} disabled={user.id === people.me.id} onchange={(e) => attempt(() => api.setRole(user.id, e.currentTarget.value as Role))} aria-label={t.people.role} data-role>
             <option value="owner">{t.people.owner}</option>
             <option value="editor">{t.people.editor}</option>
+            <option value="author">{t.people.author}</option>
+            <option value="contributor">{t.people.contributor}</option>
           </select>
           {#if user.id !== people.me.id}
             <button type="button" class="quiet" onclick={() => attempt(() => api.newLink(user.id), user.email)} data-new-link>{t.people.newLink}</button>
             {#if removing === user.id}
-              <button type="button" class="quiet bad" onclick={() => attempt(() => api.removeUser(user.id))} data-remove-sure>{t.people.removeSure}</button>
+              <label class="inline">
+                <span>{t.people.heir}</span>
+                <select bind:value={heir} data-heir>
+                  {#each people.users.filter((u) => u.id !== user.id) as other (other.id)}<option value={other.id}>{other.name || other.email}</option>{/each}
+                </select>
+              </label>
+              <button type="button" class="quiet bad" onclick={() => attempt(() => api.removeUser(user.id, heir))} data-remove-sure>{t.people.removeSure}</button>
             {:else}
-              <button type="button" class="quiet" onclick={() => (removing = user.id)} data-remove>{t.people.remove}</button>
+              <button type="button" class="quiet" onclick={() => ((removing = user.id), (heir = people?.me.id ?? ''))} data-remove>{t.people.remove}</button>
             {/if}
           {/if}
         </li>
@@ -96,6 +105,8 @@ onMount(() => void attempt(api.people));
     <input type="email" required placeholder={t.people.email} aria-label={t.people.email} bind:value={email} data-invite-email />
     <select bind:value={role} aria-label={t.people.role} data-invite-role>
       <option value="editor">{t.people.editor}</option>
+      <option value="author">{t.people.author}</option>
+      <option value="contributor">{t.people.contributor}</option>
       <option value="owner">{t.people.owner}</option>
     </select>
     <button type="submit" class="primary">{t.people.send}</button>
