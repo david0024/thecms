@@ -7,6 +7,8 @@
 import { timingSafeEqual } from 'node:crypto';
 import type { Mailer } from './mail.ts';
 import { lockOf, publishedSite } from './export.ts';
+import { mediaResponse } from './serve-media.ts';
+import { mediaKindOf } from '../core/index.ts';
 import { lockCookie, lockedPage } from './locks.ts';
 import { startClock } from './clock.ts';
 import { type ExtensionHostApi, extensionHost, type Spawn } from './extensions.ts';
@@ -93,7 +95,7 @@ export function startRuntime(
   const site = async (): Promise<Files> => {
     const at = await version();
     if (!built || built.version !== at) {
-      const made: { version: string; files: Promise<Files>; ready: boolean } = { version: at, files: publishedSite(store).catch(() => new Map() as Files), ready: false };
+      const made: { version: string; files: Promise<Files>; ready: boolean } = { version: at, files: publishedSite(store, true).catch(() => new Map() as Files), ready: false };
       built = made;
       void made.files.then(async (files) => {
         made.ready = true;
@@ -202,6 +204,12 @@ export function startRuntime(
       const page = opened ? file(own, body as string) : file(own, lockedPage(String(await fileOf('404.html')), url.pathname), 403);
       page.headers.set('cache-control', 'private, no-store');
       return page;
+    }
+    // A document, sound or video is read from the library when it is asked for, in the part a player asks for (ADR 0046).
+    const stored = /^media\/([^/]+)$/.exec(own)?.[1];
+    if (stored && body !== undefined && mediaKindOf(stored) !== 'image') {
+      const kept = await store.mediaFile(stored);
+      if (kept) return mediaResponse(request, stored, kept, { ...HEADERS, 'cache-control': 'public, max-age=31536000, immutable' });
     }
     if (body !== undefined) return file(own, body);
     const files = await site();

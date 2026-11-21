@@ -413,6 +413,11 @@ export const en = {
     elsewhere: 'Use an image from another address',
     sizing: 'Making smaller copies for phones: {done} of {count}',
     sizes: 'Make smaller copies',
+    uploadFile: 'Upload files',
+    removeFile: 'Delete this file',
+    all: 'All',
+    kinds: { image: 'Images', document: 'Documents', audio: 'Sound', video: 'Video' } as Record<string, string>,
+    accepts: 'Images, PDF and office documents (up to 25 MB), sound (up to 50 MB) and video (up to 100 MB). A longer film goes on YouTube or Vimeo, and a page shows it from there.',
   },
   format: {
     p: 'Paragraph',

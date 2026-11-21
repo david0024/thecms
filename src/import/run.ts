@@ -80,7 +80,7 @@ export async function runImport(store: Store, plan: ImportPlan, options: ImportO
     await inTurns(plan.images, 4, async (url) => {
       try {
         const label = decodeURIComponent(new URL(url).pathname.split('/').pop() ?? '');
-        stored.set(url, (await store.addMedia(await fetchOne(url), label)).path);
+        stored.set(url, (await store.addMedia(await fetchOne(url), label, true)).path);
       } catch (error) {
         failed.push(`${url} (${error instanceof Error ? error.message : String(error)})`);
       }

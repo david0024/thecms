@@ -376,3 +376,33 @@ export function imageSources(blocks: Block[]): string[] {
   walk(blocks);
   return out;
 }
+
+/** The addresses a page links to in its link fields and its rich text: a document from the library among them (ADR 0046). */
+export function linkTargets(blocks: Block[]): string[] {
+  const out: string[] = [];
+  const text = (doc: RichText): void => {
+    for (const node of doc) {
+      const lines = node.type === 'list' ? node.items : [node.children];
+      for (const line of lines) for (const span of line) if (span.href) out.push(span.href);
+    }
+  };
+  const collect = (fields: Record<string, Field>, content: Record<string, unknown>): void => {
+    for (const [name, field] of Object.entries(fields)) {
+      const value = content[name];
+      if (field.kind === 'link' && isObject(value) && typeof value.href === 'string' && value.href) out.push(value.href);
+      else if (field.kind === 'richtext' && Array.isArray(value)) text(value as RichText);
+      else if (field.kind === 'list' && Array.isArray(value)) for (const item of value) if (isObject(item)) collect(field.item, item);
+    }
+  };
+  const walk = (list: Block[]): void => {
+    for (const b of list) {
+      collect((BLOCKS[b.type] as BlockDef).fields, b.content);
+      if (b.children) walk(b.children);
+    }
+  };
+  walk(blocks);
+  return out;
+}
+
+/** Every file of the library a page needs: the images it shows and the files it links to (ADR 0046). */
+export const mediaSources = (blocks: Block[]): string[] => [...imageSources(blocks), ...linkTargets(blocks).filter((href) => href.startsWith('/media/'))];

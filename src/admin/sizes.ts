@@ -64,3 +64,12 @@ export async function uploadImage(file: File): Promise<{ item: MediaItem; media:
   const sized = await prepareSizes(item, light);
   return { item: sized, media: media.map((m) => (m.name === sized.name ? sized : m)) };
 }
+
+/** What the library takes, as a file picker offers it (ADR 0046). */
+export const ACCEPT_FILES =
+  'image/png,image/jpeg,image/gif,image/webp,image/avif,application/pdf,.docx,.xlsx,.pptx,.odt,.ods,.odp,.zip,audio/mpeg,audio/mp4,audio/ogg,audio/wav,video/mp4,video/webm';
+
+/** Any file from the author's device: a picture as `uploadImage` takes it, anything else as it is. */
+export async function uploadFile(file: File): Promise<{ item: MediaItem; media: MediaItem[] }> {
+  return /^image\/(png|jpeg|gif|webp|avif)$/.test(file.type) ? uploadImage(file) : api.upload(file, file.name);
+}

@@ -32,10 +32,14 @@ import {
   canVary,
   imageExt,
   imageSize,
-  imageSources,
+  mediaSources,
   isMediaName,
+  MAX_BYTES,
   MEDIA_MAX_BYTES,
   MEDIA_TYPES,
+  mediaExt,
+  type MediaKind,
+  mediaKindOf,
   type MediaExt,
   mediaNameOf,
   type MediaSize,
@@ -104,9 +108,10 @@ export interface Scheduled {
   at: string;
 }
 
-/** One stored image, as the editor lists it. */
+/** One stored file, as the editor lists it: an image, or a document, sound or video (ADR 0046). */
 export interface MediaItem {
   name: string;
+  kind: MediaKind;
   /** Where a page points to show it. */
   path: string;
   type: string;
@@ -1145,17 +1150,22 @@ export class Store {
   }
 
   /**
-   * Stores an image and returns where a page points to show it. The name is
-   * the hash of the bytes, so the same picture uploaded twice is stored once
-   * and a name never comes to mean another picture.
+   * Stores a file and returns where a page points to show it or link to it.
+   * The name is the hash of the bytes, so the same file uploaded twice is
+   * stored once and a name never comes to mean another file. What it is, is
+   * read from its bytes (ADR 0046). `images`: only an image is taken, as
+   * where a picture is expected.
    */
-  async addMedia(bytes: Uint8Array, label: unknown = ''): Promise<MediaItem> {
-    if (bytes.length > MEDIA_MAX_BYTES) throw new Error(`an image is at most ${MEDIA_MAX_BYTES / 1024 / 1024} MB`);
-    const ext = imageExt(bytes);
-    if (!ext) throw new Error('not an image this site can show (PNG, JPEG, GIF, WebP or AVIF)');
+  async addMedia(bytes: Uint8Array, label: unknown = '', images = false): Promise<MediaItem> {
+    const ext = images ? imageExt(bytes) : mediaExt(bytes);
+    if (!ext && images) throw new Error('not an image this site can show (PNG, JPEG, GIF, WebP or AVIF)');
+    if (!ext) throw new Error('not a file this site takes: an image (PNG, JPEG, GIF, WebP, AVIF), a document (PDF, Word, Excel, PowerPoint, OpenDocument, ZIP), sound (MP3, M4A, OGG, WAV) or video (MP4, WebM)');
+    const kind = mediaKindOf(`x.${ext}`);
+    const max = MAX_BYTES[kind];
+    if (bytes.length > max) throw new Error(`${kind === 'image' ? 'an image' : kind === 'document' ? 'a document' : kind === 'audio' ? 'a sound file' : 'a video'} is at most ${max / 1024 / 1024} MB${kind === 'video' ? '; a longer film goes on a video service, and the page shows it from there' : ''}`);
     const name = `${new Bun.CryptoHasher('sha256').update(bytes).digest('hex').slice(0, 32)}.${ext}`;
     await this.run(this.dialect.insertNew('media', ['name', 'label', 'size', 'bytes', 'created_at']), [name, str(label, 200).trim(), bytes.length, bytes, new Date().toISOString()]);
-    await this.recordSize(name, bytes);
+    if (kind === 'image') await this.recordSize(name, bytes);
     return (await this.media()).find((m) => m.name === name) as MediaItem;
   }
 
@@ -1172,7 +1182,7 @@ export class Store {
       (await this.rows<{ name: string; width: number | string; height: number | string }>('SELECT name, width, height FROM media_sizes')).map((r) => [r.name, { width: Number(r.width), height: Number(r.height) }]),
     );
     for (const { name } of await this.rows<{ name: string }>('SELECT name FROM media')) {
-      if (known.has(name)) continue;
+      if (known.has(name) || mediaKindOf(name) !== 'image') continue;
       const file = await this.mediaFile(name);
       if (file) known.set(name, await this.recordSize(name, file.bytes));
     }
@@ -1194,6 +1204,7 @@ export class Store {
     const variants = await this.variantWidths();
     return (await this.rows<{ name: string; label: string; size: number | string }>('SELECT name, label, size FROM media ORDER BY created_at DESC, name')).map((row) => ({
       name: row.name,
+      kind: mediaKindOf(row.name),
       label: row.label,
       size: Number(row.size),
       path: mediaPath(row.name),
@@ -1233,24 +1244,30 @@ export class Store {
     return (await this.media()).find((m) => m.name === original) as MediaItem;
   }
 
-  async mediaFile(name: string): Promise<{ type: string; bytes: Uint8Array } | null> {
+  /** A stored file, or a smaller copy of a picture: its type, its bytes, and the name it was uploaded under. */
+  async mediaFile(name: string): Promise<{ type: string; bytes: Uint8Array; label: string } | null> {
     const variant = variantOf(name);
     if (variant) {
       const row = await this.row<{ bytes: Uint8Array }>('SELECT bytes FROM media_variants WHERE name = ?', [name]);
-      return row ? { type: MEDIA_TYPES[name.split('.').pop() as MediaExt], bytes: new Uint8Array(row.bytes) } : null;
+      return row ? { type: MEDIA_TYPES[name.split('.').pop() as MediaExt], bytes: new Uint8Array(row.bytes), label: '' } : null;
     }
     if (!isMediaName(name)) return null;
-    const row = await this.row<{ bytes: Uint8Array }>('SELECT bytes FROM media WHERE name = ?', [name]);
-    return row ? { type: MEDIA_TYPES[name.split('.').pop() as MediaExt], bytes: new Uint8Array(row.bytes) } : null;
+    const row = await this.row<{ bytes: Uint8Array; label: string }>('SELECT bytes, label FROM media WHERE name = ?', [name]);
+    return row ? { type: MEDIA_TYPES[name.split('.').pop() as MediaExt], bytes: new Uint8Array(row.bytes), label: row.label } : null;
   }
 
-  /** Where this image is shown: the titles of pages (draft or published), and the header when it is the logo. */
+  /** Whether the library holds this file, without reading it. */
+  async hasMedia(name: string): Promise<boolean> {
+    return isMediaName(name) && (await this.row<{ name: string }>('SELECT name FROM media WHERE name = ?', [name])) !== null;
+  }
+
+  /** Where this file is shown or linked to: the titles of pages (draft or published), and the header when it is the logo. */
   async mediaUsedBy(name: string): Promise<string[]> {
     const site = await this.site();
     const titles: string[] = mediaNameOf(site.logo?.src ?? '') === name ? ['the header (logo)'] : [];
     for (const row of await this.rows<{ draft: string; published: string | null }>('SELECT draft, published FROM pages ORDER BY position, slug')) {
       const copies = [row.draft, row.published].filter((c): c is string => c !== null).map((c) => normalizePage(JSON.parse(c)).page);
-      if (copies.some((page) => imageSources(page.blocks).some((src) => mediaNameOf(src) === name))) titles.push((copies[0] as Page).title);
+      if (copies.some((page) => mediaSources(page.blocks).some((src) => mediaNameOf(src) === name))) titles.push((copies[0] as Page).title);
     }
     const types = new Map(contentTypes(site).map((t) => [t.id, t]));
     for (const row of await this.rows<{ type: string; draft: string; published: string | null }>('SELECT type, draft, published FROM entries ORDER BY type, slug')) {
@@ -1259,15 +1276,15 @@ export class Store {
     }
     for (const type of contentTypes(site)) {
       const copies = [await this.template(type.id), await this.publishedTemplate(type.id)];
-      if (copies.some((blocks) => imageSources(blocks ?? []).some((src) => mediaNameOf(src) === name))) titles.push(`the page of "${type.name}"`);
+      if (copies.some((blocks) => mediaSources(blocks ?? []).some((src) => mediaNameOf(src) === name))) titles.push(`the page of "${type.name}"`);
     }
     return titles;
   }
 
-  /** Deletes an image nothing shows. One that a page still shows is refused, with the page named. */
+  /** Deletes a file nothing shows or links to. One that a page still uses is refused, with the page named. */
   async deleteMedia(name: string): Promise<void> {
     const used = await this.mediaUsedBy(name);
-    if (used.length) throw new Error(`this image is used on: ${used.join(', ')}`);
+    if (used.length) throw new Error(`this ${mediaKindOf(name) === 'image' ? 'image' : 'file'} is used on: ${used.join(', ')}`);
     await this.run('DELETE FROM media WHERE name = ?', [name]);
     await this.run('DELETE FROM media_sizes WHERE name = ?', [name]);
     await this.run('DELETE FROM media_variants WHERE original = ?', [name]);

@@ -13,6 +13,7 @@
  * it has accounts instead (ADR 0022, src/site/accounts.ts): a session cookie,
  * a header no other site's page can send, and calls only the owner may make.
  */
+import { mediaResponse } from './serve-media.ts';
 import { startClock } from './clock.ts';
 import type { Mailer } from './mail.ts';
 import { startRuntime } from './runtime.ts';
@@ -23,7 +24,7 @@ const ADMIN_PATHS = new Set(['/admin', '/preview']);
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { compile } from 'svelte/compiler';
-import { SECTION_KIND, type Block, fillSections, takeWords, withAreas, type Site, siteIn, type PlacedPage, translatedPage, cleanRow, EXTENSION_MAX_BYTES, type ExtensionManifest, extensionAsks, isObject, languageOf, normalizeBlocks, shownRow, str, type ContentType, DISPLAY_NAME, type LanguagePack, defaultTemplate, MEDIA_MAX_BYTES, MEDIA_PREFIX, normalizePage, type Page, type Post, contentTypes, listPath, type MenuList, normalizePost, parseTheme, pagesIn, POSTS_TYPE, reservedSlugs, slugProblem, type Theme, themeCss } from '../core/index.ts';
+import { SECTION_KIND, type Block, fillSections, takeWords, withAreas, type Site, siteIn, type PlacedPage, translatedPage, cleanRow, EXTENSION_MAX_BYTES, type ExtensionManifest, extensionAsks, isObject, languageOf, normalizeBlocks, shownRow, str, type ContentType, DISPLAY_NAME, type LanguagePack, defaultTemplate, MEDIA_MAX_BYTES, MEDIA_PREFIX, UPLOAD_MAX_BYTES, normalizePage, type Page, type Post, contentTypes, listPath, type MenuList, normalizePost, parseTheme, pagesIn, POSTS_TYPE, reservedSlugs, slugProblem, type Theme, themeCss } from '../core/index.ts';
 import type { EntryLists } from '../blocks/editing.ts';
 import { type FetchImage, fetchImage as fetchOverNetwork, IMPORT_MAX_BYTES, type ImportReport, runImport } from '../import/run.ts';
 import { type ImportPlan, planImport } from '../import/wxr.ts';
@@ -524,7 +525,7 @@ export async function startEditor(
       }
       if (request.method === 'POST') {
         // The body is the file itself. What it is, is read from its bytes.
-        if (Number(request.headers.get('content-length') ?? 0) > MEDIA_MAX_BYTES) return json({ error: 'the image is too large' }, 413);
+        if (Number(request.headers.get('content-length') ?? 0) > UPLOAD_MAX_BYTES) return json({ error: `the file is too large: at most ${UPLOAD_MAX_BYTES / 1024 / 1024} MB` }, 413);
         const item = await store.addMedia(new Uint8Array(await request.arrayBuffer()), url.searchParams.get('label'));
         return json({ item, media: await store.media() });
       }
@@ -791,9 +792,10 @@ export async function startEditor(
     if (!ADMIN_PATHS.has(url.pathname) && !url.pathname.startsWith('/admin/') && !url.pathname.startsWith(MEDIA_PREFIX)) return site.fetch(request, ip);
     if (request.method !== 'GET') return json({ error: 'not found' }, 404);
     if (url.pathname.startsWith(MEDIA_PREFIX)) {
-      // An <img> cannot carry the token, so a stored image is read without it. Its name is the hash of its bytes.
-      const file = await store.mediaFile(url.pathname.slice(MEDIA_PREFIX.length));
-      return file ? new Response(file.bytes as Uint8Array<ArrayBuffer>, { headers: { 'content-type': file.type, ...SECURITY } }) : json({ error: 'not found' }, 404);
+      // An <img> cannot carry the token, so a stored file is read without it. Its name is the hash of its bytes.
+      const name = url.pathname.slice(MEDIA_PREFIX.length);
+      const file = await store.mediaFile(name);
+      return file ? mediaResponse(request, name, file, SECURITY) : json({ error: 'not found' }, 404);
     }
     switch (url.pathname) {
       case '/admin':
@@ -822,7 +824,7 @@ export async function startEditor(
           hostname: options.hostname ?? '127.0.0.1',
           port,
           fetch: (request, srv) => handle(request, request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || srv.requestIP(request)?.address || ''),
-          maxRequestBodySize: IMPORT_MAX_BYTES + 1024 * 1024,
+          maxRequestBodySize: Math.max(IMPORT_MAX_BYTES, UPLOAD_MAX_BYTES) + 1024 * 1024,
         });
   if (server?.port) port = server.port;
   // What was set for later is published while the editor runs (ADR 0039).
