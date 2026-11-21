@@ -40,6 +40,11 @@ const start = (type?: ContentType): void => {
 const patch = (change: Partial<ContentType>): void => {
   if (draft) draft = { ...draft, ...change };
 };
+/** The types a link field may lead to: the site's, and this one once it has a name the site knows. */
+const targets = $derived(contentTypes(site).map((type) => (type.id === editing && draft ? { ...type, name: draft.name || type.name } : type)));
+/** A field of another kind: a choice starts with two choices to change, a link with the first type to link to. */
+const kindChange = (kind: TypeFieldKind): Partial<TypeField> =>
+  kind === 'choice' ? { kind, options: ['1', '2'] } : kind === 'entries' ? { kind, to: targets[0]?.id ?? '' } : { kind };
 const patchField = (i: number, change: Partial<TypeField>): void => patch({ fields: (draft?.fields ?? []).map((f, j) => (j === i ? { ...f, ...change } : f)) });
 
 async function save(): Promise<void> {
@@ -119,10 +124,26 @@ async function remove(): Promise<void> {
       {#each draft.fields as field, i (i)}
         <div class="row" data-type-field>
           <input type="text" maxlength="60" value={field.label} placeholder={t.ctypes.fieldLabel} aria-label={t.ctypes.fieldLabel} oninput={(e) => patchField(i, { label: e.currentTarget.value })} />
-          <select value={field.kind} aria-label={t.inspector.content} onchange={(e) => patchField(i, { kind: e.currentTarget.value as TypeFieldKind })}>
+          <select value={field.kind} aria-label={t.inspector.content} onchange={(e) => patchField(i, kindChange(e.currentTarget.value as TypeFieldKind))} data-type-field-kind>
             {#each TYPE_FIELD_KINDS as kind}<option value={kind}>{t.ctypes.kinds[kind]}</option>{/each}
           </select>
           <button type="button" class="quiet" onclick={() => patch({ fields: (draft?.fields ?? []).filter((_, j) => j !== i) })} aria-label={t.inspector.remove} title={t.inspector.remove}>✕</button>
+          {#if field.kind === 'choice'}
+            <label class="more">
+              <span>{t.ctypes.choices}</span>
+              <textarea rows="3" value={(field.options ?? []).join('\n')} onchange={(e) => patchField(i, { options: e.currentTarget.value.split('\n') })} data-type-field-choices></textarea>
+            </label>
+          {:else if field.kind === 'entries'}
+            <div class="more">
+              <label>
+                <span>{t.ctypes.linksTo}</span>
+                <select value={field.to ?? ''} onchange={(e) => patchField(i, { to: e.currentTarget.value })} data-type-field-to>
+                  {#each targets as target (target.id)}<option value={target.id}>{target.name}</option>{/each}
+                </select>
+              </label>
+              <label class="check"><input type="checkbox" checked={field.many === true} onchange={(e) => patchField(i, { many: e.currentTarget.checked ? true : undefined })} data-type-field-many /><span>{t.ctypes.many}</span></label>
+            </div>
+          {/if}
         </div>
       {/each}
       <button type="button" onclick={() => patch({ fields: [...(draft?.fields ?? []), { key: '', label: '', kind: 'text' }] })} data-type-add-field>+ {t.ctypes.addField}</button>
@@ -154,7 +175,12 @@ async function remove(): Promise<void> {
   .check { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.4rem; }
   .check span { margin: 0; }
   .check.off { opacity: 0.55; }
-  .row { display: grid; grid-template-columns: 1fr 9rem auto; gap: 0.4rem; margin-bottom: 0.4rem; }
+  .row { display: grid; grid-template-columns: 1fr 11rem auto; gap: 0.4rem; margin-bottom: 0.4rem; }
+  .row .more { grid-column: 1 / -1; padding: 0 0 0.6rem 1rem; border-left: 2px solid #eceaf3; }
+  .row .more label { display: block; margin-bottom: 0.4rem; }
+  .row .more span { display: block; font-size: 13px; color: #6a6880; margin-bottom: 0.2rem; }
+  .row .more .check span { display: inline; margin: 0; }
+  .row textarea, .row select { width: 100%; }
   .actions { display: flex; gap: 0.5rem; align-items: center; margin-top: 1.2rem; }
   .actions :global(.danger) { margin: 0 0 0 auto !important; }
 </style>

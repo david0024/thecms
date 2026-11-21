@@ -44,6 +44,8 @@ export const en = {
   search: 'Search',
   searchNone: 'Nothing on this site matches “{query}”.',
   searchFound: 'Pages that match “{query}”',
+  yes: 'Yes',
+  no: 'No',
   commentConsent: 'Show my name and comment on this page once approved. My email is kept only to reach me about it and is never shown.',
 };
 

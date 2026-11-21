@@ -53,3 +53,4 @@ work it decides. A new one that changes an old one says so at its top.
 - [ADR 0049 — Forms, built on a screen of their own](0049-forms.md)
 - [ADR 0050 — Search engines and sharing: complete SEO](0050-search-engines-and-sharing.md)
 - [ADR 0051 — Backups, made by the site on a schedule](0051-backups.md)
+- [ADR 0052 — Relations between entries, and more kinds of field](0052-relations-and-more-fields.md)

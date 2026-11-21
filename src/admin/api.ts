@@ -91,6 +91,8 @@ export interface SectionInfo {
 }
 export interface PostInfo extends PageInfo {
   date: string;
+  /** The titles of the entries that link to it (ADR 0052 d4). */
+  usedBy?: string[];
 }
 /** A content type's own page (ADR 0015): whether it has one, and whether visitors see what is being worked on. */
 export interface TemplateInfo {

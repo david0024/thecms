@@ -5,17 +5,20 @@
  * ordinary page, or inside the entry's own blocks) it draws nothing.
  */
 import type { Block, EntryContent, ImageValue, LinkValue } from '../core/index.ts';
-import { isLink } from '../core/index.ts';
+import { fieldShown, isLink } from '../core/index.ts';
 import BlockView from './BlockView.svelte';
-import { getEntry, picture, setEditing, setEntry } from './editing.ts';
+import { getEntry, getLists, picture, setEditing, setEntry } from './editing.ts';
 import EntryFields from './EntryFields.svelte';
+import FieldValue from './FieldValue.svelte';
 import PostMeta from './PostMeta.svelte';
+import Related from './Related.svelte';
 import { dateText } from './words.ts';
 
 let { block }: { block: Block } = $props();
 const c = $derived(block.content as unknown as EntryContent);
 const entry = getEntry();
 const pic = picture();
+const { lists } = getLists();
 const shown = entry && !entry.inBody ? entry : undefined;
 // What lies inside belongs to the entry: a part met there draws nothing.
 if (entry) setEntry({ ...entry, inBody: true });
@@ -42,6 +45,8 @@ const value = $derived(field && shown ? shown.post.fields[field.key] : undefined
     {#if post.cover}{@const pa = pic(post.cover.src, 'full')}<img class="post-cover" src={post.cover.src} srcset={pa.srcset} sizes={pa.sizes} width={pa.width} height={pa.height} alt={post.cover.alt} />{/if}
   {:else if c.part === 'fields'}
     <EntryFields {type} {post} {language} />
+  {:else if c.part === 'related'}
+    <Related {type} {post} {language} wrapped={false} />
   {:else if c.part === 'body'}
     <div class="entry-body" data-live={shown.editing === 'entry' ? '' : undefined} data-frozen={shown.editing === 'template' ? '' : undefined}>
       {#each post.blocks as inner (inner.id)}<BlockView block={inner} />{/each}
@@ -54,6 +59,10 @@ const value = $derived(field && shown ? shown.post.fields[field.key] : undefined
       {#if (value as ImageValue | null)?.src}{@const pa = pic((value as ImageValue).src, 'card')}<img src={(value as ImageValue).src} srcset={pa.srcset} sizes={pa.sizes} width={pa.width} height={pa.height} alt={(value as ImageValue).alt} loading="lazy" decoding="async" />{/if}
     {:else if field.kind === 'date'}
       {#if value}<p><time datetime={value as string}>{dateText(value as string, language)}</time></p>{/if}
+    {:else if field.kind === 'entries'}
+      {#if fieldShown(field, post, lists)}<FieldValue {field} {post} {language} />{/if}
+    {:else if field.kind === 'number' || field.kind === 'yesno' || field.kind === 'file'}
+      {#if fieldShown(field, post, lists)}<p><FieldValue {field} {post} {language} /></p>{/if}
     {:else if value}
       <p class={field.kind === 'longtext' ? 'lines' : undefined}>{value}</p>
     {/if}

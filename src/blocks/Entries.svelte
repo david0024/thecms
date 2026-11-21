@@ -6,8 +6,8 @@
  * page is never out of date after a new post is published and exported.
  */
 import type { Block, EntriesContent } from '../core/index.ts';
-import { entryPath, listPath, postExcerpt } from '../core/index.ts';
-import { getLists, isEditing, marker, picture } from './editing.ts';
+import { entryPath, listPath, postExcerpt, relatedIn } from '../core/index.ts';
+import { getEntry, getLists, isEditing, marker, picture } from './editing.ts';
 import { dateText, wordsFor } from './words.ts';
 
 let { block }: { block: Block } = $props();
@@ -16,8 +16,11 @@ const editing = isEditing();
 const mark = marker();
 const pic = picture();
 const { lists, language } = getLists();
+const entry = getEntry();
 const list = $derived(lists[c.source]);
-const shown = $derived(list ? list.entries.slice(0, c.count) : []);
+// "Only those linked to the entry shown" (ADR 0052 d3): on an entry's page, either way; anywhere else, none.
+const pool = $derived(!list ? [] : !c.related ? list.entries : entry ? relatedIn(list, entry.type, entry.post) : []);
+const shown = $derived(pool.slice(0, c.count));
 </script>
 
 {#if c.title || editing}<h2 data-edit={mark('title')}>{c.title}</h2>{/if}

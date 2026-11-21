@@ -241,7 +241,9 @@ export async function startEditor(
   /** Each content type's entries, by the type's name. */
   const allEntries = async (): Promise<Record<string, Listed>> => {
     const out: Record<string, Listed> = {};
-    for (const type of contentTypes(await store.site())) out[type.id] = await store.entries(type.id);
+    // Each entry says which link to it (ADR 0052 d4), so deleting it is never a surprise.
+    const uses = await store.linkedFrom();
+    for (const type of contentTypes(await store.site())) out[type.id] = (await store.entries(type.id)).map((entry) => ({ ...entry, ...(uses.get(`${type.id}/${entry.slug}`) ? { usedBy: uses.get(`${type.id}/${entry.slug}`) } : {}) }));
     return out;
   };
   // The menu as the editor shows it: from the drafts, with each content type as soon as it has an entry.

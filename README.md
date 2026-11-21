@@ -42,6 +42,9 @@ ever breaking it.
 **Content**
 - Your own kinds of content: a blog, projects, a team, events, each with its
   fields, its address, its list page and its look, designed in the same builder.
+- Fields of text, dates, numbers, yes or no, a choice from a list, pictures,
+  links and files; and links between entries (a project's client, a recipe's
+  ingredients), shown on both sides.
 - Categories, tags, paged lists and feeds; a block that lists the latest entries
   anywhere.
 - Publish now or at a set hour; the last twenty publications kept, to bring one
@@ -140,7 +143,7 @@ Four stages, each ending with something you can use
 1. **The foundation:** the site served, scheduled publishing, comments, search,
    pages behind a password, media and new blocks. *Done.*
 2. **What almost every site needs:** a form builder (*done*), complete SEO (*done*), scheduled
-   backups (*done*), relations between entries, statistics without cookies, entries in
+   backups (*done*), relations between entries (*done*), statistics without cookies, entries in
    more than one language, more roles, a complete export. *In progress.*
 3. **Commerce and members:** visitor accounts, a shop (products, cart, orders,
    VAT), payments (Stripe and Netopia first), couriers, e-invoicing,

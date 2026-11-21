@@ -19,6 +19,7 @@ export * from './navigation.ts';
 export * from './page.ts';
 export * from './post.ts';
 export * from './redirect.ts';
+export * from './relations.ts';
 export * from './richtext.ts';
 export * from './section.ts';
 export * from './seo.ts';
