@@ -10,6 +10,8 @@
  * drift apart.
  */
 import { normalizeRichText, paragraphs, type RichText, richTextPlain } from './richtext.ts';
+import { embedOf } from './embed.ts';
+import { mediaKindOf, mediaNameOf } from './media.ts';
 import { type BlockStyle, isTokenName, normalizeStyle } from './style.ts';
 import { POSTS_TYPE } from './types.ts';
 import { type Issue, isId, isObject, newId, safeHref, safeSrc, slugify, str } from './util.ts';
@@ -27,7 +29,15 @@ export type Field =
   | { kind: 'part' }
   /** A section the block shows (ADR 0033), by its name: blocks written once and shown on many pages. */
   | { kind: 'section' }
-  | { kind: 'list'; max: number; item: Record<string, Field> };
+  | { kind: 'list'; max: number; item: Record<string, Field> }
+  /**
+   * A file from the library (ADR 0047): a document, a sound or a video. A
+   * sound or a video may instead be the address of a known service's page
+   * (`embedOf`), and is then played by that service.
+   */
+  | { kind: 'file'; accept: 'document' | 'audio' | 'video' }
+  /** A table: rows of cells, plain text each, the first row its headings when `header` (ADR 0047). */
+  | { kind: 'table' };
 
 export interface ImageValue {
   src: string;
@@ -37,6 +47,18 @@ export interface LinkValue {
   label: string;
   href: string;
 }
+
+/** A file a block uses: where it is, and the words a link to it shows. */
+export interface FileValue {
+  src: string;
+  label: string;
+}
+export interface TableValue {
+  header: boolean;
+  rows: string[][];
+}
+export const TABLE_MAX_ROWS = 60;
+export const TABLE_MAX_COLUMNS = 8;
 
 /** A link a visitor can follow: it has words and an address. */
 export const isLink = (v: LinkValue | null | undefined): v is LinkValue => !!v && !!v.label && !!v.href;
@@ -107,6 +129,45 @@ export const BLOCKS = {
   search: {
     fields: { title: text(200), placeholder: text(120), button: text(60) },
     create: () => ({ placeholder: 'Search this site', button: 'Search' }),
+  },
+  /** Buttons in a row (ADR 0047): the first stands out, the others are quieter. */
+  buttons: {
+    fields: { items: { kind: 'list', max: 6, item: { action: { kind: 'link' } } } },
+    create: () => ({ items: [{ action: { label: 'Get in touch', href: '' } }, { action: { label: 'See our work', href: '' } }] }),
+  },
+  /** A table of plain text (ADR 0047): prices, opening hours, a comparison. */
+  table: {
+    fields: { title: text(200), table: { kind: 'table' }, caption: text(300) },
+    create: () => ({
+      table: {
+        header: true,
+        rows: [
+          ['Day', 'Hours'],
+          ['Monday to Friday', '9:00 – 18:00'],
+          ['Saturday', '10:00 – 14:00'],
+        ],
+      },
+    }),
+  },
+  /** A player from another service (ADR 0047): a video, a song, a map, from the address the author pastes. */
+  embed: {
+    fields: { url: common(2000), title: text(200), caption: text(300) },
+    create: () => ({}),
+  },
+  /** A video: one from the library, or from YouTube or Vimeo (ADR 0047). */
+  video: {
+    fields: { video: { kind: 'file', accept: 'video' }, title: text(200), poster: { kind: 'image' }, caption: text(300) },
+    create: () => ({}),
+  },
+  /** Sound: a file from the library, or from Spotify or SoundCloud (ADR 0047). */
+  audio: {
+    fields: { audio: { kind: 'file', accept: 'audio' }, title: text(200), caption: text(300) },
+    create: () => ({}),
+  },
+  /** Documents to read or download (ADR 0047): a menu, a price list, a form to fill in. */
+  files: {
+    fields: { title: text(200), intro: multiline(600), items: { kind: 'list', max: 30, item: { file: { kind: 'file', accept: 'document' }, text: multiline(300) } } },
+    create: () => ({ title: 'Documents', items: [] }),
   },
   gallery: {
     fields: {
@@ -220,6 +281,32 @@ const MAX_BLOCKS = 500;
 /** How deep blocks nest: a block at the top is at depth 1. */
 export const MAX_DEPTH = 4;
 
+/**
+ * A file a block may use, or null (ADR 0047). From the library, only a file of
+ * the kind the field takes; a sound or a video may also be a known service's
+ * address; a document may also be any address a link may lead to.
+ */
+export function cleanFile(accept: 'document' | 'audio' | 'video', raw: unknown): FileValue | null {
+  const src = isObject(raw) ? safeHref(raw.src) : '';
+  const label = isObject(raw) ? str(raw.label, 200).replace(/\s*\n\s*/g, ' ').trim() : '';
+  if (!src) return null;
+  const stored = mediaNameOf(src);
+  if (stored) return mediaKindOf(stored) === accept ? { src, label } : null;
+  if (src.startsWith('/media/')) return null;
+  if (accept === 'document') return /^(https?:\/\/|\/)/i.test(src) ? { src, label } : null;
+  return embedOf(src)?.kind === accept ? { src, label } : null;
+}
+
+/** A table, cleaned: every row as wide as the widest, plain text in each cell, at least one cell. */
+export function cleanTable(raw: unknown): TableValue {
+  const header = isObject(raw) ? raw.header !== false : true;
+  const given = isObject(raw) && Array.isArray(raw.rows) ? raw.rows.slice(0, TABLE_MAX_ROWS) : [];
+  const rows = given.map((row) => (Array.isArray(row) ? row.slice(0, TABLE_MAX_COLUMNS).map((cell) => str(cell, 500).replace(/\s*\n\s*/g, ' ')) : []));
+  const width = Math.max(1, ...rows.map((row) => row.length));
+  const filled = rows.map((row) => [...row, ...Array<string>(width - row.length).fill('')]);
+  return { header, rows: filled.length ? filled : [Array<string>(width).fill('')] };
+}
+
 /** An image a page may show, or null: its address is checked, its description cut to length. */
 export function cleanImage(raw: unknown): ImageValue | null {
   const src = isObject(raw) ? safeSrc(raw.src) : '';
@@ -264,6 +351,10 @@ function cleanField(field: Field, raw: unknown): unknown {
       return Array.isArray(raw)
         ? raw.slice(0, field.max).map((item) => cleanFields(field.item, isObject(item) ? item : {}))
         : [];
+    case 'file':
+      return cleanFile(field.accept, raw);
+    case 'table':
+      return cleanTable(raw);
   }
 }
 
@@ -337,6 +428,10 @@ function fieldText(field: Field, value: unknown): string {
       return Array.isArray(value)
         ? value.map((item) => Object.entries(field.item).map(([k, f]) => fieldText(f, (item as Record<string, unknown>)[k])).join(' ')).join(' ')
         : '';
+    case 'table':
+      return isObject(value) && Array.isArray(value.rows) ? (value.rows as string[][]).map((row) => row.join(' ')).join(' ') : '';
+    case 'file':
+      return isObject(value) && typeof value.label === 'string' ? value.label : '';
     default:
       return '';
   }
@@ -377,7 +472,7 @@ export function imageSources(blocks: Block[]): string[] {
   return out;
 }
 
-/** The addresses a page links to in its link fields and its rich text: a document from the library among them (ADR 0046). */
+/** The addresses a page links to or plays, in its link and file fields and its rich text: a file from the library among them (ADR 0046, 0047). */
 export function linkTargets(blocks: Block[]): string[] {
   const out: string[] = [];
   const text = (doc: RichText): void => {
@@ -390,6 +485,7 @@ export function linkTargets(blocks: Block[]): string[] {
     for (const [name, field] of Object.entries(fields)) {
       const value = content[name];
       if (field.kind === 'link' && isObject(value) && typeof value.href === 'string' && value.href) out.push(value.href);
+      else if (field.kind === 'file' && isObject(value) && typeof value.src === 'string' && value.src) out.push(value.src);
       else if (field.kind === 'richtext' && Array.isArray(value)) text(value as RichText);
       else if (field.kind === 'list' && Array.isArray(value)) for (const item of value) if (isObject(item)) collect(field.item, item);
     }

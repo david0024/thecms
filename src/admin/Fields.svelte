@@ -1,8 +1,10 @@
 <script lang="ts">
 /** A form for one block's content, generated from the fields its type declares. */
-import type { Field, ImageValue } from '../core/index.ts';
+import type { Field, FileValue, ImageValue, TableValue } from '../core/index.ts';
+import FileField from './FileField.svelte';
 import Self from './Fields.svelte';
 import ImageField from './ImageField.svelte';
+import TableField from './TableField.svelte';
 import { t } from './messages.ts';
 import { getPath } from './paths.ts';
 
@@ -75,6 +77,10 @@ const input = (e: Event): string => (e.currentTarget as HTMLInputElement | HTMLT
       <p class="hint">{t.inspector.onPage}</p>
     {:else if field.kind === 'image'}
       <ImageField label={t.fields[name] ?? name} value={(getPath(content, name) as ImageValue | null | undefined) ?? null} onchange={(value) => onchange(at(name), value)} />
+    {:else if field.kind === 'file'}
+      <FileField label={t.fields[name] ?? name} accept={field.accept} value={(getPath(content, name) as FileValue | null | undefined) ?? null} onchange={(value) => onchange(at(name), value)} />
+    {:else if field.kind === 'table'}
+      <TableField label={t.fields[name] ?? name} value={(getPath(content, name) as TableValue | null | undefined) ?? null} onchange={(value) => onchange(at(name), value)} />
     {:else if field.kind === 'link'}
       <fieldset>
         <legend>{t.fields[name] ?? name}</legend>

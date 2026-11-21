@@ -5,10 +5,14 @@
  */
 import type { Component } from 'svelte';
 import type { Block, BlockType } from '../core/index.ts';
+import Audio from './Audio.svelte';
+import Buttons from './Buttons.svelte';
 import Contact from './Contact.svelte';
+import Embed from './Embed.svelte';
 import Entries from './Entries.svelte';
 import Entry from './Entry.svelte';
 import Faq from './Faq.svelte';
+import Files from './Files.svelte';
 import Form from './Form.svelte';
 import Gallery from './Gallery.svelte';
 import Group from './Group.svelte';
@@ -18,8 +22,10 @@ import Pricing from './Pricing.svelte';
 import Search from './Search.svelte';
 import Section from './Section.svelte';
 import Services from './Services.svelte';
+import Table from './Table.svelte';
 import Testimonials from './Testimonials.svelte';
 import Text from './Text.svelte';
+import Video from './Video.svelte';
 
 export const COMPONENTS: Record<BlockType, Component<{ block: Block }>> = {
   hero: Hero,
@@ -29,6 +35,12 @@ export const COMPONENTS: Record<BlockType, Component<{ block: Block }>> = {
   contact: Contact,
   form: Form,
   search: Search,
+  buttons: Buttons,
+  table: Table,
+  embed: Embed,
+  video: Video,
+  audio: Audio,
+  files: Files,
   gallery: Gallery,
   faq: Faq,
   testimonials: Testimonials,

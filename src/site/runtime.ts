@@ -8,7 +8,7 @@ import { timingSafeEqual } from 'node:crypto';
 import type { Mailer } from './mail.ts';
 import { lockOf, publishedSite } from './export.ts';
 import { mediaResponse } from './serve-media.ts';
-import { mediaKindOf } from '../core/index.ts';
+import { EMBED_ORIGINS, mediaKindOf } from '../core/index.ts';
 import { lockCookie, lockedPage } from './locks.ts';
 import { startClock } from './clock.ts';
 import { type ExtensionHostApi, extensionHost, type Spawn } from './extensions.ts';
@@ -52,7 +52,8 @@ const HIDDEN = new Set(['_redirects', '.htaccess']);
 
 /** The published site needs no script and loads nothing from elsewhere: the page says so to the browser. */
 const HEADERS = {
-  'content-security-policy': "default-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:; base-uri 'none'; frame-ancestors 'none'",
+  // Sound and video from the site itself; players only from the services a page may show (ADR 0047).
+  'content-security-policy': `default-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:; media-src 'self'; frame-src ${EMBED_ORIGINS.join(' ')}; base-uri 'none'; frame-ancestors 'none'`,
   'x-content-type-options': 'nosniff',
   'referrer-policy': 'strict-origin-when-cross-origin',
 };
