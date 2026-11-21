@@ -1,126 +1,97 @@
 # thecms
 
-A modern CMS for any site WordPress can make, its plugins included, built for
-people coming from WordPress.
+**A website builder you own.** Open source, for any kind of site: a business
+card, a portfolio, a blog, a catalogue, and soon a shop, memberships and courses.
+You build it by arranging blocks on the real page, and change its look without
+ever breaking it.
 
-- **You arrange the page visually**, and what is saved is data, not HTML.
-- **Full freedom over the look, without breaking the theme.** A block's content
-  and its style are kept apart; a style value either follows the theme or is
-  your own, and your own ones can always be reset.
-- **A theme is a document you can build yourself**, export and share. It
-  contains no code.
-- **The site is served, as a WordPress site is**, so forms, comments, search
-  and pages behind a password always work, with nothing to set. Pages are
-  built again only when what visitors see has changed, so they are as fast as
-  files. A simple site can still be exported as static files, and is told
-  what it loses.
-- **Modules cannot take the site down.** They declare what they do and run
-  isolated.
+> thecms is in **alpha**. It stays in alpha until everything planned for it is
+> built, then goes to beta for testing, and only then to a stable release
+> ([ADR 0045](docs/adr/0045-versions.md)). Try it, and expect changes.
 
-The decisions behind this, each with its reason:
+## Why thecms
 
-- [ADR 0001 — Foundations](docs/adr/0001-foundations.md)
-- [ADR 0002 — The first slice](docs/adr/0002-the-first-slice.md)
-- [ADR 0003 — The editor works on the real page](docs/adr/0003-the-editor.md)
-- [ADR 0004 — The theme builder](docs/adr/0004-the-theme-builder.md)
-- [ADR 0005 — Images, formatting and dragging](docs/adr/0005-images-formatting-dragging.md)
-- [ADR 0006 — The header and footer](docs/adr/0006-header-and-footer.md)
-- [ADR 0007 — The blog](docs/adr/0007-the-blog.md)
-- [ADR 0008 — The menu](docs/adr/0008-the-menu.md)
-- [ADR 0009 — Importing a WordPress site](docs/adr/0009-wordpress-import.md)
-- [ADR 0010 — Content types](docs/adr/0010-content-types.md)
-- [ADR 0011 — A block that lists entries](docs/adr/0011-the-entries-block.md)
-- [ADR 0012 — Importing from the admin](docs/adr/0012-import-from-the-admin.md)
-- [ADR 0013 — One store, three databases](docs/adr/0013-sqlite-postgres-mysql.md)
-- [ADR 0015 — A page for each content type](docs/adr/0015-a-page-for-each-content-type.md)
-- [ADR 0016 — A category that is a section of its own](docs/adr/0016-categories-as-sections.md)
-- [ADR 0017 — Gallery, questions, testimonials, prices](docs/adr/0017-more-blocks.md)
-- [ADR 0018 — Tags](docs/adr/0018-tags.md)
-- [ADR 0019 — The contact form and the site's form service](docs/adr/0019-the-contact-form.md)
-- [ADR 0020 — The core is AGPL-3.0-or-later](docs/adr/0020-licence-agpl.md)
-- [ADR 0021 — Language packs](docs/adr/0021-language-packs.md)
-- [ADR 0022 — Accounts](docs/adr/0022-accounts.md)
-- [ADR 0023 — Installation](docs/adr/0023-installation.md)
-- [ADR 0024 — The same page in more than one language](docs/adr/0024-languages.md)
-- [ADR 0025 — No built-in blog: every content type is the owner's](docs/adr/0025-no-built-in-type.md)
-- [ADR 0026 — Extensions, on the model of Zveltio's third-party extensions](docs/adr/0026-extensions.md)
-- [ADR 0027 — AI writing, as an extension](docs/adr/0027-ai-extension.md)
-- [ADR 0028 — What was published is kept, to bring back](docs/adr/0028-published-versions.md)
-- [ADR 0029 — The site is checked before it is published](docs/adr/0029-check-before-publishing.md)
-- [ADR 0030 — Data for search engines](docs/adr/0030-data-for-search-engines.md)
-- [ADR 0031 — An extension's screens are data: `thecms.view/1`](docs/adr/0031-extension-screens-as-data.md)
-- [ADR 0032 — A page is translated field by field](docs/adr/0032-translation-by-field.md)
-- [ADR 0033 — Sections: blocks written once, shown on many pages](docs/adr/0033-sections.md)
-- [ADR 0034 — Actions on translations, and in every language](docs/adr/0034-actions-on-translations.md)
-- [ADR 0035 — Theme, layout, page, section, site: who decides what](docs/adr/0035-layouts-and-boundaries.md)
-- [ADR 0036 — Old addresses: moved pages and redirects written by hand](docs/adr/0036-redirects.md)
-- [ADR 0037 — What thecms is for: anything WordPress does, with its plugins](docs/adr/0037-direction.md)
-- [ADR 0038 — The site's runtime: the published site and what cannot be static, from one address](docs/adr/0038-the-runtime.md)
-- [ADR 0039 — Publish later, and the site's clock](docs/adr/0039-publish-later.md)
-- [ADR 0040 — Comments, with moderation](docs/adr/0040-comments.md)
-- [ADR 0041 — Extensions on the server: routes, jobs and events](docs/adr/0041-extensions-on-the-server.md)
-- [ADR 0042 — Search on the site](docs/adr/0042-search.md)
-- [ADR 0043 — Pages behind a password](docs/adr/0043-pages-behind-a-password.md)
-- [ADR 0044 — The site is served](docs/adr/0044-the-site-is-served.md)
+- **You edit the page itself.** No form next to a preview: you click on the
+  text and type, drag blocks where you want them, and see the page as it will
+  be on a phone, a tablet or a wide screen.
+- **Free to change the look, without breaking the theme.** A block's content
+  and its style are kept apart. A style either follows the theme or is your
+  own, and your own can always be reset.
+- **A theme is a document, not code.** You make one in the theme builder
+  (colours, typefaces, spacing, how each block looks), save it as a file and
+  share it.
+- **Everything works from the start.** Forms, comments, search and pages behind
+  a password are answered by the site itself, with nothing to set up. Pages are
+  built again only when something changes, so they load as fast as plain files.
+- **Extensions cannot take the site down.** Each one says what it needs before
+  you accept it, and runs apart from the site.
+- **Your site is yours.** One program, on your server or your computer, with
+  your database. Export the whole site as static files whenever you like.
 
-## Where it stands
+## What you can make with it today
 
-Early. What works today: you edit pages visually on the real page, choose a
-theme, publish, and export the site as static files.
-What comes next, in four stages up to a shop, memberships and courses, is in
-[ADR 0037 d4](docs/adr/0037-direction.md#d4-the-order).
+**Pages and design**
+- Blocks for headings, text, images, galleries, services, prices, testimonials,
+  questions and answers, buttons, tables, video, sound, documents, and players
+  from YouTube, Vimeo, Spotify, SoundCloud, Google Maps and OpenStreetMap,
+  made from the address you paste.
+- A header, a footer and menus (with sub-menus and wide menus), from the site's
+  settings and the theme.
+- Sections written once and shown on many pages.
 
-| | |
-|---|---|
-| Page model, block types, themes as data | done |
-| Blocks: hero, text, image, services, contact details, gallery, questions and answers, testimonials, prices, a list of entries, groups | done |
-| SQLite store, draft and published kept apart | done |
-| The same site on Postgres or MySQL, chosen by the address | done |
-| Static export with sitemap and robots.txt, for a simple site; it says what only the server does | done |
-| Visual editor: add, move, remove, type on the page, style with theme tokens | done |
-| Theme builder: tokens, block defaults and variants, themes as files | done |
-| Images uploaded and kept with the site, each offered at the size that fits a phone or a wide screen (srcset made in the browser); headings, lists and links from a bar on the page; blocks moved by dragging | done |
-| Header and footer: logo, button and links from the site, layout from the theme | done |
-| Content types the owner defines (a blog is only an example): entries at `/<type>/<entry>/`, categories, tags, paged lists, Atom feed | done |
-| Admin with sections: pages, posts, media, menu and settings, theme | done |
-| Menu builder: sub-menus, wide menus with columns, a folded menu on phones, all without script | done |
-| Content types: the owner adds kinds of entry (projects, team, events) with their own fields, list and address; posts are one of them | done |
-| A block that lists entries of a type on any page (latest posts, a few projects) | done |
-| Each content type's page designed in the builder, with the entry's parts placed in it | done |
-| WordPress import: pages, posts, images, menu, links rewritten, old addresses kept alive, a report of what did not come over | done |
-| Import from the admin: choose the file, see what would come over and what would not, then run it | done |
-| A WordPress category kept as a section of its own: its posts become entries of a new content type | done |
-| Contact form with consent, a small form service of the site's own, email to the owner, messages kept for a set time, exported or erased on request | done |
-| Language packs: the admin and the site's words in one JSON file a language, checked against English; Romanian ships complete | done |
-| Accounts for a served editor: the first owner from a one-time link, editors invited by the owner, an editor writes content and nothing else | done |
-| Installed with one command: one file a platform from GitHub Releases, checked by its checksum; a server with systemd in one more option; `thecms update` | done |
-| The installer asks, step by step: this computer, a server (the database and Valkey installed, or a database of yours, tested), Docker with compose, or a ready platform; the site named and its language chosen on the first page | done (Cloudflare: with stage 3) |
-| Extensions on the model of Zveltio's third-party ones: one file, accepted by the owner for what it asks; collections, actions on a block or a page, screens as data; code in a process of its own, on a server under a user of its own with no network | done |
-| Extensions on the server (`thecms.extension/2`): public addresses under `/_/x/`, jobs the site's clock runs at an interval, events from the site (a page published, a comment, a message) | done |
-| Pages in more than one language: each translated from the list of pages, at /ro/…, with the header, footer and menu of its language, a switcher and hreflang | done (posts and entries: planned) |
-| AI writing, as an extension with the owner's key (Claude, OpenAI or Ollama): a block written or rewritten as asked, a page translated into its language, a page's description; each comes back as a change to look at | done (image descriptions: planned) |
-| The last twenty publications of each page and entry kept, and one brought back into the editor as a change | done |
-| Publish later: a page or an entry set for an hour, published then by the editor or the runtime | done |
-| Pages behind a password, asked by the runtime; left out of the sitemap, the search and any export | done (members-only pages: with stage 2) |
-| Search on the site: a block placed anywhere, answered by the runtime with a page of the site's own; every word, without minding case or accents | done |
-| Comments on the entries of a type that takes them: a plain form, held for the owner's approval, shown without the writer's address, given or erased on request | done |
-| A check before publishing: a link that leads nowhere stops the export, a picture with no description is listed; in the admin under the pages | done |
-| The canvas shown as on a phone, a tablet or a wide screen | done |
-| Data for search engines (schema.org): the site and its business on the home page, an article for each dated entry | done |
-| The site is served (`thecms`, or `thecms run` without the editor): pages, forms, comments, search and old addresses as real 301s from one address, built again only when something is published; a cart and accounts arrive under `/_/` | started |
-| Valkey on a server for built pages, the clock's lock, sessions and the counters that limit tries, with a fallback in memory and on disk; Settings → Performance tests it | done |
-| Documents (PDF, Word, Excel, PowerPoint, OpenDocument, ZIP), sound and video in the media library, read from their bytes; a page that links to one exports it and keeps it from being deleted | done |
-| Blocks for buttons, tables, video, sound, documents, and players from YouTube, Vimeo, Spotify, SoundCloud, Google Maps and OpenStreetMap, made from the address an author pastes | done |
+**Content**
+- Your own kinds of content: a blog, projects, a team, events, each with its
+  fields, its address, its list page and its look, designed in the same builder.
+- Categories, tags, paged lists and feeds; a block that lists the latest entries
+  anywhere.
+- Publish now or at a set hour; the last twenty publications kept, to bring one
+  back.
+- A check before publishing: links that lead nowhere, pictures without a
+  description.
+
+**Media**
+- Images, offered at the size each screen needs; documents (PDF, Word, Excel,
+  PowerPoint, OpenDocument), sound and video, in one library.
+
+**Visitors**
+- A contact form with consent, messages kept for a set time and sent to you by
+  email.
+- Comments, held for your approval.
+- Search in every word, without minding case or accents.
+- Pages behind a password.
+- Data for search engines (schema.org), a sitemap, and old addresses kept alive
+  with redirects.
+
+**Languages**
+- The editor in English and Romanian, and more through language packs.
+- The same page in more than one language, with its own menu, a language
+  switcher, and the tags search engines need.
+
+**People**
+- An owner, and editors the owner invites. An editor writes and publishes
+  content; the rest stays with the owner.
+
+**Extensions and AI**
+- Extensions as a single file, accepted for what they ask, with their own
+  screens, pages, scheduled jobs and events.
+- AI writing as an extension, with your own key (Claude, OpenAI or Ollama): a
+  block written or rewritten, a page translated, a description suggested. Each
+  comes back as a change for you to accept.
+
+**Moving from another CMS**
+- Bring a WordPress site from its export file: pages, posts, images, menu and
+  categories, with links rewritten and old addresses still working. You see
+  what would come over before anything is written.
+
+Part by part, with what is still missing: [docs/status.md](docs/status.md).
 
 ## Install
 
-thecms is in **alpha** (ADR 0045): it stays there until everything decided is built, then
-goes to beta for testing and fixing, and only then to a stable release. Every release until
-then is a pre-release; the scripts below, and `thecms update`, take the newest one.
+The installer asks, one step at a time, where the site will live: only this
+computer, a server of yours, Docker, or a ready platform (Railway, Render,
+Fly.io) ([ADR 0048](docs/adr/0048-the-installer-in-steps.md)).
 
-On Linux or macOS, the installer asks, one step at a time, where the site will
-live (ADR 0048): only this computer, a server of yours, Docker, or a ready
-platform (Railway, Render, Fly.io):
+On Linux or macOS:
 
 ```sh
 curl -fsSL https://github.com/david0024/thecms/releases/download/v0.1.0-alpha.2/install.sh | sh
@@ -132,144 +103,64 @@ On Windows, in PowerShell, for this computer:
 irm https://github.com/david0024/thecms/releases/download/v0.1.0-alpha.2/install.ps1 | iex
 ```
 
-- **This computer:** in a folder for your site, run `thecms`. It makes `site.db`
-  with sample pages and serves the site, with its editor at `/admin/`.
-- **A server** (Linux with systemd, as root): it asks which database to install
-  (SQLite, PostgreSQL, MySQL or MariaDB) or the details of one of yours, which it
-  tests before it writes anything, and the address people will open. It installs
-  the database and Valkey, listening only on the server, and a service behind the
+- **This computer:** in a folder for your site, run `thecms`. It makes a sample
+  site and opens it, with its editor at `/admin/`.
+- **A server** (Linux with systemd, as root): it installs the database you
+  choose (SQLite, PostgreSQL, MySQL or MariaDB), or connects to one of yours
+  after testing it, installs Valkey, and runs the site as a service behind the
   web server that holds the certificate.
-- **Docker:** a folder with `compose.yaml`, the database and Valkey beside the site.
+- **Docker:** a folder with `compose.yaml`, the database and Valkey beside the
+  site.
 - **A ready platform:** [docs/install/platforms.md](docs/install/platforms.md).
 
 Then open the link it prints: on that first page you name the site, choose its
-language and make your account. Every question has an option, for a script:
+language and make your account. Every question also has an option, for
+scripts:
 
 ```sh
 curl -fsSL https://github.com/david0024/thecms/releases/download/v0.1.0-alpha.2/install.sh \
   | sh -s -- --host=server --database=postgres --public=https://cms.example.com
 ```
 
-`thecms update`, or the installer run again, brings the newest release and leaves the site as it is.
+`thecms update`, or the installer run again, brings the newest release and
+leaves the site as it is.
 
-## Try it from the sources
+## What comes next
 
-Needs [Bun](https://bun.sh) 1.4 or newer.
+Four stages, each ending with something you can use
+([ADR 0037](docs/adr/0037-direction.md#d4-the-order)):
+
+1. **The foundation:** the site served, scheduled publishing, comments, search,
+   pages behind a password, media and new blocks. *Done.*
+2. **What almost every site needs:** a form builder, complete SEO, scheduled
+   backups, relations between entries, statistics without cookies, entries in
+   more than one language, more roles, a complete export. *In progress.*
+3. **Commerce and members:** visitor accounts, a shop (products, cart, orders,
+   VAT), payments (Stripe and Netopia first), couriers, e-invoicing,
+   memberships and subscriptions, bookings, newsletters, and running on
+   Cloudflare.
+4. **Further:** courses, a forum, and several sites from one installation.
+
+## For developers
+
+thecms is TypeScript on [Bun](https://bun.sh), with Svelte 5 for the blocks and
+the editor. A site lives in SQLite, PostgreSQL or MySQL, chosen by its address,
+and the program ships as a single file for each platform.
 
 ```sh
 bun install
-bun run cms init site.db              # a sample site, in one file
-bun run cms edit site.db              # the site and its editor; open the address it prints
-bun run cms run site.db               # the site alone, for visitors
-bun run cms export site.db dist       # or the published site as static files
+bun run cms init site.db      # a sample site, in one file
+bun run cms edit site.db      # the site and its editor; open the address it prints
+bun run check                 # types, then tests
 ```
 
-The site's forms, comments and search are answered by its own server. To be
-told of a message by email, set `THECMS_SMTP` and `THECMS_MAIL_TO`. A site
-exported as files can send its forms to the small form service (ADR 0019): run
-it where visitors can reach it, put its address in Site settings, and export
-again:
-
-```sh
-THECMS_SMTP=smtps://user:pass@mail.example.com THECMS_MAIL_TO=you@example.com \
-  bun run cms forms site.db 4322     # receives at /send; messages show in the admin
-```
-
-`site.db` can be a Postgres or MySQL address instead of a file, and every
-command takes it the same way (ADR 0013):
-
-```sh
-bun run cms init postgres://user:pass@localhost:5432/mysite
-bun run cms edit mysql://user:pass@localhost:3306/mysite
-```
-
-MySQL 8.4 must allow `mysql_native_password` for the site's user for now
-(`--mysql-native-password=ON`); Postgres needs nothing special. To run the
-store's tests on them too, set `THECMS_TEST_POSTGRES` and `THECMS_TEST_MYSQL`
-to the address of an empty database each.
-
-The admin opens on the list of pages, with sections for posts, media, the menu
-and settings, and the theme. Choose a page to open it in the builder. There, click any text on the page and type. Add blocks from the left,
-style the selected block on the right, then Publish. **Edit theme** opens the
-theme builder: change the colours, typefaces and spacing, set how each block
-type looks by default, and download the result as a file. A theme is published
-separately from pages, with **Publish theme**. `export` writes what is published; serve `dist` with any static file
-server, and read what it says a static host cannot do.
-
-To bring a WordPress site: in WordPress choose Tools, Export, All content. Then open
-**Import** in the admin and choose the file; it shows what would come over before
-anything is written. Or, from the command line:
-
-```sh
-bun run cms import site.db export.xml   # a new site.db from the export
-```
-
-Add `--types=portfolio,team` to bring a plugin's kinds of entry as content types, and `--categories=projects` to make the posts of a category a content type of their own (ADR 0016).
-
-It copies the images, rewrites links, keeps old addresses working, and prints
-what could not come over (forms, shortcodes, comments).
-
-The address `edit` prints carries a key. The editor answers only on your own
-computer and only to that key.
-
-To let a client edit their site from anywhere, serve the editor at an address
-of its own, behind a server that holds the certificate (ADR 0022):
-
-```sh
-bun run cms serve site.db --public=https://cms.example.com   # listens on 127.0.0.1:4321
-```
-
-While the site has no owner it prints a link that works once, for an hour: open
-it and make the owner's account. The owner invites others from **People**; an
-editor writes and publishes pages, posts and entries, and the rest stays with
-the owner. Locked out: `bun run cms reset-link site.db you@example.com --public=https://cms.example.com`.
-
-## Develop
-
-```sh
-bun run check              # types, then tests
-bun test                   # tests only
-node e2e/editor.cjs        # the editor in a real browser, start to exported files (needs Playwright)
-```
-
-Coverage is counted over the whole source tree: the unit tests, and what the
-browser ran in the end-to-end tests, traced back to the source lines. CI fails
-when it drops under the floor in `package.json`, or when a source file is
-measured by no test.
-
-```sh
-bun test --coverage --coverage-reporter=lcov --coverage-dir=coverage
-for t in editor import templates forms admin accounts translations; do THECMS_COVERAGE=coverage node e2e/$t.cjs; done
-bun run coverage           # the table, coverage/all.lcov, and the gate
-```
-
-```sh
-bun tools/build.ts dist-bin --targets=linux-x64   # the program as one file (all platforms without --targets)
-```
-
-A release is a tag: set the version in `package.json`, then push `v<version>`.
-
-```
-src/core/     documents and their rules; pure TypeScript, no database, no framework
-src/blocks/   one Svelte 5 component per block type, and the shared layout CSS
-src/site/     the store (SQLite, Postgres or MySQL), the static export, the editing server, the command line
-src/admin/    the editor: a Svelte 5 app and the script that runs inside the canvas
-themes/       themes, as JSON
-languages/    language packs, as JSON (more from the folder in THECMS_LANGUAGES)
-docs/adr/     decisions, with their reasons
-```
-
-Three rules hold everywhere:
-
-1. **One list of block types** (`src/core/blocks.ts`). The renderer draws
-   exactly those; a test fails otherwise.
-2. **Nothing an author typed is ever markup or CSS.** Text is escaped by the
-   renderer; a style value is a theme token or a checked literal.
-3. **The core imports nothing but itself.** A test holds it to that.
+More: [working from the sources](docs/development.md), the
+[decisions behind thecms](docs/adr/README.md), each with its reason, and
+[how to contribute](CONTRIBUTING.md).
 
 ## Licence
 
-The core is [AGPL-3.0-or-later](LICENSE) (ADR 0020). Themes, language packs and
-the client/SDK are MIT; themes, modules and the sites you build may carry any
-licence. Contributions come under a simple [CLA](CLA.md); see
-[CONTRIBUTING.md](CONTRIBUTING.md).
+The core is [AGPL-3.0-or-later](LICENSE) ([ADR 0020](docs/adr/0020-licence-agpl.md)).
+Themes, language packs and the client SDK are MIT; your themes, extensions and
+the sites you build may carry any licence. Contributions come under a simple
+[CLA](CLA.md).
