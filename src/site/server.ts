@@ -18,6 +18,7 @@ import { startClock } from './clock.ts';
 import { backups, type Remote, type S3Settings } from './backup.ts';
 import type { Mailer } from './mail.ts';
 import { startRuntime } from './runtime.ts';
+import { RANGES, type Range, statsShown } from './stats.ts';
 import { isValkeyAddress, openShared, type Shared, shownAddress, switchable, testValkey } from './shared.ts';
 
 /** The admin's own addresses; every other is the site's (ADR 0044). */
@@ -508,6 +509,11 @@ export async function startEditor(
   async function api(request: Request, url: URL, me: User): Promise<Response> {
     if (url.pathname === '/api/extensions' || url.pathname.startsWith('/api/extensions/')) return extensionsApi(request, url, me);
     if (url.pathname.startsWith('/api/import')) return importApi(request, url);
+    if (url.pathname === '/api/stats' && request.method === 'GET') {
+      // Read by the owner and the editors; the owner's browser gives the time zone the days begin in (ADR 0053 d3).
+      const range = (RANGES as readonly string[]).includes(url.searchParams.get('range') ?? '') ? (url.searchParams.get('range') as Range) : '30';
+      return json(await statsShown(store, range, { zone: url.searchParams.get('zone') ?? '', owner: me.role === 'owner' }));
+    }
     if (url.pathname === '/api/backups' || url.pathname.startsWith('/api/backups/')) return backed ? backed.api(request, url) : json({ error: 'backups are not kept here' }, 404);
     if (url.pathname === '/api/messages') {
       const email = url.searchParams.get('email') ?? '';

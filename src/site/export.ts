@@ -278,7 +278,7 @@ export async function fullCheck(store: Store, files: Map<string, string | Uint8A
     ...checkSite(files),
     untranslated: await store.untranslated(),
     redirects: checkRedirects(files, await store.redirects()),
-    server: serverOnly(files, { formsElsewhere: (await store.site()).forms !== '', routes }),
+    server: serverOnly(files, { formsElsewhere: (await store.site()).forms !== '', routes, stats: await store.hasVisits() }),
     seo: checkSeo(files),
   };
 }
