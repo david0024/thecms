@@ -11,6 +11,7 @@
  * language's: its words from the language packs, the footer the owner wrote
  * for it, and the main menu with each page swapped for its translation.
  */
+import { typeIn } from './multilingual.ts';
 import type { MenuNode } from './menu.ts';
 import type { Site } from './page.ts';
 import { slugify } from './util.ts';
@@ -126,7 +127,8 @@ function menuIn(site: Site, language: string, nodes: MenuNode[], pages: Placed[]
     const children = menuIn(site, language, node.children, pages);
     if (node.target.kind === 'page') return [{ ...node, label: '', target: { kind: 'page', slug: addressIn(site, language, node.target.slug, pages) ?? slugIn(site, language, node.target.slug) }, children }];
     if (node.target.kind === 'url') return [{ ...node, children }];
-    // A list of entries is in the main language; what it held stays in the menu.
+    // A list of entries is there in its type's name in that language, when it has entries there (ADR 0054).
+    if (node.target.kind === 'type') return [{ ...node, label: '', children }];
     if (node.target.kind === 'none') return [{ ...node, children }];
     return children;
   });
@@ -148,7 +150,7 @@ export function siteIn(site: Site, language: string, pages: Placed[] = []): Site
     // Links (a privacy page, a profile) are often the same in every language; the main ones stand in until the owner gives others.
     footerLinks: own?.footerLinks.length ? own.footerLinks : site.footerLinks,
     menu: site.menu ? menuIn(site, language, site.menu, pages) : null,
-    // Posts and entries are in the main language for now (ADR 0024).
-    types: [],
+    // Each type with its name and address in that language (ADR 0054).
+    types: site.types.map((type) => typeIn(site, type, language)),
   };
 }

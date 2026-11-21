@@ -95,6 +95,10 @@ export interface PostInfo extends PageInfo {
   date: string;
   /** The titles of the entries that link to it (ADR 0052 d4). */
   usedBy?: string[];
+  /** The languages it is in besides the main one, each at its address in the editor (ADR 0054). */
+  translations?: { language: string; slug: string; missing: number; split: boolean }[];
+  /** Its categories and tags, which each language may write its own way (ADR 0054 d3). */
+  terms?: string[];
 }
 /** A content type's own page (ADR 0015): whether it has one, and whether visitors see what is being worked on. */
 export interface TemplateInfo {

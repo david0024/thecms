@@ -54,6 +54,41 @@ export interface ContentType {
   layout?: string;
   /** Visitors may comment on its entries, and what the owner approves is shown under each (ADR 0040). */
   comments?: true;
+  /** Its name, address and words in the site's other languages (ADR 0054 d3). */
+  translations?: Record<string, TypeTranslation>;
+}
+
+const TYPE_LANGUAGE = /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/;
+
+/** A type's name, address and words in each language, cleaned (ADR 0054 d3). */
+export function normalizeTypeTranslations(input: unknown): Record<string, TypeTranslation> {
+  const out: Record<string, TypeTranslation> = {};
+  for (const [language, raw] of Object.entries(isObject(input) ? input : {}).slice(0, 60)) {
+    if (!TYPE_LANGUAGE.test(language) || !isObject(raw)) continue;
+    const words: Record<string, string> = {};
+    for (const [from, to] of Object.entries(isObject(raw.words) ? raw.words : {}).slice(0, 500)) {
+      const key = str(from, 60).replace(/\s+/g, ' ').trim();
+      const value = str(to, 60).replace(/\s+/g, ' ').trim();
+      if (key && value && value !== key) words[key] = value;
+    }
+    out[language] = {
+      name: str(raw.name, 60).replace(/\s+/g, ' ').trim(),
+      singular: str(raw.singular, 60).replace(/\s+/g, ' ').trim(),
+      path: slugify(raw.path),
+      words,
+    };
+  }
+  return out;
+}
+
+/** A content type in one other language (ADR 0054 d3). Empty: the main language's. */
+export interface TypeTranslation {
+  name: string;
+  singular: string;
+  /** Its address after the language's prefix: `jurnal`, at `/ro/jurnal/`. */
+  path: string;
+  /** Its categories, tags and choices in that language, by how the main language writes them: `Restoration` → `Restaurare`. */
+  words: Record<string, string>;
 }
 
 /** The blog a new site starts with, and the type a site made before ADR 0025 kept its posts in. */
@@ -142,6 +177,7 @@ export function normalizeTypes(input: unknown): ContentType[] {
       fields: cleanFields(raw.fields),
       ...(slugify(raw.layout) ? { layout: slugify(raw.layout) } : {}),
       ...(raw.comments === true ? { comments: true as const } : {}),
+      ...(isObject(raw.translations) && Object.keys(raw.translations).length ? { translations: normalizeTypeTranslations(raw.translations) } : {}),
     });
   }
   // A link field leads to a type the site has; one whose type is gone goes with it (ADR 0052 d1).

@@ -19,6 +19,17 @@
  */
 import { SQL } from 'bun';
 import {
+  commentKey,
+  type EntryTranslation,
+  entryIn,
+  entrySlugIn,
+  entryTranslationFrom,
+  fillEntryTranslation,
+  missingEntryWords,
+  newEntryTranslation,
+  type SlugsIn,
+  slugsIn,
+  typeIn,
   type Answer,
   contactForm,
   type Form,
@@ -176,6 +187,7 @@ const SQLITE: Dialect = {
     'CREATE TABLE IF NOT EXISTS extension_jobs (extension TEXT NOT NULL, action TEXT NOT NULL, last_at TEXT NOT NULL, PRIMARY KEY (extension, action))',
     'CREATE TABLE IF NOT EXISTS comments (id TEXT PRIMARY KEY, type TEXT NOT NULL, entry TEXT NOT NULL, name TEXT NOT NULL, email TEXT NOT NULL, body TEXT NOT NULL, consent TEXT NOT NULL, at TEXT NOT NULL, approved INTEGER NOT NULL)',
     'CREATE TABLE IF NOT EXISTS message_answers (id TEXT PRIMARY KEY, answers TEXT NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS comment_languages (id TEXT PRIMARY KEY, language TEXT NOT NULL)',
     'CREATE TABLE IF NOT EXISTS visits (day TEXT NOT NULL, kind TEXT NOT NULL, name TEXT NOT NULL, hits INTEGER NOT NULL, PRIMARY KEY (day, kind, name))',
   ],
   params: (query) => query,
@@ -209,6 +221,7 @@ const POSTGRES: Dialect = {
     'CREATE TABLE IF NOT EXISTS extension_jobs (extension VARCHAR(64) NOT NULL, action VARCHAR(64) NOT NULL, last_at VARCHAR(40) NOT NULL, PRIMARY KEY (extension, action))',
     'CREATE TABLE IF NOT EXISTS comments (id VARCHAR(40) PRIMARY KEY, type VARCHAR(255) NOT NULL, entry VARCHAR(255) NOT NULL, name TEXT NOT NULL, email TEXT NOT NULL, body TEXT NOT NULL, consent TEXT NOT NULL, at VARCHAR(40) NOT NULL, approved INTEGER NOT NULL)',
     'CREATE TABLE IF NOT EXISTS message_answers (id VARCHAR(40) PRIMARY KEY, answers TEXT NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS comment_languages (id VARCHAR(40) PRIMARY KEY, language VARCHAR(20) NOT NULL)',
     'CREATE TABLE IF NOT EXISTS visits (day VARCHAR(10) NOT NULL, kind VARCHAR(20) NOT NULL, name VARCHAR(255) NOT NULL, hits INTEGER NOT NULL, PRIMARY KEY (day, kind, name))',
   ],
   params: (query) => {
@@ -241,6 +254,7 @@ const MYSQL: Dialect = {
     `CREATE TABLE IF NOT EXISTS extension_jobs (extension VARCHAR(64) NOT NULL, action VARCHAR(64) NOT NULL, last_at VARCHAR(40) NOT NULL, PRIMARY KEY (extension, action)) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS comments (id VARCHAR(40) PRIMARY KEY, type VARCHAR(255) NOT NULL, entry VARCHAR(255) NOT NULL, name TEXT NOT NULL, email TEXT NOT NULL, body TEXT NOT NULL, consent TEXT NOT NULL, at VARCHAR(40) NOT NULL, approved INTEGER NOT NULL) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS message_answers (id VARCHAR(40) PRIMARY KEY, answers LONGTEXT NOT NULL) ${MYSQL_TABLE}`,
+    `CREATE TABLE IF NOT EXISTS comment_languages (id VARCHAR(40) PRIMARY KEY, language VARCHAR(20) NOT NULL) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS visits (day VARCHAR(10) NOT NULL, kind VARCHAR(20) NOT NULL, name VARCHAR(255) NOT NULL, hits INTEGER NOT NULL, PRIMARY KEY (day, kind, name)) ${MYSQL_TABLE}`,
   ],
   params: (query) => query,
@@ -318,6 +332,8 @@ export interface Comment {
   /** When it was sent, as an ISO time. */
   at: string;
   approved: boolean;
+  /** The language of the entry it was written under, when not the main one (ADR 0054 d6). */
+  language?: string;
 }
 
 /**
@@ -494,6 +510,16 @@ export class Store {
     for (const type of site.types) {
       if (await this.draft(type.path)) throw new Error(`a page already lives at "/${type.path}/"; give the content type "${type.name}" another address`);
     }
+    // In each other language, two types never answer at one address, and no page lives where a type does (ADR 0054 d3).
+    const placed = new Set(placePages(site, await this.drafts()).map((p) => p.slug));
+    for (const language of site.languages) {
+      const seen = new Set<string>();
+      for (const type of site.types) {
+        const path = typeIn(site, type, language).path;
+        if (seen.has(path) || placed.has(path)) throw new Error(`"/${path}/" is already taken in ${languageName(language)}; give the content type "${type.name}" another address there`);
+        seen.add(path);
+      }
+    }
     // A language takes its prefix as an address, and keeps its pages while it has any (ADR 0024).
     const slugs = (await this.rows<{ slug: string }>('SELECT slug FROM pages')).map((row) => String(row.slug));
     for (const language of site.languages) {
@@ -501,6 +527,12 @@ export class Store {
     }
     const translated = (await this.drafts()).flatMap((page) => Object.keys(page.translations ?? {}).filter((language) => !site.languages.includes(language)).map((language) => ({ page, language })))[0];
     if (translated) throw new Error(`"${translated.page.title}" is still in ${languageName(translated.language)}; remove its translation before removing the language`);
+    // So is an entry (ADR 0054).
+    for (const row of await this.rows<{ draft: string }>('SELECT draft FROM entries')) {
+      const doc = JSON.parse(row.draft) as { title?: unknown; translations?: Record<string, unknown> };
+      const language = Object.keys(isObject(doc.translations) ? doc.translations : {}).find((l) => !site.languages.includes(l));
+      if (language) throw new Error(`"${String(doc.title ?? '')}" is still in ${languageName(language)}; remove its translation before removing the language`);
+    }
     const left = slugs.find((slug) => slug.includes('/') && !site.languages.some((language) => slug.startsWith(`${prefixOf(language)}/`)));
     if (left) throw new Error(`"/${left}/" is still in ${languageName(left.split('/')[0] as string)}; delete the pages of a language before removing it`);
     const kept = new Set([...site.types.map((t) => t.id)]);
@@ -968,7 +1000,21 @@ export class Store {
       const translation = owner?.translations?.[p.language];
       const missing = owner && translation ? missingWords(owner, translation).length : 0;
       return missing ? [{ slug: p.slug, language: p.language, missing }] : [];
-    });
+    }).concat(await this.untranslatedEntries(site));
+  }
+
+  /** The same for each published entry's translations (ADR 0054 d7): by its address on the site. */
+  private async untranslatedEntries(site: Site): Promise<{ slug: string; language: string; missing: number }[]> {
+    const out: { slug: string; language: string; missing: number }[] = [];
+    for (const type of contentTypes(site)) {
+      for (const post of await this.publishedEntries(type.id)) {
+        for (const [language, translation] of Object.entries(post.translations ?? {})) {
+          const missing = site.languages.includes(language) ? missingEntryWords(type, post, translation).length : 0;
+          if (missing) out.push({ slug: entryPath(typeIn(site, type, language), entrySlugIn(post, language)).slice(1, -1), language, missing });
+        }
+      }
+    }
+    return out;
   }
 
   /** A section as it is being written (ADR 0033). */
@@ -1149,6 +1195,8 @@ export class Store {
     const { post } = normalizePost(input, new Date().toISOString().slice(0, 10), type);
     if (!post.title) throw new Error('an entry has a title');
     if (!post.slug) throw new Error('an entry has an address');
+    // Words kept for a block the entry no longer has are words of nothing (ADR 0032).
+    for (const translation of Object.values(post.translations ?? {})) translation.fields = keepWords(post.blocks, translation.fields);
     await this.run(this.dialect.upsert('entries', ['type', 'slug', 'draft', 'updated_at'], ['type', 'slug'], ['draft', 'updated_at']), [
       type.id,
       post.slug,
@@ -1158,7 +1206,9 @@ export class Store {
     return post;
   }
 
-  async publishEntry(typeId: string, slug: string, now = new Date()): Promise<void> {
+  async publishEntry(typeId: string, where: string, now = new Date()): Promise<void> {
+    // A translation is published with its entry (ADR 0054 d4).
+    const slug = (await this.locateEntry(typeId, where))?.of ?? where;
     if (!(await this.row('SELECT 1 AS found FROM entries WHERE type = ? AND slug = ?', [typeId, slug]))) throw new Error(`no entry "${slug}"`);
     const at = now.toISOString();
     await this.run('UPDATE entries SET published = draft, published_at = ? WHERE type = ? AND slug = ?', [at, typeId, slug]);
@@ -1195,6 +1245,99 @@ export class Store {
     return row ? JSON.parse(row.doc) : null;
   }
 
+  /**
+   * The entry at an address in the editor, as it is being written: an entry
+   * of the main language, or a translation of one at `ro/<its address>`
+   * (ADR 0054), with the entry it is of, its language and whether it is split.
+   */
+  async locateEntry(typeId: string, at: string): Promise<{ post: Post; of: string; language: string; split: boolean } | null> {
+    const site = await this.site();
+    const language = languageOf(site, at);
+    if (language === site.language) return null;
+    const type = await this.type(typeId);
+    const slug = at.slice(prefixOf(language).length + 1);
+    const drafts = await this.draftEntries(typeId);
+    const main = drafts.find((p) => p.translations?.[language] && entrySlugIn(p, language) === slug);
+    if (!main) return null;
+    const post = entryIn(site, type, main, language, await this.draftSlugs(language)) as Post;
+    return { post: { ...post, slug: at }, of: main.slug, language, split: main.translations?.[language]?.blocks != null };
+  }
+
+  /** Where each draft entry is in a language, for the links between them there. */
+  private async draftSlugs(language: string): Promise<SlugsIn> {
+    const all: Record<string, Post[]> = {};
+    for (const type of contentTypes(await this.site())) all[type.id] = await this.draftEntries(type.id);
+    return slugsIn(language, all);
+  }
+
+  /** An entry's translation into a language, changed by `change` and kept in its draft (ADR 0054). */
+  private async withEntryTranslation(typeId: string, of: string, language: string, change: (post: Post, translation: EntryTranslation | undefined) => EntryTranslation | null): Promise<{ post: Post; of: string; language: string; split: boolean } | null> {
+    const site = await this.site();
+    if (!site.languages.includes(language)) throw new Error(`${languageName(language)} is not one of the site's languages`);
+    const type = await this.type(typeId);
+    const post = await this.entryDraft(typeId, of);
+    if (!post) throw new Error(`no entry "${of}"`);
+    const next = change(post, post.translations?.[language]);
+    const translations = { ...post.translations };
+    if (next) translations[language] = next;
+    else delete translations[language];
+    if (next) {
+      const slug = next.slug || post.slug;
+      const taken = (await this.draftEntries(typeId)).find((p) => p.slug !== post.slug && p.translations?.[language] && entrySlugIn(p, language) === slug);
+      if (taken) throw new Error(`"${entryPath(typeIn(site, type, language), slug)}" is already the address of "${taken.title}"`);
+    }
+    await this.saveEntry(typeId, { ...post, translations });
+    return next ? this.locateEntry(typeId, `${prefixOf(language)}/${next.slug || post.slug}`) : null;
+  }
+
+  /** Starts an entry in another language: all in the main language's words until they are written (ADR 0054 d1). */
+  async translateEntry(typeId: string, of: string, language: string): Promise<{ post: Post; of: string; language: string; split: boolean }> {
+    return (await this.withEntryTranslation(typeId, of, language, (_post, had) => {
+      if (had) throw new Error('this entry is already in that language');
+      return newEntryTranslation();
+    })) as { post: Post; of: string; language: string; split: boolean };
+  }
+
+  /** Keeps a translation as written in the editor: its address, its words, or its blocks when it is split. */
+  async saveEntryTranslation(typeId: string, of: string, language: string, input: unknown): Promise<{ post: Post; of: string; language: string; split: boolean }> {
+    const site = await this.site();
+    const type = await this.type(typeId);
+    const raw = isObject(input) ? input : {};
+    const at = String(raw.slug ?? '');
+    const own = languageOf(site, at) === language ? at.slice(prefixOf(language).length + 1) : at;
+    const { post: written } = normalizePost({ ...raw, slug: own }, undefined, type);
+    if (!written.title) throw new Error('an entry has a title');
+    return (await this.withEntryTranslation(typeId, of, language, (post, had) => {
+      if (!had) throw new Error('this entry is not in that language yet');
+      const { translation, problem } = entryTranslationFrom(type, post, had, { ...written, slug: written.slug || post.slug });
+      if (problem) throw new Error(problem);
+      return translation;
+    })) as { post: Post; of: string; language: string; split: boolean };
+  }
+
+  /** Fills in what a translation does not say yet from the entry written in that language (ADR 0034); words already written stay. */
+  async fillEntryTranslation(typeId: string, of: string, language: string, input: unknown): Promise<void> {
+    const type = await this.type(typeId);
+    const { post: written } = normalizePost(input, undefined, type);
+    await this.withEntryTranslation(typeId, of, language, (post, had) => {
+      if (!had || had.blocks) throw new Error('this entry has no translation into that language to fill in');
+      return fillEntryTranslation(type, post, had, written);
+    });
+  }
+
+  /** Splits an entry for one language (ADR 0032 d4): its translation keeps its own blocks, as they show now. */
+  async splitEntryTranslation(typeId: string, of: string, language: string): Promise<{ post: Post; of: string; language: string; split: boolean }> {
+    return (await this.withEntryTranslation(typeId, of, language, (post, had) => {
+      if (!had) throw new Error('this entry is not in that language yet');
+      return had.blocks ? had : { ...had, fields: {}, blocks: localizeBlocks(post.blocks, had.fields) };
+    })) as { post: Post; of: string; language: string; split: boolean };
+  }
+
+  /** Takes an entry out of one language. What is published stays until the entry is published again. */
+  async deleteEntryTranslation(typeId: string, of: string, language: string): Promise<void> {
+    await this.withEntryTranslation(typeId, of, language, () => null);
+  }
+
   async entryDraft(typeId: string, slug: string): Promise<Post | null> {
     const type = await this.type(typeId);
     const row = await this.row<{ draft: string }>('SELECT draft FROM entries WHERE type = ? AND slug = ?', [typeId, slug]);
@@ -1202,7 +1345,7 @@ export class Store {
   }
 
   /** Every entry of a type, in the order its list shows them, with whether its draft differs from what is published. */
-  async entries(typeId: string): Promise<{ slug: string; title: string; date: string; published: boolean; changed: boolean }[]> {
+  async entries(typeId: string): Promise<{ slug: string; title: string; date: string; published: boolean; changed: boolean; translations?: { language: string; slug: string; missing: number; split: boolean }[]; terms?: string[] }[]> {
     const type = await this.type(typeId);
     const rows = (await this.rows<{ draft: string; published: string | null }>('SELECT draft, published FROM entries WHERE type = ?', [typeId])).map((row) => ({
       post: normalizePost(JSON.parse(row.draft), undefined, type).post,
@@ -1212,7 +1355,10 @@ export class Store {
     const state = new Map(rows.map((row) => [row.post.slug, row]));
     return listed(type, rows.map((row) => row.post)).map((post) => {
       const { published, changed } = state.get(post.slug) as { published: boolean; changed: boolean };
-      return { slug: post.slug, title: post.title, date: post.date, published, changed };
+      // Each language it is in, at its address in the editor, with how much still shows the main language (ADR 0054).
+      const translations = Object.entries(post.translations ?? {}).map(([language, t]) => ({ language, slug: `${prefixOf(language)}/${t.slug || post.slug}`, missing: missingEntryWords(type, post, t).length, split: t.blocks !== null }));
+      const terms = [...post.categories, ...post.tags];
+      return { slug: post.slug, title: post.title, date: post.date, published, changed, ...(translations.length ? { translations } : {}), ...(terms.length ? { terms } : {}) };
     });
   }
 
@@ -1229,6 +1375,7 @@ export class Store {
     await this.run('DELETE FROM versions WHERE kind = ? AND slug = ?', [typeId, slug]);
     await this.run('DELETE FROM schedule WHERE kind = ? AND slug = ?', [typeId, slug]);
     await this.run('DELETE FROM comments WHERE type = ? AND entry = ?', [typeId, slug]);
+    await this.run('DELETE FROM comment_languages WHERE id NOT IN (SELECT id FROM comments)');
   }
 
   /**
@@ -1521,6 +1668,7 @@ export class Store {
   /** A message's answers go with it. */
   private async forgetLooseAnswers(): Promise<void> {
     await this.run('DELETE FROM message_answers WHERE id NOT IN (SELECT id FROM messages)');
+    await this.run('DELETE FROM comment_languages WHERE id NOT IN (SELECT id FROM comments)');
   }
 
   // Comments (ADR 0040).
@@ -1530,7 +1678,7 @@ export class Store {
    * owner, unless an earlier comment from the same address was approved:
    * someone the owner already let speak is not held each time.
    */
-  async addComment(input: { type: string; entry: string; name: string; email: string; body: string; consent: string }, at = new Date()): Promise<Comment> {
+  async addComment(input: { type: string; entry: string; name: string; email: string; body: string; consent: string; language?: string }, at = new Date()): Promise<Comment> {
     const email = str(input.email, 254).trim();
     const known = await this.row('SELECT 1 AS found FROM comments WHERE LOWER(email) = ? AND approved = 1', [email.toLowerCase()]);
     const comment: Comment = {
@@ -1543,6 +1691,7 @@ export class Store {
       consent: str(input.consent, 600).trim(),
       at: at.toISOString(),
       approved: known !== null,
+      ...(input.language ? { language: str(input.language, 20) } : {}),
     };
     await this.run('INSERT INTO comments (id, type, entry, name, email, body, consent, at, approved) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', [
       comment.id,
@@ -1555,6 +1704,8 @@ export class Store {
       comment.at,
       comment.approved ? 1 : 0,
     ]);
+    // Kept beside it, as a message's answers are: a comment is shown under the entry in the language it was written in.
+    if (comment.language) await this.run('INSERT INTO comment_languages (id, language) VALUES (?, ?)', [comment.id, comment.language]);
     this.emit('comment.created', { id: comment.id, type: comment.type, entry: comment.entry, name: comment.name, body: comment.body, approved: comment.approved });
     return comment;
   }
@@ -1562,7 +1713,7 @@ export class Store {
   /** Every comment, those waiting first and then newest first; or those one address sent. */
   async comments(email?: string): Promise<Comment[]> {
     const rows = await this.rows<Row>(
-      `SELECT id, type, entry, name, email, body, consent, at, approved FROM comments${email ? ' WHERE LOWER(email) = ?' : ''} ORDER BY approved, at DESC, id`,
+      `SELECT c.id, c.type, c.entry, c.name, c.email, c.body, c.consent, c.at, c.approved, l.language FROM comments c LEFT JOIN comment_languages l ON l.id = c.id${email ? ' WHERE LOWER(c.email) = ?' : ''} ORDER BY c.approved, c.at DESC, c.id`,
       email ? [email.trim().toLowerCase()] : [],
     );
     return rows.map((r) => ({
@@ -1575,6 +1726,7 @@ export class Store {
       consent: String(r.consent),
       at: String(r.at),
       approved: Number(r.approved) === 1,
+      ...(r.language ? { language: String(r.language) } : {}),
     }));
   }
 
@@ -1586,20 +1738,22 @@ export class Store {
 
   async deleteComment(id: string): Promise<void> {
     await this.run('DELETE FROM comments WHERE id = ?', [id]);
+    await this.run('DELETE FROM comment_languages WHERE id = ?', [id]);
   }
 
   /** Erases every comment one address sent. Returns how many were erased. */
   async deleteCommentsFrom(email: string): Promise<number> {
     const found = (await this.comments(email)).length;
     await this.run('DELETE FROM comments WHERE LOWER(email) = ?', [email.trim().toLowerCase()]);
+    await this.run('DELETE FROM comment_languages WHERE id NOT IN (SELECT id FROM comments)');
     return found;
   }
 
   /** What the site shows: the approved comments of each entry, by `type/entry`, oldest first, without their addresses. */
   async shownComments(): Promise<Record<string, ShownComment[]>> {
-    const rows = await this.rows<Row>('SELECT id, type, entry, name, body, at FROM comments WHERE approved = 1 ORDER BY at, id');
+    const rows = await this.rows<Row>('SELECT c.id, c.type, c.entry, c.name, c.body, c.at, l.language FROM comments c LEFT JOIN comment_languages l ON l.id = c.id WHERE c.approved = 1 ORDER BY c.at, c.id');
     const out: Record<string, ShownComment[]> = {};
-    for (const r of rows) (out[`${String(r.type)}/${String(r.entry)}`] ??= []).push({ id: String(r.id), name: String(r.name), body: String(r.body), at: String(r.at) });
+    for (const r of rows) (out[commentKey(String(r.type), String(r.entry), r.language ? String(r.language) : '')] ??= []).push({ id: String(r.id), name: String(r.name), body: String(r.body), at: String(r.at) });
     return out;
   }
 
@@ -1946,6 +2100,7 @@ export const BACKUP_TABLES = [
   'messages',
   'message_answers',
   'comments',
+  'comment_languages',
   'users',
   'page_locks',
   'extensions',

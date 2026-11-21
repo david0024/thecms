@@ -1,6 +1,6 @@
 # ADR 0032 — A page is translated field by field
 
-- **Status:** Accepted (owner, 2026-11-20: left the choice of model to the project; translation by field as the rule, a separate copy as the exception)
+- **Status:** Accepted (owner, 2026-11-20: left the choice of model to the project; translation by field as the rule, a separate copy as the exception); entries follow it in ADR 0054
 - **Date:** 2026-11-20
 - **Builds on:** ADR 0024 (the same page in more than one language), ADR 0028 (versions), ADR 0029 (the check before publishing)
 - **Replaces:** ADR 0024 d2 and d3 (a translation is a copy under the language's prefix)

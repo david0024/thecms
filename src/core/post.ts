@@ -5,6 +5,8 @@
  * do in a post.
  */
 import { type Block, blocksText, cleanImage, type ImageValue, mediaSources, normalizeBlocks } from './blocks.ts';
+import type { Words } from './localize.ts';
+import { normalizeRichText } from './richtext.ts';
 import { cleanSeo, type Seo } from './seo.ts';
 import { BLOG_SLUG, cleanTypeFields, type ContentType, postsType } from './types.ts';
 import { type Issue, isObject, slugify, str } from './util.ts';
@@ -29,6 +31,11 @@ export interface Post extends Seo {
   blocks: Block[];
   /** What visitors wrote under it and the owner approved, oldest first (ADR 0040): filled in to draw it, never kept. */
   comments?: ShownComment[];
+  /** The entry in the site's other languages, by language (ADR 0054). */
+  translations?: Record<string, EntryTranslation>;
+  /** Drawn in another language: the main entry's address, and the language (ADR 0054). Never kept. */
+  of?: string;
+  language?: string;
 }
 
 /** A comment as the site shows it: never the address it was sent from. */
@@ -38,6 +45,63 @@ export interface ShownComment {
   body: string;
   /** When it was sent, as an ISO time. */
   at: string;
+}
+
+/** Where an entry's comments are kept and found: by its type and main address, and the language they were written in (ADR 0054 d6). */
+export const commentKey = (type: string, slug: string, language = ''): string => (language ? `${type}/${slug}/${language}` : `${type}/${slug}`);
+
+/** An entry in one other language. */
+export interface EntryTranslation {
+  /** Its address in that language; empty: the main entry's. */
+  slug: string;
+  /** Empty: the main entry's. */
+  title: string;
+  description: string;
+  excerpt: string;
+  seoTitle?: string;
+  /** The words of its blocks, by where they are (ADR 0032 d2). */
+  fields: Record<string, Words>;
+  /** Its type's text fields, and the words of its pictures, links and files: `client`, `photo.alt`, `@cover.alt`. */
+  values: Record<string, string>;
+  /** Split for this language (ADR 0032 d4): its own blocks. */
+  blocks: Block[] | null;
+}
+
+const ENTRY_LANGUAGE = /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/;
+const FIELD_KEY = /^[A-Za-z0-9_-]{1,40}(\.[A-Za-z0-9_]{1,40}){1,6}$/;
+const VALUE_KEY = /^(@cover\.alt|[a-z0-9_]{1,40}(\.(alt|label))?)$/;
+
+function normalizeOne(raw: Record<string, unknown>): EntryTranslation {
+  const fields: Record<string, Words> = {};
+  for (const [key, value] of Object.entries(isObject(raw.fields) ? raw.fields : {}).slice(0, 3000)) {
+    if (!FIELD_KEY.test(key)) continue;
+    if (typeof value === 'string') fields[key] = str(value, 3000);
+    else if (Array.isArray(value)) fields[key] = normalizeRichText(value);
+  }
+  const values: Record<string, string> = {};
+  for (const [key, value] of Object.entries(isObject(raw.values) ? raw.values : {}).slice(0, 100)) {
+    if (VALUE_KEY.test(key) && typeof value === 'string' && value.trim()) values[key] = str(value, 2000).trim();
+  }
+  const seo = cleanSeo(raw);
+  return {
+    slug: slugify(raw.slug),
+    title: str(raw.title, 200).trim(),
+    description: str(raw.description, 300).trim(),
+    excerpt: str(raw.excerpt, 400).trim(),
+    ...(seo.seoTitle ? { seoTitle: seo.seoTitle } : {}),
+    fields,
+    values,
+    blocks: Array.isArray(raw.blocks) ? normalizeBlocks(raw.blocks).blocks : null,
+  };
+}
+
+/** An entry's translations, by language, cleaned. */
+export function normalizeEntryTranslations(input: unknown): Record<string, EntryTranslation> {
+  const out: Record<string, EntryTranslation> = {};
+  for (const [language, raw] of Object.entries(isObject(input) ? input : {}).slice(0, 60)) {
+    if (ENTRY_LANGUAGE.test(language) && isObject(raw)) out[language] = normalizeOne(raw);
+  }
+  return out;
 }
 
 export const POSTS_PER_PAGE = 10;
@@ -89,6 +153,7 @@ export function normalizePost(input: unknown, today = '1970-01-01', type: Conten
       fields: cleanTypeFields(type, raw.fields, isDate),
       blocks,
       ...cleanSeo(raw),
+      ...(isObject(raw.translations) && Object.keys(raw.translations).length ? { translations: normalizeEntryTranslations(raw.translations) } : {}),
     },
     issues,
   };
@@ -159,10 +224,13 @@ export interface Crumb {
 }
 
 /** Where an entry is (d4): home, its type's list, its first category when its type has them, the entry. */
+/** The home page a type's addresses are under: `/`, or `/ro/` for a type in another language (ADR 0054). */
+const homeOf = (type: ContentType): string => (type.path.includes('/') ? `/${type.path.split('/')[0]}/` : '/');
+
 export function entryTrail(home: string, type: ContentType, post: Post): Crumb[] {
   const category = type.categories ? post.categories[0] : undefined;
   return [
-    { name: home, href: '/' },
+    { name: home, href: homeOf(type) },
     { name: type.name, href: listPath(type) },
     ...(category ? [{ name: category, href: typeCategoryPath(type, category) }] : []),
     { name: post.title, href: entryPath(type, post.slug) },
@@ -172,7 +240,7 @@ export function entryTrail(home: string, type: ContentType, post: Post): Crumb[]
 /** Where a list of entries is: home, the type's list, and the category or tag when it is one of those. */
 export function listTrail(home: string, type: ContentType, heading: string, path: string): Crumb[] {
   const own = !path.startsWith(`/${type.path}/category/`) && !path.startsWith(`/${type.path}/tag/`);
-  return [{ name: home, href: '/' }, { name: type.name, href: listPath(type) }, ...(own ? [] : [{ name: heading, href: path }])];
+  return [{ name: home, href: homeOf(type) }, { name: type.name, href: listPath(type) }, ...(own ? [] : [{ name: heading, href: path }])];
 }
 
 /** The breadcrumbs as schema.org says them, with whole addresses. */

@@ -15,7 +15,7 @@
  * It takes comments the same way (ADR 0040): one on a published entry of a
  * type that takes them is kept until the owner approves it.
  */
-import { answersText, type Block, checkAnswers, contentTypes, entryPath, formBlocks, formIn, prefixOf, type Site } from '../core/index.ts';
+import { answersText, type Block, checkAnswers, contentTypes, entryIn, entryPath, typeIn, formBlocks, formIn, prefixOf, type Site } from '../core/index.ts';
 import { wordsFor } from '../blocks/words.ts';
 import { isEmail, type Mailer } from './mail.ts';
 import { localShared, type Shared } from './shared.ts';
@@ -137,9 +137,12 @@ export function startForms(
     const field = (name: string): string => (fields.get(name) ?? '').trim();
     const type = contentTypes(site).find((t) => t.id === field('type') && t.comments);
     const slug = field('entry');
-    const entry = type && slug ? (await store.publishedEntries(type.id)).find((post) => post.slug === slug) : undefined;
+    const main = type && slug ? (await store.publishedEntries(type.id)).find((post) => post.slug === slug) : undefined;
+    // Written under the entry in another language: kept with that language, and found there (ADR 0054 d6).
+    const language = site.languages.includes(field('language')) && main?.translations?.[field('language')] ? field('language') : '';
+    const entry = type && main && language ? entryIn(site, type, main, language) : main;
     // Back to the entry itself, wherever the form said it was.
-    const at = type && entry ? entryPath(type, entry.slug) : back;
+    const at = type && entry ? entryPath(typeIn(site, type, language || site.language), entry.slug) : back;
     const answer = (ok: boolean): Response => sentBack(home, at, 'comment', ok);
     if (field('website')) return answer(true);
     const name = field('name');
@@ -149,7 +152,7 @@ export function startForms(
     if (await tooMany(ip || 'unknown')) return answer(false);
 
     await store.forgetOldMessages();
-    const kept = await store.addComment({ type: type.id, entry: entry.slug, name, email, body, consent: wordsFor(site.language).commentConsent });
+    const kept = await store.addComment({ type: type.id, entry: slug, name, email, body, consent: wordsFor(language || site.language).commentConsent, ...(language ? { language } : {}) });
     const state = kept.approved ? 'It is shown already: an earlier comment from this address was approved.' : 'It waits for your approval, under Comments in the admin.';
     tell(kept.id, { replyTo: email, subject: `${site.name}: a comment from ${name}`, text: `${name} <${email}> commented on "${entry.title}", ${site.url}${at}:\n\n${body}\n\n${state}\n` });
     return answer(true);

@@ -42,7 +42,7 @@ const databases: [string, string][] = [['SQLite', join(dir, 'site.db')]];
 if (process.env.THECMS_TEST_POSTGRES) databases.push(['Postgres', process.env.THECMS_TEST_POSTGRES]);
 if (process.env.THECMS_TEST_MYSQL) databases.push(['MySQL', process.env.THECMS_TEST_MYSQL]);
 
-const TABLES = ['meta', 'pages', 'sections', 'entries', 'media', 'messages', 'users', 'sessions', 'links', 'extensions', 'extension_rows', 'versions', 'media_sizes', 'schedule', 'media_variants', 'page_locks', 'extension_jobs', 'comments', 'message_answers', 'visits'];
+const TABLES = ['meta', 'pages', 'sections', 'entries', 'media', 'messages', 'users', 'sessions', 'links', 'extensions', 'extension_rows', 'versions', 'media_sizes', 'schedule', 'media_variants', 'page_locks', 'extension_jobs', 'comments', 'message_answers', 'comment_languages', 'visits'];
 /** A database emptied, then a small site in it: a page, a picture, an owner signed in, a message. */
 async function fresh(address: string): Promise<Store> {
   const old = await Store.open(address);

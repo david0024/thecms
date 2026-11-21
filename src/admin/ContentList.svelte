@@ -24,14 +24,19 @@ let {
   items: (PageInfo | PostInfo)[];
   onopen: (slug: string) => void;
   oncreate: (title: string, layout: string) => void;
-  /** For pages: the site, whose other languages each page can be translated into (ADR 0024). */
+  /** The site, whose other languages each page or entry can be translated into (ADR 0024, ADR 0054). */
   site?: Site;
   ontranslate?: (slug: string, language: string) => void;
   /** For pages: the layouts a new page picks from (ADR 0035). */
   layouts?: readonly Layout[];
 } = $props();
 
-const others = $derived(!type && site ? site.languages : []);
+const others = $derived(site ? site.languages : []);
+/** An entry's translation into a language, as the list shows it (ADR 0054). */
+const entryIn = (item: PageInfo | PostInfo, language: string) => {
+  const found = 'translations' in item ? item.translations?.find((one) => one.language === language) : undefined;
+  return found ? { ...item, slug: found.slug, missing: found.missing } : undefined;
+};
 /** Pages are listed in the main language; their translations sit beside them. */
 const shown = $derived(!type && site ? pagesIn(site, site.language, items).filter((i) => !('translated' in i && i.translated)) : items);
 const bySlug = $derived(new Map(items.map((item) => [item.slug, item])));
@@ -100,7 +105,7 @@ const status = (item: PageInfo): string => (!item.published ? t.bar.draft : item
               <td class="translations">
                 {#each others as language (language)}
                   {@const slug = slugIn(site, language, item.slug)}
-                  {@const translation = items.find((i) => i.translated && i.of === item.slug && i.language === language) ?? bySlug.get(slug)}
+                  {@const translation = type ? entryIn(item, language) : (items.find((i) => i.translated && i.of === item.slug && i.language === language) ?? bySlug.get(slug))}
                   {#if translation}
                     {@const missing = translation.missing ?? 0}
                     <button

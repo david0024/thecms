@@ -26,7 +26,7 @@ const ADMIN_PATHS = new Set(['/admin', '/preview']);
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { compile } from 'svelte/compiler';
-import { SECTION_KIND, type Block, cleanSeo, type Form, fillSections, takeWords, withAreas, type Site, siteIn, type PlacedPage, translatedPage, cleanRow, EXTENSION_MAX_BYTES, type ExtensionManifest, extensionAsks, isObject, languageOf, normalizeBlocks, shownRow, str, type ContentType, DISPLAY_NAME, type LanguagePack, defaultTemplate, MEDIA_MAX_BYTES, MEDIA_PREFIX, UPLOAD_MAX_BYTES, EMBED_ORIGINS, normalizePage, type Page, type Post, contentTypes, listPath, type MenuList, normalizePost, parseTheme, pagesIn, POSTS_TYPE, reservedSlugs, slugProblem, type Theme, themeCss } from '../core/index.ts';
+import { prefixOf, typeIn, SECTION_KIND, type Block, cleanSeo, type Form, fillSections, takeWords, withAreas, type Site, siteIn, type PlacedPage, translatedPage, cleanRow, EXTENSION_MAX_BYTES, type ExtensionManifest, extensionAsks, isObject, languageOf, normalizeBlocks, shownRow, str, type ContentType, DISPLAY_NAME, type LanguagePack, defaultTemplate, MEDIA_MAX_BYTES, MEDIA_PREFIX, UPLOAD_MAX_BYTES, EMBED_ORIGINS, normalizePage, type Page, type Post, contentTypes, listPath, type MenuList, normalizePost, parseTheme, pagesIn, POSTS_TYPE, reservedSlugs, slugProblem, type Theme, themeCss } from '../core/index.ts';
 import type { EntryLists } from '../blocks/editing.ts';
 import { type FetchImage, fetchImage as fetchOverNetwork, IMPORT_MAX_BYTES, type ImportReport, runImport } from '../import/run.ts';
 import { type ImportPlan, planImport } from '../import/wxr.ts';
@@ -401,6 +401,8 @@ export async function startEditor(
     const action = manifest.actions.find((a) => a.name === what && a.each === 'language');
     if (!action) return json({ error: `${manifest.displayName} has no action "${what}" for each language` }, 404);
     const body = (await request.json()) as Record<string, unknown>;
+    // An entry is translated in every language as a page is (ADR 0054 d8).
+    if (typeof body.kind === 'string' && body.kind !== 'page' && body.kind !== SECTION_KIND) return eachLanguageEntry(body, name, manifest, action);
     const kind = body.kind === SECTION_KIND ? 'section' : 'page';
     if (kind === 'section' && !owner) return json({ error: 'only the owner may change this' }, 403);
     const slug = String(body.slug ?? '');
@@ -421,6 +423,33 @@ export async function startEditor(
       const answer = (await extensions.run(name, action.name, { page: asPage(shown), language, ask, site: { name: site.name, language: site.language, languages: site.languages } })) as Record<string, unknown> | null;
       if (!isObject(answer?.page)) return json({ error: `${manifest.displayName} did not give back a page`, done }, 400);
       await store.fillTranslation(slug, language, answer.page, kind);
+      done.push(language);
+    }
+    return json({ done, skipped, ...(await lists()) });
+  }
+
+  /** The same for an entry: each language it is not split for, started where it is not there yet, filled in where it says nothing yet. */
+  async function eachLanguageEntry(body: Record<string, unknown>, name: string, manifest: ExtensionManifest, action: ExtensionManifest['actions'][number]): Promise<Response> {
+    const type = await store.type(body.kind === 'post' ? POSTS_TYPE : String(body.kind));
+    const slug = String(body.slug ?? '');
+    const site = await store.site();
+    const main = await store.entryDraft(type.id, slug);
+    if (!main) return json({ error: `no entry "${slug}" in the main language` }, 404);
+    const given = isObject(body.ask) ? body.ask : {};
+    const ask = Object.fromEntries(action.ask.map((a) => [a.key, str(given[a.key], 2000)]));
+    const done: string[] = [];
+    const skipped: string[] = [];
+    for (const language of site.languages) {
+      const had = main.translations?.[language];
+      if (had?.blocks) {
+        skipped.push(language);
+        continue;
+      }
+      const shown = had ? await store.locateEntry(type.id, `${prefixOf(language)}/${had.slug || main.slug}`) : await store.translateEntry(type.id, slug, language);
+      if (!shown) continue;
+      const answer = (await extensions.run(name, action.name, { page: shown.post, language, ask, site: { name: site.name, language: site.language, languages: site.languages } })) as Record<string, unknown> | null;
+      if (!isObject(answer?.page)) return json({ error: `${manifest.displayName} did not give back a page`, done }, 400);
+      await store.fillEntryTranslation(type.id, slug, language, { ...answer.page, slug: main.slug });
       done.push(language);
     }
     return json({ done, skipped, ...(await lists()) });
@@ -687,27 +716,54 @@ export async function startEditor(
     }
     if (asked !== 'page') {
       const type = await store.type(asked === 'post' ? POSTS_TYPE : asked);
+      /** What the editor is told of an entry in another language (ADR 0054): the entry, at `ro/<address>`, and what it is a translation of. */
+      const asTranslation = (found: Awaited<ReturnType<Store['locateEntry']>>) =>
+        found ? json({ page: found.post, translation: { of: found.of, language: found.language, split: found.split } }) : json({ error: 'no such entry' }, 404);
       switch (route) {
         case 'GET /api/page': {
           const post = await store.entryDraft(type.id, slug);
-          return post ? json({ page: post }) : json({ error: 'no such entry' }, 404);
+          return post ? json({ page: post }) : asTranslation(await store.locateEntry(type.id, slug));
+        }
+        case 'POST /api/translate': {
+          const found = await store.translateEntry(type.id, String(body.slug ?? ''), String(body.language ?? ''));
+          return json({ page: found.post, translation: { of: found.of, language: found.language, split: found.split }, ...(await lists()) });
+        }
+        case 'POST /api/split': {
+          const found = await store.splitEntryTranslation(type.id, String(body.of ?? ''), String(body.language ?? ''));
+          return json({ page: found.post, translation: { of: found.of, language: found.language, split: found.split }, ...(await lists()) });
         }
         case 'PUT /api/page': {
+          if (isObject(body.translation)) {
+            const found = await store.saveEntryTranslation(type.id, String(body.translation.of ?? ''), String(body.translation.language ?? ''), body.page);
+            return json({ page: found.post, translation: { of: found.of, language: found.language, split: found.split }, issues: [], ...(await lists()) });
+          }
           const { post, issues } = normalizePost(body.page, undefined, type);
           if (!post.title || !post.slug) return json({ error: 'an entry has a title', issues }, 400);
           if (body.create === true && (await store.entryDraft(type.id, post.slug))) return json({ error: 'an entry with this address already exists' }, 409);
           return json({ page: await store.saveEntry(type.id, body.page), issues, ...(await lists()) });
         }
-        case 'DELETE /api/page':
-          await store.deleteEntry(type.id, slug);
+        case 'DELETE /api/page': {
+          // A translation goes alone; the entry stays (ADR 0054).
+          const found = await store.locateEntry(type.id, slug);
+          if (found) await store.deleteEntryTranslation(type.id, found.of, found.language);
+          else await store.deleteEntry(type.id, slug);
           return json(await lists());
+        }
         case 'POST /api/publish':
           await store.publishEntry(type.id, String(body.slug ?? ''));
           return json(await lists());
-        case 'POST /api/render':
-          const post = normalizePost(body.page, new Date().toISOString().slice(0, 10), type).post;
+        case 'POST /api/render': {
+          // An entry in another language is drawn in it: its type's name and address there, and that language's menu (ADR 0054).
+          const site = await store.site();
+          const at = isObject(body.page) ? String(body.page.slug ?? '') : '';
+          const language = languageOf(site, at);
+          const local = language === site.language ? type : typeIn(site, type, language);
+          const raw = isObject(body.page) ? { ...body.page, slug: language === site.language ? at : at.slice(prefixOf(language).length + 1) } : body.page;
+          const post = normalizePost(raw, new Date().toISOString().slice(0, 10), local).post;
           const template = await store.template(type.id);
-          return json(renderPostParts(await framed(), await theme(), { ...post, blocks: await filled(post.blocks) }, await menu(), true, type, await entryLists(), template && (await filled(template))));
+          const setting = language === site.language ? null : pageSetting(site, prefixOf(language), await store.pages(), await menuLists());
+          return json(renderPostParts(await framed(setting?.site), await theme(), { ...post, blocks: await filled(post.blocks, language) }, setting?.menu ?? (await menu()), true, local, await entryLists(), template && (await filled(template, language))));
+        }
       }
     }
     switch (route) {

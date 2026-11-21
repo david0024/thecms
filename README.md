@@ -70,6 +70,8 @@ ever breaking it.
 - The editor in English and Romanian, and more through language packs.
 - The same page in more than one language, with its own menu, a language
   switcher, and the tags search engines need.
+- Posts and entries in more than one language too: each type with its own name
+  and address in each language, and in each language only what is translated.
 
 **People**
 - An owner, and editors the owner invites. An editor writes and publishes
@@ -149,7 +151,7 @@ Four stages, each ending with something you can use
    pages behind a password, media and new blocks. *Done.*
 2. **What almost every site needs:** a form builder (*done*), complete SEO (*done*), scheduled
    backups (*done*), relations between entries (*done*), statistics without cookies (*done*), entries in
-   more than one language, more roles, a complete export. *In progress.*
+   more than one language (*done*), more roles, a complete export. *In progress.*
 3. **Commerce and members:** visitor accounts, a shop (products, cart, orders,
    VAT), payments (Stripe and Netopia first), couriers, e-invoicing,
    memberships and subscriptions, bookings, newsletters, and running on

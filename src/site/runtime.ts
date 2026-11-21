@@ -175,14 +175,18 @@ export function startRuntime(
     }
     if (url.pathname === '/_/search' && (request.method === 'GET' || request.method === 'HEAD')) {
       const files = await site();
-      const frame = files.get('404.html');
-      if (typeof frame !== 'string') return new Response('nothing is published yet\n', { status: 404, headers: { 'content-type': 'text/plain; charset=utf-8' } });
+      const main = files.get('404.html');
+      if (typeof main !== 'string') return new Response('nothing is published yet\n', { status: 404, headers: { 'content-type': 'text/plain; charset=utf-8' } });
       const index = indexes.get(files) ?? searchIndex(files);
       indexes.set(files, index);
       const query = (url.searchParams.get('q') ?? '').trim().slice(0, SEARCH_MAX_QUERY);
       void visits.searched(request, query).catch(() => {});
+      // Asked from a page in another language: answered in it, with its pages, in its frame (ADR 0054).
+      const asked = (url.searchParams.get('l') ?? '').toLowerCase();
+      const own = /^[a-z]{2,3}(-[a-z0-9]{2,8})*$/.test(asked) ? files.get(`${asked}/404.html`) : undefined;
+      const frame = typeof own === 'string' ? own : main;
       const language = /<html lang="([^"]+)"/.exec(frame)?.[1] ?? 'en';
-      const page = file('search.html', resultsPage(frame, language, query, search(index, query)));
+      const page = file('search.html', resultsPage(frame, language, query, search(index.filter((doc) => doc.language === language), query), typeof own === 'string' ? asked : ''));
       page.headers.set('cache-control', 'no-store');
       return page;
     }

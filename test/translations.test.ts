@@ -93,11 +93,13 @@ describe('a translation', () => {
 
   test('in its language, the site has that language\'s footer and button, and the main menu with each page swapped', () => {
     const ro = siteIn(site, 'ro');
-    expect(ro).toMatchObject({ language: 'ro', footer: 'Făcut de mână', action: { label: 'Întreabă' }, types: [] });
+    expect(ro).toMatchObject({ language: 'ro', footer: 'Făcut de mână', action: { label: 'Întreabă' } });
+    // Each type is there at its address in the language (ADR 0054).
+    expect(ro.types.map((t) => t.path)).toEqual(site.types.map((t) => `ro/${t.path}`));
     // The links stand in from the main language until the owner gives others.
     expect(ro.footerLinks).toEqual(site.footerLinks);
-    expect(ro.menu?.map((n) => (n.target.kind === 'page' ? `${n.target.slug}:${n.label}` : n.target.kind))).toEqual(['ro:', 'ro/about:', 'url', 'none']);
-    expect(ro.menu?.[3]?.children[0]?.target).toEqual({ kind: 'page', slug: 'ro/contact' });
+    expect(ro.menu?.map((n) => (n.target.kind === 'page' ? `${n.target.slug}:${n.label}` : n.target.kind))).toEqual(['ro:', 'ro/about:', 'type', 'url', 'none']);
+    expect(ro.menu?.[4]?.children[0]?.target).toEqual({ kind: 'page', slug: 'ro/contact' });
     expect(siteIn(site, 'pt-BR')).toMatchObject({ footer: '', action: null });
     expect(siteIn(site, 'en')).toBe(site);
     expect(siteIn(site, 'de')).toBe(site);

@@ -126,6 +126,16 @@ describe('an action for each language, in the editor', () => {
       const nothing = await call('POST', '/api/extensions/shout/each/stamp', { slug: 'empty' });
       expect(nothing.data).toEqual({ error: 'Shout did not give back a page', done: [] });
       await expect(store.fillTranslation('about', 'fr', about)).rejects.toThrow('has no translation into that language to fill in');
+
+      // An entry is translated in every language as a page is (ADR 0054).
+      await store.savePost({ slug: 'oak', title: 'On oak', excerpt: 'Hard wood', blocks: [{ id: 'b_t', type: 'text', content: { body: paragraphs('Oak is hard.') } }] });
+      await store.translateEntry('posts', 'oak', 'fr');
+      await store.splitEntryTranslation('posts', 'oak', 'fr');
+      const entry = await call('POST', '/api/extensions/shout/each/stamp', { slug: 'oak', kind: 'posts' });
+      expect(entry.data).toMatchObject({ done: ['ro', 'de'], skipped: ['fr'] });
+      expect((await store.postDraft('oak'))?.translations?.de).toMatchObject({ title: '[de] On oak', fields: { 'b_t.body': paragraphs('[de] Oak is hard.') } });
+      expect((await call('POST', '/api/extensions/shout/each/stamp', { slug: 'elm', kind: 'posts' })).data.error).toBe('no entry "elm" in the main language');
+      await expect(store.fillEntryTranslation('posts', 'oak', 'fr', {})).rejects.toThrow('has no translation into that language to fill in');
     } finally {
       editor.stop();
       await store.close();
