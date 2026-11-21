@@ -22,6 +22,17 @@ export interface SiteCheck {
    * would lose (ADR 0044): said, so the owner knows before choosing one.
    */
   server?: ServerOnly[];
+  /** What would hurt the site in search engines (ADR 0050 d5): said, not stopped. */
+  seo?: SeoProblem[];
+}
+
+/** A title too long, a title another page has too, or a home page hidden from search engines. */
+export interface SeoProblem {
+  problem: 'long' | 'duplicate' | 'hidden';
+  /** The pages, by address. */
+  pages: string[];
+  /** The title, for the first two. */
+  title?: string;
 }
 
 export type ServerOnly = 'forms' | 'comments' | 'search' | 'locked' | 'extensions';
@@ -39,7 +50,7 @@ export function serverOnly(files: Map<string, string | Uint8Array>, options: { f
   return found;
 }
 
-import { type Redirect, type RedirectProblem, redirectProblems } from '../core/index.ts';
+import { LONG_TITLE, type Redirect, type RedirectProblem, redirectProblems } from '../core/index.ts';
 
 const LINK = /<a\b[^>]*?\shref="([^"]*)"/g;
 const IMAGE = /<img\b[^>]*>/g;
@@ -93,6 +104,38 @@ export function checkSite(files: Map<string, string | Uint8Array>): SiteCheck {
   };
 }
 
+const TITLE = /<title>([^<]*)<\/title>/;
+const LANG = /<html lang="([^"]*)"/;
+
+/**
+ * The pages' titles as search engines read them (ADR 0050 d5). Old addresses,
+ * pages behind a password and the later pages of a list are not counted:
+ * those are never results of their own.
+ */
+export function checkSeo(files: Map<string, string | Uint8Array>): SeoProblem[] {
+  const titles = new Map<string, string[]>();
+  const found: SeoProblem[] = [];
+  for (const [file, contents] of files) {
+    if (!file.endsWith('index.html') || typeof contents !== 'string' || contents.includes('http-equiv="refresh"') || contents.includes('<meta name="thecms-locked"')) continue;
+    const page = addressOf(file);
+    if (contents.includes('<meta name="robots" content="noindex">')) {
+      if (page === '/') found.push({ problem: 'hidden', pages: [page] });
+      continue;
+    }
+    if (/\/page\/\d+\/$/.test(page)) continue;
+    const title = unescape(TITLE.exec(contents)?.[1] ?? '');
+    // The same title in two languages is two titles: each language's home is named after the site.
+    const key = `${LANG.exec(contents)?.[1] ?? ''}\n${title}`;
+    if (title) titles.set(key, [...(titles.get(key) ?? []), page]);
+  }
+  for (const [key, pages] of [...titles].sort(([a], [b]) => a.localeCompare(b))) {
+    const title = key.slice(key.indexOf('\n') + 1);
+    if (title.length > LONG_TITLE) found.push({ problem: 'long', pages: pages.sort(), title });
+    if (pages.length > 1) found.push({ problem: 'duplicate', pages: pages.sort(), title });
+  }
+  return found;
+}
+
 /** What is wrong with the redirects, against the pages the export wrote (its own redirect pages are not pages). */
 export function checkRedirects(files: Map<string, string | Uint8Array>, redirects: readonly Redirect[]): RedirectProblem[] {
   const answered = new Set<string>();
@@ -117,6 +160,12 @@ const SAID: Record<RedirectProblem['problem'], string> = {
   shadowed: 'is never followed: a page lives at the old address',
 };
 
+const SEO: Record<SeoProblem['problem'], string> = {
+  long: `the title "{title}" is longer than ${LONG_TITLE} letters; search engines cut it`,
+  duplicate: 'share the title "{title}"; give each its own',
+  hidden: 'the home page is hidden from search engines',
+};
+
 /** The findings in plain lines, for the command line. */
 export function describeCheck(check: SiteCheck): { problems: string[]; warnings: string[] } {
   const pages = (list: readonly string[]): string => (list.length > 3 ? `${list.slice(0, 3).join(', ')} and ${list.length - 3} more` : list.join(', '));
@@ -126,6 +175,7 @@ export function describeCheck(check: SiteCheck): { problems: string[]; warnings:
       ...check.unnamed.map((u) => `${u.src} has no description, on ${pages(u.on)}`),
       ...(check.redirects ?? []).map((r) => `the redirect from ${r.from} to ${r.to} ${SAID[r.problem]}`),
       ...(check.server ?? []).map((what) => `on a static host, ${STATIC[what]}`),
+      ...(check.seo ?? []).map((s) => `${pages(s.pages)}: ${SEO[s.problem].replace('{title}', () => s.title ?? '')}`),
       ...(check.untranslated ?? []).map((u) => `/${u.slug}/ shows ${u.missing === 1 ? '1 text' : `${u.missing} texts`} in the main language, not translated into ${u.language}`),
     ],
   };

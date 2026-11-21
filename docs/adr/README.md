@@ -51,3 +51,4 @@ work it decides. A new one that changes an old one says so at its top.
 - [ADR 0047 — Buttons, tables, players, video, sound and documents](0047-buttons-tables-players-and-documents.md)
 - [ADR 0048 — The installer, in steps](0048-the-installer-in-steps.md)
 - [ADR 0049 — Forms, built on a screen of their own](0049-forms.md)
+- [ADR 0050 — Search engines and sharing: complete SEO](0050-search-engines-and-sharing.md)

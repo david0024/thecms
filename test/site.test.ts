@@ -203,7 +203,7 @@ describe('data for search engines (ADR 0030)', () => {
     expect(data(renderPage({ ...site, url: '' }, themeOf(plain), home, []))).toBeNull();
   });
 
-  test('a dated entry is an article; an entry of an undated type says nothing more', () => {
+  test('a dated entry is an article; an entry of an undated type says only where it is', () => {
     const post = normalizePost({ slug: 'oak', title: 'Why oak', date: '2026-03-04', description: 'Wood that lasts', categories: ['Wood'], tags: ['oak', 'ash'], cover: { src: 'https://cdn.example/oak.jpg', alt: 'Oak' } }).post;
     const graph = (data(renderPost(site, themeOf(plain), post, [], postsType())) as { '@graph': Record<string, unknown>[] })['@graph'];
     expect(graph[0]).toEqual({
@@ -224,6 +224,6 @@ describe('data for search engines (ADR 0030)', () => {
     const bare = normalizePost({ slug: 'x', title: 'X', date: '2026-03-04' }).post;
     const plainGraph = (data(renderPost(site, themeOf(plain), bare, [], postsType())) as { '@graph': Record<string, unknown>[] })['@graph'];
     expect(Object.keys(plainGraph[0] ?? {})).not.toContain('image');
-    expect(data(renderPost(site, themeOf(plain), bare, [], { ...postsType(), dated: false }))).toBeNull();
+    expect((data(renderPost(site, themeOf(plain), bare, [], { ...postsType(), dated: false })) as { '@graph': Record<string, unknown>[] })['@graph'].map((d) => d['@type'])).toEqual(['BreadcrumbList']);
   });
 });

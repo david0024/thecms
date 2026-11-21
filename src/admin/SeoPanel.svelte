@@ -1,0 +1,85 @@
+<script lang="ts">
+/**
+ * "Search and sharing" for one page or entry (ADR 0050 d1): a title for
+ * search engines, a picture for link previews, and the choice to hide it;
+ * with what a search result and a link preview would show. A translation
+ * writes only its title: the picture and the choice are the main page's.
+ */
+import { type ImageValue, LONG_TITLE, MAX_SEO_TITLE, type Seo } from '../core/index.ts';
+import ImageField from './ImageField.svelte';
+import { say, t } from './messages.ts';
+
+let {
+  seo,
+  title,
+  description,
+  address,
+  fallback = null,
+  translation = false,
+  onchange,
+}: {
+  seo: Seo;
+  /** The title the page has without one for search engines. */
+  title: string;
+  description: string;
+  /** Where the page is, as a search result shows it. */
+  address: string;
+  /** The picture a preview shows when the page has none: the cover, or the site's. */
+  fallback?: ImageValue | null;
+  translation?: boolean;
+  onchange: (seo: Seo) => void;
+} = $props();
+
+const shown = $derived(seo.seoTitle || title);
+const picture = $derived(seo.shareImage?.src || fallback?.src || '');
+const short = (text: string, max: number): string => (text.length > max ? `${text.slice(0, max - 1).trimEnd()}…` : text);
+</script>
+
+<details class="seo" data-seo>
+  <summary>{t.inspector.seo}</summary>
+  <label class="field">
+    <span>{t.inspector.seoTitle}</span>
+    <input type="text" maxlength={MAX_SEO_TITLE} placeholder={title} value={seo.seoTitle ?? ''} oninput={(e) => onchange({ ...seo, seoTitle: e.currentTarget.value })} data-seo-title />
+    <small>{say(t.inspector.seoTitleHint, { count: LONG_TITLE })}</small>
+  </label>
+  {#if !translation}
+    <div class="field">
+      <ImageField label={t.inspector.shareImage} value={seo.shareImage ?? null} onchange={(image) => onchange({ ...seo, shareImage: image.src ? image : undefined })} />
+      <small>{t.inspector.shareImageHint}</small>
+    </div>
+    <label class="check">
+      <input type="checkbox" checked={!!seo.noindex} onchange={(e) => onchange({ ...seo, noindex: e.currentTarget.checked ? true : undefined })} data-seo-noindex />
+      <span>{t.inspector.noindex}</span>
+    </label>
+    <small>{t.inspector.noindexHint}</small>
+  {/if}
+  <p class="label">{t.inspector.seoPreview}</p>
+  <div class="result" class:hidden={seo.noindex} data-seo-preview>
+    <small>{address}</small>
+    <strong>{short(shown, LONG_TITLE)}</strong>
+    <span>{short(description, 160)}</span>
+  </div>
+  <p class="label">{t.inspector.sharePreview}</p>
+  <div class="card" data-share-preview>
+    {#if picture}<img src={picture} alt="" />{/if}
+    <strong>{shown}</strong>
+    {#if description}<span>{short(description, 120)}</span>{/if}
+  </div>
+</details>
+
+<style>
+  .seo { margin: 0 0 0.8rem; padding: 0.5rem 0.6rem; border: 1px solid #e6e4ee; border-radius: 6px; }
+  summary { cursor: pointer; font-weight: 600; }
+  .seo[open] summary { margin-bottom: 0.6rem; }
+  .check { display: flex; align-items: center; gap: 0.5rem; }
+  .check span { margin: 0; }
+  .label { margin: 0.8rem 0 0.3rem; font-size: 12.5px; color: #6a6880; }
+  .result, .card { display: grid; gap: 0.15rem; padding: 0.5rem 0.6rem; border-radius: 6px; background: #fff; border: 1px solid #e6e4ee; overflow-wrap: anywhere; }
+  .result strong { color: #1a0dab; font-weight: 500; font-size: 15px; }
+  .result span, .card span { color: #4d5156; font-size: 12.5px; }
+  .result.hidden { opacity: 0.45; text-decoration: line-through; }
+  .card { padding: 0 0 0.5rem; overflow: hidden; }
+  .card img { width: 100%; aspect-ratio: 1.91; object-fit: cover; }
+  .card strong, .card span { padding: 0 0.6rem; }
+  .card strong:first-child { padding-top: 0.5rem; }
+</style>

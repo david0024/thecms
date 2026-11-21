@@ -9,6 +9,10 @@ import {
   type Block,
   type ContentType,
   contentTypes,
+  entryPath,
+  pageDescription,
+  pagePath,
+  postDescription,
   listPath,
   type MenuList,
   POSTS_TYPE,
@@ -72,6 +76,7 @@ import PageLock from './PageLock.svelte';
 import Fields from './Fields.svelte';
 import { say, t } from './messages.ts';
 import { setPath } from './paths.ts';
+import SeoPanel from './SeoPanel.svelte';
 import SitePanel from './SitePanel.svelte';
 import StylePanel from './StylePanel.svelte';
 import ThemeBuilder from './ThemeBuilder.svelte';
@@ -822,6 +827,18 @@ onMount(() => {
           <textarea rows="3" maxlength="300" value={page.description} oninput={(e) => page && change({ ...page, description: e.currentTarget.value }, { step: false, redraw: false })}></textarea>
           <small>{t.inspector.descriptionHint}</small>
         </label>
+        {#if !sectioning}
+          {@const entry = type && 'date' in page ? page : null}
+          <SeoPanel
+            seo={page}
+            title={page.slug || entry ? `${page.title} · ${site.site.name}` : site.site.name}
+            description={entry ? postDescription(entry) : pageDescription(page as Page)}
+            address={`${site.site.url || ''}${type && entry ? entryPath(type, page.slug) : pagePath(page.slug)}`}
+            fallback={entry?.cover ?? site.site.shareImage ?? null}
+            translation={!!translation}
+            onchange={(seo) => page && change({ ...page, ...seo }, { step: false, redraw: false })}
+          />
+        {/if}
         {#if type && 'date' in page}
           {@const post = page}
           {#if type.dated}

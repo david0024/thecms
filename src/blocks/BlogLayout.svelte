@@ -1,7 +1,8 @@
 <script lang="ts">
 /** A list of entries of one content type: its front page, a later page of it, or one category. */
-import type { ContentType, MenuLink, Post, Site } from '../core/index.ts';
+import type { ContentType, Crumb, MenuLink, Post, Site } from '../core/index.ts';
 import { entryPath, listPath, pictureIn, postExcerpt, postsType } from '../core/index.ts';
+import Breadcrumbs from './Breadcrumbs.svelte';
 import PostMeta from './PostMeta.svelte';
 import Shell from './Shell.svelte';
 import { wordsFor } from './words.ts';
@@ -14,6 +15,7 @@ let {
   newer = '',
   older = '',
   type,
+  crumbs = [],
 }: {
   site: Site;
   menu: MenuLink[];
@@ -23,12 +25,15 @@ let {
   newer?: string;
   older?: string;
   type?: ContentType;
+  /** Where the list is, shown above it (ADR 0050 d4); empty: none. */
+  crumbs?: Crumb[];
 } = $props();
 const kind = $derived(type ?? postsType());
 const words = $derived(wordsFor(site.language));
 </script>
 
 <Shell {site} {menu} current={listPath(kind)} layout={kind.layout}>
+  <Breadcrumbs {crumbs} language={site.language} />
   <section class="b blog">
     <div class="b-in">
       <h1>{heading}</h1>

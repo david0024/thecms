@@ -103,6 +103,17 @@ import Redirects from './Redirects.svelte';
   </label>
 </fieldset>
 
+<h3>{t.site.sharing}</h3>
+<div class="field">
+  <ImageField label={t.site.shareImage} value={site.shareImage ?? null} onchange={(image) => set({ shareImage: image.src ? image : undefined })} />
+  <small>{t.site.shareImageHint}</small>
+</div>
+<label class="check">
+  <input type="checkbox" checked={site.breadcrumbs !== false} onchange={(e) => set({ breadcrumbs: e.currentTarget.checked ? undefined : false })} data-site-breadcrumbs />
+  <span>{t.site.breadcrumbs}</span>
+</label>
+<small>{t.site.breadcrumbsHint}</small>
+
 <h3>{t.menu.title}</h3>
 <div class="field" data-menu-builder>
   <MenuBuilder {site} {pages} {lists} nodes={site.menu} onchange={(menu) => set({ menu })} />
@@ -168,4 +179,6 @@ import Redirects from './Redirects.svelte';
 <style>
   h3 { margin: 1.1rem 0 0.5rem; font-size: 13px; }
   .grow { flex: 1; }
+  .check { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.6rem; }
+  .check span { margin: 0; }
 </style>

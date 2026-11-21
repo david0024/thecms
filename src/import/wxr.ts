@@ -17,6 +17,7 @@ import {
   listPath,
   normalizeTypes,
   isDate,
+  MAX_SEO_TITLE,
   MENU_DEPTH,
   MENU_MAX_ITEMS,
   type MenuNode,
@@ -36,6 +37,8 @@ export interface PlannedPage {
   slug: string;
   title: string;
   description: string;
+  seoTitle?: string;
+  noindex?: true;
   inMenu: boolean;
   blocks: Block[];
   publish: boolean;
@@ -44,6 +47,8 @@ export interface PlannedPost {
   slug: string;
   title: string;
   description: string;
+  seoTitle?: string;
+  noindex?: true;
   date: string;
   excerpt: string;
   cover: { src: string; alt: string } | null;
@@ -97,6 +102,14 @@ const HOUSEKEEPING = new Set([
   'revision', 'custom_css', 'customize_changeset', 'oembed_cache', 'user_request', 'wp_global_styles', 'wp_template',
   'wp_template_part', 'wp_font_family', 'wp_font_face', 'attachment', 'nav_menu_item', 'wp_navigation', 'page', 'post',
 ]);
+const SEO_TITLES = ['_yoast_wpseo_title', 'rank_math_title', '_aioseo_title', '_aioseop_title', '_seopress_titles_title'];
+/** How each SEO plugin says a page is kept out of search engines (ADR 0050 d6). */
+const SEO_HIDDEN: [string, (value: string) => boolean][] = [
+  ['_yoast_wpseo_meta-robots-noindex', (v) => v === '1'],
+  ['rank_math_robots', (v) => v.includes('"noindex"')],
+  ['_aioseop_noindex', (v) => v === 'on'],
+  ['_seopress_robots_index', (v) => v === 'yes'],
+];
 const SEO_DESCRIPTIONS = ['_yoast_wpseo_metadesc', 'rank_math_description', '_aioseo_description', '_aioseop_description', '_seopress_titles_desc'];
 
 function readItem(el: XmlElement): Item {
@@ -339,6 +352,14 @@ export function planImport(
     }
     return '';
   };
+  /** The title for search engines and the choice to hide that the old SEO plugin kept (ADR 0050 d6). */
+  const seo = (item: Item): { seoTitle?: string; noindex?: true } => {
+    const title = SEO_TITLES.map((key) => (item.meta.get(key) ?? '').trim()).find((value) => value && !value.includes('%'));
+    return {
+      ...(title ? { seoTitle: decodeHtml(title).slice(0, MAX_SEO_TITLE) } : {}),
+      ...(SEO_HIDDEN.some(([key, hidden]) => hidden(item.meta.get(key) ?? '')) ? { noindex: true as const } : {}),
+    };
+  };
   const held = new Set<string>();
   const publishOf = (item: Item): boolean => {
     if (!published(item) && (item.status === 'private' || item.password)) held.add(item.title || 'Untitled');
@@ -355,6 +376,7 @@ export function planImport(
       slug,
       title,
       description: description(item),
+      ...seo(item),
       inMenu: hasMenuItems ? true : item.parent === '0',
       // WordPress has the theme print a page's title; here a page says its own, at the top.
       blocks: [{ id: newId(), type: 'hero', content: slug ? { title } : { title: name, subtitle: tagline } }, ...htmlToBlocks(item.content, contextFor(title))],
@@ -369,6 +391,7 @@ export function planImport(
       slug,
       title: heading,
       description: description(item),
+      ...seo(item),
       date: isDate(item.date) ? item.date : today,
       excerpt: plainText(parseHtml(item.excerpt)).slice(0, 400),
       cover: thumb ? { src: ctx.image(thumb.src), alt: thumb.alt } : null,

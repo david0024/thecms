@@ -133,7 +133,7 @@ Four stages, each ending with something you can use
 
 1. **The foundation:** the site served, scheduled publishing, comments, search,
    pages behind a password, media and new blocks. *Done.*
-2. **What almost every site needs:** a form builder (*done*), complete SEO, scheduled
+2. **What almost every site needs:** a form builder (*done*), complete SEO (*done*), scheduled
    backups, relations between entries, statistics without cookies, entries in
    more than one language, more roles, a complete export. *In progress.*
 3. **Commerce and members:** visitor accounts, a shop (products, cart, orders,

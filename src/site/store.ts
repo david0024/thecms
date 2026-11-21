@@ -827,6 +827,7 @@ export class Store {
           slug: address === of ? '' : address,
           title: written.title === page.title ? '' : written.title,
           description: written.description === page.description ? '' : written.description,
+          ...(written.seoTitle && written.seoTitle !== page.seoTitle ? { seoTitle: written.seoTitle } : {}),
           fields: {},
           blocks: had.blocks ? written.blocks : null,
         };
@@ -1352,9 +1353,10 @@ export class Store {
   async mediaUsedBy(name: string): Promise<string[]> {
     const site = await this.site();
     const titles: string[] = mediaNameOf(site.logo?.src ?? '') === name ? ['the header (logo)'] : [];
+    if (mediaNameOf(site.shareImage?.src ?? '') === name) titles.push('the picture for sharing, in Site settings');
     for (const row of await this.rows<{ draft: string; published: string | null }>('SELECT draft, published FROM pages ORDER BY position, slug')) {
       const copies = [row.draft, row.published].filter((c): c is string => c !== null).map((c) => normalizePage(JSON.parse(c)).page);
-      if (copies.some((page) => mediaSources(page.blocks).some((src) => mediaNameOf(src) === name))) titles.push((copies[0] as Page).title);
+      if (copies.some((page) => [...mediaSources(page.blocks), page.shareImage?.src ?? ''].some((src) => mediaNameOf(src) === name))) titles.push((copies[0] as Page).title);
     }
     const types = new Map(contentTypes(site).map((t) => [t.id, t]));
     for (const row of await this.rows<{ type: string; draft: string; published: string | null }>('SELECT type, draft, published FROM entries ORDER BY type, slug')) {

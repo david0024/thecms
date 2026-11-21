@@ -4,7 +4,7 @@
  * write it, for links that lead nowhere and pictures with no description.
  */
 import { api } from './api.ts';
-import { languageName } from '../core/index.ts';
+import { languageName, LONG_TITLE } from '../core/index.ts';
 import { say, t } from './messages.ts';
 
 type Check = Awaited<ReturnType<typeof api.check>>['check'];
@@ -33,7 +33,7 @@ async function run(): Promise<void> {
   <button type="button" onclick={run} disabled={working} data-check-run>{working ? t.check.working : t.check.run}</button>
   {#if problem}<p class="bad" role="alert">{problem}</p>{/if}
   {#if check}
-    {#if check.broken.length === 0 && check.unnamed.length === 0 && !check.untranslated?.length && !check.redirects?.length}
+    {#if check.broken.length === 0 && check.unnamed.length === 0 && !check.untranslated?.length && !check.redirects?.length && !check.seo?.length}
       <p class="good" data-check-fine>{t.check.fine}</p>
     {/if}
     {#if check.broken.length}
@@ -58,6 +58,14 @@ async function run(): Promise<void> {
       <p>{t.check.server}</p>
       <ul data-check-server>
         {#each check.server as what (what)}<li data-server-only={what}>{t.check.serverOnly[what]}</li>{/each}
+      </ul>
+    {/if}
+    {#if check.seo?.length}
+      <p>{t.check.seo}</p>
+      <ul data-check-seo>
+        {#each check.seo as s (`${s.problem}${s.pages.join()}`)}
+          <li data-seo-problem={s.problem}>{#if s.problem !== 'hidden'}<small>{pages(s.pages)}:</small> {/if}{say(s.problem === 'long' ? t.check.seoLong : s.problem === 'duplicate' ? t.check.seoDuplicate : t.check.seoHidden, { title: s.title ?? '', count: String(LONG_TITLE) })}</li>
+        {/each}
       </ul>
     {/if}
     {#if check.untranslated?.length}

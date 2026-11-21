@@ -13,6 +13,7 @@
  */
 import { BLOCKS, type Block, type BlockDef, type Field, normalizeBlocks } from './blocks.ts';
 import type { Page, Site } from './page.ts';
+import { cleanSeo } from './seo.ts';
 import { normalizeRichText, type RichText, richTextPlain } from './richtext.ts';
 import { baseSlug, languageOf, slugIn } from './translation.ts';
 import { isObject, slugify, str } from './util.ts';
@@ -27,6 +28,8 @@ export interface PageTranslation {
   /** Empty: the main page's. */
   title: string;
   description: string;
+  /** The title for search engines in this language (ADR 0050 d1); absent: none of its own. */
+  seoTitle?: string;
   /** Each translated field's value, by where it is. */
   fields: Record<string, Words>;
   /** Split for this language: its own blocks, which no longer follow the main page's. */
@@ -144,6 +147,7 @@ function normalizeTranslation(raw: Record<string, unknown>): PageTranslation {
     slug: slugify(raw.slug),
     title: str(raw.title, 200).trim(),
     description: str(raw.description, 300).trim(),
+    ...(cleanSeo(raw).seoTitle ? { seoTitle: cleanSeo(raw).seoTitle } : {}),
     fields,
     blocks: Array.isArray(raw.blocks) ? normalizeBlocks(raw.blocks).blocks : null,
   };
@@ -171,6 +175,11 @@ export function translatedPage(site: Site, page: Page, language: string): Placed
     description: translation.description || (translation.blocks ? '' : page.description),
     inMenu: page.inMenu,
     ...(page.layout ? { layout: page.layout } : {}),
+    // Its own title for search engines; the main page's only while it shows the main page's title (ADR 0050 d1).
+    ...(translation.seoTitle || (!translation.title && page.seoTitle) ? { seoTitle: translation.seoTitle || page.seoTitle } : {}),
+    // The picture and the choice to hide are the main page's, in every language.
+    ...(page.shareImage ? { shareImage: page.shareImage } : {}),
+    ...(page.noindex ? { noindex: page.noindex } : {}),
     blocks: translation.blocks ?? localizeBlocks(page.blocks, translation.fields),
     translations: {},
     of: page.slug,
