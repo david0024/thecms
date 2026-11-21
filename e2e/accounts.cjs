@@ -62,6 +62,9 @@ const PASSWORD = 'a long enough password';
     const form = owner.locator('[data-link="setup"]');
     await form.waitFor();
     if (shots) await owner.screenshot({ path: join(shots, 'accounts-setup.png') });
+    // The first page names the site (ADR 0048 d4); its language stays English here, as the steps below read it.
+    await form.locator('[data-site-name]').fill('Atelierul Anei');
+    assert((await form.locator('[data-language] option').count()) >= 2, 'the first page offers the languages the program has');
     await form.locator('[data-name]').fill('Ana');
     await form.locator('[data-email]').fill('ana@example.com');
     await form.locator('[data-password]').fill(PASSWORD);

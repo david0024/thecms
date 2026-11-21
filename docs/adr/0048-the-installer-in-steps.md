@@ -74,6 +74,25 @@ updates the program and leaves the site as it is.
 The server, Docker and the first page in the browser come first, as their own
 work; Cloudflare comes with the runtime on Workers (stage 3).
 
+## Built (2026-11-21)
+
+- `install.sh` asks, numbered: where (this computer, a server, Docker, a ready
+  platform; Cloudflare and cPanel say why not), then on a server or Docker the
+  database (SQLite, PostgreSQL, MySQL, MariaDB installed, or yours, asked field
+  by field), then the address. Options: `--host=`, `--database=`, `--public=`,
+  `--yes`. With no terminal, nothing is asked: `curl … | sh` alone still
+  installs on this computer, as before.
+- A database of yours is tried with `thecms check-database` before anything is
+  put in place; asked again until it answers, or left.
+- Docker: `docker/compose.yaml` and `docker/Dockerfile`, published with each
+  release and checked like the program; the database and Valkey are compose
+  profiles the answers turn on. The release also publishes the image
+  `ghcr.io/david0024/thecms`, which `docs/install/platforms.md` sets up on
+  Railway, Render and Fly.io.
+- The first page asks the site's name and language beside the owner's account.
+- `install.ps1` stays for this computer: a server is Linux, and Docker on
+  Windows runs `install.sh --host=docker` in WSL.
+
 ## Not decided here
 
 - Whether the database installed by d2 is backed up by the site's own backups

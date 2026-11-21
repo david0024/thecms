@@ -21,6 +21,7 @@
  *   thecms extension <site.db> install <file> [--yes]
  *                                         what an extension asks for, and with --yes, installed (ADR 0026)
  *   thecms extension <site.db> list | on|off|remove <name>
+ *   thecms check-database <address>       whether a database answers, for the installer (ADR 0048)
  *   thecms update [--check]               the newest release, in place of this program
  *   thecms version
  */
@@ -63,6 +64,7 @@ Usage:
   ${NAME} extension <site.db> list
   ${NAME} extension <site.db> install <file> [--yes]
   ${NAME} extension <site.db> on|off|remove <name>
+  ${NAME} check-database <postgres://... | mysql://...>
   ${NAME} update [--check]
   ${NAME} version
 
@@ -127,6 +129,15 @@ export async function main(args: string[]): Promise<{ stop: () => void } | undef
   // A site is a SQLite file by default, or a database server's address (ADR 0013). Its password is never printed.
   const shown = dbPath ? shownAddress(dbPath) : '';
   const missing = (): boolean => !!dbPath && databaseKind(dbPath) === 'sqlite' && !existsSync(dbPath.replace(/^sqlite:\/\//i, ''));
+  if (command === 'check-database' && dbPath) {
+    // The installer asks this before it writes anything (ADR 0048 d2): the database answers, and the site's tables can be made in it.
+    const store = await Store.open(dbPath).catch((error: unknown) => {
+      throw new Error(`${shown} does not answer: ${error instanceof Error ? error.message : String(error)}`);
+    });
+    await store.close();
+    console.log(`${shown} answers; the site can live there.`);
+    return;
+  }
   if (command === 'init' && dbPath) {
     // --if-new: an installer runs it every time, and a site that is there is left as it is.
     const ifNew = flags.includes('--if-new');

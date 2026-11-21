@@ -18,8 +18,12 @@ const dir = await mkdtemp(join(tmpdir(), 'thecms-install-'));
 afterAll(() => rm(dir, { recursive: true, force: true }));
 
 const sha256 = (bytes: Uint8Array | string): string => new Bun.CryptoHasher('sha256').update(bytes).digest('hex');
-const sh = (args: string[], env: Record<string, string> = {}) => {
-  const run = Bun.spawnSync(['sh', ...args], { cwd: root, env: { PATH: process.env.PATH ?? '', HOME: dir, ...env } });
+// Nothing is asked unless a test gives the answers (INSTALL_TTY): run from a terminal, the script would wait for one.
+const sh = (args: string[], env: Record<string, string> = {}, cwd = root) => {
+  const run = Bun.spawnSync(['sh', ...args.map((a) => (a === 'install.sh' ? join(root, a) : a))], {
+    cwd,
+    env: { PATH: process.env.PATH ?? '', HOME: dir, INSTALL_TTY: '/dev/null', ...env },
+  });
   return { code: run.exitCode, out: run.stdout.toString(), err: run.stderr.toString() };
 };
 
@@ -41,8 +45,96 @@ test('the install scripts name the product as src/core/name.ts does', async () =
 describe('the install script', () => {
   test('refuses what it cannot do before it downloads anything', () => {
     expect(sh(['install.sh', '--nonsense']).err).toContain('unknown option --nonsense');
-    expect(sh(['install.sh', '--server']).err).toContain('--server needs the address people will open');
-    expect(sh(['install.sh', '--server', '--public=http://cms.example.com']).err).toContain('--server needs the address');
+    expect(sh(['install.sh', '--host=moon']).err).toContain('--host is computer, server, docker or platform, not moon');
+    expect(sh(['install.sh', '--host=cpanel']).err).toContain('Shared hosting with cPanel runs PHP');
+    expect(sh(['install.sh', '--host=cloudflare']).err).toContain('Cloudflare comes with the site running on Workers');
+    // A server is set up as root, on Linux with systemd, at an https address; what is missing is said before anything is downloaded.
+    const server = sh(['install.sh', '--server', '--yes']).err;
+    expect(server).toMatch(/a server is Linux with systemd|set up as root|needs systemd|--public is the address people will open/);
+    expect(sh(['install.sh', '--host=docker', '--public=http://cms.example.com']).err).toContain('--public is the address people will open');
+  });
+
+  test('a ready platform is pointed to how, and nothing is downloaded', () => {
+    const run = sh(['install.sh', '--host=platform']);
+    expect(run.code).toBe(0);
+    expect(run.out).toContain(`https://github.com/${REPOSITORY}/blob/main/docs/install/platforms.md`);
+  });
+
+  test('asks where the site lives, one step at a time, and asks again when the answer cannot be', async () => {
+    const release = join(dir, 'asked');
+    await mkdir(release, { recursive: true });
+    const file = releaseFile(platformName());
+    const program = `#!/bin/sh\necho "${NAME} 9.9.9"\n`;
+    await writeFile(join(release, file), program);
+    await writeFile(join(release, 'checksums.sha256'), `${sha256(program)}  ${file}\n`);
+    const answers = join(dir, 'answers');
+    // cPanel, then a number that is not offered, then this computer.
+    await writeFile(answers, '6\n9\n1\n');
+    const run = sh(['install.sh'], { RELEASE_URL: `file://${release}`, INSTALL_DIR: join(dir, 'asked-bin'), INSTALL_TTY: answers });
+    expect(run.err).toBe('');
+    expect(run.out).toContain('Where will the site live?');
+    expect(run.out).toContain('Shared hosting with cPanel runs PHP');
+    expect(run.out).toContain('Type a number from 1 to 6.');
+    expect(run.out).toContain(`Installed ${NAME} 9.9.9`);
+  });
+
+  test('for Docker, writes a folder with compose, the Dockerfile, and the answers as its settings', async () => {
+    const release = join(dir, 'docker-release');
+    await mkdir(release, { recursive: true });
+    const files = ['compose.yaml', 'Dockerfile', 'install.sh'];
+    for (const name of files) await writeFile(join(release, name), await readFile(join(root, name === 'install.sh' ? name : `docker/${name}`)));
+    const sums = await Promise.all(files.map(async (name) => `${sha256(await readFile(join(release, name)))}  ${name}`));
+    await writeFile(join(release, 'checksums.sha256'), `${sums.join('\n')}\n`);
+    const env = { RELEASE_URL: `file://${release}` };
+    const settings = async (folder: string) => Object.fromEntries((await readFile(join(folder, 'thecms', '.env'), 'utf8')).split('\n').filter((l) => /^[A-Z]/.test(l)).map((l) => l.split(/=(.*)/s).slice(0, 2)));
+
+    // Answered by options: PostgreSQL beside it, with Valkey, at the address on this computer.
+    const optioned = join(dir, 'docker-options');
+    await mkdir(optioned);
+    const run = sh(['install.sh', '--host=docker', '--database=postgres', '--yes', '--version=1.2.3'], env, optioned);
+    expect(run.err).toBe('');
+    expect(run.out).toContain('docker compose up -d --build');
+    expect((await readdir(join(optioned, 'thecms'))).sort()).toEqual(['.env', 'Dockerfile', 'compose.yaml', 'install.sh']);
+    const kept = await settings(optioned);
+    expect(kept.COMPOSE_PROFILES).toBe('postgres,valkey');
+    expect(kept.DATABASE_PASSWORD).toMatch(/^[0-9a-f]{36}$/);
+    expect(kept.THECMS_SITE).toBe(`postgres://thecms:${kept.DATABASE_PASSWORD}@postgres:5432/thecms`);
+    expect(kept.THECMS_PUBLIC).toBe('http://localhost:4321');
+    expect(kept.THECMS_VERSION).toBe('1.2.3');
+    expect(kept.THECMS_VALKEY_URL).toBe('redis://valkey:6379');
+    // Run again, the settings are kept: the database's password among them.
+    expect(sh(['install.sh', '--host=docker', '--database=mysql', '--yes'], env, optioned).out).toContain('they are left as they are');
+    expect((await settings(optioned)).THECMS_SITE).toBe(kept.THECMS_SITE);
+
+    // Asked: Docker, a database of mine (PostgreSQL, on another server), its details, and an address.
+    const asked = join(dir, 'docker-asked');
+    await mkdir(asked);
+    const answers = join(dir, 'docker-answers');
+    await writeFile(answers, ['3', '5', '1', 'db.example.com', '', 'shop', 'ana', 'p@ss:w/rd é', 'https://shop.example.com/', ''].join('\n'));
+    const mine = sh(['install.sh', '--no-valkey'], { ...env, INSTALL_TTY: answers }, asked);
+    expect(mine.err).toBe('');
+    expect(mine.out).toContain('Which database is it?');
+    expect(mine.out).toContain('The site connects to your database when it starts');
+    const own = await settings(asked);
+    expect(own.THECMS_SITE).toBe('postgres://ana:p%40ss%3Aw%2Frd%20%C3%A9@db.example.com:5432/shop');
+    expect(own.THECMS_PUBLIC).toBe('https://shop.example.com');
+    expect(own.COMPOSE_PROFILES).toBe('');
+    expect(own.THECMS_VALKEY_URL).toBeUndefined();
+
+    // SQLite: a file in the site's volume, and no database to start.
+    const plain = join(dir, 'docker-sqlite');
+    await mkdir(plain);
+    sh(['install.sh', '--host=docker', '--yes', '--port=8080'], env, plain);
+    expect(await settings(plain)).toMatchObject({ THECMS_SITE: '/site/site.db', COMPOSE_PROFILES: 'valkey', THECMS_PUBLIC: 'http://localhost:8080', THECMS_PORT: '8080' });
+  });
+
+  test('the compose file starts only the database the settings name', async () => {
+    const compose = await readFile(join(root, 'docker', 'compose.yaml'), 'utf8');
+    for (const service of ['postgres', 'mysql', 'mariadb', 'valkey']) expect(compose).toContain(`profiles: [${service}]`);
+    expect(compose).toContain('127.0.0.1:${THECMS_PORT:-4321}:4321');
+    const dockerfile = await readFile(join(root, 'docker', 'Dockerfile'), 'utf8');
+    expect(dockerfile).toContain('install.sh --host=computer --yes');
+    expect(dockerfile).toContain('setpriv --reuid=thecms');
   });
 
   test('installs a file only when it matches the checksum the release lists', async () => {

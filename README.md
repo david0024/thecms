@@ -94,6 +94,7 @@ What comes next, in four stages up to a shop, memberships and courses, is in
 | Language packs: the admin and the site's words in one JSON file a language, checked against English; Romanian ships complete | done |
 | Accounts for a served editor: the first owner from a one-time link, editors invited by the owner, an editor writes content and nothing else | done |
 | Installed with one command: one file a platform from GitHub Releases, checked by its checksum; a server with systemd in one more option; `thecms update` | done |
+| The installer asks, step by step: this computer, a server (the database and Valkey installed, or a database of yours, tested), Docker with compose, or a ready platform; the site named and its language chosen on the first page | done (Cloudflare: with stage 3) |
 | Extensions on the model of Zveltio's third-party ones: one file, accepted by the owner for what it asks; collections, actions on a block or a page, screens as data; code in a process of its own, on a server under a user of its own with no network | done |
 | Extensions on the server (`thecms.extension/2`): public addresses under `/_/x/`, jobs the site's clock runs at an interval, events from the site (a page published, a comment, a message) | done |
 | Pages in more than one language: each translated from the list of pages, at /ro/…, with the header, footer and menu of its language, a switcher and hreflang | done (posts and entries: planned) |
@@ -117,33 +118,39 @@ thecms is in **alpha** (ADR 0045): it stays there until everything decided is bu
 goes to beta for testing and fixing, and only then to a stable release. Every release until
 then is a pre-release; the scripts below, and `thecms update`, take the newest one.
 
-On Linux or macOS:
+On Linux or macOS, the installer asks, one step at a time, where the site will
+live (ADR 0048): only this computer, a server of yours, Docker, or a ready
+platform (Railway, Render, Fly.io):
 
 ```sh
-curl -fsSL https://github.com/david0024/thecms/releases/download/v0.1.0-alpha.1/install.sh | sh
+curl -fsSL https://github.com/david0024/thecms/releases/download/v0.1.0-alpha.2/install.sh | sh
 ```
 
-On Windows, in PowerShell:
+On Windows, in PowerShell, for this computer:
 
 ```powershell
-irm https://github.com/david0024/thecms/releases/download/v0.1.0-alpha.1/install.ps1 | iex
+irm https://github.com/david0024/thecms/releases/download/v0.1.0-alpha.2/install.ps1 | iex
 ```
 
-Then, in a folder for your site, run `thecms`. It makes `site.db` with sample
-pages and serves the site, with its editor at `/admin/`. `thecms update` brings the newest release.
+- **This computer:** in a folder for your site, run `thecms`. It makes `site.db`
+  with sample pages and serves the site, with its editor at `/admin/`.
+- **A server** (Linux with systemd, as root): it asks which database to install
+  (SQLite, PostgreSQL, MySQL or MariaDB) or the details of one of yours, which it
+  tests before it writes anything, and the address people will open. It installs
+  the database and Valkey, listening only on the server, and a service behind the
+  web server that holds the certificate.
+- **Docker:** a folder with `compose.yaml`, the database and Valkey beside the site.
+- **A ready platform:** [docs/install/platforms.md](docs/install/platforms.md).
 
-On a Linux server, as root, the site and its editor at your address, behind the
-web server that holds the certificate:
+Then open the link it prints: on that first page you name the site, choose its
+language and make your account. Every question has an option, for a script:
 
 ```sh
-curl -fsSL https://github.com/david0024/thecms/releases/download/v0.1.0-alpha.1/install.sh \
-  | sh -s -- --server --public=https://cms.example.com
+curl -fsSL https://github.com/david0024/thecms/releases/download/v0.1.0-alpha.2/install.sh \
+  | sh -s -- --host=server --database=postgres --public=https://cms.example.com
 ```
 
-It installs Valkey and starts it, listening only on the server, for what the
-site's processes share (`--no-valkey` leaves it out). It prints the link that
-makes the owner's account. Add
-`--database=postgres://…` to keep the site in a database server (ADR 0023).
+`thecms update`, or the installer run again, brings the newest release and leaves the site as it is.
 
 ## Try it from the sources
 
