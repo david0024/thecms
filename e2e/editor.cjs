@@ -336,7 +336,7 @@ const assert = (condition, message) => {
       return c.toDataURL('image/png').split(',')[1];
     });
     writeFileSync(mark, Buffer.from(png, 'base64'));
-    await page.locator('[data-media-file]').setInputFiles(mark);
+    await page.getByRole('group', { name: 'Logo' }).locator('[data-media-file]').setInputFiles(mark);
     await canvas.locator('.site-header img.site-logo').waitFor();
     assert((await canvas.locator('.site-logo').getAttribute('alt')) === 'Atelier Nord', 'the logo takes the place of the name, and is read out as the name');
     if (shots) await page.screenshot({ path: join(shots, 'site-settings.png') });
