@@ -30,6 +30,9 @@ import { prefixOf, typeIn, SECTION_KIND, type Block, cleanSeo, type Form, fillSe
 import type { EntryLists } from '../blocks/editing.ts';
 import { type FetchImage, fetchImage as fetchOverNetwork, IMPORT_MAX_BYTES, type ImportReport, runImport } from '../import/run.ts';
 import { type ImportPlan, planImport } from '../import/wxr.ts';
+import { contentPreview, isContentFile, readContentFile, runContentImport } from '../import/thecms.ts';
+import { contentFileName, contentParts, exportContent } from './transfer.ts';
+import { zipFiles } from './zip.ts';
 import { type MenuItem, menuOf, pageSetting, renderParts, renderPostParts } from './document.ts';
 import { languages, packFor } from './languages.ts';
 import { accounts, cleanPublicAddress, ownerOnly, shown } from './accounts.ts';
@@ -38,7 +41,7 @@ import { BUILT_ADMIN } from './built-admin.ts';
 import { BASE_CSS, SHIPPED_THEMES } from './shipped.ts';
 import { type Store, type User, writesAll } from './store.ts';
 import { rowWrites } from '../view/index.ts';
-import { fullCheck, publishedSite } from './export.ts';
+import { exportedFiles, fullCheck, publishedSite } from './export.ts';
 
 const ADMIN = new URL('../admin/', import.meta.url);
 
@@ -153,9 +156,14 @@ export interface EditorServer {
 
 /** What an export file would bring, counted, for the owner to look at before anything is written. */
 export interface ImportPreview {
+  /** Where it came from: a WordPress export, or a thecms content export (ADR 0057). */
+  kind?: 'thecms';
   site: { name: string; url: string };
   pages: number;
   posts: number;
+  /** A thecms content export's sections and forms. */
+  sections?: number;
+  forms?: number;
   /** The kinds of entry asked for, as content types. */
   types: { id: string; name: string; count: number }[];
   /** Kinds a plugin or theme added that could be brought as content types. */
@@ -379,7 +387,30 @@ export async function startEditor(
     if (Number(request.headers.get('content-length') ?? 0) > IMPORT_MAX_BYTES) return json({ error: 'the export file is too large' }, 413);
     // The body is the export file itself. It is read and understood before anything is written.
     const listed = (name: string): string[] => (url.searchParams.get(name) ?? '').split(',').map((value) => value.trim()).filter(Boolean);
-    const plan = planImport(await request.text(), new Date().toISOString().slice(0, 10), { types: listed('types'), categories: listed('categories') });
+    const text = await request.text();
+    // A thecms content export comes back in by the same screen (ADR 0057 d2).
+    if (isContentFile(text)) {
+      const file = readContentFile(text);
+      if (url.pathname === '/api/import/plan') return json(contentPreview(file));
+      if (url.pathname !== '/api/import/run') return json({ error: 'not found' }, 404);
+      if (importing.status === 'running') return json({ error: 'an import is already running' }, 409);
+      importing = { status: 'running', done: 0, total: file.media.length };
+      void runContentImport(store, file, {
+        fresh: url.searchParams.get('settings') === '1',
+        onImage: (done, total) => {
+          importing = { status: 'running', done, total };
+        },
+      }).then(
+        (report) => {
+          importing = { status: 'done', report };
+        },
+        (error: unknown) => {
+          importing = { status: 'failed', error: error instanceof Error ? error.message : String(error) };
+        },
+      );
+      return json(importing, 202);
+    }
+    const plan = planImport(text, new Date().toISOString().slice(0, 10), { types: listed('types'), categories: listed('categories') });
     if (url.pathname === '/api/import/plan') return json(preview(plan));
     if (url.pathname !== '/api/import/run') return json({ error: 'not found' }, 404);
     if (importing.status === 'running') return json({ error: 'an import is already running' }, 409);
@@ -399,6 +430,37 @@ export async function startEditor(
       },
     );
     return json(importing, 202);
+  }
+
+  /**
+   * The site leaving (ADR 0057): its content in one open file, or the
+   * published site as files in a ZIP for a static host. The owner's only.
+   */
+  async function exportApi(url: URL): Promise<Response> {
+    if (url.pathname === '/api/export/parts') return json({ parts: await contentParts(store) });
+    const day = new Date().toISOString().slice(0, 10);
+    if (url.pathname === '/api/export/content') {
+      const asked = (url.searchParams.get('parts') ?? '').split(',').map((p) => p.trim()).filter(Boolean);
+      try {
+        const file = await exportContent(store, asked);
+        return new Response(JSON.stringify(file), {
+          headers: { 'content-type': 'application/json; charset=utf-8', 'content-disposition': `attachment; filename="${contentFileName(await store.site())}"`, 'cache-control': 'no-store' },
+        });
+      } catch (error) {
+        return json({ error: error instanceof Error ? error.message : String(error) }, 400);
+      }
+    }
+    if (url.pathname === '/api/export/files') {
+      try {
+        const files = await exportedFiles(store);
+        return new Response(zipFiles(files) as BodyInit, {
+          headers: { 'content-type': 'application/zip', 'content-disposition': `attachment; filename="site-${day}.zip"`, 'cache-control': 'no-store' },
+        });
+      } catch (error) {
+        return json({ error: error instanceof Error ? error.message : String(error) }, 400);
+      }
+    }
+    return json({ error: 'not found' }, 404);
   }
 
   /**
@@ -596,6 +658,7 @@ export async function startEditor(
     if (refused) return refused;
     if (url.pathname === '/api/extensions' || url.pathname.startsWith('/api/extensions/')) return extensionsApi(request, url, me);
     if (url.pathname.startsWith('/api/import')) return importApi(request, url);
+    if (url.pathname.startsWith('/api/export/') && request.method === 'GET') return exportApi(url);
     if (url.pathname === '/api/stats' && request.method === 'GET') {
       // Read by the owner and the editors; the owner's browser gives the time zone the days begin in (ADR 0053 d3).
       const range = (RANGES as readonly string[]).includes(url.searchParams.get('range') ?? '') ? (url.searchParams.get('range') as Range) : '30';

@@ -7,7 +7,8 @@ bun install
 bun run cms init site.db              # a sample site, in one file
 bun run cms edit site.db              # the site and its editor; open the address it prints
 bun run cms run site.db               # the site alone, for visitors
-bun run cms export site.db dist       # or the published site as static files
+bun run cms export site.db dist       # or the published site as static files (site.zip: as a ZIP)
+bun run cms export site.db site.thecms.json   # the content in one file; `import` takes it back
 ```
 
 The site's forms, comments and search are answered by its own server. To be
@@ -85,7 +86,7 @@ measured by no test.
 
 ```sh
 bun test --coverage --coverage-reporter=lcov --coverage-dir=coverage
-for t in editor import templates forms admin accounts translations; do THECMS_COVERAGE=coverage node e2e/$t.cjs; done
+for t in editor import templates forms admin accounts translations export; do THECMS_COVERAGE=coverage node e2e/$t.cjs; done
 bun run coverage           # the table, coverage/all.lcov, and the gate
 ```
 
