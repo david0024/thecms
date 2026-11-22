@@ -11,6 +11,7 @@
  */
 import { createHash } from 'node:crypto';
 import { SESSION_COOKIE } from './accounts.ts';
+import type { Batches } from './extensions.ts';
 import type { Shared } from './shared.ts';
 import type { Store, VisitRow } from './store.ts';
 
@@ -120,7 +121,8 @@ export interface Visits {
 }
 
 /** What counts visits for one of the site's processes. Several processes on one database add to the same totals. */
-export function visits(store: Store, shared: Shared, options: { now?: () => number; log?: (line: string) => void; flushMs?: number } = {}): Visits {
+export function visits(store: Store, shared: Shared, options: { now?: () => number; log?: (line: string) => void; flushMs?: number; told?: Batches } = {}): Visits {
+  const told = options.told;
   const now = options.now ?? Date.now;
   const log = options.log ?? ((line: string) => console.error(line));
   const pending = new Map<string, number>();
@@ -193,12 +195,16 @@ export function visits(store: Store, shared: Shared, options: { now?: () => numb
       add(day, 'visitors');
       add(day, 'device', deviceOf(agent));
     }
+    // Told to the extensions that listen (ADR 0062 d2): what was read of the visit, never who made it.
+    if (told && (await told.listens('page.served'))) told.add('page.served', { day, path: path.slice(0, NAME_MAX), source, device: deviceOf(agent), first });
   }
 
   async function search(request: Request, query: string): Promise<void> {
     const words = query.trim().toLowerCase().replace(/\s+/g, ' ');
     if (!words || !counted(request)) return;
-    add(await today(), 'search', words);
+    const day = await today();
+    add(day, 'search', words);
+    if (told && (await told.listens('search.made'))) told.add('search.made', { day, words: words.slice(0, NAME_MAX) });
   }
 }
 

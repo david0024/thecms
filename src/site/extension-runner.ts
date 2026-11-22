@@ -32,6 +32,8 @@ export interface ExtensionHost {
     insert(collection: string, row: Record<string, unknown>): Promise<Record<string, unknown>>;
     update(collection: string, id: string, row: Record<string, unknown>): Promise<Record<string, unknown>>;
     delete(collection: string, id: string): Promise<void>;
+    /** Adds to the number fields of a row, made from `row` when there is none (ADR 0062 d5). */
+    add(collection: string, id: string, numbers: Record<string, number>, row?: Record<string, unknown>): Promise<Record<string, unknown>>;
   };
   /** A call to one of the hosts the extension declared. */
   fetch(url: string, init?: { method?: string; headers?: Record<string, string>; body?: string }): Promise<{ status: number; headers: Record<string, string>; body: string }>;
@@ -68,6 +70,7 @@ export function runner(send: (message: FromRunner) => void, receive: (handler: (
         insert: (collection, row) => ask('insert', collection, row),
         update: (collection, id, row) => ask('update', collection, id, row),
         delete: (collection, id) => ask('delete', collection, id),
+        add: (collection, id, numbers, row) => ask('add', collection, id, numbers, row ?? {}),
       },
       fetch: (url, init) => ask('fetch', url, init ?? {}),
       site: () => ask('site'),

@@ -13,10 +13,13 @@
 import { checkViews, type ViewDocument } from '../view/index.ts';
 import { isObject, str } from './util.ts';
 
-/** The format a package is written in now: the first, with routes, jobs and events (ADR 0041). */
-export const EXTENSION_FORMAT = 'thecms.extension/2';
+/** The format a package is written in now: the second, with what the program tells, asks and lends (ADR 0062). */
+export const EXTENSION_FORMAT = 'thecms.extension/3';
+/** The second format (ADR 0041), still read: routes, jobs and the events of the site's changes. */
+export const EXTENSION_FORMAT_2 = 'thecms.extension/2';
 /** The first format (ADR 0026), still read: a package in it has no routes, jobs or events. */
 export const EXTENSION_FORMAT_1 = 'thecms.extension/1';
+const FORMATS: readonly string[] = [EXTENSION_FORMAT, EXTENSION_FORMAT_2, EXTENSION_FORMAT_1];
 export const EXTENSION_MAX_BYTES = 5 * 1024 * 1024;
 
 const NAME = /^[a-z][a-z0-9-]{1,39}$/;
@@ -100,7 +103,14 @@ export interface ExtensionJob {
 }
 
 /** What happens in the site that an extension may hear of, and what it is told. */
-export const EXTENSION_EVENTS = ['page.published', 'entry.published', 'comment.created', 'comment.approved', 'message.received'] as const;
+export const EXTENSION_EVENTS = ['page.published', 'entry.published', 'comment.created', 'comment.approved', 'message.received', 'page.served', 'search.made'] as const;
+/** What the second format may listen to: the site's changes, not its visits. */
+const EVENTS_2: readonly string[] = EXTENSION_EVENTS.slice(0, 5);
+/**
+ * Told in batches, every few seconds, as `{ event, items: [...] }` (ADR 0062 d2):
+ * a visit does not wake an extension.
+ */
+export const BATCHED_EVENTS: readonly ExtensionEventName[] = ['page.served', 'search.made'];
 export type ExtensionEventName = (typeof EXTENSION_EVENTS)[number];
 
 export interface ExtensionListener {
@@ -230,7 +240,7 @@ const ROUTE = /^[a-z0-9][a-z0-9-]{0,39}(\/[a-z0-9][a-z0-9-]{0,39}){0,3}$/;
  * Routes, jobs and events each name an action that runs on its own, not one
  * the editor offers on a block or a page: what it is given is not a page.
  */
-function serverParts(m: Record<string, unknown>, actions: ExtensionAction[], problems: string[]): Pick<ExtensionManifest, 'routes' | 'jobs' | 'events'> {
+function serverParts(m: Record<string, unknown>, actions: ExtensionAction[], problems: string[], format: string): Pick<ExtensionManifest, 'routes' | 'jobs' | 'events'> {
   const own = (name: unknown, what: string): string | null => {
     const action = actions.find((a) => a.name === text(name, 40));
     if (!action) problems.push(`${what} runs "${text(name, 40)}", which is not one of its actions`);
@@ -265,9 +275,10 @@ function serverParts(m: Record<string, unknown>, actions: ExtensionAction[], pro
   const events: ExtensionListener[] = [];
   for (const e of list(m.events).slice(0, 24)) {
     if (!isObject(e)) continue;
-    const on = EXTENSION_EVENTS.find((x) => x === e.on);
+    const heard = format === EXTENSION_FORMAT ? EXTENSION_EVENTS : EVENTS_2;
+    const on = EXTENSION_EVENTS.find((x) => x === e.on && heard.includes(x));
     if (!on) {
-      problems.push(`an extension listens to one of ${EXTENSION_EVENTS.join(', ')} ("${text(e.on, 40)}")`);
+      problems.push(`an extension listens to one of ${heard.join(', ')} ("${text(e.on, 40)}")`);
       continue;
     }
     const action = own(e.action, `listening to ${on}`);
@@ -279,7 +290,7 @@ function serverParts(m: Record<string, unknown>, actions: ExtensionAction[], pro
 /** Reads a package, with every reason it cannot be installed. */
 export function parseExtension(raw: unknown): { pkg: ExtensionPackage | null; problems: string[] } {
   const problems: string[] = [];
-  if (!isObject(raw) || (raw.format !== EXTENSION_FORMAT && raw.format !== EXTENSION_FORMAT_1)) return { pkg: null, problems: [`this is not an extension (${EXTENSION_FORMAT})`] };
+  if (!isObject(raw) || typeof raw.format !== 'string' || !FORMATS.includes(raw.format)) return { pkg: null, problems: [`this is not an extension (${EXTENSION_FORMAT})`] };
   const m = isObject(raw.manifest) ? raw.manifest : {};
   const name = text(m.name, 40);
   if (!NAME.test(name)) problems.push(`an extension's name is lower case letters, digits and - ("${name}")`);
@@ -320,7 +331,7 @@ export function parseExtension(raw: unknown): { pkg: ExtensionPackage | null; pr
     }
   }
   // The first format has none of these: what such a package says of them is not read.
-  const server = raw.format === EXTENSION_FORMAT ? serverParts(m, actions, problems) : { routes: [], jobs: [], events: [] };
+  const server = raw.format !== EXTENSION_FORMAT_1 ? serverParts(m, actions, problems, String(raw.format)) : { routes: [], jobs: [], events: [] };
   const code = typeof raw.code === 'string' ? raw.code : '';
   if (actions.length > 0 && !code.trim()) problems.push('it has actions and no code');
   if (code.length > EXTENSION_MAX_BYTES) problems.push('its code is larger than 5 MB');
