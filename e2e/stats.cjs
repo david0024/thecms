@@ -1,8 +1,9 @@
 /**
- * Statistics in a real browser (ADR 0053): pages read by visitors (asked for
- * here with a browser's name, as a person's browser would), a robot that is
- * not counted, then the Statistics screen: the totals, the chart, the lists,
- * and each range.
+ * Statistics in a real browser (ADR 0053, ADR 0062 d8): the Statistics screen
+ * offers the extension the program carries, the owner installs it with one
+ * button, then pages are read by visitors (asked for here with a browser's
+ * name, as a person's browser would) and a robot that is not counted, and the
+ * report shows the totals, the chart, the lists and each range.
  *
  *   node e2e/stats.cjs [folder for screenshots]
  */
@@ -48,10 +49,17 @@ const GOOGLEBOT = 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.co
     const errors = [];
     page.on('pageerror', (e) => errors.push(String(e)));
     await page.goto(url);
-    // A new site: nothing counted yet, and said so.
+    // A new site: the statistics are an extension, offered with what it asks for, and installed with one button.
     await page.locator('[data-nav="stats"]').click();
-    await page.locator('[data-stats-empty]').waitFor();
-    assert(true, 'nothing counted yet, and said so');
+    await page.locator('[data-stats-offer="install"]').waitFor();
+    const asks = await page.locator('[data-offer] [data-asks] li').allTextContents();
+    assert(asks.some((a) => a.includes('page.served')) && asks.some((a) => a.includes('search.made')), `what it asks for is shown: ${asks.join(' | ')}`);
+    if (shots) await page.screenshot({ path: join(shots, 'stats-offer.png'), fullPage: true });
+    await page.locator('[data-offer] [data-accept]').click();
+    // The report opens on today.
+    await page.locator('[data-report-range="today"][aria-pressed="true"]').waitFor();
+    assert((await page.locator('[data-offer]').count()) === 0, 'installed, it is offered no more');
+    assert((await page.locator('[data-report-total="0"] strong').textContent()) === '0', 'nothing counted yet');
 
     // Three people and a robot read the site.
     const read = (path, agent, ip, referer) =>
@@ -62,38 +70,47 @@ const GOOGLEBOT = 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.co
     await read('/', IPHONE, '10.0.0.3', 'https://l.facebook.com/');
     await read('/_/search?q=oak', CHROME, '10.0.0.1');
     await read('/', GOOGLEBOT, '10.0.0.9');
-    // Written to the database within a few seconds.
-    await new Promise((resolve) => setTimeout(resolve, 6000));
+    // Told to the extension in a batch within a few seconds.
+    await new Promise((resolve) => setTimeout(resolve, 7000));
 
-    await page.locator('[data-stats-range="7"]').click();
-    await page.locator('[data-stats-range="30"]').click();
-    await page.locator('[data-stats-chart]').waitFor();
-    assert((await page.locator('[data-stats-visitors]').textContent()) === '3', 'three visitors, the robot left out');
-    assert((await page.locator('[data-stats-views]').textContent()) === '4', 'four pages seen');
-    // The chart of 7 days is still drawn until the answer for 30 comes.
-    await page.waitForFunction(() => document.querySelectorAll('[data-stats-chart] rect.visitors').length === 30, null, { timeout: 5000 }).catch(() => {});
-    assert((await page.locator('[data-stats-chart] rect.visitors').count()) === 30, 'a chart of 30 days');
-    const pages = await page.locator('[data-stats-list="pages"] li').allTextContents();
+    await page.locator('[data-report-range="7"]').click();
+    await page.locator('[data-report-range="30"]').click();
+    await page.locator('[data-report-range="30"][aria-pressed="true"]').waitFor();
+    await page.waitForFunction(() => document.querySelector('[data-report-total="0"] strong')?.textContent === '3', null, { timeout: 5000 }).catch(() => {});
+    assert((await page.locator('[data-report-total="0"] strong').textContent()) === '3', 'three visitors, the robot left out');
+    assert((await page.locator('[data-report-total="1"] strong').textContent()) === '4', 'four pages seen');
+    await page.waitForFunction(() => document.querySelectorAll('[data-report-chart] rect[data-series="0"]').length === 30, null, { timeout: 5000 }).catch(() => {});
+    assert((await page.locator('[data-report-chart] rect[data-series="0"]').count()) === 30, 'a chart of 30 days');
+    const list = (i) => page.locator(`[data-report-list="${i}"] li`).allTextContents();
+    const pages = await list(0);
     assert(pages.length === 2 && pages.every((p) => p.endsWith('2')), `the pages read most: ${pages.join(' | ')}`);
-    const sources = await page.locator('[data-stats-list="sources"] li').allTextContents();
+    const sources = await list(1);
     assert(['Google', 'Facebook', 'Direct'].every((s) => sources.some((t) => t.includes(s))), `where visitors came from: ${sources.join(' | ')}`);
-    const devices = await page.locator('[data-stats-list="devices"] li').allTextContents();
+    const devices = await list(2);
     assert(devices.some((d) => d.startsWith('Computer')) && devices.some((d) => d.startsWith('Phone')), `phone and computer: ${devices.join(' | ')}`);
-    assert((await page.locator('[data-stats-list="searches"] li').allTextContents()).join() === 'oak1', 'what was searched for');
+    assert((await list(3)).join() === 'oak1', 'what was searched for');
     const zone = await page.evaluate(() => Intl.DateTimeFormat().resolvedOptions().timeZone);
     assert((await page.locator('[data-stats-zone]').textContent()).includes(zone), "the days are the owner's");
     if (shots) await page.screenshot({ path: join(shots, 'stats.png'), fullPage: true });
 
     // Each range.
-    await page.locator('[data-stats-range="7"]').click();
-    await page.waitForFunction(() => document.querySelectorAll('[data-stats-chart] rect.visitors').length === 7, null, { timeout: 5000 }).catch(() => {});
-    assert((await page.locator('[data-stats-chart] rect.visitors').count()) === 7, 'a chart of 7 days');
-    await page.locator('[data-stats-range="365"]').click();
-    await page.waitForFunction(() => document.querySelectorAll('[data-stats-chart] rect.visitors').length >= 12);
+    await page.locator('[data-report-range="7"]').click();
+    await page.waitForFunction(() => document.querySelectorAll('[data-report-chart] rect[data-series="0"]').length === 7, null, { timeout: 5000 }).catch(() => {});
+    assert((await page.locator('[data-report-chart] rect[data-series="0"]').count()) === 7, 'a chart of 7 days');
+    await page.locator('[data-report-range="365"]').click();
+    await page.waitForFunction(() => document.querySelectorAll('[data-report-chart] rect[data-series="0"]').length === 12);
     assert(true, 'a chart of 12 months, by month');
-    await page.locator('[data-stats-range="today"]').click();
-    await page.locator('[data-stats-chart]').waitFor({ state: 'detached' });
-    assert((await page.locator('[data-stats-views]').textContent()) === '4', 'today, without a chart of one bar');
+    await page.locator('[data-report-range="today"]').click();
+    await page.locator('[data-report-chart]').waitFor({ state: 'detached' });
+    assert((await page.locator('[data-report-total="1"] strong').textContent()) === '4', 'today, without a chart of one bar');
+
+    // Another visit, after the screen was opened: its batch is told while the screen stays.
+    await read('/about/', IPHONE, '10.0.0.4');
+    await new Promise((resolve) => setTimeout(resolve, 7000));
+    await page.locator('[data-report-range="7"]').click();
+    await page.locator('[data-report-range="today"]').click();
+    await page.waitForFunction(() => document.querySelector('[data-report-total="1"] strong')?.textContent === '5', null, { timeout: 5000 }).catch(() => {});
+    assert((await page.locator('[data-report-total="1"] strong').textContent()) === '5', 'counted again, now that it is installed');
     assert(errors.length === 0, `no errors in the browser ${errors.join(' | ')}`);
   } catch (error) {
     if (shots) await browser.contexts()[0]?.pages()[0]?.screenshot({ path: join(shots, 'failure.png') }).catch(() => {});

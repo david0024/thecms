@@ -114,6 +114,7 @@ import {
   type Theme,
 } from '../core/index.ts';
 import { wordsFor } from '../blocks/words.ts';
+import { DAYS_KEPT, type Kind, KINDS, summed } from '../../extensions/stats/rows.ts';
 import './languages.ts';
 
 /** What is kept with translations: a page, or a section (ADR 0033). */
@@ -194,7 +195,6 @@ const SQLITE: Dialect = {
     'CREATE TABLE IF NOT EXISTS comments (id TEXT PRIMARY KEY, type TEXT NOT NULL, entry TEXT NOT NULL, name TEXT NOT NULL, email TEXT NOT NULL, body TEXT NOT NULL, consent TEXT NOT NULL, at TEXT NOT NULL, approved INTEGER NOT NULL)',
     'CREATE TABLE IF NOT EXISTS message_answers (id TEXT PRIMARY KEY, answers TEXT NOT NULL)',
     'CREATE TABLE IF NOT EXISTS comment_languages (id TEXT PRIMARY KEY, language TEXT NOT NULL)',
-    'CREATE TABLE IF NOT EXISTS visits (day TEXT NOT NULL, kind TEXT NOT NULL, name TEXT NOT NULL, hits INTEGER NOT NULL, PRIMARY KEY (day, kind, name))',
     'CREATE TABLE IF NOT EXISTS entry_authors (type TEXT NOT NULL, slug TEXT NOT NULL, user_id TEXT NOT NULL, PRIMARY KEY (type, slug))',
     'CREATE TABLE IF NOT EXISTS entry_reviews (type TEXT NOT NULL, slug TEXT NOT NULL, state TEXT NOT NULL, note TEXT NOT NULL, at TEXT NOT NULL, PRIMARY KEY (type, slug))',
     'CREATE TABLE IF NOT EXISTS user_bios (id TEXT PRIMARY KEY, bio TEXT NOT NULL)',
@@ -232,7 +232,6 @@ const POSTGRES: Dialect = {
     'CREATE TABLE IF NOT EXISTS comments (id VARCHAR(40) PRIMARY KEY, type VARCHAR(255) NOT NULL, entry VARCHAR(255) NOT NULL, name TEXT NOT NULL, email TEXT NOT NULL, body TEXT NOT NULL, consent TEXT NOT NULL, at VARCHAR(40) NOT NULL, approved INTEGER NOT NULL)',
     'CREATE TABLE IF NOT EXISTS message_answers (id VARCHAR(40) PRIMARY KEY, answers TEXT NOT NULL)',
     'CREATE TABLE IF NOT EXISTS comment_languages (id VARCHAR(40) PRIMARY KEY, language VARCHAR(20) NOT NULL)',
-    'CREATE TABLE IF NOT EXISTS visits (day VARCHAR(10) NOT NULL, kind VARCHAR(20) NOT NULL, name VARCHAR(255) NOT NULL, hits INTEGER NOT NULL, PRIMARY KEY (day, kind, name))',
     'CREATE TABLE IF NOT EXISTS entry_authors (type VARCHAR(255) NOT NULL, slug VARCHAR(255) NOT NULL, user_id VARCHAR(40) NOT NULL, PRIMARY KEY (type, slug))',
     'CREATE TABLE IF NOT EXISTS entry_reviews (type VARCHAR(255) NOT NULL, slug VARCHAR(255) NOT NULL, state VARCHAR(20) NOT NULL, note TEXT NOT NULL, at VARCHAR(40) NOT NULL, PRIMARY KEY (type, slug))',
     'CREATE TABLE IF NOT EXISTS user_bios (id VARCHAR(40) PRIMARY KEY, bio TEXT NOT NULL)',
@@ -269,7 +268,6 @@ const MYSQL: Dialect = {
     `CREATE TABLE IF NOT EXISTS comments (id VARCHAR(40) PRIMARY KEY, type VARCHAR(255) NOT NULL, entry VARCHAR(255) NOT NULL, name TEXT NOT NULL, email TEXT NOT NULL, body TEXT NOT NULL, consent TEXT NOT NULL, at VARCHAR(40) NOT NULL, approved INTEGER NOT NULL) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS message_answers (id VARCHAR(40) PRIMARY KEY, answers LONGTEXT NOT NULL) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS comment_languages (id VARCHAR(40) PRIMARY KEY, language VARCHAR(20) NOT NULL) ${MYSQL_TABLE}`,
-    `CREATE TABLE IF NOT EXISTS visits (day VARCHAR(10) NOT NULL, kind VARCHAR(20) NOT NULL, name VARCHAR(255) NOT NULL, hits INTEGER NOT NULL, PRIMARY KEY (day, kind, name)) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS entry_authors (type VARCHAR(255) NOT NULL, slug VARCHAR(255) NOT NULL, user_id VARCHAR(40) NOT NULL, PRIMARY KEY (type, slug)) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS entry_reviews (type VARCHAR(255) NOT NULL, slug VARCHAR(255) NOT NULL, state VARCHAR(20) NOT NULL, note TEXT NOT NULL, at VARCHAR(40) NOT NULL, PRIMARY KEY (type, slug)) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS user_bios (id VARCHAR(40) PRIMARY KEY, bio TEXT NOT NULL) ${MYSQL_TABLE}`,
@@ -317,15 +315,13 @@ export interface Message {
 }
 
 /**
- * One total of the statistics (ADR 0053): on a day, how many visitors, pages
- * seen, times a page was read, arrivals from a source, visitors on a kind of
- * device, or times a search was made. Nothing else is kept.
+ * One total the program kept before the statistics were an extension (ADR
+ * 0053): read from an old database or an old backup, and moved into the
+ * extension's rows (ADR 0062 d8).
  */
 export interface VisitRow {
-  /** YYYY-MM-DD, in the owner's time zone. */
   day: string;
-  kind: 'visitors' | 'views' | 'page' | 'source' | 'device' | 'search';
-  /** The page's address, the source, the device or the words searched; empty for the day's totals. */
+  kind: Kind;
   name: string;
   hits: number;
 }
@@ -470,6 +466,47 @@ export class Store {
     }
     await this.moveCopies();
     await this.keepOldContactForm();
+    await this.moveVisits();
+  }
+
+  /**
+   * The totals kept before the statistics were an extension (ADR 0062 d8):
+   * moved into its rows, where it finds them once it is installed, and the
+   * table goes. A database that never had them has nothing to move.
+   */
+  private async moveVisits(): Promise<void> {
+    let rows: VisitRow[];
+    try {
+      rows = await this.rows<VisitRow>('SELECT day, kind, name, hits FROM visits');
+    } catch {
+      return;
+    }
+    await this.sql.begin(async (tx) => {
+      const run = (query: string, params: unknown[] = []) => tx.unsafe(this.dialect.params(query), params);
+      await this.addStatsRows(run, rows);
+      await run('DROP TABLE visits');
+    });
+  }
+
+  /**
+   * Adds old totals to the statistics' rows: every month's, and the days'
+   * that the extension still keeps. Its own code adds the same way, to rows of
+   * the same names (`extensions/stats/rows.ts`).
+   */
+  private async addStatsRows(run: (query: string, params?: unknown[]) => Promise<unknown>, rows: readonly VisitRow[], now = Date.now()): Promise<void> {
+    const oldest = new Date(now - (DAYS_KEPT + 1) * 86_400_000).toISOString().slice(0, 10);
+    const totals = rows.filter((r) => (KINDS as readonly string[]).includes(r.kind) && /^\d{4}-\d{2}-\d{2}$/.test(r.day)).map((r) => ({ day: r.day, kind: r.kind, name: r.name, hits: Number(r.hits) || 0 }));
+    const at = new Date(now).toISOString();
+    for (const one of summed(totals)) {
+      if (one.collection === 'days' && (one.row as { day: string }).day < oldest) continue;
+      const [before] = (await run('SELECT data FROM extension_rows WHERE extension = ? AND collection = ? AND id = ?', [STATS, one.collection, one.id])) as { data: string }[];
+      if (before) {
+        const data = JSON.parse(before.data) as Record<string, unknown>;
+        await run('UPDATE extension_rows SET data = ?, updated_at = ? WHERE extension = ? AND collection = ? AND id = ?', [JSON.stringify({ ...data, hits: (Number(data.hits) || 0) + one.hits }), at, STATS, one.collection, one.id]);
+      } else {
+        await run('INSERT INTO extension_rows (extension, collection, id, data, updated_at) VALUES (?, ?, ?, ?, ?)', [STATS, one.collection, one.id, JSON.stringify({ ...one.row, hits: one.hits }), at]);
+      }
+    }
   }
 
   /**
@@ -2259,26 +2296,6 @@ export class Store {
     await this.setMeta(BACKUP_LAST, value);
   }
 
-  /** The day's totals of the statistics (ADR 0053), added to what each day already has. */
-  async addVisits(rows: readonly VisitRow[]): Promise<void> {
-    const add =
-      this.kind === 'mysql'
-        ? 'INSERT INTO visits (day, kind, name, hits) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE hits = hits + VALUES(hits)'
-        : 'INSERT INTO visits (day, kind, name, hits) VALUES (?, ?, ?, ?) ON CONFLICT (day, kind, name) DO UPDATE SET hits = visits.hits + excluded.hits';
-    for (const row of rows) await this.run(add, [row.day, row.kind, row.name.slice(0, 255), row.hits]);
-  }
-
-  /** The totals of the days from `from` to `to`, both given as YYYY-MM-DD. */
-  async visits(from: string, to: string): Promise<VisitRow[]> {
-    const rows = await this.rows<{ day: string; kind: string; name: string; hits: number | string }>('SELECT day, kind, name, hits FROM visits WHERE day >= ? AND day <= ?', [from, to]);
-    return rows.map((r) => ({ day: r.day, kind: r.kind as VisitRow['kind'], name: r.name, hits: Number(r.hits) }));
-  }
-
-  /** Whether anything was ever counted: an export is told what it loses only then. */
-  async hasVisits(): Promise<boolean> {
-    return (await this.row('SELECT 1 AS found FROM visits LIMIT 1')) !== null;
-  }
-
   /** The owner's time zone, in which the statistics' days begin (ADR 0053 d3); UTC until the owner opens them. */
   async statsZone(): Promise<string> {
     const zone = await this.getMeta('stats:zone');
@@ -2326,7 +2343,14 @@ export class Store {
       const run = (query: string, params: unknown[] = []) => tx.unsafe(this.dialect.params(query), params);
       await run(`DELETE FROM meta WHERE ${this.dialect.key} NOT IN (${marks(NOT_BACKED_UP_META)})`, NOT_BACKED_UP_META);
       for (const table of BACKUP_TABLES) if (table !== 'meta') await run(`DELETE FROM ${table}`);
+      // A backup from before the statistics were an extension holds their totals: they go to its rows (ADR 0062 d8).
+      const visits: VisitRow[] = [];
       for await (const { table, row } of rows) {
+        if (table === 'visits') {
+          visits.push({ day: String(row.day), kind: String(row.kind) as Kind, name: String(row.name ?? ''), hits: Number(row.hits) || 0 });
+          count++;
+          continue;
+        }
         const columns = TABLE_COLUMNS[table];
         if (!columns || !(BACKUP_TABLES as readonly string[]).includes(table)) throw new Error(`a backup holds a table this program does not know: ${table}`);
         if (table === 'meta' && NOT_BACKED_UP_META.includes(String(row.key))) continue;
@@ -2336,6 +2360,7 @@ export class Store {
         await run(`INSERT INTO ${table} (${names.map((n) => (n === 'key' ? this.dialect.key : n)).join(', ')}) VALUES (${marks(names)})`, names.map((n) => row[n]));
         count++;
       }
+      await this.addStatsRows(run, visits);
       await run('DELETE FROM sessions WHERE user_id NOT IN (SELECT id FROM users)');
       await run('DELETE FROM links WHERE user_id NOT IN (SELECT id FROM users) AND user_id <> ?', ['']);
     });
@@ -2349,6 +2374,8 @@ const BACKUP_SETTINGS = 'backups';
 const BACKUP_LAST = 'backups:last';
 /** Meta that belongs to the server the site runs on, not to the site. */
 const NOT_BACKED_UP_META = [BACKUP_SETTINGS, BACKUP_LAST, 'valkey'];
+/** The statistics extension (ADR 0062 d8), whose rows the totals kept before it are moved into. */
+export const STATS = 'stats';
 /** Every table a backup holds, in the order it is written and read back. Sessions and one-time links are not in it. */
 export const BACKUP_TABLES = [
   'meta',
@@ -2369,7 +2396,6 @@ export const BACKUP_TABLES = [
   'extensions',
   'extension_rows',
   'extension_jobs',
-  'visits',
   'entry_authors',
   'entry_reviews',
   'user_bios',

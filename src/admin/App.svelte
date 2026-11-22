@@ -782,7 +782,7 @@ onMount(() => {
     {:else if view === 'backups'}
       <Backups />
     {:else if view === 'stats'}
-      <Stats />
+      <Stats onchange={(next) => site && (site = { ...site, extensions: next })} />
     {:else if view === 'comments'}
       <Comments site={site.site} entries={site.entries} />
     {:else if view === 'import'}

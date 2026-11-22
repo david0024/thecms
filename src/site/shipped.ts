@@ -8,6 +8,7 @@ import plain from '../../themes/plain.json';
 import studio from '../../themes/studio.json';
 import ro from '../../languages/ro.json';
 import baseCss from '../blocks/base.css' with { type: 'text' };
+import statsPackage from '../../extensions/stats/stats.thecms-extension' with { type: 'text' };
 
 /** The themes in `themes/`, by file name. */
 export const SHIPPED_THEMES: Record<string, unknown> = { 'plain.json': plain, 'studio.json': studio };
@@ -17,3 +18,9 @@ export const SHIPPED_LANGUAGES: Record<string, unknown> = { 'ro.json': ro };
 export const BASE_CSS: string = baseCss;
 /** The theme a new site starts with. */
 export const DEFAULT_THEME: unknown = plain;
+/**
+ * The statistics, packed (ADR 0062 d8): an extension the program carries, so
+ * that the Statistics screen installs it with one button. A test holds it to
+ * a fresh pack of `extensions/stats`.
+ */
+export const SHIPPED_STATS: string = statsPackage;

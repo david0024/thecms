@@ -134,6 +134,10 @@ Installing it moves the old totals from the `visits` table into its
 collection, and the table is then dropped. Until it is installed, nothing is
 counted.
 
+Who reads them stays as it was (ADR 0053 d3): the owner and the editors. As a
+rule for every extension, an editor opens its `report` screens and runs the
+actions they name; its other screens and actions stay the owner's.
+
 ### d9. With the step that needs it
 
 From ADR 0060 d5, these come with their steps: the order's, the account's and
@@ -146,3 +150,20 @@ Worker (the runtime on Workers).
 
 One pull request for each: d2 with d5; d3 with d4; d6; d7 with the `date`
 kinds; d8. The format's version and the packer follow the first.
+
+For d8:
+
+- The totals are two collections: `days`, the last 31 days, which a daily job
+  trims, and `months`, kept. A report of today, 7 or 30 days reads the days;
+  of 12 months, the months. A row is named `<day or month>:<kind>:<hash of the
+  name>` (`extensions/stats/rows.ts`), so two processes add to the same row,
+  and a batch of visits is added in one call a row.
+- The program tells `page.served` with whether the visitor is new today, which
+  it knows from the fingerprint; the extension never sees the fingerprint.
+- The old totals move when the program first opens the database, not at the
+  click: they go into the extension's rows, where it finds them once it is
+  installed, and `visits` is dropped then. A backup made before holds them
+  too; restoring it puts them in the same rows. The days older than 31 go to
+  the months only.
+- The Statistics screen offers the packed file again when the program carries
+  a newer version than the one installed.

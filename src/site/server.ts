@@ -18,7 +18,7 @@ import { startClock } from './clock.ts';
 import { backups, type Remote, type S3Settings } from './backup.ts';
 import type { Mailer } from './mail.ts';
 import { startRuntime } from './runtime.ts';
-import { RANGES, type Range, statsShown } from './stats.ts';
+import { zoneFor } from './stats.ts';
 import { isValkeyAddress, openShared, type Shared, shownAddress, switchable, testValkey } from './shared.ts';
 
 /** The admin's own addresses; every other is the site's (ADR 0044). */
@@ -38,9 +38,10 @@ import { languages, packFor } from './languages.ts';
 import { accounts, cleanPublicAddress, ownerOnly, shown } from './accounts.ts';
 import { extensionHost, type Spawn } from './extensions.ts';
 import { BUILT_ADMIN } from './built-admin.ts';
-import { BASE_CSS, SHIPPED_THEMES } from './shipped.ts';
-import { type Store, type User, writesAll } from './store.ts';
-import { rowWrites } from '../view/index.ts';
+import { BASE_CSS, SHIPPED_STATS, SHIPPED_THEMES } from './shipped.ts';
+import { STATS, type Store, type User, writesAll } from './store.ts';
+import { reportsOf, rowWrites } from '../view/index.ts';
+import { newer } from './update.ts';
 import { exportedFiles, fullCheck, publishedSite } from './export.ts';
 
 const ADMIN = new URL('../admin/', import.meta.url);
@@ -345,19 +346,27 @@ export async function startEditor(
   const extensionsFor = async (me: User) =>
     (await store.extensions())
       .filter((e) => me.role === 'owner' || e.enabled)
-      .map(({ manifest, sha256, enabled, installedAt }) => ({
-        name: manifest.name,
-        displayName: manifest.displayName,
-        description: manifest.description,
-        version: manifest.version,
-        publisher: manifest.publisher,
-        enabled,
-        actions: manifest.actions.filter((a) => me.role === 'owner' || a.on).map(({ name, label, on, ask, each }) => ({ name, label, on, ask, each })),
-        messages: manifest.messages,
-        // The blocks it adds to the site's pages (ADR 0062 d6), which any author places.
-        blocks: manifest.blocks.map(({ name, label }) => ({ name, label })),
-        ...(me.role === 'owner' ? { sha256, installedAt, asks: extensionAsks(manifest), views: manifest.views, collections: manifest.collections } : {}),
-      }));
+      .map(({ manifest, sha256, enabled, installedAt }) => {
+        // An editor opens an extension's reports, and runs the actions they name (ADR 0062 d8).
+        const reports = me.role === 'editor' ? reportsOf(manifest) : [];
+        return {
+          name: manifest.name,
+          displayName: manifest.displayName,
+          description: manifest.description,
+          version: manifest.version,
+          publisher: manifest.publisher,
+          enabled,
+          actions: manifest.actions.filter((a) => me.role === 'owner' || a.on || reports.includes(a.name)).map(({ name, label, on, ask, each }) => ({ name, label, on, ask, each })),
+          messages: manifest.messages,
+          // The blocks it adds to the site's pages (ADR 0062 d6), which any author places.
+          blocks: manifest.blocks.map(({ name, label }) => ({ name, label })),
+          ...(me.role === 'owner'
+            ? { sha256, installedAt, asks: extensionAsks(manifest), views: manifest.views, collections: manifest.collections }
+            : reports.length
+              ? { views: manifest.views.filter((v) => v.type === 'report'), collections: [] }
+              : {}),
+        };
+      });
   const state = async (me: User): Promise<unknown> => ({
     extensions: await extensionsFor(me),
     site: await store.site(),
@@ -549,7 +558,7 @@ export async function startEditor(
     if (part === 'run' && request.method === 'POST') {
       const action = installed.manifest.actions.find((a) => a.name === what);
       if (!action) return json({ error: `${installed.manifest.displayName} has no action "${what}"` }, 404);
-      if (!action.on && !owner) return refused;
+      if (!action.on && !owner && !(me.role === 'editor' && reportsOf(installed.manifest).includes(action.name))) return refused;
       const body = (await request.json()) as Record<string, unknown>;
       const site = await store.site();
       const given = isObject(body.ask) ? body.ask : {};
@@ -610,6 +619,31 @@ export async function startEditor(
   }
 
   /**
+   * The Statistics screen (ADR 0062 d8): the statistics are an extension the
+   * program carries. Read by the owner and the editors, it says whether it is
+   * installed and on, and offers the owner the packed one when it is not, or
+   * when the program carries a newer one. The owner's browser gives the time
+   * zone the days begin in (ADR 0053 d3).
+   */
+  async function statsApi(request: Request, url: URL, me: User): Promise<Response> {
+    const owner = me.role === 'owner';
+    if (url.pathname === '/api/stats/install') {
+      if (!owner) return json({ error: 'only the owner may do this' }, 403);
+      if (request.method !== 'POST') return json({ error: 'not found' }, 404);
+      await extensions.install(SHIPPED_STATS, url.searchParams.get('sha256') ?? '');
+    } else if (request.method !== 'GET') return json({ error: 'not found' }, 404);
+    const zone = await zoneFor(store, url.searchParams.get('zone') ?? '', owner);
+    const installed = await store.extension(STATS);
+    const offer = owner ? await extensions.offer(SHIPPED_STATS) : null;
+    return json({
+      zone,
+      installed: installed ? { version: installed.manifest.version, enabled: installed.enabled } : null,
+      offer: offer && (!installed || newer(offer.manifest.version, installed.manifest.version)) ? offer : null,
+      extensions: await extensionsFor(me),
+    });
+  }
+
+  /**
    * What an author or a contributor may not do (ADR 0055 d1): a refusal, or
    * null. They write their own entries; the pages, the sections and the rest
    * of the site are the owner's and the editors'. Read from a copy of the
@@ -661,11 +695,7 @@ export async function startEditor(
     if (url.pathname === '/api/extensions' || url.pathname.startsWith('/api/extensions/')) return extensionsApi(request, url, me);
     if (url.pathname.startsWith('/api/import')) return importApi(request, url);
     if (url.pathname.startsWith('/api/export/') && request.method === 'GET') return exportApi(url);
-    if (url.pathname === '/api/stats' && request.method === 'GET') {
-      // Read by the owner and the editors; the owner's browser gives the time zone the days begin in (ADR 0053 d3).
-      const range = (RANGES as readonly string[]).includes(url.searchParams.get('range') ?? '') ? (url.searchParams.get('range') as Range) : '30';
-      return json(await statsShown(store, range, { zone: url.searchParams.get('zone') ?? '', owner: me.role === 'owner' }));
-    }
+    if (url.pathname === '/api/stats' || url.pathname === '/api/stats/install') return statsApi(request, url, me);
     if (url.pathname === '/api/backups' || url.pathname.startsWith('/api/backups/')) return backed ? backed.api(request, url) : json({ error: 'backups are not kept here' }, 404);
     if (url.pathname === '/api/messages') {
       const email = url.searchParams.get('email') ?? '';

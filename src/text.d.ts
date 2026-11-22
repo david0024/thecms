@@ -3,3 +3,7 @@ declare module '*.css' {
   const text: string;
   export default text;
 }
+declare module '*.thecms-extension' {
+  const text: string;
+  export default text;
+}

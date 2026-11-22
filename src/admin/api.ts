@@ -9,8 +9,6 @@ import type { ExtensionOffer } from '../site/extensions.ts';
 import type { ImportPreview, ImportProgress } from '../site/server.ts';
 import type { BackupSettings, BackupsShown } from '../site/backup.ts';
 export type { BackupSettings, BackupsShown };
-import type { Range, StatsShown } from '../site/stats.ts';
-export type { Range, StatsShown };
 
 export type { ImportPreview, ImportProgress };
 import type { Comment, Message, Role, User } from '../site/store.ts';
@@ -194,6 +192,14 @@ export interface ExtensionInfo {
 }
 export type { ExtensionOffer };
 
+/** The Statistics screen (ADR 0062 d8): the extension that keeps them, and the packed one the owner is offered. */
+export interface StatsState {
+  zone: string;
+  installed: { version: string; enabled: boolean } | null;
+  offer: ExtensionOffer | null;
+  extensions: ExtensionInfo[];
+}
+
 export interface LanguageInfo {
   language: string;
   name: string;
@@ -287,7 +293,8 @@ export const api = {
   testValkey: (address: string) => call<{ test: { ok: boolean; ms: number; error: string } }>('POST', '/api/performance', { address }),
   setValkey: (address: string) => call<Performance>('PUT', '/api/performance', { address }),
   /** The statistics of a range (ADR 0053); the browser's time zone goes with it, and becomes the statistics' own when the owner asks. */
-  stats: (range: Range) => call<StatsShown>('GET', `/api/stats?range=${range}&zone=${encodeURIComponent(Intl.DateTimeFormat().resolvedOptions().timeZone)}`),
+  stats: () => call<StatsState>('GET', `/api/stats?zone=${encodeURIComponent(Intl.DateTimeFormat().resolvedOptions().timeZone)}`),
+  installStats: (sha256: string) => call<StatsState>('POST', `/api/stats/install?sha256=${sha256}&zone=${encodeURIComponent(Intl.DateTimeFormat().resolvedOptions().timeZone)}`),
   backups: () => call<BackupsShown>('GET', '/api/backups'),
   setBackups: (settings: BackupSettings) => call<BackupsShown>('PUT', '/api/backups', { settings }),
   backUpNow: () => call<BackupsShown>('POST', '/api/backups'),

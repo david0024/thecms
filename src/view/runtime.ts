@@ -81,6 +81,15 @@ export function findView(docs: readonly ViewDocument[], id: string): { doc: View
 }
 
 /**
+ * The actions an extension's reports run (ADR 0062 d8): its screens of the
+ * kind `report`, which an editor opens as the owner does. A report inside tabs
+ * is the owner's, with the rest of its tabs.
+ */
+export function reportsOf(manifest: { views: readonly ViewDocument[] }): string[] {
+  return manifest.views.flatMap((v) => (v.type === 'report' ? [v.action] : []));
+}
+
+/**
  * What the screens let a person do to a collection's rows directly. The
  * program allows these writes, and no others, through the rows of the data
  * API; everything else an extension does goes through its actions.
