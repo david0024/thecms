@@ -46,6 +46,8 @@ describe('a package', () => {
       jobs: [],
       events: [],
       pictures: ['Look'],
+      answers: [],
+      uses: [],
     });
     expect(extensionWord(m, 'ro', 'Louder')).toBe('Mai tare');
     expect(extensionWord(m, 'ro-MD', 'Settings')).toBe('Setări');

@@ -82,7 +82,24 @@ export interface ExtensionAction {
    * bytes of a picture of the library, and the owner is told so before installing.
    */
   pictures: boolean;
+  /** The program's data it reads (ADR 0062 d4), of those the manifest declares. */
+  uses: ProgramData[];
   timeoutSeconds: number;
+}
+
+/** The program's data an extension may read, declared (ADR 0062 d4). */
+export const PROGRAM_DATA = ['published'] as const;
+export type ProgramData = (typeof PROGRAM_DATA)[number];
+
+/** The questions the program asks an extension and waits for (ADR 0062 d3), and what each may answer. */
+export const QUESTIONS = { 'comment.check': ['hold', 'approve', 'spam'] } as const;
+export type Question = keyof typeof QUESTIONS;
+/** How long the program waits for an answer before it goes on without it. */
+export const ANSWER_SECONDS = 10;
+
+export interface ExtensionAnswer {
+  question: Question;
+  action: string;
 }
 
 /**
@@ -138,6 +155,9 @@ export interface ExtensionManifest {
   routes: ExtensionRoute[];
   jobs: ExtensionJob[];
   events: ExtensionListener[];
+  /** The questions it answers, and the program's data it reads (ADR 0062). */
+  answers: ExtensionAnswer[];
+  uses: ProgramData[];
 }
 
 export interface ExtensionPackage {
@@ -230,6 +250,7 @@ function action(raw: unknown, names: string[], problems: string[]): ExtensionAct
     reads: own(raw.reads, 'reads'),
     writes: own(raw.writes, 'writes'),
     pictures: raw.pictures === true,
+    uses: PROGRAM_DATA.filter((d) => list(raw.uses).includes(d)),
     timeoutSeconds: Number.isInteger(seconds) && seconds >= 1 && seconds <= 300 ? seconds : 60,
   };
 }
@@ -287,6 +308,28 @@ function serverParts(m: Record<string, unknown>, actions: ExtensionAction[], pro
   return { routes, jobs, events };
 }
 
+/** What the third format adds (ADR 0062): the questions it answers and the program's data it reads. */
+function thirdParts(m: Record<string, unknown>, actions: ExtensionAction[], problems: string[]): Pick<ExtensionManifest, 'answers' | 'uses'> {
+  const uses = PROGRAM_DATA.filter((d) => list(m.uses).includes(d));
+  for (const u of list(m.uses)) if (!PROGRAM_DATA.includes(u as ProgramData)) problems.push(`an extension reads ${PROGRAM_DATA.join(', ')} of the program's data ("${text(u, 40)}")`);
+  for (const a of actions) for (const u of a.uses) if (!uses.includes(u)) problems.push(`${a.name}: it reads "${u}", which the extension does not declare in "uses"`);
+  const answers: ExtensionAnswer[] = [];
+  for (const q of list(m.answers).slice(0, 12)) {
+    if (!isObject(q)) continue;
+    const question = Object.keys(QUESTIONS).find((x) => x === q.question) as Question | undefined;
+    if (!question) {
+      problems.push(`an extension answers one of ${Object.keys(QUESTIONS).join(', ')} ("${text(q.question, 40)}")`);
+      continue;
+    }
+    const action = actions.find((a) => a.name === text(q.action, 40));
+    if (!action) problems.push(`answering ${question} runs "${text(q.action, 40)}", which is not one of its actions`);
+    else if (action.on) problems.push(`answering ${question} runs "${action.name}", which the editor offers on a ${action.on}`);
+    else if (answers.some((x) => x.question === question)) problems.push(`it answers ${question} twice`);
+    else answers.push({ question, action: action.name });
+  }
+  return { answers, uses };
+}
+
 /** Reads a package, with every reason it cannot be installed. */
 export function parseExtension(raw: unknown): { pkg: ExtensionPackage | null; problems: string[] } {
   const problems: string[] = [];
@@ -332,6 +375,7 @@ export function parseExtension(raw: unknown): { pkg: ExtensionPackage | null; pr
   }
   // The first format has none of these: what such a package says of them is not read.
   const server = raw.format !== EXTENSION_FORMAT_1 ? serverParts(m, actions, problems, String(raw.format)) : { routes: [], jobs: [], events: [] };
+  const third = raw.format === EXTENSION_FORMAT ? thirdParts(m, actions, problems) : { answers: [], uses: [] };
   const code = typeof raw.code === 'string' ? raw.code : '';
   if (actions.length > 0 && !code.trim()) problems.push('it has actions and no code');
   if (code.length > EXTENSION_MAX_BYTES) problems.push('its code is larger than 5 MB');
@@ -351,6 +395,7 @@ export function parseExtension(raw: unknown): { pkg: ExtensionPackage | null; pr
         views,
         messages,
         ...server,
+        ...third,
       },
       code,
     },
@@ -375,6 +420,9 @@ export function extensionAsks(manifest: ExtensionManifest): {
   events: string[];
   /** The actions that see the site's pictures (ADR 0059 d3). */
   pictures: string[];
+  /** The questions it answers, and the program's data it reads (ADR 0062). */
+  answers: string[];
+  uses: string[];
 } {
   const label = (name: string): string => manifest.actions.find((a) => a.name === name)?.label ?? name;
   return {
@@ -386,6 +434,8 @@ export function extensionAsks(manifest: ExtensionManifest): {
     jobs: manifest.jobs.map((j) => ({ action: label(j.action), everyMinutes: j.everyMinutes })),
     events: [...new Set(manifest.events.map((e) => e.on))],
     pictures: manifest.actions.filter((a) => a.pictures).map((a) => a.label),
+    answers: manifest.answers.map((a) => a.question),
+    uses: manifest.uses,
   };
 }
 

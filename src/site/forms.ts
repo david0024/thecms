@@ -64,7 +64,18 @@ function languageAt(site: Site, back: string): string {
 
 export function startForms(
   store: Store,
-  options: { port?: number; listen?: boolean; hostname?: string; mailer?: Mailer | null; to?: string; from?: string; log?: (line: string) => void; shared?: Shared } = {},
+  options: {
+    port?: number;
+    listen?: boolean;
+    hostname?: string;
+    mailer?: Mailer | null;
+    to?: string;
+    from?: string;
+    log?: (line: string) => void;
+    shared?: Shared;
+    /** Asks the extensions that answer a question, and waits for them (ADR 0062 d3). */
+    ask?: (question: 'comment.check', input: Record<string, unknown>) => Promise<string[]>;
+  } = {},
 ): FormsServer {
   const log = options.log ?? ((line: string) => console.error(line));
   // What a visitor sent is counted where the site's processes share it (ADR 0044 d4).
@@ -152,8 +163,13 @@ export function startForms(
     if (await tooMany(ip || 'unknown')) return answer(false);
 
     await store.forgetOldMessages();
-    const kept = await store.addComment({ type: type.id, entry: slug, name, email, body, consent: wordsFor(language || site.language).commentConsent, ...(language ? { language } : {}) });
-    const state = kept.approved ? 'It is shown already: an earlier comment from this address was approved.' : 'It waits for your approval, under Comments in the admin.';
+    // Checked first by the extensions that answer it (ADR 0062 d3), never with the writer's address: the strictest answer wins.
+    const answers = options.ask ? await options.ask('comment.check', { name, words: body, language: language || site.language, entry: at, title: entry.title }) : [];
+    const judged = answers.includes('spam') ? 'spam' : answers.includes('hold') ? 'hold' : answers.includes('approve') ? 'approve' : null;
+    const kept = await store.addComment({ type: type.id, entry: slug, name, email, body, consent: wordsFor(language || site.language).commentConsent, ...(language ? { language } : {}) }, new Date(), judged);
+    // Spam is kept apart and not told: the owner finds it under Spam.
+    if (kept.spam) return answer(true);
+    const state = kept.approved ? (judged === 'approve' ? 'It is shown already: an extension that checks comments approved it.' : 'It is shown already: an earlier comment from this address was approved.') : 'It waits for your approval, under Comments in the admin.';
     tell(kept.id, { replyTo: email, subject: `${site.name}: a comment from ${name}`, text: `${name} <${email}> commented on "${entry.title}", ${site.url}${at}:\n\n${body}\n\n${state}\n` });
     return answer(true);
   }

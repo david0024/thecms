@@ -6,8 +6,9 @@ import { afterAll, describe, expect, test } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { EXTENSION_FORMAT, EXTENSION_FORMAT_2, parseExtension } from '../src/core/index.ts';
+import { ANSWER_SECONDS, EXTENSION_FORMAT, EXTENSION_FORMAT_2, extensionAsks, parseExtension, postsType } from '../src/core/index.ts';
 import { BATCH_MAX, batches, extensionHost, WAITING_MAX } from '../src/site/extensions.ts';
+import { startForms } from '../src/site/forms.ts';
 import { FRESH_MS, startRuntime } from '../src/site/runtime.ts';
 import { localShared } from '../src/site/shared.ts';
 import { Store, type SiteEvent } from '../src/site/store.ts';
@@ -194,5 +195,126 @@ describe('what visits tell', () => {
     expect(delivered.slice(1)).toEqual([BATCH_MAX, ...Array(WAITING_MAX / BATCH_MAX - 1).fill(BATCH_MAX)]);
     expect(said).toEqual(['7 of page.served were not told: the extensions that listen did not keep up']);
     await told.stop();
+  });
+});
+
+const CHECKER = `export const actions = {
+  check: async (input, host) => {
+    await host.collections.insert('seen', { line: JSON.stringify(input) });
+    if (input.words.includes('casino')) return 'spam';
+    if (input.words.includes('slow')) return new Promise(() => {});
+    if (input.words.includes('odd')) return 'maybe';
+    return input.name === 'Trusted' ? 'approve' : 'hold';
+  },
+  list: async (input, host) => host.published(),
+  sneak: async (input, host) => host.published(),
+};`;
+const checker = {
+  name: 'checker',
+  displayName: 'Checker',
+  version: '1.0.0',
+  collections: [{ name: 'seen', label: 'Seen', fields: [{ key: 'line', label: 'Line', kind: 'longtext' }] }],
+  uses: ['published'],
+  actions: [
+    { name: 'check', label: 'Check', writes: ['seen'], timeoutSeconds: 30 },
+    { name: 'list', label: 'List', uses: ['published'] },
+    { name: 'sneak', label: 'Sneak' },
+  ],
+  answers: [{ question: 'comment.check', action: 'check' }],
+};
+const CHECKER_PACKAGE = JSON.stringify({ format: EXTENSION_FORMAT, manifest: checker, code: CHECKER });
+
+describe('a question the program waits for', () => {
+  test('is declared, shown before installing, and only in the third format', () => {
+    const { pkg } = parseExtension(JSON.parse(CHECKER_PACKAGE));
+    expect(pkg?.manifest.answers).toEqual([{ question: 'comment.check', action: 'check' }]);
+    expect(extensionAsks(pkg!.manifest)).toMatchObject({ answers: ['comment.check'], uses: ['published'] });
+    expect(parseExtension({ format: EXTENSION_FORMAT_2, manifest: checker, code: CHECKER }).pkg?.manifest.answers).toEqual([]);
+    const wrong = parseExtension({
+      format: EXTENSION_FORMAT,
+      manifest: { ...checker, uses: ['orders'], answers: [{ question: 'order.pay', action: 'check' }, { question: 'comment.check', action: 'nothing' }] },
+      code: CHECKER,
+    });
+    expect(wrong.problems).toEqual([
+      'an extension reads published of the program\'s data ("orders")',
+      'list: it reads "published", which the extension does not declare in "uses"',
+      'an extension answers one of comment.check ("order.pay")',
+      'answering comment.check runs "nothing", which is not one of its actions',
+    ]);
+  });
+
+  test('comment.check: the answer is waited for, spam is kept apart, and the writer\'s address is never given', async () => {
+    const store = await site('checked');
+    await store.setSite({ ...(await store.site()), forms: 'https://site.example', types: [{ ...postsType(), comments: true }] });
+    await store.savePost({ slug: 'oak', title: 'On oak', date: '2026-11-01', blocks: [] });
+    await store.publishPost('oak');
+    const said: string[] = [];
+    const host = extensionHost(store, { log: (l) => said.push(l) });
+    await host.install(CHECKER_PACKAGE, (await host.offer(CHECKER_PACKAGE)).sha256);
+    const forms = startForms(store, { listen: false, log: () => {}, ask: host.ask });
+    const send = (name: string, words: string, email = 'ana@example.org') =>
+      forms.fetch(
+        new Request('http://forms.local/comment', {
+          method: 'POST',
+          headers: { 'content-type': 'application/x-www-form-urlencoded', origin: 'https://site.example' },
+          body: new URLSearchParams({ back: '/blog/oak/', type: 'posts', entry: 'oak', name, email, comment: words, consent: 'yes', website: '' }).toString(),
+        }),
+        `10.0.0.${name.length}`,
+      );
+    try {
+      await send('Ana', 'Lovely grain.');
+      await send('Trusted', 'Nice.', 'trusted@example.org');
+      await send('Bot', 'Win at the casino');
+      await send('Odd', 'An odd answer');
+      const shown = await store.comments();
+      expect(shown.map((c) => `${c.name}:${c.approved ? 'shown' : c.spam ? 'spam' : 'waiting'}`)).toEqual(['Odd:waiting', 'Ana:waiting', 'Trusted:shown', 'Bot:spam']);
+      expect(said.some((l) => l.includes('did not answer comment.check') && l.includes('"maybe"'))).toBe(true);
+      const seen = (await store.extensionRows('checker', 'seen')).map((r) => JSON.parse(String(r.line)) as Record<string, unknown>);
+      expect(seen[0]).toEqual({ question: 'comment.check', name: 'Ana', words: 'Lovely grain.', language: 'en', entry: '/blog/oak/', title: 'On oak' });
+      expect(JSON.stringify(seen)).not.toContain('@example.org');
+      // The owner may still approve what was taken for spam.
+      await store.approveComment(shown.find((c) => c.spam)!.id);
+      expect((await store.comments()).find((c) => c.name === 'Bot')?.approved).toBe(true);
+    } finally {
+      forms.stop();
+      host.close();
+    }
+  });
+
+  test('an extension that does not answer in time is gone around', async () => {
+    const store = await site('late');
+    const host = extensionHost(store, { log: () => {} });
+    await host.install(CHECKER_PACKAGE, (await host.offer(CHECKER_PACKAGE)).sha256);
+    try {
+      const started = Date.now();
+      expect(await host.ask('comment.check', { name: 'Ana', words: 'slow', language: 'en', entry: '/', title: 'Home' })).toEqual([]);
+      expect(Date.now() - started).toBeLessThan(ANSWER_SECONDS * 1000 + 2000);
+    } finally {
+      host.close();
+    }
+  }, 20_000);
+});
+
+describe('the program\'s data', () => {
+  test('published: the pages and entries visitors can read, newest first; never what is behind a password, and only for an action that declared it', async () => {
+    const store = await site('published');
+    await store.setSite({ ...(await store.site()), types: [postsType()] });
+    await store.savePost({ slug: 'oak', title: 'On oak', description: 'Grain', date: '2026-11-01', blocks: [] });
+    await store.publishPost('oak');
+    await store.savePost({ slug: 'draft', title: 'Not yet', date: '2026-11-05', blocks: [] });
+    await store.savePage({ slug: 'secret', title: 'Secret', blocks: [] });
+    await store.publish('secret');
+    await store.lockPage('secret', 'a long password');
+    const host = extensionHost(store);
+    await host.install(CHECKER_PACKAGE, (await host.offer(CHECKER_PACKAGE)).sha256);
+    try {
+      const listed = (await host.run('checker', 'list', {})) as { address: string; title: string; type: string; date: string }[];
+      expect(listed.map((p) => `${p.type}:${p.address}:${p.title}`).sort()).toEqual(['page:/:Home', 'page:/about/:About', 'posts:/blog/oak/:On oak']);
+      expect(listed.map((p) => p.date)).toEqual(listed.map((p) => p.date).sort().reverse());
+      expect(listed.find((p) => p.type === 'posts')).toMatchObject({ date: '2026-11-01', description: 'Grain', language: 'en' });
+      await expect(host.run('checker', 'sneak', {})).rejects.toThrow('did not declare that it reads "published"');
+    } finally {
+      host.close();
+    }
   });
 });

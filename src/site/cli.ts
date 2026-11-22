@@ -107,6 +107,8 @@ export function describeOffer(offer: ExtensionOffer): string {
   for (const job of asks.jobs) lines.push(`  do "${job.action}" every ${job.everyMinutes === 1 ? 'minute' : `${job.everyMinutes} minutes`}`);
   if (asks.events.length) lines.push(`  be told when: ${asks.events.join(', ')}`);
   if (asks.pictures.length) lines.push(`  see the site's pictures, for: ${asks.pictures.join(', ')}`);
+  if (asks.answers.length) lines.push(`  be asked, and waited for: ${asks.answers.join(', ')}`);
+  if (asks.uses.length) lines.push(`  read the site's data: ${asks.uses.join(', ')}`);
   return lines.join('\n');
 }
 
@@ -295,7 +297,8 @@ export async function main(args: string[]): Promise<{ stop: () => void } | undef
     const mailer = smtpMailer(process.env.THECMS_SMTP);
     const to = process.env.THECMS_MAIL_TO ?? '';
     const store = await Store.open(dbPath);
-    const forms = startForms(store, { port: extra ? Number(extra) : 4322, hostname: process.env.THECMS_FORMS_HOST ?? '127.0.0.1', mailer, to, from: process.env.THECMS_MAIL_FROM });
+    const checks = extensionHost(store);
+    const forms = startForms(store, { port: extra ? Number(extra) : 4322, hostname: process.env.THECMS_FORMS_HOST ?? '127.0.0.1', mailer, to, from: process.env.THECMS_MAIL_FROM, ask: checks.ask });
     console.log(
       `Receiving forms for ${shown} at ${forms.url}/send.
 ` +
