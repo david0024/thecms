@@ -62,3 +62,4 @@ work it decides. A new one that changes an old one says so at its top.
 - [ADR 0058 — What the site writes for search engines by itself](0058-what-the-site-writes-for-search-engines.md)
 - [ADR 0059 — AI for search engines: titles, and pictures described from the pictures](0059-ai-for-search-engines.md)
 - [ADR 0060 — Stage 3: what is in the program, what is an extension, and in what order](0060-stage-3-core-and-extensions.md)
+- [ADR 0062 — Extensions 3: what the program tells, asks and lends an extension](0062-extensions-3.md)

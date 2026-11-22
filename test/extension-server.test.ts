@@ -7,7 +7,7 @@ import { afterAll, describe, expect, test } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { EXTENSION_FORMAT, EXTENSION_FORMAT_1, extensionAsks, parseExtension } from '../src/core/index.ts';
+import { EXTENSION_FORMAT_2, EXTENSION_FORMAT_1, extensionAsks, parseExtension } from '../src/core/index.ts';
 import { describeOffer } from '../src/site/cli.ts';
 import { startClock } from '../src/site/clock.ts';
 import { extensionHost, ROUTE_MAX_BYTES } from '../src/site/extensions.ts';
@@ -58,7 +58,7 @@ const manifest = {
     { on: 'comment.created', action: 'heard' },
   ],
 };
-const PACKAGE = JSON.stringify({ format: EXTENSION_FORMAT, manifest, code: CODE });
+const PACKAGE = JSON.stringify({ format: EXTENSION_FORMAT_2, manifest, code: CODE });
 
 async function site(name: string): Promise<Store> {
   const store = await Store.open(join(dir, `${name}.db`));
@@ -108,7 +108,7 @@ describe('a package in the second format', () => {
 
   test('that asks for what it may not is refused with every reason', () => {
     const { problems } = parseExtension({
-      format: EXTENSION_FORMAT,
+      format: EXTENSION_FORMAT_2,
       code: CODE,
       manifest: {
         ...manifest,
