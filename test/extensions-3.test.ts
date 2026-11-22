@@ -138,12 +138,16 @@ describe('what visits tell', () => {
       await runtime.told.flush();
       const lines = (await store.extensionRows('counter', 'heard')).map((r) => String(r.line));
       expect(lines.filter((l) => l.startsWith('search'))).toEqual(['search oak table']);
+      // The rows are named at random, so they are compared in one order.
+      const sorted = (list: unknown[]): string[] => list.map((x) => JSON.stringify(x)).sort();
       const items = lines.filter((l) => !l.startsWith('search')).map((l) => JSON.parse(l) as Record<string, unknown>);
-      expect(items).toEqual([
-        { day: '2026-11-21', path: '/', source: '', device: 'computer', first: true },
-        { day: '2026-11-21', path: '/about/', source: null, device: 'computer', first: false },
-        { day: '2026-11-21', path: '/about/', source: 'Google', device: 'phone', first: true },
-      ]);
+      expect(sorted(items)).toEqual(
+        sorted([
+          { day: '2026-11-21', path: '/', source: '', device: 'computer', first: true },
+          { day: '2026-11-21', path: '/about/', source: null, device: 'computer', first: false },
+          { day: '2026-11-21', path: '/about/', source: 'Google', device: 'phone', first: true },
+        ]),
+      );
       expect(lines.join(' ')).not.toContain('10.0.0');
       expect(lines.join(' ')).not.toContain('Mozilla');
     } finally {

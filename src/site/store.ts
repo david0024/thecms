@@ -20,6 +20,7 @@
 import { SQL } from 'bun';
 import {
   authorPath,
+  type ExtensionBlockDef,
   authorSlugs,
   entrySlugProblem,
   type Byline,
@@ -2106,6 +2107,13 @@ export class Store {
     return (await this.extensions()).find((e) => e.manifest.name === name) ?? null;
   }
 
+  /** The blocks the extensions that are on add to the public site (ADR 0062 d6), by `<extension>/<block>`. */
+  async extensionBlocks(): Promise<Record<string, ExtensionBlockDef>> {
+    return Object.fromEntries(
+      (await this.extensions()).filter((e) => e.enabled).flatMap((e) => e.manifest.blocks.map((block) => [`${e.manifest.name}/${block.name}`, { extension: e.manifest.name, block, messages: e.manifest.messages }])),
+    );
+  }
+
   /**
    * Installs a package, or a new version of one. Its rows stay; a collection
    * the new version no longer declares keeps its rows until it is uninstalled.
@@ -2122,20 +2130,25 @@ export class Store {
       before ? (before.enabled ? 1 : 0) : 1,
       at.toISOString(),
     ]);
+    // The pages draw the blocks it adds (ADR 0062 d6): they are built again.
+    if (pkg.manifest.blocks.length || before?.manifest.blocks.length) await this.touch();
     return (await this.extension(pkg.manifest.name)) as InstalledExtension;
   }
 
   async enableExtension(name: string, enabled: boolean): Promise<void> {
     if (!(await this.changed('UPDATE extensions SET enabled = ? WHERE name = ?', [enabled ? 1 : 0, name]))) throw new Error(`no extension "${name}" is installed`);
+    if ((await this.extension(name))?.manifest.blocks.length) await this.touch();
   }
 
   /** Removes an extension and everything it kept. */
   async uninstallExtension(name: string): Promise<void> {
+    const blocks = (await this.extension(name))?.manifest.blocks.length ?? 0;
     await this.sql.begin(async (tx) => {
       await tx.unsafe(this.dialect.params('DELETE FROM extension_rows WHERE extension = ?'), [name]);
       await tx.unsafe(this.dialect.params('DELETE FROM extensions WHERE name = ?'), [name]);
       await tx.unsafe(this.dialect.params('DELETE FROM extension_jobs WHERE extension = ?'), [name]);
     });
+    if (blocks) await this.touch();
   }
 
   /**
