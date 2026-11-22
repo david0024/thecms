@@ -4,9 +4,18 @@ name: Extension release
 # from extensions/<extension>: its package, one file the owner installs from
 # Extensions in the admin, and its SHA-256, which the admin shows before it is
 # accepted (ADR 0026, ADR 0027). The tag must be the version in its manifest.
+#
+# A release made by hand on GitHub for such a tag gets the files too. Run by
+# hand with a tag, it builds that tag again with this file, and adds the files
+# to its release: for a tag made before this file worked.
 on:
   push:
     tags: ['*-v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'The tag to publish, such as ai-v1.2.0'
+        required: true
 
 permissions:
   contents: write
@@ -14,8 +23,12 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.4
@@ -23,8 +36,8 @@ jobs:
       - name: The tag names an extension and its version
         id: tag
         run: |
-          name="${GITHUB_REF_NAME%-v*}"
-          version="${GITHUB_REF_NAME##*-v}"
+          name="${TAG%-v*}"
+          version="${TAG##*-v}"
           test -f "extensions/$name/manifest.json"
           test "$version" = "$(bun -e "console.log((await Bun.file('extensions/$name/manifest.json').json()).version)")"
           echo "name=$name" >> "$GITHUB_OUTPUT"
@@ -33,4 +46,10 @@ jobs:
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" dist-ext/* --title "$GITHUB_REF_NAME" --notes "Install it from Extensions in the admin, or with: thecms extension <site> install <file>. Its SHA-256 is in SHA256SUMS."
+          NOTES: 'Install it from Extensions in the admin, or with: thecms extension <site> install <file>. Its SHA-256 is in SHA256SUMS.'
+        run: |
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" dist-ext/* --clobber
+          else
+            gh release create "$TAG" dist-ext/* --title "$TAG" --notes "$NOTES"
+          fi
