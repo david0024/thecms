@@ -91,8 +91,8 @@ export function rowWrites(docs: readonly ViewDocument[], collection: string): { 
   const single = (v: View): boolean => v.type === 'form' && 'singleton' in v;
   return {
     read: views.length > 0,
-    create: any((v) => (v.type === 'list' && v.create !== false) || single(v)),
-    edit: any((v) => (v.type === 'list' && v.edit !== false) || single(v)),
+    create: any((v) => ((v.type === 'list' || v.type === 'calendar') && v.create !== false) || single(v)),
+    edit: any((v) => ((v.type === 'list' || v.type === 'calendar') && v.edit !== false) || single(v)),
     delete: any((v) => v.type === 'list' && v.delete !== false),
   };
 }
@@ -109,4 +109,61 @@ export function readActionResult(value: unknown): ActionResult {
     if (keys.length === 1 && typeof v.view === 'string') return { kind: 'navigate', view: v.view };
   }
   return { kind: 'values', value };
+}
+
+/** What a report's action answers (ADR 0062 d7), as it is drawn: what does not fit is left out. */
+export interface ReportAnswer {
+  totals: { label: string; value: number }[];
+  chart: { labels: string[]; series: { label: string; values: number[] }[] } | null;
+  lists: { title: string; rows: { label: string; value: number }[] }[];
+}
+
+const label = (v: unknown): string => (typeof v === 'string' ? v.slice(0, 200) : typeof v === 'number' ? String(v) : '');
+const amount = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
+const many = (v: unknown, max: number): unknown[] => (Array.isArray(v) ? v.slice(0, max) : []);
+const pairs = (v: unknown, max: number): { label: string; value: number }[] =>
+  many(v, max).flatMap((x) => (x !== null && typeof x === 'object' ? [{ label: label((x as Record<string, unknown>).label), value: amount((x as Record<string, unknown>).value) }] : []));
+
+/** A report's answer, read as `{ totals, chart, lists }`: at most 12 totals, 400 points in 6 series, 12 lists of 100 rows. */
+export function readReport(value: unknown): ReportAnswer {
+  const v = value !== null && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+  const chart = v.chart !== null && typeof v.chart === 'object' ? (v.chart as Record<string, unknown>) : null;
+  const labels = chart ? many(chart.labels, 400).map(label) : [];
+  const series = chart
+    ? many(chart.series, 6).flatMap((x) => (x !== null && typeof x === 'object' ? [{ label: label((x as Record<string, unknown>).label), values: labels.map((_, i) => amount(many((x as Record<string, unknown>).values, 400)[i])) }] : []))
+    : [];
+  return {
+    totals: pairs(v.totals, 12),
+    chart: labels.length && series.length ? { labels, series } : null,
+    lists: many(v.lists, 12).flatMap((x) => (x !== null && typeof x === 'object' ? [{ title: label((x as Record<string, unknown>).title), rows: pairs((x as Record<string, unknown>).rows, 100) }] : [])),
+  };
+}
+
+/** The day a date or a date and time is on, `YYYY-MM-DD`; '' when it is neither. */
+export const dayOf = (value: unknown): string => (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2})?)?$/.test(value) ? value.slice(0, 10) : '');
+
+/**
+ * A month as a calendar draws it: its weeks, Monday first, each day
+ * `YYYY-MM-DD` or '' outside the month, and the rows on each day, in order.
+ */
+export function monthOf<T extends Record<string, unknown>>(month: string, rows: T[], field: string): { weeks: string[][]; on: Record<string, T[]> } {
+  const [year, index] = month.split('-').map(Number) as [number, number];
+  const days = new Date(Date.UTC(year, index, 0)).getUTCDate();
+  const lead = (new Date(Date.UTC(year, index - 1, 1)).getUTCDay() + 6) % 7;
+  const cells = [...Array<string>(lead).fill(''), ...Array.from({ length: days }, (_, i) => `${month}-${String(i + 1).padStart(2, '0')}`)];
+  while (cells.length % 7) cells.push('');
+  const weeks = Array.from({ length: cells.length / 7 }, (_, i) => cells.slice(i * 7, i * 7 + 7));
+  const on: Record<string, T[]> = {};
+  for (const row of [...rows].sort((a, b) => compare(a[field], b[field]))) {
+    const day = dayOf(row[field]);
+    if (day.startsWith(`${month}-`)) (on[day] ??= []).push(row);
+  }
+  return { weeks, on };
+}
+
+/** The month before or after, `YYYY-MM`. */
+export function nextMonth(month: string, by: number): string {
+  const [year, index] = month.split('-').map(Number) as [number, number];
+  const at = new Date(Date.UTC(year, index - 1 + by, 1));
+  return `${at.getUTCFullYear()}-${String(at.getUTCMonth() + 1).padStart(2, '0')}`;
 }

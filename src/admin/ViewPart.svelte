@@ -9,7 +9,7 @@
  */
 import { onMount } from 'svelte';
 import type { ExtensionCollection, ExtensionField } from '../core/index.ts';
-import { type ActionButton, type Button, buttonsFor, listRows, readActionResult, resolveInput, shownFields, type View } from '../view/index.ts';
+import { type ActionButton, type Button, buttonsFor, listRows, monthOf, nextMonth, readActionResult, readReport, REPORT_RANGES, type ReportAnswer, type ReportRange, resolveInput, shownFields, type View } from '../view/index.ts';
 import { api, type ExtensionInfo } from './api.ts';
 import { adminLanguage, t } from './messages.ts';
 import Self from './ViewPart.svelte';
@@ -30,6 +30,34 @@ let draft = $state<{ id: string | null; row: Record<string, unknown> } | null>(n
 let pending = $state<{ key: string; button: ActionButton; row: Record<string, unknown> | null; answers: Record<string, string>; asked: boolean } | null>(null);
 let working = $state(false);
 let tab = $state(0);
+
+/** A report (ADR 0062 d7): the time shown, and what its action answered for it. */
+const ranges = $derived<readonly ReportRange[]>(view.type === 'report' ? (view.ranges ?? REPORT_RANGES) : []);
+let range = $state<ReportRange | null>(null);
+let report = $state.raw<ReportAnswer | null>(null);
+/** Counts the loads, so that the answer for a time clicked earlier never replaces the last one's. */
+let reports = 0;
+async function loadReport(next: ReportRange): Promise<void> {
+  if (view.type !== 'report') return;
+  const action = view.action;
+  const mine = ++reports;
+  range = next;
+  await attempt(async () => {
+    const answer = readReport((await api.runExtensionAction(extension.name, action, { range: next, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone })).answer);
+    if (mine === reports) report = answer;
+  });
+}
+const RANGE_WORDS: Record<ReportRange, () => string> = { today: () => t.stats.today, '7': () => t.stats.days7, '30': () => t.stats.days30, '365': () => t.stats.months12 };
+const number = (n: number): string => n.toLocaleString();
+const W = 600;
+const H = 140;
+
+/** A calendar (ADR 0062 d7): the month shown, `YYYY-MM`. */
+let month = $state(new Date().toISOString().slice(0, 7));
+const monthName = (at: string): string => new Date(`${at}-15T12:00:00Z`).toLocaleDateString(adminLanguage(), { month: 'long', year: 'numeric', timeZone: 'UTC' });
+/** Monday to Sunday, short, in the admin's language. */
+const weekdays = Array.from({ length: 7 }, (_, i) => new Date(Date.UTC(2024, 0, 1 + i)).toLocaleDateString(adminLanguage(), { weekday: 'short', timeZone: 'UTC' }));
+const timeOf = (value: unknown): string => (typeof value === 'string' && value.length > 10 ? value.slice(11, 16) : '');
 
 async function attempt(work: () => Promise<void>): Promise<boolean> {
   problem = '';
@@ -105,7 +133,8 @@ async function submitAction(event: SubmitEvent): Promise<void> {
 }
 
 onMount(() => {
-  if (view.type === 'list') void load();
+  if (view.type === 'list' || view.type === 'calendar') void load();
+  if (view.type === 'report') void loadReport((view.ranges ?? REPORT_RANGES)[0] as ReportRange);
   if (view.type === 'form' && 'singleton' in view) void startSingle();
   if (formAction) answers = Object.fromEntries(formAction.ask.map((a) => [a.key, '']));
 });
@@ -151,7 +180,7 @@ onMount(() => {
           </select>
         {:else}
           <input
-            type={field.kind === 'secret' ? 'password' : field.kind === 'number' ? 'number' : field.kind === 'url' ? 'url' : 'text'}
+            type={field.kind === 'secret' ? 'password' : field.kind === 'number' ? 'number' : field.kind === 'url' ? 'url' : field.kind === 'date' ? 'date' : field.kind === 'datetime' ? 'datetime-local' : 'text'}
             value={String(editing.row[field.key] ?? '')}
             autocomplete="off"
             oninput={(e) => (editing.row[field.key] = field.kind === 'number' && e.currentTarget.value !== '' ? Number(e.currentTarget.value) : e.currentTarget.value)}
@@ -194,6 +223,95 @@ onMount(() => {
       {@render fieldInputs(fields, draft)}
       <div class="row"><button type="submit" class="primary" data-extension-save>{t.ext.save}</button></div>
     </form>
+  {:else if view.type === 'report'}
+    <div class="ranges" role="group" aria-label={word(view.title ?? '')}>
+      {#each ranges as r (r)}
+        <button type="button" aria-pressed={range === r} onclick={() => loadReport(r)} data-report-range={r}>{RANGE_WORDS[r]()}</button>
+      {/each}
+    </div>
+    {#if report}
+      {#if report.totals.length}
+        <div class="totals">
+          {#each report.totals as total, i (i)}<div class="total" data-report-total={i}><strong>{number(total.value)}</strong><span>{word(total.label)}</span></div>{/each}
+        </div>
+      {/if}
+      {#if report.chart}
+        {@const chart = report.chart}
+        {@const top = Math.max(1, ...chart.series.flatMap((one) => one.values))}
+        {@const step = W / chart.labels.length}
+        {@const width = (step * 0.76) / chart.series.length}
+        <svg class="chart" viewBox="0 0 {W} {H + 18}" role="img" aria-label={chart.series.map((one) => word(one.label)).join(', ')} data-report-chart>
+          {#each chart.labels as at, i (i)}
+            <g>
+              <title>{at}: {chart.series.map((one) => `${word(one.label)} ${number(one.values[i] ?? 0)}`).join(', ')}</title>
+              {#each chart.series as one, j (j)}
+                <rect data-series={j} x={i * step + step * 0.12 + j * width} {width} y={H - ((one.values[i] ?? 0) / top) * H} height={((one.values[i] ?? 0) / top) * H} />
+              {/each}
+            </g>
+          {/each}
+          <text x="0" y={H + 14}>{chart.labels[0]}</text>
+          <text x={W} y={H + 14} text-anchor="end">{chart.labels[chart.labels.length - 1]}</text>
+        </svg>
+        <p class="legend">{#each chart.series as one, j (j)}<span class="key" data-series={j}></span>{word(one.label)} {/each}</p>
+      {/if}
+      <div class="lists">
+        {#each report.lists as list, i (i)}
+          {@const most = Math.max(1, ...list.rows.map((r) => r.value))}
+          <div class="list" data-report-list={i}>
+            <h3>{word(list.title)}</h3>
+            {#if list.rows.length}
+              <ol>{#each list.rows as row, k (k)}<li style="--share: {(row.value / most) * 100}%"><span class="name">{word(row.label)}</span><span class="hits">{number(row.value)}</span></li>{/each}</ol>
+            {:else}
+              <p class="hint">{t.ext.empty}</p>
+            {/if}
+          </div>
+        {/each}
+      </div>
+    {/if}
+  {:else if view.type === 'calendar' && collection}
+    {@const shownMonth = monthOf(month, rows, view.date)}
+    {#if draft}
+      <form class="form" onsubmit={save} data-extension-form>
+        {@render fieldInputs(collection.fields, draft)}
+        <div class="row">
+          <button type="submit" class="primary" data-extension-save>{t.ext.save}</button>
+          <button type="button" class="quiet" onclick={() => (draft = null)}>{t.ext.cancel}</button>
+        </div>
+      </form>
+    {/if}
+    <div class="row month">
+      <button type="button" class="quiet" onclick={() => (month = nextMonth(month, -1))} aria-label={t.ext.earlier} data-calendar-earlier>‹</button>
+      <strong data-calendar-month={month}>{monthName(month)}</strong>
+      <button type="button" class="quiet" onclick={() => (month = nextMonth(month, 1))} aria-label={t.ext.later} data-calendar-later>›</button>
+    </div>
+    <table class="calendar">
+      <thead><tr>{#each weekdays as day (day)}<th>{day}</th>{/each}</tr></thead>
+      <tbody>
+        {#each shownMonth.weeks as week, w (w)}
+          <tr>
+            {#each week as day, d (d)}
+              <td class:out={!day} data-day={day || undefined}>
+                {#if day}
+                  <span class="date">{Number(day.slice(8))}</span>
+                  {#each shownMonth.on[day] ?? [] as row (row.id)}
+                    {@const named = `${timeOf(row[view.date])} ${shown(row[view.name])}`.trim()}
+                    {#if view.edit !== false}
+                      <button type="button" class="quiet item" onclick={() => collection && (draft = { id: String(row.id), row: editable(row, collection.fields) })} data-calendar-row={row.id}>{named}</button>
+                    {:else}
+                      <span class="item" data-calendar-row={row.id}>{named}</span>
+                    {/if}
+                  {/each}
+                  {#if view.create !== false}
+                    {@const date = view.date}
+                    <button type="button" class="quiet add" aria-label={t.ext.add} onclick={() => collection && (draft = { id: null, row: { ...blank(collection.fields), [date]: collection.fields.find((f) => f.key === date)?.kind === 'datetime' ? `${day}T09:00` : day } })} data-calendar-add={day}>+</button>
+                  {/if}
+                {/if}
+              </td>
+            {/each}
+          </tr>
+        {/each}
+      </tbody>
+    </table>
   {:else if view.type === 'list' && collection}
     {@const columns = shownFields(view.fields, collection.fields)}
     {#if draft}
@@ -274,4 +392,32 @@ onMount(() => {
   .good { color: #1d6b3a; }
   .reveal { margin: 0.6rem 0; padding: 0.6rem 0.8rem; background: #fff8e5; border: 1px solid #e8c66b; border-radius: 6px; }
   .reveal code { overflow-wrap: anywhere; }
+  h3 { font-size: 0.9rem; margin: 0 0 0.4rem; }
+  .ranges { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.8rem 0; }
+  .ranges button[aria-pressed='true'] { background: #6d5dfc; border-color: #6d5dfc; color: #fff; }
+  .totals { display: flex; flex-wrap: wrap; gap: 1rem; }
+  .total { display: grid; padding: 0.8rem 1.2rem; border: 1px solid #dddbe6; border-radius: 6px; min-width: 150px; background: #fff; }
+  .total strong { font-size: 1.6rem; }
+  .total span, .legend, .hint { font-size: 0.8rem; color: #6a6880; }
+  .chart { width: 100%; max-width: 900px; height: auto; margin-top: 0.5rem; }
+  .chart text { font-size: 11px; fill: #6a6880; }
+  .chart rect[data-series='0'], .key[data-series='0'] { fill: #6d5dfc; background: #6d5dfc; }
+  .chart rect[data-series='1'], .key[data-series='1'] { fill: #c9c2ff; background: #c9c2ff; }
+  .chart rect[data-series='2'], .key[data-series='2'] { fill: #2f9e6e; background: #2f9e6e; }
+  .chart rect, .key { fill: #8a8799; background: #8a8799; }
+  .legend { display: flex; align-items: center; gap: 0.3rem; }
+  .key { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-inline-start: 0.6rem; }
+  .lists { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1.2rem; margin-top: 1.4rem; }
+  .list ol { list-style: none; padding: 0; margin: 0; }
+  .list li { display: flex; justify-content: space-between; gap: 0.6rem; padding: 0.3rem 0.5rem; margin-bottom: 2px; font-size: 0.85rem; border-radius: 4px; background: linear-gradient(to right, #f0eeff var(--share), transparent var(--share)); }
+  .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hits { font-variant-numeric: tabular-nums; }
+  .month { align-items: center; margin: 0.8rem 0 0; }
+  .calendar { table-layout: fixed; width: 100%; max-width: 980px; min-width: 0; }
+  .calendar td { vertical-align: top; height: 5.5rem; padding: 0.3rem; border: 1px solid #e6e4ee; }
+  .calendar td.out { background: #f7f6fb; }
+  .calendar .date { display: block; font-size: 0.75rem; color: #6a6880; }
+  .calendar .item { display: block; width: 100%; padding: 0.1rem 0.3rem; margin: 0.15rem 0; text-align: start; font-size: 0.8rem; background: #f0eeff; border-radius: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .calendar .add { padding: 0 0.4rem; font-size: 0.8rem; opacity: 0.5; }
+  .calendar td:hover .add { opacity: 1; }
 </style>

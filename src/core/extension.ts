@@ -10,7 +10,7 @@
  *
  * This file only reads and checks a package. Running one is `src/site/extensions.ts`.
  */
-import { checkViews, type ViewDocument } from '../view/index.ts';
+import { allViews, checkViews, type ViewDocument } from '../view/index.ts';
 import { isObject, str } from './util.ts';
 
 /** The format a package is written in now: the second, with what the program tells, asks and lends (ADR 0062). */
@@ -27,7 +27,11 @@ const KEY = /^[a-z][a-z0-9_]{0,39}$/;
 const VERSION = /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/;
 const HOST = /^(\*\.)?([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$|^localhost$|^127\.0\.0\.1$/;
 
-export const FIELD_KINDS = ['text', 'longtext', 'number', 'boolean', 'choice', 'secret', 'url'] as const;
+export const FIELD_KINDS = ['text', 'longtext', 'number', 'boolean', 'choice', 'secret', 'url', 'date', 'datetime'] as const;
+/** The kinds the third format adds (ADR 0062 d7): a day, `YYYY-MM-DD`, and a day and time, `YYYY-MM-DDTHH:MM`. */
+const KINDS_3: readonly string[] = ['date', 'datetime'];
+/** The kinds of screen the third format adds (ADR 0062 d7). */
+const VIEWS_3: readonly string[] = ['report', 'calendar'];
 export type ExtensionFieldKind = (typeof FIELD_KINDS)[number];
 
 export interface ExtensionField {
@@ -202,16 +206,17 @@ export interface ExtensionPackage {
 const list = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
 const text = (value: unknown, max: number): string => str(value, max).trim();
 
-function field(raw: unknown, problems: string[], where: string): ExtensionField | null {
+function field(raw: unknown, problems: string[], where: string, third: boolean): ExtensionField | null {
   if (!isObject(raw)) return null;
   const key = text(raw.key, 40);
   if (!KEY.test(key)) {
     problems.push(`${where}: a field's key is lower case letters, digits and _ ("${key}")`);
     return null;
   }
-  const kind = FIELD_KINDS.find((k) => k === raw.kind);
+  const kinds = third ? FIELD_KINDS : FIELD_KINDS.filter((k) => !KINDS_3.includes(k));
+  const kind = kinds.find((k) => k === raw.kind);
   if (!kind) {
-    problems.push(`${where}.${key}: a field is one of ${FIELD_KINDS.join(', ')}`);
+    problems.push(`${where}.${key}: a field is one of ${kinds.join(', ')}`);
     return null;
   }
   const options = kind === 'choice' ? list(raw.options).map((o) => text(o, 60)).filter(Boolean).slice(0, 40) : [];
@@ -224,13 +229,13 @@ function field(raw: unknown, problems: string[], where: string): ExtensionField 
         ? initial === true
         : kind === 'number'
           ? Number.isFinite(initial) ? (initial as number) : null
-          : kind === 'secret'
+          : kind === 'secret' || KINDS_3.includes(kind)
             ? null
             : text(initial, 2000);
   return { key, label: text(raw.label, 80) || key, kind, required: raw.required === true, options, initial: fit };
 }
 
-function collection(raw: unknown, problems: string[]): ExtensionCollection | null {
+function collection(raw: unknown, problems: string[], third: boolean): ExtensionCollection | null {
   if (!isObject(raw)) return null;
   const name = text(raw.name, 40);
   if (!KEY.test(name)) {
@@ -239,7 +244,7 @@ function collection(raw: unknown, problems: string[]): ExtensionCollection | nul
   }
   const fields: ExtensionField[] = [];
   for (const f of list(raw.fields).slice(0, 40)) {
-    const one = field(f, problems, name);
+    const one = field(f, problems, name, third);
     if (!one) continue;
     if (one.key === 'id' || fields.some((x) => x.key === one.key)) problems.push(`${name}.${one.key}: a field's key is used once, and never "id"`);
     else fields.push(one);
@@ -427,7 +432,7 @@ export function parseExtension(raw: unknown): { pkg: ExtensionPackage | null; pr
 
   const collections: ExtensionCollection[] = [];
   for (const c of list(m.collections).slice(0, 12)) {
-    const one = collection(c, problems);
+    const one = collection(c, problems, raw.format === EXTENSION_FORMAT);
     if (!one) continue;
     if (collections.some((x) => x.name === one.name)) problems.push(`the collection "${one.name}" is declared twice`);
     else collections.push(one);
@@ -443,6 +448,7 @@ export function parseExtension(raw: unknown): { pkg: ExtensionPackage | null; pr
   // Screens are checked against thecms.view/1 and against what this manifest declares.
   const { views, problems: viewProblems } = checkViews(m.views, { collections: collections.map((c) => ({ name: c.name, fields: c.fields })), actions });
   problems.push(...viewProblems);
+  if (raw.format !== EXTENSION_FORMAT) for (const v of allViews(views)) if (VIEWS_3.includes(v.type)) problems.push(`a screen of the kind "${v.type}" needs ${EXTENSION_FORMAT}`);
   const messages: Record<string, Record<string, string>> = {};
   if (isObject(m.messages)) {
     for (const [language, words] of Object.entries(m.messages).slice(0, 40)) {
@@ -548,6 +554,15 @@ export function cleanRow(of: ExtensionCollection, raw: unknown, before: Record<s
         // A secret is never shown again; an empty one keeps what was there.
         value = typeof given === 'string' && given !== '' ? str(given, 4000) : (before?.[f.key] ?? '');
         break;
+      case 'date':
+      case 'datetime': {
+        // A day, or a day and a time as the browser's field gives it; nothing else.
+        const at = text(given, 30);
+        const fits = f.kind === 'date' ? /^\d{4}-\d{2}-\d{2}$/.test(at) : /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(at);
+        value = at === '' ? null : fits && !Number.isNaN(Date.parse(f.kind === 'date' ? at : `${at}:00Z`)) ? at : null;
+        if (at !== '' && value === null) problems.push(f.kind === 'date' ? `${f.label}: a day is like 2026-11-22` : `${f.label}: a day and time is like 2026-11-22T14:30`);
+        break;
+      }
       case 'url': {
         const url = text(given, 2000);
         value = url === '' || /^https?:\/\/[^\s]+$/i.test(url) ? url : null;

@@ -218,6 +218,8 @@
   "admin.ext.answers": "fie întrebată, iar site-ul să-i aștepte răspunsul: {list}",
   "admin.ext.uses": "citească datele site-ului: {list}",
   "admin.ext.blocks": "adauge blocuri în paginile site-ului: {list}",
+  "admin.ext.earlier": "Luna dinainte",
+  "admin.ext.later": "Luna următoare",
   "admin.ext.blockMissing": "Un bloc de extensie care nu mai există",
   "admin.ext.replaces": "Înlocuiește versiunea {version}.",
   "admin.ext.accept": "Acceptă și instalează",

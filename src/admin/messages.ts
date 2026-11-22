@@ -266,6 +266,8 @@ export const en = {
     answers: 'be asked, and waited for: {list}',
     uses: 'read the site\'s data: {list}',
     blocks: 'add blocks to the site\'s pages: {list}',
+    earlier: 'The month before',
+    later: 'The month after',
     blockMissing: 'An extension\'s block that is not there',
     replaces: "It replaces version {version}.",
     accept: "Accept and install",
