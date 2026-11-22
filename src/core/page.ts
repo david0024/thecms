@@ -77,6 +77,8 @@ export interface Site {
   robots?: string;
   /** The business as a place people come to, said to search engines (ADR 0061 d2). Absent: only its name and logo. */
   business?: Business;
+  /** True: search engines that read IndexNow are told of each address as it is published (ADR 0063 d2). Absent: they are not. */
+  indexNow?: true;
   /** False: no JSON beside each page for apps and other sites to read (ADR 0057 d3). Absent: written. */
   data?: false;
   /** The stored pictures' sizes and smaller copies (ADR 0005 d8): filled in to draw a page for export, never kept. */
@@ -160,6 +162,7 @@ export function normalizeSite(input: unknown): Site {
     ...(cleanRobots(raw.robots) ? { robots: cleanRobots(raw.robots) } : {}),
     ...(cleanBusiness(raw.business) ? { business: cleanBusiness(raw.business) } : {}),
     ...(raw.data === false ? { data: false as const } : {}),
+    ...(raw.indexNow === true ? { indexNow: true as const } : {}),
     keepMessages: Number.isInteger(raw.keepMessages) && (raw.keepMessages as number) >= 1 && (raw.keepMessages as number) <= 3650 ? (raw.keepMessages as number) : KEEP_MESSAGES_DAYS,
   };
 }
