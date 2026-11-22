@@ -113,6 +113,7 @@ import {
   type Theme,
 } from '../core/index.ts';
 import { wordsFor } from '../blocks/words.ts';
+import { isIndexNowKey } from './indexnow.ts';
 import './languages.ts';
 
 /** What is kept with translations: a page, or a section (ADR 0033). */
@@ -198,6 +199,7 @@ const SQLITE: Dialect = {
     'CREATE TABLE IF NOT EXISTS entry_reviews (type TEXT NOT NULL, slug TEXT NOT NULL, state TEXT NOT NULL, note TEXT NOT NULL, at TEXT NOT NULL, PRIMARY KEY (type, slug))',
     'CREATE TABLE IF NOT EXISTS user_bios (id TEXT PRIMARY KEY, bio TEXT NOT NULL)',
     'CREATE TABLE IF NOT EXISTS user_pictures (id TEXT PRIMARY KEY, src TEXT NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS not_found (path TEXT PRIMARY KEY, hits INTEGER NOT NULL, last_at TEXT NOT NULL, referrer TEXT NOT NULL)',
   ],
   params: (query) => query,
   upsert: (table, columns, key, update) =>
@@ -236,6 +238,7 @@ const POSTGRES: Dialect = {
     'CREATE TABLE IF NOT EXISTS entry_reviews (type VARCHAR(255) NOT NULL, slug VARCHAR(255) NOT NULL, state VARCHAR(20) NOT NULL, note TEXT NOT NULL, at VARCHAR(40) NOT NULL, PRIMARY KEY (type, slug))',
     'CREATE TABLE IF NOT EXISTS user_bios (id VARCHAR(40) PRIMARY KEY, bio TEXT NOT NULL)',
     'CREATE TABLE IF NOT EXISTS user_pictures (id VARCHAR(40) PRIMARY KEY, src TEXT NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS not_found (path VARCHAR(255) PRIMARY KEY, hits INTEGER NOT NULL, last_at VARCHAR(40) NOT NULL, referrer VARCHAR(255) NOT NULL)',
   ],
   params: (query) => {
     let n = 0;
@@ -273,6 +276,7 @@ const MYSQL: Dialect = {
     `CREATE TABLE IF NOT EXISTS entry_reviews (type VARCHAR(255) NOT NULL, slug VARCHAR(255) NOT NULL, state VARCHAR(20) NOT NULL, note TEXT NOT NULL, at VARCHAR(40) NOT NULL, PRIMARY KEY (type, slug)) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS user_bios (id VARCHAR(40) PRIMARY KEY, bio TEXT NOT NULL) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS user_pictures (id VARCHAR(40) PRIMARY KEY, src TEXT NOT NULL) ${MYSQL_TABLE}`,
+    `CREATE TABLE IF NOT EXISTS not_found (path VARCHAR(255) PRIMARY KEY, hits INTEGER NOT NULL, last_at VARCHAR(40) NOT NULL, referrer VARCHAR(255) NOT NULL) ${MYSQL_TABLE}`,
   ],
   params: (query) => query,
   upsert: (table, columns, _key, update) =>
@@ -601,6 +605,8 @@ export class Store {
   async setRedirects(input: unknown): Promise<Redirect[]> {
     const redirects = normalizeRedirects(input);
     await this.setMeta('redirects', redirects);
+    // An address that now leads somewhere is no longer one that is not found (ADR 0063 d1).
+    for (const { from } of redirects) await this.run('DELETE FROM not_found WHERE path = ?', [from]);
     return redirects;
   }
 
@@ -2211,6 +2217,44 @@ export class Store {
     await this.setMeta(BACKUP_LAST, value);
   }
 
+  /**
+   * An address a visitor asked for that the site does not have (ADR 0063 d1):
+   * counted, with when it was last asked for and where the visitor came from.
+   * The oldest are forgotten beyond {@link NOT_FOUND_KEPT}.
+   */
+  async addNotFound(path: string, referrer: string, now = new Date()): Promise<void> {
+    const add =
+      this.kind === 'mysql'
+        ? 'INSERT INTO not_found (path, hits, last_at, referrer) VALUES (?, 1, ?, ?) ON DUPLICATE KEY UPDATE hits = hits + 1, last_at = VALUES(last_at), referrer = IF(VALUES(referrer) = \'\', referrer, VALUES(referrer))'
+        : "INSERT INTO not_found (path, hits, last_at, referrer) VALUES (?, 1, ?, ?) ON CONFLICT (path) DO UPDATE SET hits = not_found.hits + 1, last_at = excluded.last_at, referrer = CASE WHEN excluded.referrer = '' THEN not_found.referrer ELSE excluded.referrer END";
+    await this.run(add, [path.slice(0, 255), now.toISOString(), referrer.slice(0, 255)]);
+    const count = Number((await this.row<{ n: number | string }>('SELECT COUNT(*) AS n FROM not_found'))?.n ?? 0);
+    if (count <= NOT_FOUND_KEPT) return;
+    const oldest = await this.rows<{ path: string }>(`SELECT path FROM not_found ORDER BY last_at, path LIMIT ${count - NOT_FOUND_KEPT}`);
+    for (const row of oldest) await this.run('DELETE FROM not_found WHERE path = ?', [row.path]);
+  }
+
+  /** The key that proves to IndexNow the site is the one telling it (ADR 0063 d2), made the first time it is asked for. */
+  async indexNowKey(): Promise<string> {
+    const kept = await this.getMeta(INDEXNOW_KEY);
+    if (typeof kept === 'string' && isIndexNowKey(kept)) return kept;
+    const key = crypto.randomUUID().replace(/-/g, '');
+    await this.setMeta(INDEXNOW_KEY, key);
+    return key;
+  }
+
+  /** The addresses not found, the most asked for first. */
+  async notFound(): Promise<NotFound[]> {
+    const rows = await this.rows<{ path: string; hits: number | string; last_at: string; referrer: string }>('SELECT path, hits, last_at, referrer FROM not_found ORDER BY hits DESC, last_at DESC, path');
+    return rows.map((r) => ({ path: r.path, hits: Number(r.hits), lastAt: r.last_at, referrer: r.referrer }));
+  }
+
+  /** Forgets one address not found, or all of them. */
+  async forgetNotFound(path: string | null): Promise<void> {
+    if (path === null) await this.run('DELETE FROM not_found');
+    else await this.run('DELETE FROM not_found WHERE path = ?', [path]);
+  }
+
   /** The day's totals of the statistics (ADR 0053), added to what each day already has. */
   async addVisits(rows: readonly VisitRow[]): Promise<void> {
     const add =
@@ -2296,6 +2340,20 @@ export class Store {
   }
 }
 
+/** An address visitors asked for that the site does not have (ADR 0063 d1). */
+export interface NotFound {
+  path: string;
+  hits: number;
+  /** When it was last asked for. */
+  lastAt: string;
+  /** The page that last led to it, as its host and path; empty when nothing did. */
+  referrer: string;
+}
+
+/** Where the IndexNow key is kept (ADR 0063 d2). */
+const INDEXNOW_KEY = 'indexnow:key';
+/** How many addresses not found are kept (ADR 0063 d1). */
+export const NOT_FOUND_KEPT = 500;
 /** Where the backup settings and the last backup are kept; neither is in a backup (ADR 0051 d1). */
 const BACKUP_SETTINGS = 'backups';
 const BACKUP_LAST = 'backups:last';

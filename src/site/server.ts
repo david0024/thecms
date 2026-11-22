@@ -42,6 +42,7 @@ import { BASE_CSS, SHIPPED_THEMES } from './shipped.ts';
 import { type Store, type User, writesAll } from './store.ts';
 import { rowWrites } from '../view/index.ts';
 import { exportedFiles, fullCheck, publishedSite } from './export.ts';
+import { indexNow } from './indexnow.ts';
 
 const ADMIN = new URL('../admin/', import.meta.url);
 
@@ -224,6 +225,8 @@ export async function startEditor(
     backups?: string;
     /** Where a copy of each backup is sent; S3 unless a test gives its own. */
     backupRemote?: (s3: S3Settings) => Remote;
+    /** How IndexNow is told; the tests give their own. */
+    indexNowFetch?: (url: string, init: RequestInit) => Promise<Response>;
   } = {},
 ): Promise<EditorServer> {
   const assets = BUILT_ADMIN ? new Map(Object.entries(BUILT_ADMIN)) : await buildAdmin();
@@ -969,6 +972,12 @@ export async function startEditor(
         return json({ redirects: await store.redirects() });
       case 'PUT /api/redirects':
         return json({ redirects: await store.setRedirects(body.redirects) });
+      // The addresses visitors asked for that the site does not have (ADR 0063 d1).
+      case 'GET /api/not-found':
+        return json({ notFound: await store.notFound() });
+      case 'DELETE /api/not-found':
+        await store.forgetNotFound(url.searchParams.get('path'));
+        return json({ notFound: await store.notFound() });
       case 'POST /api/publish':
         await store.publish(String(body.slug ?? ''));
         return json(await lists());
@@ -1067,6 +1076,8 @@ export async function startEditor(
     await extensions.jobs(now);
   };
   const clock = startClock(store, { run: server !== null, jobs, claim: (key, ms) => shared.claim(key, ms) });
+  // Search engines told of what is published, when the owner asks for it (ADR 0063 d2).
+  const told = indexNow(store, { files: () => publishedSite(store, true), claim: (key, ms) => shared.claim(key, ms), fetch: options.indexNowFetch, log: options.log });
   const unlisten = extensions.listen();
   return {
     url: people ? `${publicAddress}/admin/` : `http://127.0.0.1:${port}/admin/#token=${token}`,
@@ -1076,6 +1087,7 @@ export async function startEditor(
     fetch: handle,
     stop: () => {
       clock.stop();
+      told.stop();
       unlisten();
       site.stop();
       extensions.close();

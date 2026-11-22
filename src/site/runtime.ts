@@ -50,6 +50,19 @@ const TYPES: Record<string, string> = {
   avif: 'image/avif',
 };
 
+/** What robots ask every site for, to find another software's weak spots: not worth showing the owner. */
+const PROBE = /\.(php|asp|aspx|jsp|cgi|env|ini|sql|bak|ya?ml)$|^\/(wp-|\.|cgi-bin|xmlrpc|phpmyadmin|vendor\/)/i;
+
+/** Where a visitor came from to an address not found: the page's host and path, without what follows them. */
+const refererOf = (request: Request): string => {
+  try {
+    const from = new URL(request.headers.get('referer') ?? '');
+    return `${from.host}${from.pathname}`.slice(0, 255);
+  } catch {
+    return '';
+  }
+};
+
 /** The export's files no visitor is served: the lists a host reads, and the export's own marker. */
 const HIDDEN = new Set(['_redirects', '.htaccess']);
 
@@ -232,6 +245,11 @@ export function startRuntime(
     const files = await site();
     // An address without its last slash leads to the page that has one.
     if (files.has(`${path}/index.html`)) return new Response(null, { status: 301, headers: { location: `${url.pathname}/${url.search}` } });
+    // The key that proves to IndexNow the site is the one telling it (ADR 0063 d2), only while the owner asks for that.
+    const asked = /^\/([a-zA-Z0-9-]{8,128})\.txt$/.exec(url.pathname)?.[1];
+    if (asked && (await store.site()).indexNow && asked === (await store.indexNowKey())) return new Response(asked, { headers: { 'content-type': 'text/plain; charset=utf-8', ...HEADERS } });
+    // An address the site does not have is noted for the owner, unless it is a robot looking for another software's files (ADR 0063 d1).
+    if (request.method === 'GET' && !PROBE.test(url.pathname)) void store.addNotFound(url.pathname, refererOf(request)).catch(() => {});
     const missing = files.get('404.html');
     return missing === undefined ? new Response('nothing is published yet\n', { status: 404, headers: { 'content-type': 'text/plain; charset=utf-8' } }) : file('404.html', missing, 404);
   }
