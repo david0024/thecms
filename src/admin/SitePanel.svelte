@@ -128,6 +128,11 @@ import Redirects from './Redirects.svelte';
 </label>
 <small>{t.site.robotsHint}</small>
 <label class="check">
+  <input type="checkbox" checked={site.indexNow === true} onchange={(e) => set({ indexNow: e.currentTarget.checked ? true : undefined })} data-site-indexnow />
+  <span>{t.site.indexNow}</span>
+</label>
+<small>{t.site.indexNowHint}</small>
+<label class="check">
   <input type="checkbox" checked={site.data !== false} onchange={(e) => set({ data: e.currentTarget.checked ? undefined : false })} data-site-data />
   <span>{t.site.data}</span>
 </label>

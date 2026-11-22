@@ -11,8 +11,8 @@ import type { BackupSettings, BackupsShown } from '../site/backup.ts';
 export type { BackupSettings, BackupsShown };
 
 export type { ImportPreview, ImportProgress };
-import type { Comment, Message, Role, User } from '../site/store.ts';
-export type { Comment, Message, Role, User };
+import type { Comment, Message, NotFound, Role, User } from '../site/store.ts';
+export type { Comment, Message, NotFound, Role, User };
 
 /** The person signed in, as the admin is told. */
 export interface SharedStatus {
@@ -268,6 +268,8 @@ export const api = {
   setForms: (forms: Form[]) => call<FormsState>('PUT', '/api/forms', { forms }),
   redirects: () => call<{ redirects: Redirect[] }>('GET', '/api/redirects'),
   setRedirects: (redirects: Redirect[]) => call<{ redirects: Redirect[] }>('PUT', '/api/redirects', { redirects }),
+  notFound: () => call<{ notFound: NotFound[] }>('GET', '/api/not-found'),
+  forgetNotFound: (path: string | null) => call<{ notFound: NotFound[] }>('DELETE', path === null ? '/api/not-found' : `/api/not-found?path=${encodeURIComponent(path)}`),
   page: (slug: string, kind: Kind = 'page') => call<{ page: Doc; translation?: TranslationInfo }>('GET', `/api/page?kind=${kind}&slug=${encodeURIComponent(slug)}`),
   translate: (slug: string, language: string, kind: Kind = 'page') => call<{ page: Page; translation: TranslationInfo } & Lists>('POST', '/api/translate', { slug, language, kind }),
   split: (of: string, language: string, kind: Kind = 'page') => call<{ page: Page; translation: TranslationInfo } & Lists>('POST', '/api/split', { of, language, kind }),
