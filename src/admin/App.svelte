@@ -914,7 +914,7 @@ onMount(() => {
         </label>
         <label class="field">
           <span>{t.inspector.description}</span>
-          <textarea rows="3" maxlength="300" value={page.description} oninput={(e) => page && change({ ...page, description: e.currentTarget.value }, { step: false, redraw: false })}></textarea>
+          <textarea rows="3" maxlength="300" value={page.description} placeholder={type && 'date' in page ? postDescription({ ...page, description: '' }) : pageDescription({ ...(page as Page), description: '' })} data-description oninput={(e) => page && change({ ...page, description: e.currentTarget.value }, { step: false, redraw: false })}></textarea>
           <small>{t.inspector.descriptionHint}</small>
         </label>
         {#if !sectioning}

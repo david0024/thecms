@@ -75,6 +75,7 @@ jobs:
           node e2e/redirects.cjs
           node e2e/media-blocks.cjs
           node e2e/seo.cjs
+          node e2e/seo-more.cjs
           node e2e/backups.cjs
           node e2e/relations.cjs
           node e2e/stats.cjs

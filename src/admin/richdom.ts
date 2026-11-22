@@ -22,20 +22,24 @@ const BLOCKS = new Set(['P', 'DIV', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'BLOCKQU
 
 const children = (node: DomNode): DomNode[] => Array.from(node.childNodes);
 
-function spansOf(node: DomNode, marks: Mark[], href: string, out: Span[]): Span[] {
+function spansOf(node: DomNode, marks: Mark[], href: string, out: Span[], nofollow = false): Span[] {
   for (const child of children(node)) {
     if (child.nodeType === TEXT) {
       const text = (child.textContent ?? '').replace(/ /g, ' ');
       if (!text) continue;
       const last = out[out.length - 1];
-      if (last && (last.href ?? '') === href && (last.marks ?? []).join() === marks.join()) last.text += text;
-      else out.push({ text, ...(marks.length ? { marks: [...marks] } : {}), ...(href ? { href } : {}) });
+      // A link search engines are asked not to follow keeps that as its own (ADR 0058 d6).
+      const unfollowed = !!href && nofollow;
+      if (last && (last.href ?? '') === href && !!last.nofollow === unfollowed && (last.marks ?? []).join() === marks.join()) last.text += text;
+      else out.push({ text, ...(marks.length ? { marks: [...marks] } : {}), ...(href ? { href } : {}), ...(unfollowed ? { nofollow: true as const } : {}) });
     } else if (child.nodeType === ELEMENT) {
       if (child.nodeName === 'BR') continue;
       const mark = MARK_OF[child.nodeName];
       const nextMarks = mark && !marks.includes(mark) ? [...marks, mark] : marks;
-      const nextHref = child.nodeName === 'A' ? (child.getAttribute?.('href') ?? '') : href;
-      spansOf(child, nextMarks, nextHref, out);
+      const link = child.nodeName === 'A';
+      const nextHref = link ? (child.getAttribute?.('href') ?? '') : href;
+      const nextNofollow = link ? /\bnofollow\b/i.test(child.getAttribute?.('rel') ?? '') : nofollow;
+      spansOf(child, nextMarks, nextHref, out, nextNofollow);
     }
   }
   return out;
@@ -104,6 +108,7 @@ export function richTextToDom(doc: RichText, into: HTMLElement): void {
       if (span.href) {
         const link = make('a');
         link.setAttribute('href', span.href);
+        if (span.nofollow) link.setAttribute('rel', 'nofollow');
         link.append(node);
         node = link;
       }

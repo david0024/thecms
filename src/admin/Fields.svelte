@@ -33,6 +33,11 @@ let {
 const at = (name: string): string => (prefix ? `${prefix}.${name}` : name);
 const text = (name: string): string => (getPath(content, name) as string | undefined) ?? '';
 const part = (name: string, key: string): string => ((getPath(content, name) as Record<string, string> | null)?.[key] ?? '') as string;
+/** A link field as it stands, its choice for search engines with it (ADR 0058 d6). */
+const linkAt = (name: string): { label: string; href: string; nofollow?: true | undefined } => {
+  const value = getPath(content, name) as { label?: string; href?: string; nofollow?: true } | null | undefined;
+  return { label: value?.label ?? '', href: value?.href ?? '', ...(value?.nofollow ? { nofollow: true as const } : {}) };
+};
 const list = (name: string): Record<string, unknown>[] => (getPath(content, name) as Record<string, unknown>[] | undefined) ?? [];
 const input = (e: Event): string => (e.currentTarget as HTMLInputElement | HTMLTextAreaElement).value;
 </script>
@@ -105,10 +110,13 @@ const input = (e: Event): string => (e.currentTarget as HTMLInputElement | HTMLT
       <fieldset>
         <legend>{t.fields[name] ?? name}</legend>
         <label><span>{t.inspector.linkLabel}</span>
-          <input type="text" value={part(name, 'label')} oninput={(e) => onchange(at(name), { label: input(e), href: part(name, 'href') })} />
+          <input type="text" value={part(name, 'label')} oninput={(e) => onchange(at(name), { ...linkAt(name), label: input(e) })} />
         </label>
         <label><span>{t.inspector.linkHref}</span>
-          <input type="text" value={part(name, 'href')} oninput={(e) => onchange(at(name), { label: part(name, 'label'), href: input(e) })} />
+          <input type="text" value={part(name, 'href')} oninput={(e) => onchange(at(name), { ...linkAt(name), href: input(e) })} />
+        </label>
+        <label class="check"><input type="checkbox" checked={linkAt(name).nofollow === true} onchange={(e) => onchange(at(name), { ...linkAt(name), nofollow: e.currentTarget.checked ? true : undefined })} data-link-nofollow />
+          <span>{t.format.linkNofollow}</span>
         </label>
       </fieldset>
     {:else if field.kind === 'list'}

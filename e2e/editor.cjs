@@ -228,14 +228,14 @@ const assert = (condition, message) => {
     await page.keyboard.press('End');
     await page.keyboard.press('Shift+ControlOrMeta+ArrowLeft');
     await format('link');
-    await canvas.locator('.cms-format input').fill('/contact/');
+    await canvas.locator('.cms-format input[type="text"]').fill('/contact/');
     await page.keyboard.press('Enter');
     await text.locator('a[href="/contact/"]').waitFor();
     await page.keyboard.press('Home');
     await page.keyboard.press('Shift+ControlOrMeta+ArrowRight');
     await format('bold');
     await format('link');
-    await canvas.locator('.cms-format input').fill('javascript:alert(1)');
+    await canvas.locator('.cms-format input[type="text"]').fill('javascript:alert(1)');
     await page.keyboard.press('Enter');
     const body = (await stored()).find((b) => b.type === 'text').content.body;
     assert(body[0].type === 'heading' && body[0].level === 2 && body[0].children[0].text === 'Our prices', 'the bar turns a line into a heading');

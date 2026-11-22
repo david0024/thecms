@@ -4,7 +4,7 @@
  * in the header, the footer's words and links. How these are laid out is the
  * theme's (ADR 0006), so nothing here is a colour or a position.
  */
-import { type LinkValue, languageName, MAX_LANGUAGES, type MenuList, prefixOf, type Site, type SiteText } from '../core/index.ts';
+import { cleanRobots, type LinkValue, languageName, MAX_LANGUAGES, type MenuList, prefixOf, type Site, type SiteText, verificationCode } from '../core/index.ts';
 import type { LanguageInfo, PageInfo } from './api.ts';
 import ImageField from './ImageField.svelte';
 import MenuBuilder from './MenuBuilder.svelte';
@@ -90,7 +90,7 @@ import Redirects from './Redirects.svelte';
 
 <h3>{t.site.header}</h3>
 <div class="field">
-  <ImageField label={t.site.logo} value={site.logo} onchange={(logo) => set({ logo: logo.src ? logo : null })} />
+  <ImageField label={t.site.logo} value={site.logo} named={false} onchange={(logo) => set({ logo: logo.src ? logo : null })} />
   <small>{t.site.logoHint}</small>
 </div>
 <fieldset class="field" data-site-action>
@@ -113,6 +113,17 @@ import Redirects from './Redirects.svelte';
   <span>{t.site.breadcrumbs}</span>
 </label>
 <small>{t.site.breadcrumbsHint}</small>
+<label class="field"><span>{t.site.verifyGoogle}</span>
+  <input type="text" maxlength="300" value={site.verify?.google ?? ''} onchange={(e) => set({ verify: { ...site.verify, google: verificationCode(e.currentTarget.value) || undefined } })} data-site-verify-google />
+</label>
+<label class="field"><span>{t.site.verifyBing}</span>
+  <input type="text" maxlength="300" value={site.verify?.bing ?? ''} onchange={(e) => set({ verify: { ...site.verify, bing: verificationCode(e.currentTarget.value) || undefined } })} data-site-verify-bing />
+</label>
+<small>{t.site.verifyHint}</small>
+<label class="field"><span>{t.site.robots}</span>
+  <textarea rows="3" maxlength="5000" value={site.robots ?? ''} onchange={(e) => set({ robots: cleanRobots(e.currentTarget.value) || undefined })} data-site-robots></textarea>
+</label>
+<small>{t.site.robotsHint}</small>
 <label class="check">
   <input type="checkbox" checked={site.data !== false} onchange={(e) => set({ data: e.currentTarget.checked ? undefined : false })} data-site-data />
   <span>{t.site.data}</span>

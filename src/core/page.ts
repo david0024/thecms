@@ -1,6 +1,6 @@
 /** A page and the site it belongs to, as documents. */
 import type { Form } from './form.ts';
-import { type Block, blocksText, cleanImage, cleanLink, type ImageValue, type LinkValue, normalizeBlocks } from './blocks.ts';
+import { type Block, cleanImage, describeBlocks, cleanLink, type ImageValue, type LinkValue, normalizeBlocks } from './blocks.ts';
 import { type Layout, normalizeLayouts } from './layout.ts';
 import { normalizeTranslations, type PageTranslation } from './localize.ts';
 import { type MenuNode, normalizeMenu } from './menu.ts';
@@ -61,6 +61,10 @@ export interface Site {
   shareImage?: ImageValue;
   /** False: the breadcrumbs are said to search engines and not shown (ADR 0050 d4). Absent: shown. */
   breadcrumbs?: false;
+  /** The codes Google and Bing give to prove the site is the owner's (ADR 0058 d4): each absent until set. */
+  verify?: { google?: string; bing?: string };
+  /** The owner's own lines for `robots.txt`, after the program's (ADR 0058 d5). Absent: none. */
+  robots?: string;
   /** False: no JSON beside each page for apps and other sites to read (ADR 0057 d3). Absent: written. */
   data?: false;
   /** The stored pictures' sizes and smaller copies (ADR 0005 d8): filled in to draw a page for export, never kept. */
@@ -140,9 +144,42 @@ export function normalizeSite(input: unknown): Site {
     ...(Array.isArray(raw.layouts) ? { layouts: normalizeLayouts(raw.layouts) } : {}),
     ...(cleanImage(raw.shareImage) ? { shareImage: cleanImage(raw.shareImage) as ImageValue } : {}),
     ...(raw.breadcrumbs === false ? { breadcrumbs: false as const } : {}),
+    ...cleanVerify(raw.verify),
+    ...(cleanRobots(raw.robots) ? { robots: cleanRobots(raw.robots) } : {}),
     ...(raw.data === false ? { data: false as const } : {}),
     keepMessages: Number.isInteger(raw.keepMessages) && (raw.keepMessages as number) >= 1 && (raw.keepMessages as number) <= 3650 ? (raw.keepMessages as number) : KEEP_MESSAGES_DAYS,
   };
+}
+
+/**
+ * A verification code as Google or Bing gives it: the code, or the whole
+ * `<meta … content="…">` tag it comes in, from which the code is taken.
+ */
+export function verificationCode(value: unknown): string {
+  const text = typeof value === 'string' ? value.trim() : '';
+  const code = /content\s*=\s*["']([^"']*)["']/i.exec(text)?.[1] ?? text;
+  return /^[A-Za-z0-9_-]{1,100}$/.test(code) ? code : '';
+}
+
+function cleanVerify(raw: unknown): { verify?: { google?: string; bing?: string } } {
+  const given = isObject(raw) ? raw : {};
+  const google = verificationCode(given.google);
+  const bing = verificationCode(given.bing);
+  return google || bing ? { verify: { ...(google ? { google } : {}), ...(bing ? { bing } : {}) } } : {};
+}
+
+/** What `robots.txt` may say: only its own kinds of line, each of them short; anything else is dropped. */
+export const ROBOTS_LINE = /^(user-agent|allow|disallow|crawl-delay|sitemap)\s*:\s*[^\s<>"]{0,500}$/i;
+
+export function cleanRobots(raw: unknown): string {
+  if (typeof raw !== 'string') return '';
+  return raw
+    .slice(0, 5000)
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => ROBOTS_LINE.test(line))
+    .slice(0, 100)
+    .join('\n');
 }
 
 const cleanFooterLinks = (value: unknown): LinkValue[] =>
@@ -196,4 +233,5 @@ export const reservedSlugs = (site: Site): string[] => [
 export const pagePath = (slug: string): string => (slug ? `/${slug}/` : '/');
 
 /** What a search engine shows under the title. */
-export const pageDescription = (page: Page): string => page.description || blocksText(page.blocks);
+/** What search engines are told: the description, or else the one the site writes from the page (ADR 0058 d1). */
+export const pageDescription = (page: Page): string => page.description || describeBlocks(page.blocks);

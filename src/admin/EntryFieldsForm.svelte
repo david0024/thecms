@@ -54,6 +54,7 @@ const yesno = (key: string): string => (values[key] === true ? 'yes' : values[ke
         <legend>{field.label}</legend>
         <label><span>{t.inspector.linkLabel}</span><input type="text" maxlength="80" value={link(field.key).label} oninput={(e) => set(field.key, { ...link(field.key), label: e.currentTarget.value })} /></label>
         <label><span>{t.inspector.linkHref}</span><input type="text" value={link(field.key).href} placeholder="https://… /contact/" onchange={(e) => set(field.key, { ...link(field.key), href: e.currentTarget.value.trim() })} /></label>
+        <label class="check"><input type="checkbox" checked={link(field.key).nofollow === true} onchange={(e) => set(field.key, { ...link(field.key), nofollow: e.currentTarget.checked ? true : undefined })} data-link-nofollow /><span>{t.format.linkNofollow}</span></label>
       </fieldset>
     {:else}
       <label>
@@ -82,3 +83,7 @@ const yesno = (key: string): string => (values[key] === true ? 'yes' : values[ke
     {/if}
   </div>
 {/each}
+
+<style>
+  .check { display: flex; align-items: center; gap: 0.5rem; }
+</style>

@@ -26,9 +26,9 @@ export interface SiteCheck {
   seo?: SeoProblem[];
 }
 
-/** A title too long, a title another page has too, or a home page hidden from search engines. */
+/** A title too long, a title another page has too, a home page hidden from search engines, or a robots.txt that shuts every page (ADR 0058 d5). */
 export interface SeoProblem {
-  problem: 'long' | 'duplicate' | 'hidden';
+  problem: 'long' | 'duplicate' | 'hidden' | 'blocked';
   /** The pages, by address. */
   pages: string[];
   /** The title, for the first two. */
@@ -130,12 +130,34 @@ export function checkSeo(files: Map<string, string | Uint8Array>): SeoProblem[] 
     const key = `${LANG.exec(contents)?.[1] ?? ''}\n${title}`;
     if (title) titles.set(key, [...(titles.get(key) ?? []), page]);
   }
+  // The owner's lines in robots.txt that shut the whole site to every search engine, or to Google's or Bing's.
+  if (robotsShutsAll(files.get('robots.txt'))) found.push({ problem: 'blocked', pages: ['/robots.txt'] });
   for (const [key, pages] of [...titles].sort(([a], [b]) => a.localeCompare(b))) {
     const title = key.slice(key.indexOf('\n') + 1);
     if (title.length > LONG_TITLE) found.push({ problem: 'long', pages: pages.sort(), title });
     if (pages.length > 1) found.push({ problem: 'duplicate', pages: pages.sort(), title });
   }
   return found;
+}
+
+function robotsShutsAll(robots: string | Uint8Array | undefined): boolean {
+  if (typeof robots !== 'string') return false;
+  let agents: string[] = [];
+  let reading = false;
+  for (const line of robots.split('\n')) {
+    const [name = '', ...rest] = line.split(':');
+    const key = name.trim().toLowerCase();
+    const value = rest.join(':').trim();
+    if (key === 'user-agent') {
+      // A run of user-agent lines names one group.
+      agents = reading ? [value.toLowerCase()] : [...agents, value.toLowerCase()];
+      reading = false;
+    } else if (key === 'disallow' || key === 'allow') {
+      reading = true;
+      if (key === 'disallow' && value === '/' && agents.some((a) => a === '*' || a.startsWith('googlebot') || a.startsWith('bingbot'))) return true;
+    }
+  }
+  return false;
 }
 
 /** What is wrong with the redirects, against the pages the export wrote (its own redirect pages are not pages). */
@@ -167,6 +189,7 @@ const SEO: Record<SeoProblem['problem'], string> = {
   long: `the title "{title}" is longer than ${LONG_TITLE} letters; search engines cut it`,
   duplicate: 'share the title "{title}"; give each its own',
   hidden: 'the home page is hidden from search engines',
+  blocked: 'the lines added in Site settings shut the whole site to search engines (Disallow: /)',
 };
 
 /** The findings in plain lines, for the command line. */

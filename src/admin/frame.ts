@@ -67,7 +67,9 @@ style.textContent = `
 .cms-format button:hover{background:rgb(255 255 255/.16)}
 .cms-format button[aria-pressed=true]{background:#6d5dfc}
 .cms-format i{width:1px;height:18px;margin:0 3px;background:rgb(255 255 255/.25)}
-.cms-format form{display:flex;gap:3px;flex-basis:100%;padding:3px 0 0}
+.cms-format form{display:flex;flex-wrap:wrap;gap:3px;flex-basis:100%;padding:3px 0 0}
+.cms-format label{display:flex;align-items:center;gap:5px;flex-basis:100%;padding:2px 4px;font:400 12.5px/1.2 system-ui,sans-serif}
+.cms-format label input{flex:none;min-width:0;width:auto;height:auto;padding:0}
 .cms-format form[hidden]{display:none}
 .cms-format input{flex:1;min-width:14rem;height:30px;padding:0 8px;border:0;border-radius:5px;font:400 13px/1 system-ui,sans-serif;color:#1c1b22;background:#fff}
 .cms-format form button{background:rgb(255 255 255/.16)}
@@ -236,7 +238,14 @@ const linkApply = document.createElement('button');
 linkApply.type = 'submit';
 const linkRemove = document.createElement('button');
 linkRemove.type = 'button';
-linkForm.append(linkInput, linkApply, linkRemove);
+// "Search engines do not follow it" (ADR 0058 d6): the link says rel="nofollow".
+const linkNofollow = document.createElement('input');
+linkNofollow.type = 'checkbox';
+linkNofollow.dataset.linkNofollow = '';
+const linkNofollowLabel = document.createElement('label');
+const linkNofollowText = document.createElement('span');
+linkNofollowLabel.append(linkNofollow, linkNofollowText);
+linkForm.append(linkInput, linkApply, linkRemove, linkNofollowLabel);
 document.body.append(formatBar);
 
 function buildFormatBar(): void {
@@ -257,6 +266,7 @@ function buildFormatBar(): void {
   linkInput.placeholder = labels.format.linkPlaceholder ?? '';
   linkApply.textContent = labels.format.linkApply ?? 'OK';
   linkRemove.textContent = labels.format.linkRemove ?? '✕';
+  linkNofollowText.textContent = labels.format.linkNofollow ?? 'nofollow';
   formatBar.append(linkForm);
 }
 
@@ -397,6 +407,7 @@ function askLink(): void {
   kept = selectionIn(rich);
   if (!kept || (kept.start === kept.end && !link)) return;
   linkInput.value = link?.getAttribute('href') ?? '';
+  linkNofollow.checked = /\bnofollow\b/.test(link?.getAttribute('rel') ?? '');
   linkRemove.hidden = !link;
   linkForm.hidden = false;
   placeFormatBar();
@@ -411,8 +422,16 @@ function applyLink(address: string): void {
   select(area, kept.start, kept.end);
   kept = null;
   // Any address is taken here; the document keeps only one a visitor may follow.
-  if (address) exec('createLink', address);
-  else exec('unlink');
+  if (address) {
+    exec('createLink', address);
+    // The links now in the selection follow the box; the document keeps it as the span's own.
+    const range = getSelection()?.rangeCount ? getSelection()?.getRangeAt(0) : null;
+    for (const a of area.querySelectorAll('a')) {
+      if (!range?.intersectsNode(a)) continue;
+      if (linkNofollow.checked) a.setAttribute('rel', 'nofollow');
+      else a.removeAttribute('rel');
+    }
+  } else exec('unlink');
   settle(area);
 }
 

@@ -17,7 +17,9 @@ import {
   contentTypes,
   entryPath,
   feedPath,
+  imageSources,
   mediaSources,
+  type PlacedPage,
   mediaKindOf,
   mediaNameOf,
   type MediaSize,
@@ -152,6 +154,8 @@ export async function buildSite(
   locked: Record<string, string> = {},
   /** Who wrote each entry, by `type/entry` (ADR 0055 d3): shown under the title of a dated one. */
   bylines: Record<string, Byline> = {},
+  /** When each page (by its main address) and each entry (by `type/entry`) was last published: the sitemap's dates (ADR 0058 d3). */
+  times: PublishedTimes = {},
 ): Promise<Map<string, string | Uint8Array>> {
   const files = new Map<string, string | Uint8Array>();
   site = { ...site, pictures: { sizes: images, widths: theme.tokens.width } };
@@ -193,11 +197,14 @@ export async function buildSite(
   const paths: string[] = [];
   /** Addresses that are there but kept out of the sitemap: a period's list, which only repeats (ADR 0056 d4). */
   const unlisted = new Set<string>();
-  const page = (path: string, html: string, hidden = false): void => {
+  /** What the sitemap says of an address besides where it is: when it last changed, and its pictures (ADR 0058 d3). */
+  const about = new Map<string, { at?: string | undefined; images: string[] }>();
+  const page = (path: string, html: string, hidden = false, at?: string, images: string[] = []): void => {
     files.set(fileOf(path), html);
     // A page hidden from search engines is not in the sitemap (ADR 0050 d3).
     if (!hidden) paths.push(path);
     else unlisted.add(path);
+    about.set(path, { at, images });
   };
 
   // The structure first, the theme after it: where both set the same thing, the theme wins.
@@ -206,7 +213,13 @@ export async function buildSite(
   const data: Data[] = [];
   for (const p of pages) {
     const setting = pageSetting(site, p.slug, pages, main.lists, (language) => inLanguage(language).lists);
-    page(pagePath(p.slug), renderPage(withAreas(setting.site, sections, setting.site.language), theme, p, setting.menu, inLanguage(setting.site.language).listable, setting.alternates), p.noindex);
+    page(
+      pagePath(p.slug),
+      renderPage(withAreas(setting.site, sections, setting.site.language), theme, p, setting.menu, inLanguage(setting.site.language).listable, setting.alternates),
+      p.noindex,
+      times.pages?.[(p as Partial<PlacedPage>).of ?? p.slug],
+      imageSources(p.blocks),
+    );
     data.push({ path: pagePath(p.slug), language: setting.site.language, page: p });
   }
   // A page behind a password says so to the runtime, which asks for it; search engines are asked to keep none of it.
@@ -230,7 +243,13 @@ export async function buildSite(
       const byMain = new Map((published[type.id] ?? []).map((p) => [p.slug, p]));
       for (const post of list) {
         const from = byMain.get(post.of ?? post.slug) as Post;
-        page(entryPath(type, post.slug), renderPost(frame, theme, post, localMenu, type, listable, template, site.languages.length ? entryAlternates(site, original, from, here, language) : []), post.noindex);
+        page(
+          entryPath(type, post.slug),
+          renderPost(frame, theme, post, localMenu, type, listable, template, site.languages.length ? entryAlternates(site, original, from, here, language) : []),
+          post.noindex,
+          times.entries?.[`${type.id}/${post.of ?? post.slug}`],
+          [...(post.cover ? [post.cover.src] : []), ...imageSources(post.blocks)],
+        );
         data.push({ path: entryPath(type, post.slug), language, post, type });
       }
       data.push({ path: listPath(type), language, type, list });
@@ -338,10 +357,9 @@ export async function buildSite(
     files.set(`${prefixOf(language)}/404.html`, renderPage(withAreas(local, sections, language), theme, { slug: '404', title: wordsFor(language).notFound, description: '', inMenu: false, blocks: [] }, menuOf(local, pagesIn(site, language, pages), own)));
   }
   if (site.url) {
-    const urls = paths.map((path) => `  <url><loc>${xml(`${site.url}${path}`)}</loc></url>`).join('\n');
-    files.set('sitemap.xml', `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>\n`);
+    files.set('sitemap.xml', sitemapFile(site, paths, about));
   }
-  files.set('robots.txt', `User-agent: *\nAllow: /\n${site.url ? `Sitemap: ${site.url}/sitemap.xml\n` : ''}`);
+  files.set('robots.txt', robotsFile(site));
   if (site.data !== false) writeData(files, site, data.filter((d) => !(d.path in locked)));
   return files;
 }
@@ -407,6 +425,43 @@ function writeData(files: Map<string, string | Uint8Array>, site: Site, data: Da
     }
   }
   files.set('site.json', json({ format: DATA_FORMAT, kind: 'site', name: site.name, url: site.url, language: site.language, languages: site.languages, pages, types: lists }));
+}
+
+/** When pages and entries were last published, as the store keeps it (ADR 0058 d3). */
+export interface PublishedTimes {
+  /** By the main page's address. */
+  pages?: Record<string, string>;
+  /** By `type/entry`. */
+  entries?: Record<string, string>;
+}
+
+/**
+ * The sitemap: each address, the day it was last published when that is
+ * known, and the site's own pictures it shows (ADR 0058 d3). A picture on
+ * another site is that site's to list.
+ */
+function sitemapFile(site: Site, paths: string[], about: Map<string, { at?: string | undefined; images: string[] }>): string {
+  let pictures = false;
+  const urls = paths.map((path) => {
+    const { at, images } = about.get(path) ?? { images: [] };
+    const own = [...new Set(images.filter((src) => src.startsWith('/') && !src.startsWith('//')))].slice(0, 1000);
+    if (own.length) pictures = true;
+    const day = at && /^\d{4}-\d{2}-\d{2}/.test(at) ? at.slice(0, 10) : '';
+    return [
+      `  <url><loc>${xml(`${site.url}${path}`)}</loc>`,
+      day ? `<lastmod>${day}</lastmod>` : '',
+      ...own.map((src) => `<image:image><image:loc>${xml(`${site.url}${src}`)}</image:loc></image:image>`),
+      '</url>',
+    ].join('');
+  });
+  const spaces = `xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"${pictures ? ' xmlns:image="http://www.google.com/schemas/sitemap-image/1.1"' : ''}`;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset ${spaces}>\n${urls.join('\n')}\n</urlset>\n`;
+}
+
+/** `robots.txt`: every page may be read, then the owner's own lines (ADR 0058 d5), then where the sitemap is. */
+export function robotsFile(site: Site): string {
+  const own = site.robots ? `${site.robots}\n` : '';
+  return `User-agent: *\nAllow: /\n${own}${site.url ? `\nSitemap: ${site.url}/sitemap.xml\n` : ''}`;
 }
 
 /**
@@ -487,5 +542,5 @@ export async function publishedSite(store: Store, served = false): Promise<Map<s
   const locked = Object.fromEntries(pages.filter((p) => locks.has(p.of)).map((p) => [pagePath(p.slug), p.of]));
   const media: MediaSource = async (name) =>
     served && mediaKindOf(name) !== 'image' ? ((await store.hasMedia(name)) ? new Uint8Array(0) : null) : ((await store.mediaFile(name))?.bytes ?? null);
-  return buildSite(site, theme, pages, media, entries, await store.redirects(), templates, await store.publishedSections(), await store.mediaSizes(), await store.shownComments(), locked, await store.bylines());
+  return buildSite(site, theme, pages, media, entries, await store.redirects(), templates, await store.publishedSections(), await store.mediaSizes(), await store.shownComments(), locked, await store.bylines(), await store.publishedTimes());
 }
