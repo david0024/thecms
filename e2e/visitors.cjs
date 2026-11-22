@@ -28,6 +28,7 @@ function mailServer(mails) {
   const server = net.createServer((socket) => {
     let data = false;
     let text = '';
+    socket.on('error', () => {});
     socket.write('220 test\r\n');
     socket.on('data', (chunk) => {
       for (const line of chunk.toString().split('\r\n')) {
@@ -156,6 +157,32 @@ function mailServer(mails) {
     await page.locator('[data-visitor="guest@example.com"] [data-visitor-remove]').click();
     await page.locator('[data-visitor="guest@example.com"]').waitFor({ state: 'detached' });
     assert(true, 'and deletes an account');
+
+    // An address that has an account is not invited again: the owner is told.
+    await page.locator('[data-invite-email]').fill('ana@example.com');
+    await page.locator('[data-invite-send]').click();
+    await page.getByText('someone already has an account with that address').waitFor();
+    assert(true, 'inviting an address that has an account is refused, and said');
+
+    // A visitor's data, downloaded for them.
+    const [download] = await Promise.all([page.waitForEvent('download'), page.locator('[data-visitor="ana@example.com"] button').first().click()]);
+    assert(download.suggestedFilename() === 'ana@example.com.json', "the owner downloads a visitor's data");
+
+    // Messages that could not be sent at their last try: listed, tried again, or forgotten.
+    const failed = (id) =>
+      `INSERT INTO mail_queue (id, to_address, subject, body, what, tries, next_at, failed_at, error, created_at) VALUES ('${id}', '${id}@example.com', 's', 'b', 'invite', 5, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', 'refused', '2026-01-01T00:00:00.000Z')`;
+    execFileSync('bun', ['-e', `const { Database } = require('bun:sqlite'); const db = new Database(process.argv[1]); db.run(process.argv[2]); db.run(process.argv[3]);`, db, failed('lost'), failed('again')]);
+    await page.reload();
+    await page.locator('[data-nav="settings"]').click();
+    const rows = page.locator('[data-visitors-failed] li');
+    await rows.first().waitFor();
+    assert((await rows.count()) === 2, 'what could not be sent is listed');
+    await rows.filter({ hasText: 'lost@example.com' }).getByRole('button').nth(1).click();
+    await page.locator('[data-visitors-failed] li', { hasText: 'lost@example.com' }).waitFor({ state: 'detached' });
+    await rows.filter({ hasText: 'again@example.com' }).getByRole('button').first().click();
+    await page.locator('[data-visitors-failed]').waitFor({ state: 'detached' });
+    await page.locator('[data-visitors-waiting]').waitFor();
+    assert(true, 'one is forgotten, the other tried again');
     assert(errors.length === 0, `no errors in the browser ${errors.join(' | ')}`);
   } catch (error) {
     if (shots) await browser.contexts()[0]?.pages()[0]?.screenshot({ path: join(shots, 'failure.png') }).catch(() => {});
