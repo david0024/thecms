@@ -65,3 +65,4 @@ work it decides. A new one that changes an old one says so at its top.
 - [ADR 0061 — More data for search engines: questions, the business, events and products](0061-more-data-for-search-engines.md)
 - [ADR 0062 — Extensions 3: what the program tells, asks and lends an extension](0062-extensions-3.md)
 - [ADR 0063 — Addresses not found, and IndexNow](0063-addresses-not-found-and-indexnow.md)
+- [ADR 0064 — Visitor accounts, members, and e-mail to visitors](0064-visitor-accounts-and-members.md)

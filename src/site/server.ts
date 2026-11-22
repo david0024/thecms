@@ -16,7 +16,8 @@
 import { mediaResponse } from './serve-media.ts';
 import { startClock } from './clock.ts';
 import { backups, type Remote, type S3Settings } from './backup.ts';
-import type { Mailer } from './mail.ts';
+import { isEmail, type Mailer, smtpMailer } from './mail.ts';
+import { defaultTemplate as defaultMail, mailAddress, normalizeMailSettings, normalizeTemplates, siteMailer, TEMPLATES, type TemplateName } from './site-mail.ts';
 import { startRuntime } from './runtime.ts';
 import { zoneFor } from './stats.ts';
 import { isValkeyAddress, openShared, type Shared, shownAddress, switchable, testValkey } from './shared.ts';
@@ -692,6 +693,73 @@ export async function startEditor(
     }
   }
 
+  /**
+   * Settings → E-mail (ADR 0064 d5): the site's mail server, the sender, a test
+   * message, and the words of each message to visitors. THECMS_SMTP and
+   * THECMS_MAIL_FROM are stronger, and the screen says so.
+   */
+  async function mailApi(request: Request, url: URL, me: User, body: Record<string, unknown>): Promise<Response> {
+    const environment = { mailer: options.mailer ?? null, from: options.from };
+    const described = async () => {
+      const { password, ...saved } = normalizeMailSettings(await store.mailSettings());
+      return { settings: { ...saved, passwordSet: password !== '' }, fromEnvironment: { server: Boolean(options.mailer), from: Boolean(options.from) }, ready: (await siteMailer(store, environment)) !== null };
+    };
+    const route = `${request.method} ${url.pathname}`;
+    if (route === 'GET /api/mail') return json(await described());
+    if (route === 'PUT /api/mail') {
+      const before = normalizeMailSettings(await store.mailSettings());
+      // A password not given again is the one saved.
+      const asked = normalizeMailSettings({ ...body, password: typeof body.password === 'string' && body.password ? body.password : before.password });
+      if (!asked.host) asked.password = '';
+      if (typeof body.from === 'string' && body.from.trim() && !isEmail(body.from.trim())) return json({ error: 'the sender is not an email address' }, 400);
+      try {
+        smtpMailer(mailAddress(asked) || undefined);
+      } catch (error) {
+        return json({ error: error instanceof Error ? error.message : String(error) }, 400);
+      }
+      await store.setMailSettings(asked);
+      return json(await described());
+    }
+    if (route === 'POST /api/mail/test') {
+      const to = String(body.to ?? me.email ?? '').trim();
+      if (!isEmail(to)) return json({ error: 'give the address the test is sent to' }, 400);
+      const sending = await siteMailer(store, environment);
+      if (!sending) return json({ error: 'no mail server and sender are set yet' }, 409);
+      const site = await store.site();
+      try {
+        await sending.mailer({ from: sending.from, to, subject: `A test message from ${site.name}`, text: `This message was sent from Settings → E-mail of ${site.name}. Mail to visitors will go the same way.` });
+        return json({ sent: true });
+      } catch (error) {
+        return json({ error: error instanceof Error ? error.message : String(error) }, 502);
+      }
+    }
+    if (url.pathname === '/api/mail/templates') {
+      const site = await store.site();
+      const all = [site.language, ...site.languages];
+      const saved = normalizeTemplates(await store.mailTemplates());
+      if (request.method === 'PUT') {
+        const language = String(body.language ?? '');
+        const name = String(body.name ?? '') as TemplateName;
+        if (!all.includes(language) || !TEMPLATES.includes(name)) return json({ error: 'no such message' }, 400);
+        const subject = String(body.subject ?? '').trim();
+        const text = String(body.text ?? '');
+        const own = { ...(saved[language] ?? {}) };
+        // Left empty, or the same as the program's, it is the program's again.
+        const program = defaultMail(name, language);
+        if (!subject || !text.trim() || (subject === program.subject && text === program.text)) delete own[name];
+        else own[name] = { subject, text };
+        await store.setMailTemplates(normalizeTemplates({ ...saved, [language]: own }));
+      } else if (request.method !== 'GET') return json({ error: 'not found' }, 404);
+      return json({
+        languages: all,
+        names: TEMPLATES,
+        defaults: Object.fromEntries(all.map((l) => [l, Object.fromEntries(TEMPLATES.map((n) => [n, defaultMail(n, l)]))])),
+        saved: normalizeTemplates(await store.mailTemplates()),
+      });
+    }
+    return json({ error: 'not found' }, 404);
+  }
+
   async function api(request: Request, url: URL, me: User): Promise<Response> {
     const refused = await refusedTo(request, url, me);
     if (refused) return refused;
@@ -741,6 +809,9 @@ export async function startEditor(
       }
     }
     const body = request.method === 'GET' || request.method === 'DELETE' ? {} : ((await request.json()) as Record<string, unknown>);
+    // Settings → Visitor accounts (ADR 0064): nothing of them is loaded until the owner turns them on.
+    if (url.pathname === '/api/visitors' || url.pathname.startsWith('/api/visitors/')) return site.visitors.admin(request, url, me, body);
+    if (url.pathname === '/api/mail' || url.pathname.startsWith('/api/mail/')) return mailApi(request, url, me, body);
     if (url.pathname === '/api/me' && request.method === 'PUT') {
       // Their own name, the few words about them (ADR 0055 d3) and their picture (ADR 0056 d2).
       if (!people) return json({ error: 'accounts are for a served admin' }, 404);
@@ -1106,6 +1177,8 @@ export async function startEditor(
   const jobs = async (now: Date): Promise<void> => {
     if (backed) void backed.tick(now).catch((error: unknown) => (options.log ?? console.log)(`The backup could not be made: ${error instanceof Error ? error.message : String(error)}`));
     await extensions.jobs(now);
+    // What visitor accounts wait for: mail to send, accounts never confirmed (ADR 0064).
+    await site.visitors.chores(now).catch((error: unknown) => (options.log ?? console.log)(`Visitor accounts: ${error instanceof Error ? error.message : String(error)}`));
   };
   const clock = startClock(store, { run: server !== null, jobs, claim: (key, ms) => shared.claim(key, ms) });
   // Search engines told of what is published, when the owner asks for it (ADR 0063 d2).

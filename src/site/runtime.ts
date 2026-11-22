@@ -18,6 +18,8 @@ import { localShared, type Shared } from './shared.ts';
 import { resultsPage, search, SEARCH_MAX_QUERY, type SearchDoc, searchIndex } from './search.ts';
 import { visits as countVisits, type Visits } from './stats.ts';
 import type { Store } from './store.ts';
+import { siteMailer } from './site-mail.ts';
+import { type VisitorGate, visitorGate } from './visitor-gate.ts';
 
 export interface Runtime {
   url: string;
@@ -27,6 +29,8 @@ export interface Runtime {
   visits: Visits;
   /** What visits tell the extensions that listen, in batches (ADR 0062 d2). */
   told: Batches;
+  /** Visitor accounts (ADR 0064), loaded only once the owner turns them on. */
+  visitors: VisitorGate;
   stop: () => void;
 }
 
@@ -151,6 +155,17 @@ export function startRuntime(
     return routePage(frame, { ...(await store.site()), formDefs: await store.formsByName(), extensionBlocks: await store.extensionBlocks() }, theme, page);
   };
 
+  /** The site's frame in a language: its page for a missing address, in which a page of its own is drawn. */
+  const frameFor = async (language: string): Promise<string | null> => {
+    const files = await site();
+    const own = language ? files.get(`${language}/404.html`) : undefined;
+    const frame = typeof own === 'string' ? own : files.get('404.html');
+    return typeof frame === 'string' ? frame : null;
+  };
+  // Visitor accounts (ADR 0064): nothing of them is loaded while the owner has not turned them on (ADR 0060 d3).
+  const mail = { mailer: options.mailer ?? null, from: options.from };
+  const visitors = visitorGate(store, { shared, log: options.log ?? ((line) => console.log(line)), mail, frame: frameFor, headers: HEADERS }, async () => (await siteMailer(store, mail)) !== null);
+
   /** Passwords a visitor may try in a window: enough for a person, too few to guess one. */
   const tooMany = async (ip: string): Promise<boolean> => (await shared.hit(`unlock:${ip}`, 10 * 60_000)) > 10;
   const cookieOf = (request: Request, name: string): string => {
@@ -225,6 +240,8 @@ export function startRuntime(
       page.headers.set('cache-control', 'no-store');
       return page;
     }
+    // A visitor's account (ADR 0064 d1): not found while the accounts are off (d8).
+    if (url.pathname === '/_/account' || url.pathname.startsWith('/_/account/')) return visitors.fetch(request, url, ip);
     if (url.pathname === '/_' || url.pathname === '/_/') return new Response('thecms runtime\n', { headers: { 'content-type': 'text/plain; charset=utf-8' } });
     if (url.pathname.startsWith('/_/')) return new Response('not found\n', { status: 404, headers: { 'content-type': 'text/plain; charset=utf-8' } });
     if (request.method !== 'GET' && request.method !== 'HEAD') return new Response('a page is read with GET\n', { status: 405, headers: { allow: 'GET, HEAD' } });
@@ -285,7 +302,12 @@ export function startRuntime(
         });
   if (server?.port) port = server.port;
   // The site's clock runs here too: on a server with no editor running, what was set for later is still published (ADR 0039).
-  const clock = startClock(store, { run: server !== null, log: options.log, jobs: extensions.jobs, claim: (key, ms) => shared.claim(key, ms) });
+  // Mail to visitors waits in a queue this clock sends (ADR 0064 d5).
+  const jobs = async (at: Date): Promise<void> => {
+    await extensions.jobs(at);
+    await visitors.chores(at).catch((error: unknown) => (options.log ?? console.log)(`Visitor accounts: ${error instanceof Error ? error.message : String(error)}`));
+  };
+  const clock = startClock(store, { run: server !== null, log: options.log, jobs, claim: (key, ms) => shared.claim(key, ms) });
   const unlisten = own ? extensions.listen() : () => {};
   return {
     url: `http://${options.hostname ?? '127.0.0.1'}:${port}`,
@@ -293,6 +315,7 @@ export function startRuntime(
     fetch: handle,
     visits,
     told,
+    visitors,
     stop: () => {
       void visits.flush().then(() => told.stop());
       clock.stop();
