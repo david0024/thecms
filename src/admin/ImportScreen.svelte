@@ -1,8 +1,9 @@
 <script lang="ts">
 /**
- * Bringing in a WordPress site from the admin (ADR 0012). The file is read
- * first and nothing is written: the owner sees what would come over and what
- * would not, chooses, and only then starts it.
+ * Bringing in a WordPress site from the admin (ADR 0012), or a content file
+ * another thecms site made (ADR 0057 d2). The file is read first and nothing
+ * is written: the owner sees what would come over and what would not,
+ * chooses, and only then starts it.
  */
 import { onMount } from 'svelte';
 import { api, type ImportPreview, type ImportProgress } from './api.ts';
@@ -105,7 +106,7 @@ onMount(() =>
     <h1>{t.imp.heading}</h1>
   </header>
   {#if problem}<p class="bad" role="alert">{problem}</p>{/if}
-  <input type="file" accept=".xml,text/xml,application/xml" bind:this={fileInput} onchange={choose} hidden data-import-file />
+  <input type="file" accept=".xml,text/xml,application/xml,.json,application/json" bind:this={fileInput} onchange={choose} hidden data-import-file />
 
   {#if progress.status === 'running'}
     <p data-import-running>{progress.total ? say(t.imp.copying, { done: progress.done, total: progress.total }) : t.imp.writing}</p>
@@ -127,6 +128,7 @@ onMount(() =>
   {:else}
     {#if progress.status === 'failed'}<p class="bad" role="alert">{say(t.imp.failed, { reason: progress.error })}</p>{/if}
     <p class="intro">{t.imp.intro}</p>
+    <p class="intro">{t.imp.introContent}</p>
     <p><button type="button" class={preview ? '' : 'primary'} onclick={() => fileInput?.click()} disabled={busy} data-import-choose>{file ? t.imp.other : t.imp.choose}</button> {#if file}<span class="quiet">{file.name}</span>{/if}</p>
     {#if file && !preview && busy}<p class="hint">{t.imp.reading}</p>{/if}
     {#if preview}
@@ -137,7 +139,11 @@ onMount(() =>
           <li><strong>{preview.pages}</strong> {t.imp.pages}</li>
           <li><strong>{preview.posts}</strong> {t.imp.posts}</li>
           {#each preview.types as type (type.id)}<li><strong>{type.count}</strong> {type.name}</li>{/each}
-          <li><strong>{preview.images}</strong> {t.imp.images}</li>
+          {#if preview.kind === 'thecms'}
+            <li><strong>{preview.sections ?? 0}</strong> {t.imp.sectionCount}</li>
+            <li><strong>{preview.forms ?? 0}</strong> {t.imp.formCount}</li>
+          {/if}
+          <li><strong>{preview.images}</strong> {preview.kind === 'thecms' ? t.imp.files : t.imp.images}</li>
           <li><strong>{preview.redirects}</strong> {t.imp.redirects}</li>
         </ul>
 
@@ -157,11 +163,18 @@ onMount(() =>
           {/each}
         {/if}
 
-        <h3>{t.imp.choices}</h3>
-        <label class="check"><input type="checkbox" bind:checked={images} data-import-images /> {t.imp.copyImages}</label>
-        <p class="hint">{t.imp.copyImagesHint}</p>
-        <label class="check"><input type="checkbox" bind:checked={settings} data-import-settings /> {t.imp.settings}</label>
-        <p class="hint">{preview.menu ? t.imp.settingsHint : t.imp.settingsNoMenu}</p>
+        {#if preview.kind !== 'thecms' || preview.menu}<h3>{t.imp.choices}</h3>{/if}
+        {#if preview.kind === 'thecms'}
+          {#if preview.menu}
+            <label class="check"><input type="checkbox" bind:checked={settings} data-import-settings /> {t.imp.settingsContent}</label>
+            <p class="hint">{t.imp.settingsContentHint}</p>
+          {/if}
+        {:else}
+          <label class="check"><input type="checkbox" bind:checked={images} data-import-images /> {t.imp.copyImages}</label>
+          <p class="hint">{t.imp.copyImagesHint}</p>
+          <label class="check"><input type="checkbox" bind:checked={settings} data-import-settings /> {t.imp.settings}</label>
+          <p class="hint">{preview.menu ? t.imp.settingsHint : t.imp.settingsNoMenu}</p>
+        {/if}
 
         {#if preview.notes.length}
           <h3>{t.imp.notes}</h3>

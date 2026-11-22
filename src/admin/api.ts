@@ -299,6 +299,15 @@ export const api = {
     if (!response.ok) await answer(response);
     return response.blob();
   },
+  /** What a content export can hold (ADR 0057): pages, each content type, sections, forms, the design. */
+  exportParts: () => call<{ parts: { id: string; name: string }[] }>('GET', '/api/export/parts'),
+  /** The content file, or the published site as a ZIP: fetched, because a link could not carry the key. */
+  async exportFile(what: 'content' | 'files', parts: string[] = []): Promise<{ blob: Blob; name: string }> {
+    const response = await fetch(`/api/export/${what}${what === 'content' ? `?parts=${encodeURIComponent(parts.join(','))}` : ''}`, { headers: who() });
+    if (!response.ok) await answer(response);
+    const name = /filename="([^"]+)"/.exec(response.headers.get('content-disposition') ?? '')?.[1] ?? (what === 'content' ? 'site.thecms.json' : 'site.zip');
+    return { blob: await response.blob(), name };
+  },
   locks: () => call<{ locked: string[] }>('GET', '/api/locks'),
   lock: (slug: string, password: string) => call<{ locked: string[] }>('POST', '/api/locks', { slug, password }),
   unlock: (slug: string) => call<{ locked: string[] }>('DELETE', `/api/locks?slug=${encodeURIComponent(slug)}`),

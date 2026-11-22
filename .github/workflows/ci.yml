@@ -48,6 +48,14 @@ jobs:
           bun run cms export "$RUNNER_TEMP/wp.db" "$RUNNER_TEMP/wp"
           grep -q 'First <strong>post</strong>' "$RUNNER_TEMP/wp/blog/hello-world/index.html"
           grep -q 'url=/blog/hello-world/' "$RUNNER_TEMP/wp/2024/01/hello-world/index.html"
+      # The content in one file, brought into a new site, published the same (ADR 0057).
+      - name: Export the content and bring it back
+        run: |
+          bun run cms export "$RUNNER_TEMP/site.db" "$RUNNER_TEMP/site.thecms.json"
+          bun run cms import "$RUNNER_TEMP/copy.db" "$RUNNER_TEMP/site.thecms.json"
+          bun run cms export "$RUNNER_TEMP/copy.db" "$RUNNER_TEMP/copy"
+          diff -r --exclude=.thecms-export "$RUNNER_TEMP/out" "$RUNNER_TEMP/copy"
+          grep -q '"title": "About"' "$RUNNER_TEMP/copy/about/index.json"
       # The editor in a real browser, from the first click to the exported files.
       - name: Editor end to end
         env:
@@ -73,6 +81,7 @@ jobs:
           node e2e/entry-languages.cjs
           node e2e/authors.cjs
           node e2e/archives.cjs
+          node e2e/export.cjs
       # The whole source tree, both kinds of test together. Below the floor, or a file no test measures, fails the build.
       - name: Coverage
         shell: bash

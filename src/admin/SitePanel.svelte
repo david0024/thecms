@@ -113,6 +113,11 @@ import Redirects from './Redirects.svelte';
   <span>{t.site.breadcrumbs}</span>
 </label>
 <small>{t.site.breadcrumbsHint}</small>
+<label class="check">
+  <input type="checkbox" checked={site.data !== false} onchange={(e) => set({ data: e.currentTarget.checked ? undefined : false })} data-site-data />
+  <span>{t.site.data}</span>
+</label>
+<small>{t.site.dataHint}</small>
 
 <h3>{t.menu.title}</h3>
 <div class="field" data-menu-builder>

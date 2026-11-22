@@ -26,7 +26,8 @@ ever breaking it.
 - **Extensions cannot take the site down.** Each one says what it needs before
   you accept it, and runs apart from the site.
 - **Your site is yours.** One program, on your server or your computer, with
-  your database. Export the whole site as static files whenever you like.
+  your database. Take its content with you in one open file, let apps read
+  its pages as JSON, or download it as static files whenever you like.
 
 ## What you can make with it today
 
@@ -108,6 +109,8 @@ ever breaking it.
 - Bring a WordPress site from its export file: pages, posts, images, menu and
   categories, with links rewritten and old addresses still working. You see
   what would come over before anything is written.
+- Take the content of a thecms site to another in one file, from Export to
+  Import: pages, entries, sections, forms, pictures, the theme and settings.
 
 Part by part, with what is still missing: [docs/status.md](docs/status.md).
 
@@ -160,7 +163,7 @@ Four stages, each ending with something you can use
    pages behind a password, media and new blocks. *Done.*
 2. **What almost every site needs:** a form builder (*done*), complete SEO (*done*), scheduled
    backups (*done*), relations between entries (*done*), statistics without cookies (*done*), entries in
-   more than one language (*done*), authors and contributors (*done*), archives by author and date (*done*), a complete export. *In progress.*
+   more than one language (*done*), authors and contributors (*done*), archives by author and date (*done*), a complete export (*done*). *Done.*
 3. **Commerce and members:** visitor accounts, a shop (products, cart, orders,
    VAT), payments (Stripe and Netopia first), couriers, e-invoicing,
    memberships and subscriptions, bookings, newsletters, and running on

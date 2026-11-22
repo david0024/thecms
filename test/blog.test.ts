@@ -129,8 +129,11 @@ describe('the blog as files', () => {
     const evil = post({ title: '<script>alert(1)</script> & "co"', excerpt: '</summary><x>', categories: ['<b>Tag</b>'] });
     const files = await buildSite(site, theme, pages, () => null, [evil]);
     for (const [path, contents] of files) {
-      if (typeof contents === 'string') expect(`${path}: ${/<script|<x>|<b>Tag/.test(withoutData(contents))}`).toBe(`${path}: false`);
+      // The site's data (ADR 0057 d3) holds the words as words; the HTML it carries is escaped like the page.
+      const shown = path.endsWith('.json') ? JSON.stringify(JSON.parse(contents as string).html ?? '') : contents;
+      if (typeof contents === 'string') expect(`${path}: ${/<script|<x>|<b>Tag/.test(withoutData(shown as string))}`).toBe(`${path}: false`);
     }
+    expect(JSON.parse(text(files, 'blog/script-alert-1-script-co/index.json')).title).toBe('<script>alert(1)</script> & "co"');
     expect(text(files, 'blog/feed.xml')).toContain('<title>&lt;script&gt;alert(1)&lt;/script&gt; &amp; &quot;co&quot;</title>');
   });
 

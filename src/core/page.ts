@@ -61,6 +61,8 @@ export interface Site {
   shareImage?: ImageValue;
   /** False: the breadcrumbs are said to search engines and not shown (ADR 0050 d4). Absent: shown. */
   breadcrumbs?: false;
+  /** False: no JSON beside each page for apps and other sites to read (ADR 0057 d3). Absent: written. */
+  data?: false;
   /** The stored pictures' sizes and smaller copies (ADR 0005 d8): filled in to draw a page for export, never kept. */
   pictures?: Pictures;
 }
@@ -138,6 +140,7 @@ export function normalizeSite(input: unknown): Site {
     ...(Array.isArray(raw.layouts) ? { layouts: normalizeLayouts(raw.layouts) } : {}),
     ...(cleanImage(raw.shareImage) ? { shareImage: cleanImage(raw.shareImage) as ImageValue } : {}),
     ...(raw.breadcrumbs === false ? { breadcrumbs: false as const } : {}),
+    ...(raw.data === false ? { data: false as const } : {}),
     keepMessages: Number.isInteger(raw.keepMessages) && (raw.keepMessages as number) >= 1 && (raw.keepMessages as number) <= 3650 ? (raw.keepMessages as number) : KEEP_MESSAGES_DAYS,
   };
 }
