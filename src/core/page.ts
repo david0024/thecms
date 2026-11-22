@@ -5,7 +5,7 @@ import { type Layout, normalizeLayouts } from './layout.ts';
 import { normalizeTranslations, type PageTranslation } from './localize.ts';
 import { type MenuNode, normalizeMenu } from './menu.ts';
 import type { Pictures } from './media.ts';
-import { cleanSeo, type Seo } from './seo.ts';
+import { type Business, cleanBusiness, cleanSeo, type Seo } from './seo.ts';
 import { pageSlug, prefixOf } from './translation.ts';
 import { BLOG_SLUG, type ContentType, normalizeTypes, POSTS_TYPE, postsType, RESERVED_SLUGS } from './types.ts';
 import { type Issue, isObject, safeHref, slugify, str } from './util.ts';
@@ -65,6 +65,8 @@ export interface Site {
   verify?: { google?: string; bing?: string };
   /** The owner's own lines for `robots.txt`, after the program's (ADR 0058 d5). Absent: none. */
   robots?: string;
+  /** The business as a place people come to, said to search engines (ADR 0061 d2). Absent: only its name and logo. */
+  business?: Business;
   /** False: no JSON beside each page for apps and other sites to read (ADR 0057 d3). Absent: written. */
   data?: false;
   /** The stored pictures' sizes and smaller copies (ADR 0005 d8): filled in to draw a page for export, never kept. */
@@ -146,6 +148,7 @@ export function normalizeSite(input: unknown): Site {
     ...(raw.breadcrumbs === false ? { breadcrumbs: false as const } : {}),
     ...cleanVerify(raw.verify),
     ...(cleanRobots(raw.robots) ? { robots: cleanRobots(raw.robots) } : {}),
+    ...(cleanBusiness(raw.business) ? { business: cleanBusiness(raw.business) } : {}),
     ...(raw.data === false ? { data: false as const } : {}),
     keepMessages: Number.isInteger(raw.keepMessages) && (raw.keepMessages as number) >= 1 && (raw.keepMessages as number) <= 3650 ? (raw.keepMessages as number) : KEEP_MESSAGES_DAYS,
   };

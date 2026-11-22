@@ -61,3 +61,4 @@ work it decides. A new one that changes an old one says so at its top.
 - [ADR 0057 — A complete export: the content in one file, the data as JSON, the site as a ZIP](0057-a-complete-export.md)
 - [ADR 0058 — What the site writes for search engines by itself](0058-what-the-site-writes-for-search-engines.md)
 - [ADR 0059 — AI for search engines: titles, and pictures described from the pictures](0059-ai-for-search-engines.md)
+- [ADR 0061 — More data for search engines: questions, the business, events and products](0061-more-data-for-search-engines.md)

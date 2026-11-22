@@ -56,3 +56,93 @@ export function altFromName(name: string): string {
   if (words.split(' ').some((word) => word.length > 20 || (/\d/.test(word) && /\p{L}/u.test(word) && word.length > 8))) return '';
   return `${words[0]?.toLocaleUpperCase() ?? ''}${words.slice(1)}`.slice(0, 300);
 }
+
+/** The days of a week, as schema.org names them, from Monday. */
+export const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] as const;
+
+/**
+ * The kinds of local business search engines know, the most asked for: the
+ * owner picks one, and "LocalBusiness" says only that it is a place to go to.
+ */
+export const BUSINESS_KINDS = [
+  'LocalBusiness',
+  'Store',
+  'Restaurant',
+  'CafeOrCoffeeShop',
+  'Bakery',
+  'BarOrPub',
+  'BeautySalon',
+  'HairSalon',
+  'HealthAndBeautyBusiness',
+  'Dentist',
+  'MedicalClinic',
+  'Physician',
+  'LegalService',
+  'AccountingService',
+  'RealEstateAgent',
+  'AutoRepair',
+  'HomeAndConstructionBusiness',
+  'LodgingBusiness',
+  'SportsActivityLocation',
+  'EducationalOrganization',
+  'ProfessionalService',
+] as const;
+export type BusinessKind = (typeof BUSINESS_KINDS)[number];
+
+/** The business behind the site as a place people come to (ADR 0061 d2): each part absent until written. */
+export interface Business {
+  kind?: BusinessKind;
+  street?: string;
+  city?: string;
+  region?: string;
+  postalCode?: string;
+  /** Two letters: `RO`. */
+  country?: string;
+  phone?: string;
+  email?: string;
+  /** `$$`, or "50–200 lei". */
+  priceRange?: string;
+  /** Each day's hours, Monday first: `09:00-13:00, 14:00-18:00`; empty: closed. */
+  hours?: string[];
+  /** The currency of the site's prices, three letters: `RON`. */
+  currency?: string;
+}
+
+/**
+ * One day's hours as written, in the form schema.org takes: `9-18`,
+ * `09:00–18:00` or `9:30 - 13, 14 - 18` give `09:00-18:00` and the like. What
+ * is not a time is dropped; nothing left means closed.
+ */
+export function cleanHours(raw: unknown): string {
+  const time = (h: string, m = '0'): string | null => (Number(h) <= 24 && Number(m) < 60 ? `${h.padStart(2, '0')}:${m.padStart(2, '0')}` : null);
+  const out: string[] = [];
+  for (const match of String(typeof raw === 'string' ? raw : '').matchAll(/(\d{1,2})(?:[:.](\d{2}))?\s*[-–—]\s*(\d{1,2})(?:[:.](\d{2}))?/g)) {
+    const from = time(match[1] as string, match[2]);
+    const to = time(match[3] as string, match[4]);
+    if (from && to && out.length < 4) out.push(`${from}-${to}`);
+  }
+  return out.join(', ');
+}
+
+export function cleanBusiness(raw: unknown): Business | undefined {
+  const given = isObject(raw) ? raw : {};
+  const line = (value: unknown, max: number): string => str(value, max).replace(/\s+/g, ' ').trim();
+  const hours = Array.isArray(given.hours) ? WEEKDAYS.map((_, i) => cleanHours((given.hours as unknown[])[i])) : [];
+  const email = line(given.email, 200);
+  const country = line(given.country, 2).toUpperCase();
+  const currency = line(given.currency, 3).toUpperCase();
+  const business: Business = {
+    ...(BUSINESS_KINDS.includes(given.kind as BusinessKind) ? { kind: given.kind as BusinessKind } : {}),
+    ...(line(given.street, 200) ? { street: line(given.street, 200) } : {}),
+    ...(line(given.city, 100) ? { city: line(given.city, 100) } : {}),
+    ...(line(given.region, 100) ? { region: line(given.region, 100) } : {}),
+    ...(line(given.postalCode, 20) ? { postalCode: line(given.postalCode, 20) } : {}),
+    ...(/^[A-Z]{2}$/.test(country) ? { country } : {}),
+    ...(/^[+\d][\d\s().-]{3,30}$/.test(line(given.phone, 40)) ? { phone: line(given.phone, 40) } : {}),
+    ...(/^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$/.test(email) ? { email } : {}),
+    ...(line(given.priceRange, 40) ? { priceRange: line(given.priceRange, 40) } : {}),
+    ...(hours.some(Boolean) ? { hours } : {}),
+    ...(/^[A-Z]{3}$/.test(currency) ? { currency } : {}),
+  };
+  return Object.keys(business).length ? business : undefined;
+}
