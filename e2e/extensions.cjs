@@ -52,7 +52,7 @@ const PORT = 4397;
     await page.locator('[data-no-extensions]').waitFor();
     await page.locator('[data-extension-file]').setInputFiles(packed);
     const asks = await page.locator('[data-asks]').innerText();
-    assert(asks.includes('api.shout.example') && asks.includes('Settings: Key') && asks.includes('“Louder” on a block'), 'before it is installed, the owner reads what it asks for');
+    assert(asks.includes('api.shout.example') && asks.includes('Settings: Key') && asks.includes('“Louder” on a block') && asks.includes("see the site's pictures, for: Look"), 'before it is installed, the owner reads what it asks for, the pictures it would see among it');
     if (shots) await page.screenshot({ path: join(shots, 'extension-offer.png') });
     await page.locator('[data-accept]').click();
     await page.locator('[data-extension="shout"]').waitFor();

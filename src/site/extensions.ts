@@ -9,13 +9,15 @@
  * within what the extension declared.
  */
 import { join } from 'node:path';
-import { cleanRow, egressAllows, type ExtensionAction, type ExtensionManifest, extensionAsks, EXTENSION_MAX_BYTES, parseExtension } from '../core/index.ts';
+import { cleanRow, egressAllows, type ExtensionAction, type ExtensionManifest, extensionAsks, EXTENSION_MAX_BYTES, mediaKindOf, mediaNameOf, parseExtension, variantOf } from '../core/index.ts';
 import { type FromRunner, lines, type ToRunner } from './extension-runner.ts';
 import type { InstalledExtension, SiteEvent, Store } from './store.ts';
 import { isCompiled, newer } from './update.ts';
 import { VERSION } from './version.ts';
 
 const sha256 = (text: string): string => new Bun.CryptoHasher('sha256').update(text).digest('hex');
+/** The largest picture an extension is given (ADR 0059 d3). */
+const PICTURE_MAX_BYTES = 5 * 1024 * 1024;
 const FETCH_MAX_BYTES = 5 * 1024 * 1024;
 /** A process nobody has asked anything for this long is stopped; the next action starts it again. */
 const IDLE_MS = 5 * 60_000;
@@ -194,6 +196,18 @@ export function extensionHost(store: Store, options: { spawn?: Spawn; fetch?: (u
         const body = await response.text();
         if (body.length > FETCH_MAX_BYTES) throw new Error('the answer is larger than 5 MB');
         return { status: response.status, headers: Object.fromEntries(response.headers), body };
+      }
+      case 'picture': {
+        if (!action.pictures) throw new Error(`the action "${action.name}" did not declare that it sees the site's pictures`);
+        const name = mediaNameOf(String(args[0]));
+        if (!name || mediaKindOf(name) !== 'image') return null;
+        // The widest smaller copy up to 1600 pixels is enough to see a picture by, and costs a model less.
+        const copies = ((await store.mediaSizes())[name]?.variants ?? []).map((v) => ({ v, width: variantOf(v)?.width ?? 0 })).filter((c) => c.width > 0 && c.width <= 1600);
+        const best = copies.sort((a, b) => b.width - a.width)[0]?.v;
+        const file = (best ? await store.mediaFile(best) : null) ?? (await store.mediaFile(name));
+        if (!file) return null;
+        if (file.bytes.length > PICTURE_MAX_BYTES) throw new Error('the picture is larger than 5 MB');
+        return { type: file.type, data: Buffer.from(file.bytes).toString('base64') };
       }
       default:
         throw new Error(`there is no "${method}"`);

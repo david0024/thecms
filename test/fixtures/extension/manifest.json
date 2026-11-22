@@ -24,7 +24,8 @@
     { "name": "slow", "label": "Slow", "timeoutSeconds": 1 },
     { "name": "crash", "label": "Crash" },
     { "name": "rotate", "label": "New key", "ask": [{ "key": "note", "label": "Why", "kind": "text" }], "reads": ["settings"], "writes": ["log"] },
-    { "name": "open", "label": "Open the log" }
+    { "name": "open", "label": "Open the log" },
+    { "name": "look", "label": "Look", "pictures": true }
   ],
   "views": [
     {

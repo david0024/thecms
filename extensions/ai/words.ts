@@ -85,6 +85,40 @@ export function withPageWords(page: Page, texts: string[]): Page {
   return { ...page, title, description, blocks };
 }
 
+/** A picture of a block: where its words are, its address, and the words it has. */
+export interface Picture {
+  /** The path to the picture's object in the block's content: `image`, `items.2.image`. */
+  at: string;
+  src: string;
+  alt: string;
+}
+
+/** The pictures of a block's content: every object with an address of the site's library and words of its own (`alt`). */
+export function blockPictures(block: Block): Picture[] {
+  const out: Picture[] = [];
+  const visit = (value: unknown, path: string): void => {
+    if (Array.isArray(value)) value.forEach((v, i) => visit(v, path ? `${path}.${i}` : String(i)));
+    else if (value && typeof value === 'object') {
+      const v = value as Record<string, unknown>;
+      if (typeof v.src === 'string' && v.src.startsWith('/media/') && 'alt' in v) out.push({ at: path, src: v.src, alt: String(v.alt ?? '') });
+      else for (const [k, inner] of Object.entries(v)) visit(inner, path ? `${path}.${k}` : k);
+    }
+  };
+  visit(block.content, '');
+  return out;
+}
+
+/** The block with these pictures' words set, by where each is. */
+export function withPictureWords(block: Block, words: { at: string; alt: string }[]): Block {
+  const content = structuredClone(block.content) as Record<string, unknown>;
+  for (const { at, alt } of words) {
+    let target: unknown = content;
+    for (const key of at.split('.')) target = (target as Record<string, unknown>)?.[key];
+    if (target && typeof target === 'object') (target as Record<string, unknown>).alt = alt;
+  }
+  return { ...block, content };
+}
+
 /** A language's name in English, for a model: `ro` is "Romanian". */
 export function languageName(tag: string): string {
   try {
