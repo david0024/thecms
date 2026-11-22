@@ -224,6 +224,11 @@ export const BLOCKS = {
     fields: { title: text(200), source: { kind: 'source' }, count: { kind: 'number', min: 1, max: 24 }, more: text(80), related: { kind: 'check' } },
     create: () => ({ title: 'Latest posts', source: POSTS_TYPE, count: 3, more: 'See all', related: false }),
   },
+  /** The months of a dated type, newest first, each with how many entries it holds and a link to them (ADR 0056 d4); or its years. */
+  archive: {
+    fields: { title: text(200), source: { kind: 'source' }, years: { kind: 'check' } },
+    create: () => ({ title: 'Archive', source: POSTS_TYPE, years: false }),
+  },
   /** A part of the entry being shown, on the page a content type designs for its entries (ADR 0015). Draws nothing anywhere else. */
   entry: {
     fields: { part: { kind: 'part' } },

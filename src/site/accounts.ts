@@ -58,7 +58,14 @@ export function ownerOnly(method: string, path: string): boolean {
 }
 
 /** What the admin may know about the person signed in. */
-export const shown = (user: User): { id: string; email: string; name: string; role: Role; bio: string } => ({ id: user.id, email: user.email, name: user.name, role: user.role, bio: user.bio ?? '' });
+export const shown = (user: User): { id: string; email: string; name: string; role: Role; bio: string; picture: string } => ({
+  id: user.id,
+  email: user.email,
+  name: user.name,
+  role: user.role,
+  bio: user.bio ?? '',
+  picture: user.picture ?? '',
+});
 
 export function accounts(store: Store, publicAddress: string, shared: Shared = localShared()) {
   const secure = publicAddress.startsWith('https:');

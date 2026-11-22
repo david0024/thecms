@@ -162,7 +162,7 @@ const PASSWORD = 'a long enough password';
 
     // On the site: her name under the title, and her words at the end.
     const site = await (await fetch(`${PUBLIC}/blog/oak-door/`)).text();
-    assert(site.includes('by Ana Pop') && site.includes('Ana restores old doors.'), 'the site names who wrote the post, and what she says of herself');
+    assert(site.includes('>Ana Pop</a>') && site.includes('Ana restores old doors.'), 'the site names who wrote the post, and what she says of herself');
 
     // The owner's People: the four roles, and to whom a removed person's posts go.
     await olga.locator('[data-back]').click();

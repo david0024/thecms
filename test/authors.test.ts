@@ -50,7 +50,7 @@ for (const [name, address] of databases) {
       expect(await store.entryAuthor('posts', 'oak')).toBe(ana.id);
       expect(await store.entryAuthor('posts', 'old')).toBe('');
       expect([...(await store.entryAuthors())]).toEqual([['posts/oak', ana.id]]);
-      expect(await store.bylines()).toEqual({ 'posts/oak': { name: 'Ana Pop', bio: '' } });
+      expect(await store.bylines()).toEqual({ 'posts/oak': { name: 'Ana Pop', bio: '', slug: 'ana-pop' } });
 
       // An editor gives an entry to someone, or to nobody; never to someone without an account.
       await store.setEntryAuthor('posts', 'old', ion.id);
@@ -240,8 +240,8 @@ describe('the served editor, for an author and a contributor', () => {
     // Ana's name is shown under her post, and is the author for search engines.
     let files = await publishedSite(store);
     const oak = String(files.get('blog/oak/index.html'));
-    expect(oak).toContain('by Ana Pop');
-    expect(oak).toContain('"author":{"@type":"Person","name":"Ana Pop"}');
+    expect(oak).toContain('by <a href="/blog/author/ana-pop/" rel="author">Ana Pop</a>');
+    expect(oak).toContain('"author":{"@type":"Person","name":"Ana Pop","url":"https://example.com/blog/author/ana-pop/"}');
     expect(oak).not.toContain('data-author');
     expect(String(files.get('blog/old/index.html'))).not.toContain('by ');
 
@@ -253,12 +253,12 @@ describe('the served editor, for an author and a contributor', () => {
 
     // The editor's canvas shows the byline too.
     const drawn = await call('editor', 'POST', '/api/render', { page: { ...entry('oak', 'Oak'), date: '2026-11-20' }, kind: 'post' });
-    expect(String(drawn.data.body)).toContain('by Ana Pop');
+    expect(String(drawn.data.body)).toContain('by <a href="/blog/author/ana-pop/" rel="author">Ana Pop</a>');
 
     // The editor gives the old post to Ana; an author cannot give hers away.
     expect(await error('ana', 'PUT', '/api/author', { kind: 'post', slug: 'oak', id: ids.dan })).toBe('an author writes their own entries only');
     expect((await call('editor', 'PUT', '/api/author', { kind: 'post', slug: 'old', id: ids.ana })).status).toBe(200);
-    expect(String((await publishedSite(store)).get('blog/old/index.html'))).toContain('by Ana Pop');
+    expect(String((await publishedSite(store)).get('blog/old/index.html'))).toContain('by <a href="/blog/author/ana-pop/" rel="author">Ana Pop</a>');
     expect((await call('editor', 'GET', '/api/state')).data.people).toContainEqual({ id: ids.ana, name: 'Ana Pop', role: 'author' });
     // An author is told names only, never addresses.
     expect((await call('ana', 'GET', '/api/state')).data.people).toContainEqual({ id: ids.dan, name: '', role: 'author' });

@@ -5,6 +5,12 @@
 import { mkdir, readdir, rm } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import {
+  authorPath,
+  type Byline,
+  datePath,
+  periodName,
+  periodsOf,
+  typeAuthorPath,
   type Block,
   categoriesOf,
   type ContentType,
@@ -100,6 +106,19 @@ function feed(site: Site, type: ContentType, posts: Post[]): string {
   ].join('\n');
 }
 
+/** The people who wrote these entries, each with theirs, in the order they first appear: only those with a page (a name). */
+function authorsOf(posts: Post[]): { person: Byline; posts: Post[] }[] {
+  const found = new Map<string, { person: Byline; posts: Post[] }>();
+  for (const post of posts) {
+    const slug = post.author?.slug;
+    if (!post.author || !slug) continue;
+    const one = found.get(slug) ?? { person: post.author, posts: [] };
+    one.posts.push(post);
+    found.set(slug, one);
+  }
+  return [...found.values()];
+}
+
 /** What marks a page behind a password, for the runtime: its content is the page's address in the main language. */
 export const LOCK_META = 'thecms-locked';
 
@@ -132,7 +151,7 @@ export async function buildSite(
   /** The pages behind a password (ADR 0043): each address, with the page it belongs to. */
   locked: Record<string, string> = {},
   /** Who wrote each entry, by `type/entry` (ADR 0055 d3): shown under the title of a dated one. */
-  bylines: Record<string, { name: string; bio: string }> = {},
+  bylines: Record<string, Byline> = {},
 ): Promise<Map<string, string | Uint8Array>> {
   const files = new Map<string, string | Uint8Array>();
   site = { ...site, pictures: { sizes: images, widths: theme.tokens.width } };
@@ -172,10 +191,13 @@ export async function buildSite(
   const homes = alternates(site, null, pages);
   /** Every address a visitor can open, for the sitemap. */
   const paths: string[] = [];
+  /** Addresses that are there but kept out of the sitemap: a period's list, which only repeats (ADR 0056 d4). */
+  const unlisted = new Set<string>();
   const page = (path: string, html: string, hidden = false): void => {
     files.set(fileOf(path), html);
     // A page hidden from search engines is not in the sitemap (ADR 0050 d3).
     if (!hidden) paths.push(path);
+    else unlisted.add(path);
   };
 
   // The structure first, the theme after it: where both set the same thing, the theme wins.
@@ -208,20 +230,51 @@ export async function buildSite(
         page(entryPath(type, post.slug), renderPost(frame, theme, post, localMenu, type, listable, template, site.languages.length ? entryAlternates(site, original, from, here, language) : []), post.noindex);
       }
       const listed = site.languages.length ? listAlternates(site, original, has(type.id), here, language) : [];
-      const pagesOf = [
+      type List = { heading: string; path: (n: number) => string; posts: Post[]; alternates: typeof here; person?: Byline; noindex?: boolean };
+      const pagesOf: List[] = [
         { heading: type.name, path: (n: number) => listPath(type, n), posts: list, alternates: listed },
         ...categoriesOf(list).map((c) => ({ heading: c.name, path: (n: number) => typeCategoryPath(type, c.name, n), posts: c.posts, alternates: here })),
         ...categoriesOf(list, 'tags').map((c) => ({ heading: `#${c.name}`, path: (n: number) => typeTagPath(type, c.name, n), posts: c.posts, alternates: here })),
+        // A dated type's entries by who wrote them, and by year, month and day (ADR 0056); a period's list only repeats, so search engines keep none.
+        ...(type.dated
+          ? [
+              ...authorsOf(list).map(({ person, posts: own }) => ({ heading: person.name, path: (n: number) => typeAuthorPath(type, person.slug as string, n), posts: own, alternates: here, person })),
+              ...([4, 7, 10] as const).flatMap((length) =>
+                periodsOf(list, length).map(({ period, posts: own }) => ({ heading: periodName(period, language), path: (n: number) => datePath(type, period, n), posts: own, alternates: here, noindex: true })),
+              ),
+            ]
+          : []),
       ];
       for (const one of pagesOf) {
         const cut = paginate(one.posts);
         cut.forEach((some, i) => {
           const path = one.path(i + 1);
-          page(path, renderBlogList(frame, { heading: one.heading, path, posts: some, newer: i > 0 ? one.path(i) : '', older: i < cut.length - 1 ? one.path(i + 2) : '' }, localMenu, type, i === 0 ? one.alternates : here));
+          const html = renderBlogList(frame, { heading: one.heading, path, posts: some, newer: i > 0 ? one.path(i) : '', older: i < cut.length - 1 ? one.path(i + 2) : '' }, localMenu, type, i === 0 ? one.alternates : here, {
+            person: one.person ?? null,
+            noindex: one.noindex,
+          });
+          page(path, html, one.noindex);
         });
       }
       // A feed names every entry by its full address, so it needs the site's own.
       if (site.url && type.feed) files.set(feedPath(type).slice(1), feed(local, type, list));
+    }
+    // Each person's page across every dated type of this language (ADR 0056 d3), newest first.
+    const all = types.filter((t) => t.type.dated).flatMap(({ type, posts: own }) => own.map((post) => ({ type, post })));
+    const prefix = language === site.language ? '' : `/${prefixOf(language)}`;
+    for (const { person, posts: own } of authorsOf(all.map((one) => one.post))) {
+      const mine = all.filter((one) => own.includes(one.post)).sort((a, b) => (a.post.date === b.post.date ? a.post.slug.localeCompare(b.post.slug) : a.post.date < b.post.date ? 1 : -1));
+      const cut = paginate(mine);
+      const at = (n: number): string => authorPath(prefix, person.slug as string, n);
+      const trail = [
+        { name: wordsFor(language).home, href: `${prefix}/` },
+        { name: person.name, href: at(1) },
+      ];
+      cut.forEach((some, i) => {
+        const path = at(i + 1);
+        const list = { heading: person.name, path, posts: some.map((one) => one.post), newer: i > 0 ? at(i) : '', older: i < cut.length - 1 ? at(i + 2) : '' };
+        page(path, renderBlogList(frame, list, localMenu, some[0]?.type, here, { person, kinds: some.map((one) => one.type), trail, current: '' }));
+      });
     }
   }
 
@@ -231,6 +284,8 @@ export async function buildSite(
     ...main.types.flatMap(({ type }) => mediaSources(fillSections(templates[type.id] ?? [], sections, site.language)).map((src): [string, string] => [`the page of "${type.name}"`, src])),
   ];
   for (const [name, blocks] of Object.entries(framed.areas ?? {})) for (const src of mediaSources(blocks)) shown.push([`the section "${name}" of a layout`, src]);
+  // Each person's picture, beside what they wrote and on their page (ADR 0056 d2).
+  for (const post of posts) if (post.author?.picture) shown.push([`the picture of ${post.author.name}`, post.author.picture.src]);
   if (site.logo) shown.push(['the header', site.logo.src]);
   if (site.shareImage) shown.push(['the picture for sharing, in Site settings', site.shareImage.src]);
   for (const [where, src] of shown) {
@@ -251,7 +306,8 @@ export async function buildSite(
   const written: Redirect[] = [];
   for (const { from, to } of redirects) {
     const file = redirectFile(from);
-    if (files.has(file) || !paths.includes(to.split('#')[0] as string)) continue;
+    const target = to.split('#')[0] as string;
+    if (files.has(file) || !(paths.includes(target) || unlisted.has(target))) continue;
     written.push({ from, to });
     const href = xml(to);
     files.set(

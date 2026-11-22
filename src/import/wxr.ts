@@ -13,7 +13,10 @@ import {
   blogPath,
   categoryPath,
   type ContentType,
+  datePath,
   entryPath,
+  periodsOf,
+  postsType,
   listPath,
   normalizeTypes,
   isDate,
@@ -56,6 +59,14 @@ export interface PlannedPost {
   tags: string[];
   blocks: Block[];
   publish: boolean;
+  /** Who wrote it on the old site: their login, one of the plan's `authors` (ADR 0056 d6). */
+  author?: string;
+}
+/** Someone who wrote what is brought (ADR 0056 d6): they come as a person without access. */
+export interface PlannedAuthor {
+  login: string;
+  email: string;
+  name: string;
 }
 export interface ImportPlan {
   site: { name: string; language: string; url: string };
@@ -75,6 +86,8 @@ export interface ImportPlan {
   others: { type: string; count: number }[];
   /** The categories posts were filed under, each of which could become a content type of its own (ADR 0016). */
   categories: { nicename: string; name: string; count: number }[];
+  /** The people who wrote the posts and entries brought. */
+  authors: PlannedAuthor[];
   /** What the owner should know, in sentences. */
   notes: string[];
 }
@@ -95,6 +108,8 @@ interface Item {
   meta: Map<string, string>;
   categories: { domain: string; nicename: string; name: string }[];
   comments: number;
+  /** The login of who wrote it. */
+  creator: string;
 }
 
 /** Kinds of entry WordPress keeps for itself; leaving them out loses nothing an owner wrote. */
@@ -111,6 +126,9 @@ const SEO_HIDDEN: [string, (value: string) => boolean][] = [
   ['_seopress_robots_index', (v) => v === 'yes'],
 ];
 const SEO_DESCRIPTIONS = ['_yoast_wpseo_metadesc', 'rank_math_description', '_aioseo_description', '_aioseop_description', '_seopress_titles_desc'];
+
+/** A dated entry's address that its type's archives would take (digits alone, `author`) gets a word in front (ADR 0056 d5). */
+const own = (slug: string): string => (/^\d+$/.test(slug) || slug === 'author' ? `post-${slug}` : slug);
 
 function readItem(el: XmlElement): Item {
   const meta = new Map<string, string>();
@@ -131,6 +149,7 @@ function readItem(el: XmlElement): Item {
     meta,
     categories: childrenOf(el, 'category').map((c) => ({ domain: c.attrs.domain ?? '', nicename: c.attrs.nicename ?? '', name: decodeHtml(c.text.trim()) })),
     comments: childrenOf(el, 'wp:comment').length,
+    creator: decodeHtml(textOf(el, 'dc:creator')),
   };
 }
 
@@ -280,7 +299,7 @@ export function planImport(
   }
   for (const item of postItems) {
     if (categoryTypeOf(item)) continue;
-    const slug = unique(slugify(item.name) || slugify(item.title) || `post-${item.id}`, takenPosts);
+    const slug = unique(own(slugify(item.name) || slugify(item.title) || `post-${item.id}`), takenPosts);
     postSlugs.set(item, slug);
     remember(item, postPath(slug));
   }
@@ -291,7 +310,7 @@ export function planImport(
     const type = entryTypeOf(item);
     if (!type || !live(item)) continue;
     if (!takenEntries.has(type.id)) takenEntries.set(type.id, new Set());
-    const slug = unique(slugify(item.name) || slugify(item.title) || `entry-${item.id}`, takenEntries.get(type.id) as Set<string>);
+    const slug = unique(type.dated ? own(slugify(item.name) || slugify(item.title) || `entry-${item.id}`) : slugify(item.name) || slugify(item.title) || `entry-${item.id}`, takenEntries.get(type.id) as Set<string>);
     entrySlugs.set(item, slug);
     remember(item, entryPath(type, slug));
   }
@@ -302,6 +321,7 @@ export function planImport(
   };
   for (const [nicename, { name }] of postCategories) archive(`/category/${nicename}/`, typeOfCategory.has(nicename) ? listPath(typeOfCategory.get(nicename) as ContentType) : categoryPath(name));
   for (const item of postSlugs.keys()) for (const c of item.categories) if (c.domain === 'post_tag' && c.nicename) archive(`/tag/${c.nicename}/`, tagPath(c.name || c.nicename));
+  for (const length of [4, 7, 10] as const) for (const { period } of periodsOf([...postSlugs.keys()].filter((i) => isDate(i.date)), length)) archive(`/${period.split('-').join('/')}/`, datePath(postsType(), period));
 
   // Content, with its links and images pointed at this site.
   const images = new Set<string>();
@@ -383,6 +403,14 @@ export function planImport(
       publish: publishOf(item),
     });
   }
+  // The people of the old site, by login, as WordPress names them (ADR 0056 d6).
+  const people = new Map(
+    childrenOf(channel, 'wp:author').map((a): [string, PlannedAuthor] => {
+      const login = decodeHtml(textOf(a, 'wp:author_login'));
+      const full = [textOf(a, 'wp:author_first_name'), textOf(a, 'wp:author_last_name')].map(decodeHtml).filter(Boolean).join(' ');
+      return [login, { login, email: textOf(a, 'wp:author_email'), name: decodeHtml(textOf(a, 'wp:author_display_name')) || full || login }];
+    }),
+  );
   const asEntry = (item: Item, slug: string, categories: boolean): PlannedPost => {
     const heading = item.title || 'Untitled';
     const thumb = attachments.get(item.meta.get('_thumbnail_id') ?? '');
@@ -399,6 +427,7 @@ export function planImport(
       tags: categories ? item.categories.filter((c) => c.domain === 'post_tag').map((c) => c.name || c.nicename) : [],
       blocks: htmlToBlocks(item.content, ctx),
       publish: publishOf(item),
+      ...(item.creator && people.has(item.creator) ? { author: item.creator } : {}),
     };
   };
   const posts: PlannedPost[] = [];
@@ -560,6 +589,10 @@ export function planImport(
   const usedTags = new Map<string, string>();
   for (const item of postSlugs.keys()) for (const c of item.categories) if (c.domain === 'post_tag' && c.nicename && published(item)) usedTags.set(c.nicename, c.name || c.nicename);
   for (const [nicename, title] of usedTags) redirects.push({ from: `/tag/${nicename}/`, to: tagPath(title) });
+  // The old archives by year, month and day lead to the blog's (ADR 0056 d6); those by author are the import's, once it knows each person's address.
+  const shown = posts.filter((p) => p.publish);
+  for (const length of [4, 7, 10] as const) for (const { period } of periodsOf(shown, length)) redirects.push({ from: `/${period.split('-').join('/')}/`, to: datePath(postsType(), period) });
+  const authors = [...people.values()].filter((a) => [...posts, ...Object.values(entries).flat()].some((p) => p.author === a.login));
 
   // What the owner should know.
   for (const [what, { titles, which }] of lost) {
@@ -585,5 +618,5 @@ export function planImport(
   if (items.some((i) => i.type === 'page' && i.parent !== '0' && live(i))) notes.push('Pages that sat under other pages now sit at the top level (/services/web/ became /web/). Their old addresses lead to the new ones.');
 
   const language = textOf(channel, 'language');
-  return { site: { name, language, url: /^https?:\/\//i.test(base) ? base : '' }, pages, posts, types, entries, menu, images: [...images], redirects, others: [...other].filter(([type]) => type !== 'wp_block').map(([type, n]) => ({ type, count: n })), categories: [...postCategories.values()], notes };
+  return { site: { name, language, url: /^https?:\/\//i.test(base) ? base : '' }, pages, posts, types, entries, menu, images: [...images], redirects, others: [...other].filter(([type]) => type !== 'wp_block').map(([type, n]) => ({ type, count: n })), categories: [...postCategories.values()], authors, notes };
 }

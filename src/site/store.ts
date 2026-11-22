@@ -19,6 +19,11 @@
  */
 import { SQL } from 'bun';
 import {
+  authorPath,
+  authorSlugs,
+  entrySlugProblem,
+  type Byline,
+  typeAuthorPath,
   commentKey,
   type EntryTranslation,
   entryIn,
@@ -192,6 +197,7 @@ const SQLITE: Dialect = {
     'CREATE TABLE IF NOT EXISTS entry_authors (type TEXT NOT NULL, slug TEXT NOT NULL, user_id TEXT NOT NULL, PRIMARY KEY (type, slug))',
     'CREATE TABLE IF NOT EXISTS entry_reviews (type TEXT NOT NULL, slug TEXT NOT NULL, state TEXT NOT NULL, note TEXT NOT NULL, at TEXT NOT NULL, PRIMARY KEY (type, slug))',
     'CREATE TABLE IF NOT EXISTS user_bios (id TEXT PRIMARY KEY, bio TEXT NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS user_pictures (id TEXT PRIMARY KEY, src TEXT NOT NULL)',
   ],
   params: (query) => query,
   upsert: (table, columns, key, update) =>
@@ -229,6 +235,7 @@ const POSTGRES: Dialect = {
     'CREATE TABLE IF NOT EXISTS entry_authors (type VARCHAR(255) NOT NULL, slug VARCHAR(255) NOT NULL, user_id VARCHAR(40) NOT NULL, PRIMARY KEY (type, slug))',
     'CREATE TABLE IF NOT EXISTS entry_reviews (type VARCHAR(255) NOT NULL, slug VARCHAR(255) NOT NULL, state VARCHAR(20) NOT NULL, note TEXT NOT NULL, at VARCHAR(40) NOT NULL, PRIMARY KEY (type, slug))',
     'CREATE TABLE IF NOT EXISTS user_bios (id VARCHAR(40) PRIMARY KEY, bio TEXT NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS user_pictures (id VARCHAR(40) PRIMARY KEY, src TEXT NOT NULL)',
   ],
   params: (query) => {
     let n = 0;
@@ -265,6 +272,7 @@ const MYSQL: Dialect = {
     `CREATE TABLE IF NOT EXISTS entry_authors (type VARCHAR(255) NOT NULL, slug VARCHAR(255) NOT NULL, user_id VARCHAR(40) NOT NULL, PRIMARY KEY (type, slug)) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS entry_reviews (type VARCHAR(255) NOT NULL, slug VARCHAR(255) NOT NULL, state VARCHAR(20) NOT NULL, note TEXT NOT NULL, at VARCHAR(40) NOT NULL, PRIMARY KEY (type, slug)) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS user_bios (id VARCHAR(40) PRIMARY KEY, bio TEXT NOT NULL) ${MYSQL_TABLE}`,
+    `CREATE TABLE IF NOT EXISTS user_pictures (id VARCHAR(40) PRIMARY KEY, src TEXT NOT NULL) ${MYSQL_TABLE}`,
   ],
   params: (query) => query,
   upsert: (table, columns, _key, update) =>
@@ -364,11 +372,6 @@ export interface Review {
   note: string;
   at: string;
 }
-/** Who wrote an entry, as the site shows them (ADR 0055 d3). */
-export interface Byline {
-  name: string;
-  bio: string;
-}
 /** The longest description of a person (ADR 0055 d3), and of a note sent back with an entry (d4). */
 export const BIO_MAX = 300;
 export const NOTE_MAX = 500;
@@ -382,6 +385,8 @@ export interface User {
   createdAt: string;
   /** A few words about them, shown under what they wrote (ADR 0055 d3). */
   bio?: string;
+  /** Their picture, an image of the media library (ADR 0056 d2); '' for none. */
+  picture?: string;
 }
 /** What a one-time link is for: the first owner, someone invited, a new password. */
 export type LinkKind = 'setup' | 'invite' | 'reset';
@@ -1228,6 +1233,8 @@ export class Store {
     const { post } = normalizePost(input, new Date().toISOString().slice(0, 10), type);
     if (!post.title) throw new Error('an entry has a title');
     if (!post.slug) throw new Error('an entry has an address');
+    const problem = entrySlugProblem(type, post.slug) || Object.values(post.translations ?? {}).map((t) => (t.slug ? entrySlugProblem(type, t.slug) : '')).find(Boolean);
+    if (problem) throw new Error(problem);
     // Words kept for a block the entry no longer has are words of nothing (ADR 0032).
     for (const translation of Object.values(post.translations ?? {})) translation.fields = keepWords(post.blocks, translation.fields);
     // Whoever creates an entry is its author (ADR 0055 d2); saving it again changes nothing of that.
@@ -1259,19 +1266,23 @@ export class Store {
     if (!(await this.row('SELECT 1 AS found FROM entries WHERE type = ? AND slug = ?', [typeId, slug]))) throw new Error(`no entry "${slug}"`);
     if (!userId) {
       await this.run('DELETE FROM entry_authors WHERE type = ? AND slug = ?', [typeId, slug]);
+      await this.touch();
       return;
     }
     if (!(await this.user(userId))) throw new Error('nobody has that account');
     await this.run(this.dialect.upsert('entry_authors', ['type', 'slug', 'user_id'], ['type', 'slug'], ['user_id']), [typeId, slug, userId]);
+    await this.touch();
   }
 
   /** Who wrote each entry, as the site shows them, by `type/slug`: only those with a name. */
   async bylines(): Promise<Record<string, Byline>> {
-    const people = new Map((await this.users()).map((u) => [u.id, u]));
+    const users = await this.users();
+    const people = new Map(users.map((u) => [u.id, u]));
+    const slugs = authorSlugs(users);
     const out: Record<string, Byline> = {};
     for (const [key, id] of await this.entryAuthors()) {
       const who = people.get(id);
-      if (who?.name) out[key] = { name: who.name, bio: who.bio ?? '' };
+      if (who?.name) out[key] = { name: who.name, bio: who.bio ?? '', slug: slugs.get(id) ?? '', ...(who.picture ? { picture: { src: who.picture, alt: who.name } } : {}) };
     }
     return out;
   }
@@ -1410,7 +1421,7 @@ export class Store {
     return (await this.withEntryTranslation(typeId, of, language, (post, had) => {
       if (!had) throw new Error('this entry is not in that language yet');
       const { translation, problem } = entryTranslationFrom(type, post, had, { ...written, slug: written.slug || post.slug });
-      if (problem) throw new Error(problem);
+      if (problem || entrySlugProblem(type, translation.slug)) throw new Error(problem || entrySlugProblem(type, translation.slug));
       return translation;
     })) as { post: Post; of: string; language: string; split: boolean };
   }
@@ -1863,8 +1874,17 @@ export class Store {
   // Accounts (ADR 0022).
 
   async users(): Promise<User[]> {
-    const rows = await this.rows<Row>('SELECT u.id, u.email, u.name, u.role, u.password, u.created_at, b.bio FROM users u LEFT JOIN user_bios b ON b.id = u.id ORDER BY u.created_at, u.email');
-    return rows.map((r) => ({ id: String(r.id), email: String(r.email), name: String(r.name), role: cleanRole(r.role), active: String(r.password) !== '', createdAt: String(r.created_at), bio: r.bio ? String(r.bio) : '' }));
+    const rows = await this.rows<Row>('SELECT u.id, u.email, u.name, u.role, u.password, u.created_at, b.bio, p.src FROM users u LEFT JOIN user_bios b ON b.id = u.id LEFT JOIN user_pictures p ON p.id = u.id ORDER BY u.created_at, u.email');
+    return rows.map((r) => ({
+      id: String(r.id),
+      email: String(r.email),
+      name: String(r.name),
+      role: cleanRole(r.role),
+      active: String(r.password) !== '',
+      createdAt: String(r.created_at),
+      bio: r.bio ? String(r.bio) : '',
+      picture: r.src ? String(r.src) : '',
+    }));
   }
 
   async user(id: string): Promise<User | null> {
@@ -1919,11 +1939,46 @@ export class Store {
   }
 
   /** Someone's name and the few words about them (ADR 0055 d3), set by themselves. */
-  async setProfile(id: string, name: unknown, bio: unknown): Promise<User> {
+  async setProfile(id: string, name: unknown, bio: unknown, picture?: unknown): Promise<User> {
     if (!(await this.user(id))) throw new Error('nobody has that account');
+    const before = authorSlugs(await this.users());
     await this.run('UPDATE users SET name = ? WHERE id = ?', [str(name, 120).trim(), id]);
     await this.run(this.dialect.upsert('user_bios', ['id', 'bio'], ['id'], ['bio']), [id, str(bio, BIO_MAX).trim()]);
+    // A picture is one of the library's images (ADR 0056 d2); left out, it stays as it was.
+    if (picture !== undefined) {
+      const name = typeof picture === 'string' ? mediaNameOf(picture) : '';
+      if (picture && !(name && mediaKindOf(name) === 'image')) throw new Error('a picture of someone is an image from the media library');
+      if (name) await this.run(this.dialect.upsert('user_pictures', ['id', 'src'], ['id'], ['src']), [id, mediaPath(name)]);
+      else await this.run('DELETE FROM user_pictures WHERE id = ?', [id]);
+    }
+    await this.keepAuthorAddresses(before);
+    // Shown on every post of theirs at once, without publishing them again (ADR 0055 d3).
+    await this.touch();
     return (await this.user(id)) as User;
+  }
+
+  /**
+   * A person whose name changed keeps their old pages' addresses (ADR 0056 d1):
+   * each leads to the new one, as a redirect the owner sees with the others.
+   */
+  private async keepAuthorAddresses(before: Map<string, string>): Promise<void> {
+    const after = authorSlugs(await this.users());
+    const moved = [...before].flatMap(([id, old]): [string, string][] => {
+      const now = after.get(id);
+      return now && now !== old ? [[old, now]] : [];
+    });
+    if (!moved.length) return;
+    const site = await this.site();
+    const prefixes = ['', ...site.languages.map((language) => `/${prefixOf(language)}`)];
+    const dated = [site.language, ...site.languages].flatMap((language) => contentTypes(site).filter((t) => t.dated).map((t) => typeIn(site, t, language)));
+    const found: Redirect[] = moved.flatMap(([old, now]) => [
+      ...prefixes.map((prefix) => ({ from: authorPath(prefix, old), to: authorPath(prefix, now) })),
+      ...dated.map((t) => ({ from: typeAuthorPath(t, old), to: typeAuthorPath(t, now) })),
+    ]);
+    // An address someone has now is theirs again, not a way to somewhere else.
+    const current = new Set([...after.values()]);
+    const stale = (r: Redirect): boolean => found.some((f) => f.from === r.from) || [...current].some((slug) => prefixes.some((p) => r.from === authorPath(p, slug)) || dated.some((t) => r.from === typeAuthorPath(t, slug)));
+    await this.setRedirects([...(await this.redirects()).filter((r) => !stale(r)), ...found]);
   }
 
   /**
@@ -1937,9 +1992,11 @@ export class Store {
     if (heir) await this.run('UPDATE entry_authors SET user_id = ? WHERE user_id = ?', [heir, id]);
     else await this.run('DELETE FROM entry_authors WHERE user_id = ?', [id]);
     await this.run('DELETE FROM user_bios WHERE id = ?', [id]);
+    await this.run('DELETE FROM user_pictures WHERE id = ?', [id]);
     await this.run('DELETE FROM sessions WHERE user_id = ?', [id]);
     await this.run('DELETE FROM links WHERE user_id = ?', [id]);
     await this.run('DELETE FROM users WHERE id = ?', [id]);
+    await this.touch();
   }
 
   /** A new session: the secret goes in the person's cookie, its hash stays here. */
@@ -2227,6 +2284,7 @@ export const BACKUP_TABLES = [
   'entry_authors',
   'entry_reviews',
   'user_bios',
+  'user_pictures',
 ] as const;
 /** Each table's columns and key, read from the schema, which says them once. */
 const TABLE_COLUMNS: Record<string, string[]> = {};

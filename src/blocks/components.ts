@@ -9,6 +9,7 @@ import Audio from './Audio.svelte';
 import Buttons from './Buttons.svelte';
 import Contact from './Contact.svelte';
 import Embed from './Embed.svelte';
+import Archive from './Archive.svelte';
 import Entries from './Entries.svelte';
 import Entry from './Entry.svelte';
 import Faq from './Faq.svelte';
@@ -46,6 +47,7 @@ export const COMPONENTS: Record<BlockType, Component<{ block: Block }>> = {
   testimonials: Testimonials,
   pricing: Pricing,
   entries: Entries,
+  archive: Archive,
   entry: Entry,
   section: Section,
   group: Group,

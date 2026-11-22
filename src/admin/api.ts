@@ -39,6 +39,8 @@ export interface Me {
   role: Role;
   /** A few words about them, shown under what they wrote (ADR 0055 d3). */
   bio: string;
+  /** Their picture from the media library (ADR 0056 d2); '' for none. */
+  picture: string;
 }
 /** Someone who may be named an entry's author (ADR 0055 d2). */
 export interface Person {
@@ -329,7 +331,7 @@ export const api = {
   newLink: (id: string) => call<People>('POST', '/api/users/link', { id }),
   setRole: (id: string, role: Role) => call<People>('PUT', '/api/users', { id, role }),
   removeUser: (id: string, to = '') => call<People>('DELETE', `/api/users?id=${encodeURIComponent(id)}${to ? `&to=${encodeURIComponent(to)}` : ''}`),
-  setProfile: (name: string, bio: string) => call<State>('PUT', '/api/me', { name, bio }),
+  setProfile: (name: string, bio: string, picture: string) => call<State>('PUT', '/api/me', { name, bio, picture }),
   askReview: (slug: string, kind: Kind) => call<Lists>('POST', '/api/review', { slug, kind }),
   returnReview: (slug: string, kind: Kind, note: string) => call<Lists>('POST', '/api/review/return', { slug, kind, note }),
   setAuthor: (slug: string, kind: Kind, id: string) => call<Lists>('PUT', '/api/author', { slug, kind, id }),

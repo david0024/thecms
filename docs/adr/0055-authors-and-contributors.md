@@ -81,6 +81,6 @@ deleted.
 
 ## Not decided here
 
-- Archives by author (`/blog/author/ana-pop/`) and by date: the next record.
-- A picture of each person: their description is words only for now.
+- Archives by author (`/blog/author/ana-pop/`) and by date, and a picture of
+  each person: ADR 0056.
 - Custom roles, or a role limited to one content type.

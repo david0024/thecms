@@ -1,9 +1,11 @@
 <script lang="ts">
 /**
- * Me (ADR 0055 d3): the name the site shows under what someone writes, and a
- * few words about them at the end of their posts. Each person sets their own.
+ * Me (ADR 0055 d3, ADR 0056 d2): the name the site shows under what someone
+ * writes, a few words about them and their picture, at the end of their posts
+ * and on their page. Each person sets their own.
  */
 import { api, type State } from './api.ts';
+import ImageField from './ImageField.svelte';
 import { t } from './messages.ts';
 
 let { me, onsaved }: { me: State['me']; onsaved: (state: State) => void } = $props();
@@ -12,6 +14,8 @@ let { me, onsaved }: { me: State['me']; onsaved: (state: State) => void } = $pro
 let name = $state(me.name);
 // svelte-ignore state_referenced_locally
 let bio = $state(me.bio);
+// svelte-ignore state_referenced_locally
+let picture = $state(me.picture);
 let problem = $state('');
 let saved = $state(false);
 
@@ -20,7 +24,7 @@ async function save(event: SubmitEvent): Promise<void> {
   problem = '';
   saved = false;
   try {
-    onsaved(await api.setProfile(name, bio));
+    onsaved(await api.setProfile(name, bio, picture));
     saved = true;
   } catch (error) {
     problem = error instanceof Error ? error.message : String(error);
@@ -41,6 +45,9 @@ async function save(event: SubmitEvent): Promise<void> {
       <textarea rows="4" maxlength="300" bind:value={bio} oninput={() => (saved = false)} data-profile-bio></textarea>
       <small>{t.me.bioHint}</small>
     </label>
+    <div class="field" data-profile-picture>
+      <ImageField label={t.me.picture} value={picture ? { src: picture, alt: name } : null} onchange={(value) => ((picture = value.src), (saved = false))} library />
+    </div>
     <button type="submit" class="primary">{t.me.save}</button>
     {#if saved}<span role="status" data-profile-saved>{t.me.saved}</span>{/if}
     {#if problem}<p class="bad" role="alert">{problem}</p>{/if}

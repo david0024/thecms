@@ -94,7 +94,10 @@ ever breaking it.
 - Invite others as owners, editors, authors or contributors. An author writes
   and publishes their own posts; a contributor sends theirs for review, and an
   editor publishes them or sends them back with a note. Each post shows who
-  wrote it, with a few words about them.
+  wrote it, with a few words about them and their picture.
+- Each person has a page of what they wrote, in each type and across them, and
+  each dated type has its years, months and days; an archive block lists the
+  months on any page.
 
 **Statistics**
 - Who reads the site, which pages, where readers come from and on what device,
@@ -157,7 +160,7 @@ Four stages, each ending with something you can use
    pages behind a password, media and new blocks. *Done.*
 2. **What almost every site needs:** a form builder (*done*), complete SEO (*done*), scheduled
    backups (*done*), relations between entries (*done*), statistics without cookies (*done*), entries in
-   more than one language (*done*), authors and contributors (*done*), archives by author and date, a complete export. *In progress.*
+   more than one language (*done*), authors and contributors (*done*), archives by author and date (*done*), a complete export. *In progress.*
 3. **Commerce and members:** visitor accounts, a shop (products, cart, orders,
    VAT), payments (Stripe and Netopia first), couriers, e-invoicing,
    memberships and subscriptions, bookings, newsletters, and running on

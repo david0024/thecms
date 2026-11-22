@@ -183,6 +183,10 @@ describe('a WordPress export as a plan', () => {
       { from: '/2024/01/hello-world/', to: '/blog/hello-world/' },
       { from: '/category/news/', to: '/blog/category/news/' },
       { from: '/tag/wood/', to: '/blog/tag/wood/' },
+      // The old archives by date lead to the blog's (ADR 0056 d6).
+      { from: '/2024/', to: '/blog/2024/' },
+      { from: '/2024/01/', to: '/blog/2024/01/' },
+      { from: '/2024/01/15/', to: '/blog/2024/01/15/' },
     ]);
   });
 
@@ -262,7 +266,7 @@ describe('carrying the plan out', () => {
 
   test('images are copied into the site and the pages point at the copies; one that fails stays where it was and is named', async () => {
     const report = await runImport(store, plan(), { fetchImage, fresh: true });
-    expect(report).toMatchObject({ pages: 4, posts: 2, drafts: 2, images: 1, redirects: 4, menu: true });
+    expect(report).toMatchObject({ pages: 4, posts: 2, drafts: 2, images: 1, redirects: 7, menu: true });
     expect(fetched.sort()).toHaveLength(2);
     const [stored] = await store.media();
     expect(stored?.label).toBe('photo.jpg');
