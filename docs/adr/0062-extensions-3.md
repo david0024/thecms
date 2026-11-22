@@ -134,8 +134,8 @@ Installing it moves the old totals from the `visits` table into its
 collection, and the table is then dropped. Until it is installed, nothing is
 counted.
 
-Who reads them stays as it was (ADR 0053 d3): the owner and the editors. As a
-rule for every extension, an editor opens its `report` screens and runs the
+Who reads them stays as it was (ADR 0053 d3): the owner and the editors
+(chosen by the owner, 2026-11-22). As a rule for every extension, an editor opens its `report` screens and runs the
 actions they name; its other screens and actions stay the owner's.
 
 ### d9. With the step that needs it
