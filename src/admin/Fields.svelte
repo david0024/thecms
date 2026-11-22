@@ -16,6 +16,7 @@ let {
   parts = [],
   sections = [],
   forms = [],
+  blocks = [],
   onform,
   onchange,
 }: {
@@ -26,6 +27,7 @@ let {
   /** The parts of an entry a type's page can show. */ parts?: { id: string; name: string }[];
   /** The sections a block can show (ADR 0033). */ sections?: { slug: string; title: string }[];
   /** The forms a block can show (ADR 0049), and how to open one on its screen. */ forms?: { name: string; title: string }[];
+  /** The blocks the extensions that are on add (ADR 0062 d6), as `<extension>/<block>`. */ blocks?: { id: string; label: string }[];
   onform?: (name: string) => void;
   onchange: (path: string, value: unknown) => void;
 } = $props();
@@ -80,6 +82,14 @@ const input = (e: Event): string => (e.currentTarget as HTMLInputElement | HTMLT
       {#if onform && forms.some((f) => f.name === text(name))}
         <button type="button" class="quiet" onclick={() => onform(text(name))} data-open-form>{t.forms.open}</button>
       {/if}
+    {:else if field.kind === 'extension'}
+      <label>
+        <span>{t.fields[name] ?? name}</span>
+        <select value={text(name)} onchange={(e) => onchange(at(name), e.currentTarget.value)} data-field-extension>
+          {#each blocks as one (one.id)}<option value={one.id}>{one.label}</option>{/each}
+          {#if !blocks.some((b) => b.id === text(name))}<option value={text(name)}>{t.ext.blockMissing}</option>{/if}
+        </select>
+      </label>
     {:else if field.kind === 'part'}
       <label>
         <span>{t.fields[name] ?? name}</span>

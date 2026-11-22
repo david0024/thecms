@@ -118,7 +118,7 @@ img{max-width:100%;height:auto;display:block}
 .form-note{display:none;padding:var(--t-space-sm) var(--t-space-md);border-radius:var(--t-radius-md);background:var(--t-color-surface);border-inline-start:3px solid var(--t-color-primary);margin:var(--t-space-sm) 0 0}
 .form-note:target,.form-note.shown{display:block}
 .form-failed{border-color:currentColor}
-.b-form{--b-width:var(--t-width-narrow)}
+.b-form,.b-extension{--b-width:var(--t-width-narrow)}
 
 .b-comments{--b-width:var(--t-width-narrow)}
 

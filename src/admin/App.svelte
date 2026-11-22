@@ -80,7 +80,7 @@ import Forms from './Forms.svelte';
 import Comments from './Comments.svelte';
 import PageLock from './PageLock.svelte';
 import Fields from './Fields.svelte';
-import { say, t } from './messages.ts';
+import { adminLanguage, say, t } from './messages.ts';
 import { setPath } from './paths.ts';
 import SeoPanel from './SeoPanel.svelte';
 import SitePanel from './SitePanel.svelte';
@@ -283,10 +283,11 @@ function redo(): void {
 }
 
 /** Puts a new block at a place. Deeper than a page allows, it is refused and the author is told. */
-function insert(type: BlockType, parent: string | null, index: number): void {
+function insert(type: BlockType, parent: string | null, index: number, content: Record<string, unknown> = {}): void {
   if (layoutFixed()) return;
   if (!page) return;
-  const fresh = createBlock(type);
+  const fresh = { ...createBlock(type) };
+  fresh.content = { ...fresh.content, ...content };
   if (!fits(page.blocks, parent, fresh)) {
     failure = t.app.tooDeep;
     return;
@@ -298,19 +299,26 @@ function insert(type: BlockType, parent: string | null, index: number): void {
 }
 
 /** A new block goes into the selected group, else right after the selected block, else at the end. */
-function add(type: BlockType): void {
+function add(type: BlockType, content: Record<string, unknown> = {}): void {
   if (!page) return;
   const current = selected ? findById(page.blocks, selected) : null;
   if (current && isContainerType(current.type)) {
-    insert(type, current.id, current.children?.length ?? 0);
+    insert(type, current.id, current.children?.length ?? 0, content);
   } else if (current) {
     const parent = parentIdOf(page.blocks, current.id) ?? null;
     const siblings = parent ? (findById(page.blocks, parent)?.children ?? []) : page.blocks;
-    insert(type, parent, siblings.findIndex((b) => b.id === current.id) + 1);
+    insert(type, parent, siblings.findIndex((b) => b.id === current.id) + 1, content);
   } else {
-    insert(type, null, page.blocks.length);
+    insert(type, null, page.blocks.length, content);
   }
 }
+
+/** The blocks the extensions that are on add (ADR 0062 d6), each offered in the list by its own name. */
+const extensionBlocks = $derived(
+  (site?.extensions ?? [])
+    .filter((e) => e.enabled)
+    .flatMap((e) => (e.blocks ?? []).map((b) => ({ id: `${e.name}/${b.name}`, label: e.messages[adminLanguage()]?.[b.label] || e.messages[adminLanguage().split('-')[0] ?? '']?.[b.label] || b.label }))),
+);
 
 /** A block dropped at a place on the page. `index` counts the blocks there with the moved one left out. */
 function move(id: string, parent: string | null, index: number): void {
@@ -368,6 +376,9 @@ function onFrameMessage(event: MessageEvent): void {
     act(message.id, message.action);
   } else if (message.type === 'move' && message.id && place()) {
     move(message.id, message.parent, message.index);
+  } else if (message.type === 'insert' && message.blockType.startsWith('extension:') && place()) {
+    // A block an extension adds, dragged in from the list by its own name (ADR 0062 d6).
+    insert('extension', message.parent, message.index, { block: message.blockType.slice('extension:'.length) });
   } else if (message.type === 'insert' && isBlockType(message.blockType) && place()) {
     insert(message.blockType, message.parent, message.index);
   }
@@ -834,7 +845,7 @@ onMount(() => {
     <aside class="left">
       <h2>{t.app.blocks}</h2>
       <ul class="library">
-        {#each BLOCK_TYPES.filter((ty) => ty !== 'entry' || designing) as type (type)}
+        {#each BLOCK_TYPES.filter((ty) => ty !== 'extension' && (ty !== 'entry' || designing)) as type (type)}
           <li>
             <button
               type="button"
@@ -845,6 +856,19 @@ onMount(() => {
               }}
               onclick={() => add(type)}
               data-add={type}>{t.types[type] ?? type}</button>
+          </li>
+        {/each}
+        {#each extensionBlocks as one (one.id)}
+          <li>
+            <button
+              type="button"
+              draggable="true"
+              ondragstart={(e) => {
+                e.dataTransfer?.setData('application/x-thecms-type', `extension:${one.id}`);
+                if (e.dataTransfer) e.dataTransfer.effectAllowed = 'copy';
+              }}
+              onclick={() => add('extension', { block: one.id })}
+              data-add-extension={one.id}>{one.label}</button>
           </li>
         {/each}
       </ul>
@@ -876,6 +900,7 @@ onMount(() => {
               sources={types}
               sections={site.sections.filter((one) => !sectioning || one.slug !== page?.slug)}
               forms={site.forms}
+              blocks={extensionBlocks}
               onform={owner ? openForm : undefined}
               {parts}
               onchange={(path, value) => patch(block.id, (b) => ({ ...b, content: setPath(b.content, path, value) }))}

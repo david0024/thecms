@@ -1,4 +1,5 @@
 /** A page and the site it belongs to, as documents. */
+import type { PublicBlock } from './extension.ts';
 import type { Form } from './form.ts';
 import { type Block, cleanImage, describeBlocks, cleanLink, type ImageValue, type LinkValue, normalizeBlocks } from './blocks.ts';
 import { type Layout, normalizeLayouts } from './layout.ts';
@@ -22,6 +23,13 @@ export interface Page extends Seo {
   translations?: Record<string, PageTranslation>;
   /** The layout it is drawn in (ADR 0035); absent: its type's, or the standard one. */
   layout?: string;
+}
+
+/** A block an extension adds, as a page draws it (ADR 0062 d6): the block, and the extension's words to say it in each language. */
+export interface ExtensionBlockDef {
+  extension: string;
+  block: PublicBlock;
+  messages: Record<string, Record<string, string>>;
 }
 
 export interface Site {
@@ -57,6 +65,8 @@ export interface Site {
   areas?: Record<string, Block[]>;
   /** The site's forms, by name (ADR 0049): filled in to draw a page, never kept. */
   formDefs?: Record<string, Form>;
+  /** The blocks the extensions that are on add (ADR 0062 d6), by `<extension>/<block>`: filled in to draw a page, never kept. */
+  extensionBlocks?: Record<string, ExtensionBlockDef>;
   /** The picture of a link preview for every page that has none of its own (ADR 0050 d2). */
   shareImage?: ImageValue;
   /** False: the breadcrumbs are said to search engines and not shown (ADR 0050 d4). Absent: shown. */

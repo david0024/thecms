@@ -8,7 +8,7 @@
 const { chromium } = require('playwright');
 const coverage = require('./coverage.cjs');
 const { spawn, execFileSync } = require('node:child_process');
-const { mkdtempSync, rmSync } = require('node:fs');
+const { mkdtempSync, rmSync, writeFileSync } = require('node:fs');
 const { tmpdir } = require('node:os');
 const { join } = require('node:path');
 
@@ -177,11 +177,46 @@ const PORT = 4397;
     await page.locator('.doc', { hasText: '[ro] [ro] About' }).waitFor();
     assert(true, 'run there, it changes that translation as a change to look at');
 
+    // A block an extension adds to the site's pages (ADR 0062 d6): offered in the list by its own name, drawn on the page.
+    const news = join(dir, 'news.thecms-extension');
+    writeFileSync(
+      news,
+      JSON.stringify({
+        format: 'thecms.extension/3',
+        manifest: {
+          name: 'news',
+          displayName: 'Newsletter',
+          version: '1.0.0',
+          actions: [{ name: 'signup', label: 'Sign up' }],
+          routes: [{ path: 'signup', action: 'signup', methods: ['POST'] }],
+          blocks: [{ name: 'signup', label: 'Newsletter sign-up', fields: [{ key: 'email', label: 'E-mail', kind: 'email', required: true }, { key: 'agree', label: 'I want it', kind: 'consent' }], submit: 'Sign up', route: 'signup' }],
+        },
+        code: 'export const actions = { signup: async () => null };',
+      }),
+    );
+    await page.locator('[data-back]').click();
+    await page.locator('[data-nav="extensions"]').click();
+    await page.locator('[data-extension-file]').setInputFiles(news);
+    assert((await page.locator('[data-asks]').innerText()).includes("add blocks to the site's pages: Newsletter sign-up"), 'before it is installed, the owner reads the blocks it adds');
+    await page.locator('[data-accept]').click();
+    await page.locator('[data-extension="news"]').waitFor();
+    await page.locator('[data-nav="pages"]').click();
+    await page.locator('button[data-open="about"]').click();
+    await page.locator('[data-add-extension="news/signup"]').click();
+    await canvas.locator('form[data-extension-block="news/signup"] input[name="email"]').waitFor();
+    assert((await page.locator('[data-field-extension]').inputValue()) === 'news/signup', 'its block is in the list by its own name, drawn on the page, and named in the block\'s settings');
+    if (shots) await page.screenshot({ path: join(shots, 'extension-public-block.png') });
+    await page.locator('button[title="Undo"]').click();
+    await canvas.locator('form[data-extension-block]').waitFor({ state: 'detached' });
+
     // Removed, with what it kept.
     await page.locator('[data-back]').click();
     await page.locator('[data-nav="extensions"]').click();
-    await page.locator('[data-extension-remove]').click();
-    await page.locator('[data-extension-remove-sure]').click();
+    for (const name of ['news', 'shout']) {
+      await page.locator(`[data-extension="${name}"] [data-extension-remove]`).click();
+      await page.locator('[data-extension-remove-sure]').click();
+      await page.locator(`[data-extension="${name}"]`).waitFor({ state: 'detached' });
+    }
     await page.locator('[data-no-extensions]').waitFor();
     assert(true, 'removed, it is gone with what it kept');
     assert(errors.length === 0, `no errors in the browser ${errors.join(' | ')}`);

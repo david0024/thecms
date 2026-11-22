@@ -185,6 +185,8 @@ export interface ExtensionInfo {
   enabled: boolean;
   actions: Pick<ExtensionAction, 'name' | 'label' | 'on' | 'ask' | 'each'>[];
   messages: Record<string, Record<string, string>>;
+  /** The blocks it adds to the site's pages (ADR 0062 d6). */
+  blocks?: { name: string; label: string }[];
   sha256?: string;
   asks?: ExtensionOffer['asks'];
   views?: ViewDocument[];

@@ -12,6 +12,7 @@ import Embed from './Embed.svelte';
 import Archive from './Archive.svelte';
 import Entries from './Entries.svelte';
 import Entry from './Entry.svelte';
+import Extension from './Extension.svelte';
 import Faq from './Faq.svelte';
 import Files from './Files.svelte';
 import Form from './Form.svelte';
@@ -35,6 +36,7 @@ export const COMPONENTS: Record<BlockType, Component<{ block: Block }>> = {
   services: Services,
   contact: Contact,
   form: Form,
+  extension: Extension,
   search: Search,
   buttons: Buttons,
   table: Table,

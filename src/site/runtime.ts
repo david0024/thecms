@@ -11,7 +11,8 @@ import { mediaResponse } from './serve-media.ts';
 import { EMBED_ORIGINS, mediaKindOf } from '../core/index.ts';
 import { lockCookie, lockedPage } from './locks.ts';
 import { startClock } from './clock.ts';
-import { type Batches, batches, type ExtensionHostApi, extensionHost, type Spawn } from './extensions.ts';
+import { type Batches, batches, type DrawPage, type ExtensionHostApi, extensionHost, type Spawn } from './extensions.ts';
+import { routePage } from './route-page.ts';
 import { startForms } from './forms.ts';
 import { localShared, type Shared } from './shared.ts';
 import { resultsPage, search, SEARCH_MAX_QUERY, type SearchDoc, searchIndex } from './search.ts';
@@ -127,6 +128,16 @@ export function startRuntime(
     return (await site()).get(path);
   };
 
+  /** What an extension's route answers as a page (ADR 0062 d6), in the frame of the site's pages in that language. */
+  const drawPage: DrawPage = async (page, language) => {
+    const files = await site();
+    const own = language ? files.get(`${language}/404.html`) : undefined;
+    const frame = typeof own === 'string' ? own : files.get('404.html');
+    const theme = await store.publishedTheme();
+    if (typeof frame !== 'string' || !theme) return null;
+    return routePage(frame, { ...(await store.site()), formDefs: await store.formsByName(), extensionBlocks: await store.extensionBlocks() }, theme, page);
+  };
+
   /** Passwords a visitor may try in a window: enough for a person, too few to guess one. */
   const tooMany = async (ip: string): Promise<boolean> => (await shared.hit(`unlock:${ip}`, 10 * 60_000)) > 10;
   const cookieOf = (request: Request, name: string): string => {
@@ -163,7 +174,12 @@ export function startRuntime(
     }
     // An extension's own addresses: /_/x/<extension>/<path>.
     const routed = /^\/_\/x\/([a-z][a-z0-9-]{1,39})\/(.+)$/.exec(url.pathname);
-    if (routed) return extensions.route(routed[1] as string, routed[2] as string, request);
+    if (routed) {
+      const answered = await extensions.route(routed[1] as string, routed[2] as string, request, drawPage);
+      // A page it answers with is a page of the site, with the site's rules (ADR 0062 d6).
+      if (answered.headers.get('content-type')?.startsWith('text/html')) for (const [key, value] of Object.entries(HEADERS)) answered.headers.set(key, value);
+      return answered;
+    }
     if (url.pathname === '/_/unlock' && request.method === 'POST') {
       // A password given for a page behind one (ADR 0043): right, and the visitor keeps its key; wrong, and they are told.
       if (Number(request.headers.get('content-length') ?? 0) > 4096) return new Response('too large\n', { status: 413 });

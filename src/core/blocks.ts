@@ -31,6 +31,8 @@ export type Field =
   | { kind: 'section' }
   /** A form the block shows (ADR 0049), by its name: built on the Forms screen. */
   | { kind: 'form' }
+  /** A block an extension adds (ADR 0062 d6), as `<extension>/<block>`. */
+  | { kind: 'extension' }
   | { kind: 'list'; max: number; item: Record<string, Field> }
   /**
    * A file from the library (ADR 0047): a document, a sound or a video. A
@@ -127,6 +129,15 @@ export const BLOCKS = {
   form: {
     fields: { form: { kind: 'form' }, title: text(200), intro: multiline(600) },
     create: () => ({ form: 'contact', title: 'Write to us' }),
+  },
+  /**
+   * A block an installed extension adds (ADR 0062 d6): a form drawn with the
+   * theme and posted to the extension. It names the block and may say a few
+   * words above it.
+   */
+  extension: {
+    fields: { block: { kind: 'extension' }, title: text(200), intro: multiline(600) },
+    create: () => ({ block: '' }),
   },
   /** A search field (ADR 0042): the site's runtime answers it with the pages that match. */
   search: {
@@ -269,6 +280,9 @@ export const defaultTemplate = (): Block[] => [
 ];
 export const BLOCK_TYPES = Object.keys(BLOCKS) as BlockType[];
 
+/** How an extension block is named (ADR 0062 d6): the extension's name and the block's. */
+export const EXTENSION_BLOCK = /^[a-z][a-z0-9-]{1,39}\/[a-z][a-z0-9-]{1,39}$/;
+
 export const isBlockType = (v: unknown): v is BlockType => typeof v === 'string' && Object.hasOwn(BLOCKS, v);
 
 export const isContainerType = (type: BlockType): boolean => (BLOCKS[type] as BlockDef).container === true;
@@ -351,6 +365,10 @@ function cleanField(field: Field, raw: unknown): unknown {
       return slugify(raw);
     case 'form':
       return slugify(raw).slice(0, 60) || 'contact';
+    case 'extension': {
+      const value = str(raw, 81);
+      return EXTENSION_BLOCK.test(value) ? value : '';
+    }
     case 'part': {
       const value = str(raw, 60);
       return ENTRY_PART.test(value) ? value : 'header';

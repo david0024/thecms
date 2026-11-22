@@ -309,7 +309,7 @@ export async function startEditor(
   /** Blocks as the canvas draws them: each section block with its section's drafts, in the language (ADR 0033). */
   /** The site with what its layouts' sections hold (ADR 0035), from the drafts, in its language. */
   const framed = async (site?: Site): Promise<Site> => {
-    const drawn = { ...(site ?? (await store.site())), formDefs: await store.formsByName() };
+    const drawn = { ...(site ?? (await store.site())), formDefs: await store.formsByName(), extensionBlocks: await store.extensionBlocks() };
     return withAreas(drawn, await store.draftSections(), drawn.language);
   };
   const filled = async (blocks: Block[], language?: string): Promise<Block[]> => fillSections(blocks, await store.draftSections(), language ?? (await store.site()).language);
@@ -354,6 +354,8 @@ export async function startEditor(
         enabled,
         actions: manifest.actions.filter((a) => me.role === 'owner' || a.on).map(({ name, label, on, ask, each }) => ({ name, label, on, ask, each })),
         messages: manifest.messages,
+        // The blocks it adds to the site's pages (ADR 0062 d6), which any author places.
+        blocks: manifest.blocks.map(({ name, label }) => ({ name, label })),
         ...(me.role === 'owner' ? { sha256, installedAt, asks: extensionAsks(manifest), views: manifest.views, collections: manifest.collections } : {}),
       }));
   const state = async (me: User): Promise<unknown> => ({

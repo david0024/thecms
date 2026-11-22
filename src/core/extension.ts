@@ -102,6 +102,37 @@ export interface ExtensionAnswer {
   action: string;
 }
 
+/** The kinds of field a public block asks for (ADR 0062 d6): those of the form builder, and a consent to tick. */
+export const BLOCK_FIELD_KINDS = ['text', 'textarea', 'email', 'phone', 'number', 'date', 'select', 'consent'] as const;
+export type BlockFieldKind = (typeof BLOCK_FIELD_KINDS)[number];
+/** The names the block's form itself sends, which no field may take. */
+export const BLOCK_RESERVED: readonly string[] = ['back', 'block', 'form', 'website'];
+
+export interface PublicBlockField {
+  key: string;
+  label: string;
+  kind: BlockFieldKind;
+  required: boolean;
+  /** For a choice, what it may be. */
+  options: string[];
+}
+
+/**
+ * A block the author places on a page (ADR 0062 d6): a form, drawn by the
+ * site with its theme and no script, posted to one of the extension's routes.
+ */
+export interface PublicBlock {
+  name: string;
+  label: string;
+  fields: PublicBlockField[];
+  /** The button's words. */
+  submit: string;
+  /** What the page says once it was sent; the site's own words when empty. */
+  sent: string;
+  /** The route it is posted to, one that takes POST. */
+  route: string;
+}
+
 /**
  * A public address of the extension (ADR 0041): `/_/x/<extension>/<path>` on
  * the site's runtime, answered by one of its actions. A payment provider's
@@ -158,6 +189,8 @@ export interface ExtensionManifest {
   /** The questions it answers, and the program's data it reads (ADR 0062). */
   answers: ExtensionAnswer[];
   uses: ProgramData[];
+  /** The blocks it adds to the public site (ADR 0062 d6). */
+  blocks: PublicBlock[];
 }
 
 export interface ExtensionPackage {
@@ -308,6 +341,54 @@ function serverParts(m: Record<string, unknown>, actions: ExtensionAction[], pro
   return { routes, jobs, events };
 }
 
+/** A public block's field (ADR 0062 d6). */
+function blockField(raw: unknown, problems: string[], where: string): PublicBlockField | null {
+  if (!isObject(raw)) return null;
+  const key = text(raw.key, 40);
+  if (!KEY.test(key) || BLOCK_RESERVED.includes(key)) {
+    problems.push(`${where}: a field's key is lower case letters, digits and _, and not ${BLOCK_RESERVED.join(', ')} ("${key}")`);
+    return null;
+  }
+  const kind = BLOCK_FIELD_KINDS.find((k) => k === raw.kind);
+  if (!kind) {
+    problems.push(`${where}.${key}: a block's field is one of ${BLOCK_FIELD_KINDS.join(', ')}`);
+    return null;
+  }
+  const options = kind === 'select' ? [...new Set(list(raw.options).map((o) => text(o, 120)).filter(Boolean))].slice(0, 30) : [];
+  if (kind === 'select' && options.length === 0) problems.push(`${where}.${key}: a choice needs its options`);
+  return { key, label: text(raw.label, 400) || key, kind, required: kind === 'consent' || raw.required === true, options };
+}
+
+/** The blocks an extension adds to the public site (ADR 0062 d6), each posted to one of its routes that takes POST. */
+function publicBlocks(m: Record<string, unknown>, routes: ExtensionRoute[], problems: string[]): PublicBlock[] {
+  const blocks: PublicBlock[] = [];
+  for (const b of list(m.blocks).slice(0, 12)) {
+    if (!isObject(b)) continue;
+    const name = text(b.name, 40);
+    if (!NAME.test(name)) {
+      problems.push(`a block's name is lower case letters, digits and - ("${name}")`);
+      continue;
+    }
+    if (blocks.some((x) => x.name === name)) {
+      problems.push(`the block "${name}" is declared twice`);
+      continue;
+    }
+    const fields: PublicBlockField[] = [];
+    for (const f of list(b.fields).slice(0, 20)) {
+      const one = blockField(f, problems, name);
+      if (!one) continue;
+      if (fields.some((x) => x.key === one.key)) problems.push(`${name}.${one.key}: a field's key is used once`);
+      else fields.push(one);
+    }
+    const path = text(b.route, 200).replace(/^\/+|\/+$/g, '');
+    const route = routes.find((r) => r.path === path);
+    if (!route) problems.push(`the block "${name}" is sent to "${path}", which is not one of its routes`);
+    else if (!route.methods.includes('POST')) problems.push(`the block "${name}" is sent to "${path}", which does not take POST`);
+    if (route?.methods.includes('POST')) blocks.push({ name, label: text(b.label, 60) || name, fields, submit: text(b.submit, 60) || 'Send', sent: text(b.sent, 400), route: path });
+  }
+  return blocks;
+}
+
 /** What the third format adds (ADR 0062): the questions it answers and the program's data it reads. */
 function thirdParts(m: Record<string, unknown>, actions: ExtensionAction[], problems: string[]): Pick<ExtensionManifest, 'answers' | 'uses'> {
   const uses = PROGRAM_DATA.filter((d) => list(m.uses).includes(d));
@@ -375,7 +456,7 @@ export function parseExtension(raw: unknown): { pkg: ExtensionPackage | null; pr
   }
   // The first format has none of these: what such a package says of them is not read.
   const server = raw.format !== EXTENSION_FORMAT_1 ? serverParts(m, actions, problems, String(raw.format)) : { routes: [], jobs: [], events: [] };
-  const third = raw.format === EXTENSION_FORMAT ? thirdParts(m, actions, problems) : { answers: [], uses: [] };
+  const third = raw.format === EXTENSION_FORMAT ? { ...thirdParts(m, actions, problems), blocks: publicBlocks(m, server.routes, problems) } : { answers: [], uses: [], blocks: [] };
   const code = typeof raw.code === 'string' ? raw.code : '';
   if (actions.length > 0 && !code.trim()) problems.push('it has actions and no code');
   if (code.length > EXTENSION_MAX_BYTES) problems.push('its code is larger than 5 MB');
@@ -423,6 +504,8 @@ export function extensionAsks(manifest: ExtensionManifest): {
   /** The questions it answers, and the program's data it reads (ADR 0062). */
   answers: string[];
   uses: string[];
+  /** The blocks it adds to the public site (ADR 0062 d6). */
+  blocks: string[];
 } {
   const label = (name: string): string => manifest.actions.find((a) => a.name === name)?.label ?? name;
   return {
@@ -436,6 +519,7 @@ export function extensionAsks(manifest: ExtensionManifest): {
     pictures: manifest.actions.filter((a) => a.pictures).map((a) => a.label),
     answers: manifest.answers.map((a) => a.question),
     uses: manifest.uses,
+    blocks: manifest.blocks.map((b) => b.label),
   };
 }
 
@@ -482,3 +566,49 @@ export function cleanRow(of: ExtensionCollection, raw: unknown, before: Record<s
 /** A row as the admin sees it: a secret only says whether it is set. */
 export const shownRow = (of: ExtensionCollection, row: Record<string, unknown>): Record<string, unknown> =>
   Object.fromEntries(Object.entries(row).map(([k, v]) => [k, of.fields.find((f) => f.key === k)?.kind === 'secret' ? (v ? '••••••' : '') : v]));
+
+/** How long each kind of a block's answer may be (ADR 0062 d6), as the form builder's (ADR 0049). */
+const BLOCK_ANSWER_MAX: Record<BlockFieldKind, number> = { text: 200, textarea: 5000, email: 254, phone: 40, number: 30, date: 10, select: 120, consent: 3 };
+
+/**
+ * What a visitor sent with an extension's block (ADR 0062 d6), checked field
+ * by field as the block declares them: what the extension's action is given.
+ * A consent is true or the block was not sent; a number is a number; a field
+ * left empty is null.
+ */
+export function cleanBlockPost(block: PublicBlock, sent: URLSearchParams): { fields: Record<string, string | number | boolean | null>; problems: string[] } {
+  const fields: Record<string, string | number | boolean | null> = {};
+  const problems: string[] = [];
+  for (const f of block.fields) {
+    const given = (sent.get(f.key) ?? '').trim();
+    if (given.length > BLOCK_ANSWER_MAX[f.kind]) problems.push(`${f.key}: too long`);
+    let value: string | number | boolean | null = given === '' ? null : given;
+    if (value !== null)
+      switch (f.kind) {
+        case 'email':
+          if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(given)) problems.push(`${f.key}: not an e-mail address`);
+          break;
+        case 'number':
+          value = Number(given);
+          if (!Number.isFinite(value)) problems.push(`${f.key}: not a number`);
+          break;
+        case 'date':
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(given) || Number.isNaN(Date.parse(given))) problems.push(`${f.key}: not a date`);
+          break;
+        case 'select':
+          if (!f.options.includes(given)) problems.push(`${f.key}: not one of its options`);
+          break;
+        case 'consent':
+          value = given === 'yes';
+          break;
+        case 'text':
+        case 'phone':
+          value = given.replace(/\s*\n\s*/g, ' ');
+          break;
+      }
+    if (f.kind === 'consent' && value !== true) value = false;
+    if (f.required && (value === null || value === false)) problems.push(`${f.key}: needed`);
+    fields[f.key] = value;
+  }
+  return { fields, problems };
+}

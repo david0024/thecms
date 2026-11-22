@@ -9,7 +9,7 @@
  * within what the extension declared.
  */
 import { join } from 'node:path';
-import { ANSWER_SECONDS, cleanRow, contentTypes, egressAllows, entryIn, entryPath, type ExtensionAction, type ExtensionEventName, pagePath, type Question, QUESTIONS, typeIn, type ExtensionManifest, extensionAsks, EXTENSION_MAX_BYTES, mediaKindOf, mediaNameOf, parseExtension, variantOf } from '../core/index.ts';
+import { ANSWER_SECONDS, cleanBlockPost, cleanRow, contentTypes, egressAllows, entryIn, entryPath, type ExtensionAction, type ExtensionEventName, pagePath, type Question, QUESTIONS, typeIn, type ExtensionManifest, extensionAsks, EXTENSION_MAX_BYTES, mediaKindOf, mediaNameOf, parseExtension, variantOf } from '../core/index.ts';
 import { type FromRunner, lines, type ToRunner } from './extension-runner.ts';
 import type { InstalledExtension, SiteEvent, Store } from './store.ts';
 import { isCompiled, newer } from './update.ts';
@@ -31,6 +31,15 @@ export const ROUTE_MAX_BYTES = 64 * 1024;
 const UNSAID = new Set(['cookie', 'x-thecms-token']);
 /** Headers a route's answer may set. */
 const SAID = ['content-type', 'location', 'cache-control'];
+
+/**
+ * Draws what a route answers as a page (ADR 0062 d6), in the site's layout and
+ * the visitor's language; null when the site has nothing published to draw it in.
+ */
+export type DrawPage = (page: { title: unknown; blocks: unknown }, language: string) => Promise<string | null>;
+
+/** Where a block's form sends the visitor back to: an address on this site, never elsewhere. */
+const BACK = /^\/(?!\/)[^\s\\#?]*$/;
 
 /** What the owner is shown about a package before installing it. */
 export interface ExtensionOffer {
@@ -308,8 +317,15 @@ export function extensionHost(store: Store, options: { spawn?: Spawn; fetch?: (u
    * `/_/x/<extension>/<path>`, with what its action gives back: a text, or
    * `{ status, headers, body }`. The action is told the method, the query,
    * the headers but the session's, and the body as text.
+   *
+   * Sent from one of its blocks (ADR 0062 d6), it is also told which, and the
+   * fields as the block declares them, checked. A robot that filled the trap
+   * is sent back as if it had been heard, and nothing runs; a field that does
+   * not fit sends the visitor back to the block, to `#…-failed`. An answer
+   * `{ page: { title, blocks } }` is drawn in the site's layout; no answer
+   * sends the visitor back to the block, to `#…-sent`.
    */
-  async function route(name: string, path: string, request: Request): Promise<Response> {
+  async function route(name: string, path: string, request: Request, draw?: DrawPage): Promise<Response> {
     const extension = (await store.extension(name)) ?? null;
     const found = extension?.enabled ? extension.manifest.routes.find((r) => r.path === path.replace(/\/+$/, '')) : undefined;
     if (!extension || !found) return say('not found\n', 404);
@@ -319,12 +335,27 @@ export function extensionHost(store: Store, options: { spawn?: Spawn; fetch?: (u
     const body = method === 'POST' ? await request.text() : '';
     if (body.length > ROUTE_MAX_BYTES) return say('too large\n', 413);
     const url = new URL(request.url);
+    // Sent from one of its blocks: the form says which, and the block is one that posts here.
+    const form = method === 'POST' && /^application\/x-www-form-urlencoded/i.test(request.headers.get('content-type') ?? '') ? new URLSearchParams(body) : null;
+    const block = form ? extension.manifest.blocks.find((b) => b.name === form.get('block') && b.route === found.path) : undefined;
+    let sent: { block: string; fields: Record<string, unknown> } | null = null;
+    let back = '';
+    if (form && block) {
+      const anchor = /^[A-Za-z0-9_-]{1,40}$/.test(form.get('form') ?? '') ? `#f-${form.get('form')}` : '';
+      const to = BACK.test(form.get('back') ?? '') ? (form.get('back') as string) : '/';
+      back = `${to}${anchor ? `${anchor}-sent` : ''}`;
+      if (form.get('website')) return new Response(null, { status: 303, headers: { location: back } });
+      const { fields, problems } = cleanBlockPost(block, form);
+      if (problems.length) return new Response(null, { status: 303, headers: { location: `${to}${anchor ? `${anchor}-failed` : ''}` } });
+      sent = { block: block.name, fields };
+    }
     const input = {
       method,
       path: found.path,
       query: Object.fromEntries(url.searchParams),
       headers: Object.fromEntries([...request.headers].filter(([key]) => !UNSAID.has(key.toLowerCase()))),
       body,
+      ...(sent ?? {}),
     };
     let answer: unknown;
     try {
@@ -334,6 +365,14 @@ export function extensionHost(store: Store, options: { spawn?: Spawn; fetch?: (u
       return say('the extension could not answer\n', 502);
     }
     if (typeof answer === 'string') return say(answer, 200);
+    if (sent && (answer === undefined || answer === null)) return new Response(null, { status: 303, headers: { location: back } });
+    // A page, drawn in the site's layout, in the visitor's language (ADR 0062 d6).
+    const page = answer && typeof answer === 'object' ? (answer as { page?: unknown }).page : undefined;
+    if (page && typeof page === 'object' && draw) {
+      const asked = (url.searchParams.get('l') ?? '').toLowerCase();
+      const html = await draw(page as { title: unknown; blocks: unknown }, /^[a-z]{2,3}(-[a-z0-9]{2,8})*$/.test(asked) ? asked : '');
+      if (html !== null) return new Response(method === 'GET' && request.method === 'HEAD' ? null : html, { status: 200, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' } });
+    }
     const given = (answer ?? {}) as { status?: unknown; headers?: unknown; body?: unknown };
     const status = Number.isInteger(given.status) && (given.status as number) >= 200 && (given.status as number) <= 599 ? (given.status as number) : 200;
     const asked = given.headers && typeof given.headers === 'object' ? (given.headers as Record<string, unknown>) : {};
