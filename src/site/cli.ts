@@ -106,6 +106,7 @@ export function describeOffer(offer: ExtensionOffer): string {
   if (asks.routes.length) lines.push(`  answer visitors at ${asks.routes.join(', ')}`);
   for (const job of asks.jobs) lines.push(`  do "${job.action}" every ${job.everyMinutes === 1 ? 'minute' : `${job.everyMinutes} minutes`}`);
   if (asks.events.length) lines.push(`  be told when: ${asks.events.join(', ')}`);
+  if (asks.pictures.length) lines.push(`  see the site's pictures, for: ${asks.pictures.join(', ')}`);
   return lines.join('\n');
 }
 

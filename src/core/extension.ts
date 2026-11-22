@@ -74,6 +74,11 @@ export interface ExtensionAction {
   /** The collections it may read and write; nothing else. */
   reads: string[];
   writes: string[];
+  /**
+   * It may see the site's pictures (ADR 0059 d3): `host.picture` gives it the
+   * bytes of a picture of the library, and the owner is told so before installing.
+   */
+  pictures: boolean;
   timeoutSeconds: number;
 }
 
@@ -214,6 +219,7 @@ function action(raw: unknown, names: string[], problems: string[]): ExtensionAct
     each,
     reads: own(raw.reads, 'reads'),
     writes: own(raw.writes, 'writes'),
+    pictures: raw.pictures === true,
     timeoutSeconds: Number.isInteger(seconds) && seconds >= 1 && seconds <= 300 ? seconds : 60,
   };
 }
@@ -356,6 +362,8 @@ export function extensionAsks(manifest: ExtensionManifest): {
   routes: string[];
   jobs: { action: string; everyMinutes: number }[];
   events: string[];
+  /** The actions that see the site's pictures (ADR 0059 d3). */
+  pictures: string[];
 } {
   const label = (name: string): string => manifest.actions.find((a) => a.name === name)?.label ?? name;
   return {
@@ -366,6 +374,7 @@ export function extensionAsks(manifest: ExtensionManifest): {
     routes: manifest.routes.map((r) => `/_/x/${manifest.name}/${r.path}`),
     jobs: manifest.jobs.map((j) => ({ action: label(j.action), everyMinutes: j.everyMinutes })),
     events: [...new Set(manifest.events.map((e) => e.on))],
+    pictures: manifest.actions.filter((a) => a.pictures).map((a) => a.label),
   };
 }
 

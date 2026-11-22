@@ -37,6 +37,13 @@ export interface ExtensionHost {
   fetch(url: string, init?: { method?: string; headers?: Record<string, string>; body?: string }): Promise<{ status: number; headers: Record<string, string>; body: string }>;
   /** The site's name and languages. */
   site(): Promise<{ name: string; language: string; languages: string[] }>;
+  /**
+   * A picture of the site's library, by its address (`/media/…`), for an
+   * action that declared `pictures` (ADR 0059 d3): its type and its bytes in
+   * base64, at most 1600 pixels wide when a smaller copy is kept. Null when the
+   * library has no such picture.
+   */
+  picture(src: string): Promise<{ type: string; data: string } | null>;
 }
 
 export function runner(send: (message: FromRunner) => void, receive: (handler: (message: ToRunner) => void) => void): void {
@@ -64,6 +71,7 @@ export function runner(send: (message: FromRunner) => void, receive: (handler: (
       },
       fetch: (url, init) => ask('fetch', url, init ?? {}),
       site: () => ask('site'),
+      picture: (src) => ask('picture', src),
     };
   };
   // The network is the program's to reach, for the hosts declared: say so instead of failing somewhere else.
