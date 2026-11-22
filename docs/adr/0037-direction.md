@@ -101,7 +101,8 @@ own record:
 3. **Commerce and members.** Visitor accounts; the shop (products, cart,
    orders, VAT, emails); payment extensions (Stripe and Netopia first),
    couriers, e-Factura; memberships and subscriptions; bookings; newsletters;
-   the runtime on Workers.
+   the runtime on Workers. What is in the program and what is an extension,
+   and the order within the stage: ADR 0060.
 4. **Further.** Courses; a forum, as an extension; several sites from one
    installation, for managed hosting.
 

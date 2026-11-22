@@ -2,7 +2,7 @@
 
 thecms is in **alpha** (ADR 0045). What is built, part by part; what comes
 next, in four stages, is in [ADR 0037 d4](adr/0037-direction.md#d4-the-order)
-and in the README.
+and in the README; stage 3, part by part, in [ADR 0060](adr/0060-stage-3-core-and-extensions.md).
 
 | | |
 |---|---|
