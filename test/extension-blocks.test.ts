@@ -55,8 +55,14 @@ const manifest = {
         { key: 'email', label: 'E-mail', kind: 'email', required: true },
         { key: 'plan', label: 'How often', kind: 'select', options: ['weekly', 'quiet'] },
         { key: 'agree', label: 'I want the newsletter', kind: 'consent' },
+        { key: 'name', label: 'Name', kind: 'text' },
+        { key: 'note', label: 'Anything else', kind: 'textarea' },
+        { key: 'phone', label: 'Phone', kind: 'phone' },
+        { key: 'people', label: 'How many', kind: 'number' },
+        { key: 'from', label: 'From', kind: 'date' },
       ],
       submit: 'Sign up',
+      sent: 'You are on the list.',
       route: 'signup',
     },
   ],
@@ -94,7 +100,7 @@ describe('a block an extension declares', () => {
     const { pkg, problems } = parseExtension(JSON.parse(PACKAGE));
     expect(problems).toEqual([]);
     expect(pkg!.manifest.blocks[0]).toMatchObject({ name: 'signup', label: 'Newsletter sign-up', route: 'signup', submit: 'Sign up' });
-    expect(pkg!.manifest.blocks[0]!.fields.map((f) => `${f.key}:${f.kind}:${f.required}`)).toEqual(['email:email:true', 'plan:select:false', 'agree:consent:true']);
+    expect(pkg!.manifest.blocks[0]!.fields.map((f) => `${f.key}:${f.kind}:${f.required}`)).toEqual(['email:email:true', 'plan:select:false', 'agree:consent:true', 'name:text:false', 'note:textarea:false', 'phone:phone:false', 'people:number:false', 'from:date:false']);
     expect(extensionAsks(pkg!.manifest).blocks).toEqual(['Newsletter sign-up']);
 
     const wrong = parseExtension({
@@ -124,11 +130,18 @@ describe('a block an extension declares', () => {
 
   test('what a visitor sends is checked field by field', () => {
     const block = parseExtension(JSON.parse(PACKAGE)).pkg!.manifest.blocks[0]!;
-    expect(cleanBlockPost(block, new URLSearchParams({ email: ' ana@site.example ', plan: 'weekly', agree: 'yes', extra: 'dropped' }))).toEqual({
-      fields: { email: 'ana@site.example', plan: 'weekly', agree: true },
+    expect(cleanBlockPost(block, new URLSearchParams({ email: ' ana@site.example ', plan: 'weekly', agree: 'yes', name: 'Ana\nPop', note: 'one\ntwo', people: '3', from: '2026-12-01', extra: 'dropped' }))).toEqual({
+      fields: { email: 'ana@site.example', plan: 'weekly', agree: true, name: 'Ana Pop', note: 'one\ntwo', phone: null, people: 3, from: '2026-12-01' },
       problems: [],
     });
-    expect(cleanBlockPost(block, new URLSearchParams({ email: 'not an address', plan: 'daily' })).problems).toEqual(['email: not an e-mail address', 'plan: not one of its options', 'agree: needed']);
+    expect(cleanBlockPost(block, new URLSearchParams({ email: 'not an address', plan: 'daily', people: 'many', from: '1 Dec', phone: '0'.repeat(41) })).problems).toEqual([
+      'email: not an e-mail address',
+      'plan: not one of its options',
+      'agree: needed',
+      'phone: too long',
+      'people: not a number',
+      'from: not a date',
+    ]);
   });
 
   test('a page keeps the block by its name, and nothing else is a name', () => {
@@ -160,6 +173,8 @@ describe('on the public site', () => {
       expect(page).toContain('<option value="quiet">quiet</option>');
       expect(page).toContain('name="agree" type="checkbox" value="yes" required');
       expect(page).toContain('>Sign up</button>');
+      expect(page).toContain('You are on the list.');
+      for (const drawn of ['<textarea id="f-b1-note" name="note"', 'name="phone" type="tel"', 'name="people" type="number"', 'name="from" type="date"', 'name="name" type="text"']) expect(page).toContain(drawn);
 
       await store.translate('join', 'ro');
       await store.publish('ro/join');
