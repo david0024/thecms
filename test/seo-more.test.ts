@@ -35,7 +35,7 @@ const theme = parseTheme(plain).theme as Theme;
 const site = normalizeSite({ ...DEMO_SITE, url: 'https://example.com' });
 const block = (type: string, content: Record<string, unknown>) => normalizeBlocks([{ type, content, children: [] }]).blocks[0] as Block;
 
-describe('a description written by the site (ADR 0057 d1)', () => {
+describe('a description written by the site (ADR 0058 d1)', () => {
   test('whole sentences when they fill at least half of it', () => {
     const text = 'We bake bread every morning. Our cakes are made to order for weddings, birthdays and every other day worth a cake. Call us.';
     expect(cutAt(text, 50)).toBe('We bake bread every morning.');
@@ -68,7 +68,7 @@ describe('a description written by the site (ADR 0057 d1)', () => {
   });
 });
 
-describe('words for a picture from its file name (ADR 0057 d2)', () => {
+describe('words for a picture from its file name (ADR 0058 d2)', () => {
   test('a name made of words gives them', () => {
     expect(altFromName('sala-de-nunti_2.jpg')).toBe('Sala de nunti');
     expect(altFromName('tort-ciocolata-1024x768.webp')).toBe('Tort ciocolata');
@@ -83,7 +83,7 @@ describe('words for a picture from its file name (ADR 0057 d2)', () => {
   });
 });
 
-describe('proving the site is the owner\'s, and robots.txt (ADR 0057 d4, d5)', () => {
+describe('proving the site is the owner\'s, and robots.txt (ADR 0058 d4, d5)', () => {
   test('a code is taken from the tag it comes in, and nothing else is kept', () => {
     expect(verificationCode('<meta name="google-site-verification" content="abc_DEF-123" />')).toBe('abc_DEF-123');
     expect(verificationCode(' 0123ABCD ')).toBe('0123ABCD');
@@ -117,7 +117,7 @@ describe('proving the site is the owner\'s, and robots.txt (ADR 0057 d4, d5)', (
   });
 });
 
-describe('the sitemap says when a page changed and what it shows (ADR 0057 d3)', () => {
+describe('the sitemap says when a page changed and what it shows (ADR 0058 d3)', () => {
   let dir: string;
   let store: Store;
   beforeEach(async () => {
@@ -166,7 +166,7 @@ describe('the sitemap says when a page changed and what it shows (ADR 0057 d3)',
   });
 });
 
-describe('links search engines do not follow (ADR 0057 d6)', () => {
+describe('links search engines do not follow (ADR 0058 d6)', () => {
   test('a link field and a span keep the choice, only with an address', () => {
     expect(cleanLink({ label: 'Shop', href: 'https://shop.example', nofollow: true })).toEqual({ label: 'Shop', href: 'https://shop.example', nofollow: true });
     expect(cleanLink({ label: 'Shop', href: '', nofollow: true })).toEqual({ label: 'Shop', href: '' });

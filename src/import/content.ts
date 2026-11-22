@@ -127,7 +127,7 @@ class Converter {
         const inner = mark && !marks.includes(mark) ? [...marks, mark] : marks;
         const link = node.tag === 'a' && !!node.attrs.href;
         const to = link ? this.ctx.link((node.attrs.href as string).trim()) : href;
-        // A link WordPress kept as rel="nofollow" (or "sponsored", "ugc") stays one (ADR 0057 d6).
+        // A link WordPress kept as rel="nofollow" (or "sponsored", "ugc") stays one (ADR 0058 d6).
         const unfollowed = link ? /\b(nofollow|sponsored|ugc)\b/i.test(node.attrs.rel ?? '') : nofollow;
         const apart = !INLINE.has(node.tag);
         // Two blocks side by side are two sets of words, not one run-on word.

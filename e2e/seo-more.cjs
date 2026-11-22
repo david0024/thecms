@@ -1,6 +1,6 @@
 /**
  * What the site writes for search engines by itself, in a real browser
- * (ADR 0057): the description shown in grey, a picture's words from its file
+ * (ADR 0058): the description shown in grey, a picture's words from its file
  * name, links search engines do not follow, the codes that prove the site is
  * the owner's, and lines for robots.txt that the check before publishing
  * names when they shut the site.

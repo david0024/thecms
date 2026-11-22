@@ -92,6 +92,33 @@ describe('the command line', () => {
     }
   });
 
+  test('export writes the content in one file, or the site as a ZIP; import brings the content back (ADR 0057)', async () => {
+    const db = join(dir, 'site.db');
+    await run('init', db);
+    await run('export', db, join(dir, 'site.thecms.json'));
+    expect(said.join('\n')).toMatch(/^Wrote the content of .*site\.db to .*site\.thecms\.json: 3 pages, 2 entries, 0 files\.$/);
+    await run('export', db, join(dir, 'pages.thecms.json'), '--parts=pages');
+    expect(JSON.parse(await readFile(join(dir, 'pages.thecms.json'), 'utf8')).parts).toEqual(['pages']);
+    await run('export', db, join(dir, 'site.zip'));
+    expect(said.join('\n')).toMatch(/^Wrote \d+ files into .*site\.zip\.$/);
+    expect((await readFile(join(dir, 'site.zip'))).subarray(0, 2).toString()).toBe('PK');
+
+    const copy = join(dir, 'copy.db');
+    await run('import', copy, join(dir, 'site.thecms.json'));
+    expect(said.join('\n')).toContain('Imported 3 pages, 2 posts into');
+    expect(said.join('\n')).toContain('Next: thecms edit');
+    const store = await Store.open(copy);
+    try {
+      expect((await store.published()).map((p) => p.slug).sort()).toEqual(['', 'about', 'contact']);
+      expect((await store.site()).name).toBe('Atelier Nord');
+    } finally {
+      await store.close();
+    }
+    // Into a site that has them already, each is said to be left as it was.
+    await run('import', copy, join(dir, 'site.thecms.json'));
+    expect(said.join('\n')).toContain('What to know:');
+  });
+
   test('edit and forms start their servers and say where', async () => {
     const db = join(dir, 'site.db');
     await run('init', db);

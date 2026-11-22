@@ -10,7 +10,7 @@ and in the README.
 | Blocks: hero, text, image, services, contact details, gallery, questions and answers, testimonials, prices, a list of entries, groups | done |
 | SQLite store, draft and published kept apart | done |
 | The same site on Postgres or MySQL, chosen by the address | done |
-| Static export with sitemap and robots.txt, for a simple site; it says what only the server does | done |
+| Static export with sitemap and robots.txt, for a simple site, to a folder or as a ZIP from the admin; it says what only the server does | done |
 | Visual editor: add, move, remove, type on the page, style with theme tokens | done |
 | Theme builder: tokens, block defaults and variants, themes as files | done |
 | Images uploaded and kept with the site, each offered at the size that fits a phone or a wide screen (srcset made in the browser); headings, lists and links from a bar on the page; blocks moved by dragging | done |
@@ -27,11 +27,12 @@ and in the README.
 | Contact form with consent, a small form service of the site's own, email to the owner, messages kept for a set time, exported or erased on request | done |
 | Forms built on a screen of their own and placed by a block: short and long text, email, phone, number, date, list, choices and boxes, each required or not, consent always; translated by field; each field checked by the server; messages by form, as CSV | done (files and steps: later) |
 | Search and sharing per page and entry: a title for search engines, a picture for previews, hidden from search engines (sitemap and search too); a picture for the whole site; breadcrumbs shown or hidden, always said to search engines; the check warns of long or shared titles; Yoast and others imported | done |
-| What the site writes for search engines by itself (ADR 0057): a description in whole sentences, shown in grey; a picture's words from its file name; the day each page changed and its pictures in the sitemap; Google and Bing verification codes; the owner's lines in robots.txt, checked; links search engines do not follow | done |
+| What the site writes for search engines by itself (ADR 0058): a description in whole sentences, shown in grey; a picture's words from its file name; the day each page changed and its pictures in the sitemap; Google and Bing verification codes; the owner's lines in robots.txt, checked; links search engines do not follow | done |
 | Backups: the whole site in one file, made by the editor's clock every day or week, the last ones kept on the server and sent to an S3 storage; downloaded, deleted, or put back after a backup of what is there, from the admin or `thecms restore`; a backup from one database goes back into another | done (encryption, email on failure: later) |
 | Relations between entries: a field that links to entries of another type (or its own), picked by title, drawn on both sides; fields for a number, yes or no, a choice from a list and a file | done (filtering and ordering lists by a field: later) |
 | Statistics without a cookie: pages counted by the server as it sends them, a visitor told apart by a fingerprint whose key changes daily, only the day's totals kept; visitors, pages, sources, devices and searches on a Statistics screen for the owner and editors | done (time on page, country: not without a script or an extension) |
 | Archives by author and date: each dated type's entries by who wrote them (with their picture and words), by year, month and day; each person's page across every type; an archive block of months; in each language; the authors and old archives of a WordPress import | done |
+| A complete export: the content in one open file (all of it or some parts) that another thecms site takes back by its import screen; each published page and entry also as JSON beside it, with `/site.json`, turned off in the settings; the static export as a ZIP from the admin, saying what a static host cannot do | done |
 | Language packs: the admin and the site's words in one JSON file a language, checked against English; Romanian ships complete | done |
 | Accounts for a served editor: the first owner from a one-time link, editors invited by the owner, an editor writes content and nothing else | done |
 | Installed with one command: one file a platform from GitHub Releases, checked by its checksum; a server with systemd in one more option; `thecms update` | done |

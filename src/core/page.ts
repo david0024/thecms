@@ -61,10 +61,12 @@ export interface Site {
   shareImage?: ImageValue;
   /** False: the breadcrumbs are said to search engines and not shown (ADR 0050 d4). Absent: shown. */
   breadcrumbs?: false;
-  /** The codes Google and Bing give to prove the site is the owner's (ADR 0057 d4): each absent until set. */
+  /** The codes Google and Bing give to prove the site is the owner's (ADR 0058 d4): each absent until set. */
   verify?: { google?: string; bing?: string };
-  /** The owner's own lines for `robots.txt`, after the program's (ADR 0057 d5). Absent: none. */
+  /** The owner's own lines for `robots.txt`, after the program's (ADR 0058 d5). Absent: none. */
   robots?: string;
+  /** False: no JSON beside each page for apps and other sites to read (ADR 0057 d3). Absent: written. */
+  data?: false;
   /** The stored pictures' sizes and smaller copies (ADR 0005 d8): filled in to draw a page for export, never kept. */
   pictures?: Pictures;
 }
@@ -144,6 +146,7 @@ export function normalizeSite(input: unknown): Site {
     ...(raw.breadcrumbs === false ? { breadcrumbs: false as const } : {}),
     ...cleanVerify(raw.verify),
     ...(cleanRobots(raw.robots) ? { robots: cleanRobots(raw.robots) } : {}),
+    ...(raw.data === false ? { data: false as const } : {}),
     keepMessages: Number.isInteger(raw.keepMessages) && (raw.keepMessages as number) >= 1 && (raw.keepMessages as number) <= 3650 ? (raw.keepMessages as number) : KEEP_MESSAGES_DAYS,
   };
 }
@@ -230,5 +233,5 @@ export const reservedSlugs = (site: Site): string[] => [
 export const pagePath = (slug: string): string => (slug ? `/${slug}/` : '/');
 
 /** What a search engine shows under the title. */
-/** What search engines are told: the description, or else the one the site writes from the page (ADR 0057 d1). */
+/** What search engines are told: the description, or else the one the site writes from the page (ADR 0058 d1). */
 export const pageDescription = (page: Page): string => page.description || describeBlocks(page.blocks);

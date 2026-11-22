@@ -16,7 +16,7 @@ export interface Span {
   marks?: Mark[];
   /** A link; checked with `safeHref`. */
   href?: string;
-  /** The link asks search engines not to follow it: `rel="nofollow"` (ADR 0057 d6). Only with `href`. */
+  /** The link asks search engines not to follow it: `rel="nofollow"` (ADR 0058 d6). Only with `href`. */
   nofollow?: true;
 }
 

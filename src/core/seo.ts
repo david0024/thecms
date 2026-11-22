@@ -34,7 +34,7 @@ export function cleanSeo(raw: unknown): Seo {
 
 /**
  * Words for a picture from its file's name, offered when it is uploaded or
- * picked and its place has none (ADR 0057 d2): `sala-de-nunti_2.jpg` is
+ * picked and its place has none (ADR 0058 d2): `sala-de-nunti_2.jpg` is
  * "Sala de nunti". A name a camera or a phone gave (`IMG_1234`, `DSC0042`,
  * `PXL_20241102_…`, `Screenshot …`) or one made only of digits says nothing,
  * and gives nothing.

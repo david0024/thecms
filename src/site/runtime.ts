@@ -143,6 +143,8 @@ export function startRuntime(
         'content-type': TYPES[path.split('.').pop() ?? ''] ?? 'application/octet-stream',
         // A stored image is named by its bytes, so it never changes; a page may change at the next publication.
         'cache-control': path.startsWith('media/') ? 'public, max-age=31536000, immutable' : 'public, max-age=0, must-revalidate',
+        // The site's data is for apps and other sites to read, from wherever they run (ADR 0057 d3).
+        ...(path.endsWith('.json') ? { 'access-control-allow-origin': '*' } : {}),
         ...HEADERS,
       },
     });

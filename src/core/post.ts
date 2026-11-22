@@ -181,7 +181,7 @@ export const FEED_PATH = `/${BLOG_SLUG}/feed.xml`;
 
 /** What a list shows under a post's title. */
 export const postExcerpt = (post: Post): string => post.excerpt || blocksText(post.blocks, 200);
-/** What search engines are told: the description, else the excerpt the owner wrote, else the entry's first words, cut where a description ends (ADR 0057 d1). */
+/** What search engines are told: the description, else the excerpt the owner wrote, else the entry's first words, cut where a description ends (ADR 0058 d1). */
 export const postDescription = (post: Post): string => post.description || post.excerpt || describeBlocks(post.blocks);
 
 /** Newest first; posts of the same day in a fixed order. */

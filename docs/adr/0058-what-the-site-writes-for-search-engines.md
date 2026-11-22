@@ -1,4 +1,4 @@
-# ADR 0057 — What the site writes for search engines by itself
+# ADR 0058 — What the site writes for search engines by itself
 
 - **Status:** Accepted (owner, 2026-11-22: "Da, toate, în ordinea asta", on a proposal of five stages that bring what Rank Math does, free and Pro, into thecms; this is the first)
 - **Date:** 2026-11-22

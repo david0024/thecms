@@ -154,7 +154,7 @@ export async function buildSite(
   locked: Record<string, string> = {},
   /** Who wrote each entry, by `type/entry` (ADR 0055 d3): shown under the title of a dated one. */
   bylines: Record<string, Byline> = {},
-  /** When each page (by its main address) and each entry (by `type/entry`) was last published: the sitemap's dates (ADR 0057 d3). */
+  /** When each page (by its main address) and each entry (by `type/entry`) was last published: the sitemap's dates (ADR 0058 d3). */
   times: PublishedTimes = {},
 ): Promise<Map<string, string | Uint8Array>> {
   const files = new Map<string, string | Uint8Array>();
@@ -197,7 +197,7 @@ export async function buildSite(
   const paths: string[] = [];
   /** Addresses that are there but kept out of the sitemap: a period's list, which only repeats (ADR 0056 d4). */
   const unlisted = new Set<string>();
-  /** What the sitemap says of an address besides where it is: when it last changed, and its pictures (ADR 0057 d3). */
+  /** What the sitemap says of an address besides where it is: when it last changed, and its pictures (ADR 0058 d3). */
   const about = new Map<string, { at?: string | undefined; images: string[] }>();
   const page = (path: string, html: string, hidden = false, at?: string, images: string[] = []): void => {
     files.set(fileOf(path), html);
@@ -209,6 +209,8 @@ export async function buildSite(
 
   // The structure first, the theme after it: where both set the same thing, the theme wins.
   files.set(STYLESHEET.slice(1), `${BASE_CSS}${themeCss(theme)}`);
+  // What each page and entry is as data, written beside it at the end (ADR 0057 d3).
+  const data: Data[] = [];
   for (const p of pages) {
     const setting = pageSetting(site, p.slug, pages, main.lists, (language) => inLanguage(language).lists);
     page(
@@ -218,6 +220,7 @@ export async function buildSite(
       times.pages?.[(p as Partial<PlacedPage>).of ?? p.slug],
       imageSources(p.blocks),
     );
+    data.push({ path: pagePath(p.slug), language: setting.site.language, page: p });
   }
   // A page behind a password says so to the runtime, which asks for it; search engines are asked to keep none of it.
   for (const [path, slug] of Object.entries(locked)) {
@@ -247,7 +250,9 @@ export async function buildSite(
           times.entries?.[`${type.id}/${post.of ?? post.slug}`],
           [...(post.cover ? [post.cover.src] : []), ...imageSources(post.blocks)],
         );
+        data.push({ path: entryPath(type, post.slug), language, post, type });
       }
+      data.push({ path: listPath(type), language, type, list });
       const listed = site.languages.length ? listAlternates(site, original, has(type.id), here, language) : [];
       type List = { heading: string; path: (n: number) => string; posts: Post[]; alternates: typeof here; person?: Byline; noindex?: boolean };
       const pagesOf: List[] = [
@@ -355,10 +360,74 @@ export async function buildSite(
     files.set('sitemap.xml', sitemapFile(site, paths, about));
   }
   files.set('robots.txt', robotsFile(site));
+  if (site.data !== false) writeData(files, site, data.filter((d) => !(d.path in locked)));
   return files;
 }
 
-/** When pages and entries were last published, as the store keeps it (ADR 0057 d3). */
+const DATA_FORMAT = 'thecms.data/1';
+const jsonOf = (path: string): string => `${path.slice(1)}index.json`;
+
+/** A page, an entry or a type's list, kept as it was drawn to be written as data. */
+interface Data {
+  path: string;
+  language: string;
+  page?: Page;
+  post?: Post;
+  type?: ContentType;
+  list?: Post[];
+}
+
+/** The part of a drawn page that is its own, without the header and footer around it. */
+const mainOf = (html: unknown): string => (typeof html === 'string' ? (/<main[^>]*>([\s\S]*?)<\/main>/.exec(html)?.[1] ?? '').trim() : '');
+
+/** An entry as data: what its type shows, without what is kept only for the editor. */
+function entryData(post: Post, type: ContentType, path: string, language: string, html?: string): Record<string, unknown> {
+  return {
+    path,
+    type: type.id,
+    language,
+    title: post.title,
+    description: post.description,
+    date: post.date,
+    excerpt: postExcerpt(post),
+    cover: post.cover,
+    categories: post.categories,
+    tags: post.tags,
+    fields: post.fields,
+    ...(post.author ? { author: { name: post.author.name, slug: post.author.slug ?? '' } } : {}),
+    ...(html === undefined ? {} : { blocks: post.blocks, html }),
+  };
+}
+
+/**
+ * The site's data as JSON beside its pages (ADR 0057 d3): each page and entry
+ * at its address with `index.json`, each type's list the same way, and
+ * `site.json` naming them all. Only what is published, never a page behind a
+ * password: the same as the HTML, for an app or another site to read.
+ */
+function writeData(files: Map<string, string | Uint8Array>, site: Site, data: Data[]): void {
+  const json = (value: unknown): string => `${JSON.stringify(value, null, 1)}\n`;
+  const pages: { path: string; language: string; title: string; data: string }[] = [];
+  const lists: { type: string; name: string; path: string; language: string; data: string }[] = [];
+  for (const one of data) {
+    const html = mainOf(files.get(fileOf(one.path)));
+    const at = `/${jsonOf(one.path)}`;
+    if (one.page) {
+      files.set(jsonOf(one.path), json({ format: DATA_FORMAT, kind: 'page', path: one.path, language: one.language, title: one.page.title, description: one.page.description, blocks: one.page.blocks, html }));
+      pages.push({ path: one.path, language: one.language, title: one.page.title, data: at });
+    } else if (one.type && one.post) {
+      files.set(jsonOf(one.path), json({ format: DATA_FORMAT, kind: 'entry', ...entryData(one.post, one.type, one.path, one.language, html) }));
+    } else if (one.type && one.list) {
+      const type = one.type;
+      const entries = one.list.map((post) => ({ ...entryData(post, type, entryPath(type, post.slug), one.language), data: `/${jsonOf(entryPath(type, post.slug))}` }));
+      files.set(jsonOf(one.path), json({ format: DATA_FORMAT, kind: 'list', path: one.path, language: one.language, type: { id: type.id, name: type.name }, entries }));
+      lists.push({ type: type.id, name: type.name, path: one.path, language: one.language, data: at });
+    }
+  }
+  files.set('site.json', json({ format: DATA_FORMAT, kind: 'site', name: site.name, url: site.url, language: site.language, languages: site.languages, pages, types: lists }));
+}
+
+/** When pages and entries were last published, as the store keeps it (ADR 0058 d3). */
 export interface PublishedTimes {
   /** By the main page's address. */
   pages?: Record<string, string>;
@@ -368,7 +437,7 @@ export interface PublishedTimes {
 
 /**
  * The sitemap: each address, the day it was last published when that is
- * known, and the site's own pictures it shows (ADR 0057 d3). A picture on
+ * known, and the site's own pictures it shows (ADR 0058 d3). A picture on
  * another site is that site's to list.
  */
 function sitemapFile(site: Site, paths: string[], about: Map<string, { at?: string | undefined; images: string[] }>): string {
@@ -389,7 +458,7 @@ function sitemapFile(site: Site, paths: string[], about: Map<string, { at?: stri
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset ${spaces}>\n${urls.join('\n')}\n</urlset>\n`;
 }
 
-/** `robots.txt`: every page may be read, then the owner's own lines (ADR 0057 d5), then where the sitemap is. */
+/** `robots.txt`: every page may be read, then the owner's own lines (ADR 0058 d5), then where the sitemap is. */
 export function robotsFile(site: Site): string {
   const own = site.robots ? `${site.robots}\n` : '';
   return `User-agent: *\nAllow: /\n${own}${site.url ? `\nSitemap: ${site.url}/sitemap.xml\n` : ''}`;
@@ -404,15 +473,7 @@ export function robotsFile(site: Site): string {
  * someone's files.
  */
 export async function exportSite(store: Store, outDir: string, warn: (line: string) => void = () => {}): Promise<string[]> {
-  const files = await publishedSite(store);
-  // A link that would lead nowhere is not published quietly either (ADR 0029).
-  const { problems, warnings } = describeCheck(await fullCheck(store, files));
-  if (problems.length) throw new Error(`Nothing was exported. A link leads to an address the site does not have:\n${problems.map((p) => `  ${p}`).join('\n')}`);
-  for (const line of warnings) warn(line);
-  // A page behind a password is not written out: a static host cannot ask for it (ADR 0043).
-  const frame = String(files.get('404.html'));
-  for (const [path, contents] of files) if (typeof contents === 'string' && lockOf(contents) !== null) files.set(path, lockedPage(frame, null));
-
+  const files = await exportedFiles(store, warn);
   const existing = await readdir(outDir).catch(() => [] as string[]);
   if (existing.length > 0 && !existing.includes(MARKER)) {
     throw new Error(`${outDir} is not empty and was not made by an export; choose another folder`);
@@ -426,6 +487,23 @@ export async function exportSite(store: Store, outDir: string, warn: (line: stri
     await Bun.write(target, contents);
   }
   return [...files.keys()].sort();
+}
+
+/**
+ * The files a static export writes, in memory: checked first, and a page
+ * behind a password left out. What the folder gets, and the ZIP the admin
+ * gives (ADR 0057 d4).
+ */
+export async function exportedFiles(store: Store, warn: (line: string) => void = () => {}): Promise<Map<string, string | Uint8Array>> {
+  const files = await publishedSite(store);
+  // A link that would lead nowhere is not published quietly either (ADR 0029).
+  const { problems, warnings } = describeCheck(await fullCheck(store, files));
+  if (problems.length) throw new Error(`Nothing was exported. A link leads to an address the site does not have:\n${problems.map((p) => `  ${p}`).join('\n')}`);
+  for (const line of warnings) warn(line);
+  // A page behind a password is not written out: a static host cannot ask for it (ADR 0043).
+  const frame = String(files.get('404.html'));
+  for (const [path, contents] of files) if (typeof contents === 'string' && lockOf(contents) !== null) files.set(path, lockedPage(frame, null));
+  return files;
 }
 
 /** What is wrong with the built site, and what of it only its own server answers (ADR 0029, ADR 0044). */

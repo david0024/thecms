@@ -50,11 +50,11 @@ export interface ImageValue {
 export interface LinkValue {
   label: string;
   href: string;
-  /** Search engines are asked not to follow it: `rel="nofollow"` (ADR 0057 d6). */
+  /** Search engines are asked not to follow it: `rel="nofollow"` (ADR 0058 d6). */
   nofollow?: true;
 }
 
-/** The `rel` a link is drawn with: `nofollow` when the owner ticked it (ADR 0057 d6). */
+/** The `rel` a link is drawn with: `nofollow` when the owner ticked it (ADR 0058 d6). */
 export const relOf = (link: { nofollow?: true } | null | undefined): string | undefined => (link?.nofollow ? 'nofollow' : undefined);
 
 /** A file a block uses: where it is, and the words a link to it shows. */
@@ -473,7 +473,7 @@ function fieldPieces(field: Field, value: unknown): string[] {
 }
 
 /**
- * The description the site writes for a page that has none (ADR 0057 d1):
+ * The description the site writes for a page that has none (ADR 0058 d1):
  * its words, each heading or line ended as a sentence, so that a title does
  * not run into the paragraph under it, cut where a description ends.
  */
@@ -496,7 +496,7 @@ export function describeBlocks(blocks: Block[], max = 160): string {
 
 /**
  * At most `max` letters of `text`: whole sentences when the first ones fill at
- * least half of it, or else whole words and "…" (ADR 0057 d1). A sentence ends
+ * least half of it, or else whole words and "…" (ADR 0058 d1). A sentence ends
  * at ".", "!" or "?" followed by a space.
  */
 export function cutAt(text: string, max: number): string {

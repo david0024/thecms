@@ -33,7 +33,7 @@ let {
 const at = (name: string): string => (prefix ? `${prefix}.${name}` : name);
 const text = (name: string): string => (getPath(content, name) as string | undefined) ?? '';
 const part = (name: string, key: string): string => ((getPath(content, name) as Record<string, string> | null)?.[key] ?? '') as string;
-/** A link field as it stands, its choice for search engines with it (ADR 0057 d6). */
+/** A link field as it stands, its choice for search engines with it (ADR 0058 d6). */
 const linkAt = (name: string): { label: string; href: string; nofollow?: true | undefined } => {
   const value = getPath(content, name) as { label?: string; href?: string; nofollow?: true } | null | undefined;
   return { label: value?.label ?? '', href: value?.href ?? '', ...(value?.nofollow ? { nofollow: true as const } : {}) };

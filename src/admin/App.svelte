@@ -68,6 +68,7 @@ import ContentTypes from './ContentTypes.svelte';
 import EntryFieldsForm from './EntryFieldsForm.svelte';
 import ImageField from './ImageField.svelte';
 import ImportScreen from './ImportScreen.svelte';
+import ExportScreen from './ExportScreen.svelte';
 import MediaLibrary from './MediaLibrary.svelte';
 import People from './People.svelte';
 import Profile from './Profile.svelte';
@@ -94,7 +95,7 @@ let kind = $state<Kind>('page');
 let translation = $state<TranslationInfo | null>(null);
 const fixed = $derived(translation !== null && !translation.split);
 /** Which section of the admin is showing: a list, or the builder with one page or post open. */
-let view = $state<'pages' | 'sections' | 'forms' | 'layouts' | 'media' | 'messages' | 'backups' | 'stats' | 'comments' | 'people' | 'me' | 'review' | 'types' | 'import' | 'extensions' | 'edit' | `list:${string}` | `ext:${string}`>('pages');
+let view = $state<'pages' | 'sections' | 'forms' | 'layouts' | 'media' | 'messages' | 'backups' | 'stats' | 'comments' | 'people' | 'me' | 'review' | 'types' | 'import' | 'export' | 'extensions' | 'edit' | `list:${string}` | `ext:${string}`>('pages');
 let selected = $state<string | null>(null);
 /** The form the Forms screen opens on, when a form block asked for it (ADR 0049). */
 let formAsked = $state('');
@@ -727,6 +728,7 @@ onMount(() => {
         <button type="button" aria-current={view === 'layouts' ? 'page' : undefined} onclick={() => (view = 'layouts')} data-nav="layouts">{t.nav.layouts}</button>
         <button type="button" aria-current={view === 'types' ? 'page' : undefined} onclick={() => (view = 'types')} data-nav="types">{t.ctypes.heading}</button>
         <button type="button" aria-current={view === 'import' ? 'page' : undefined} onclick={() => (view = 'import')} data-nav="import">{t.nav.import}</button>
+        <button type="button" aria-current={view === 'export' ? 'page' : undefined} onclick={() => (view = 'export')} data-nav="export">{t.nav.export}</button>
         <button type="button" aria-current={view === 'extensions' || view.startsWith('ext:') ? 'page' : undefined} onclick={() => (view = 'extensions')} data-nav="extensions">{t.ext.heading}</button>
         <button type="button" aria-current={view === 'backups' ? 'page' : undefined} onclick={() => (view = 'backups')} data-nav="backups">{t.nav.backups}</button>
         {#if site.accounts}
@@ -773,6 +775,8 @@ onMount(() => {
       <Comments site={site.site} entries={site.entries} />
     {:else if view === 'import'}
       <ImportScreen ondone={reload} />
+    {:else if view === 'export'}
+      <ExportScreen site={site.site} />
     {:else if view === 'people'}
       <People />
     {:else if view === 'review'}

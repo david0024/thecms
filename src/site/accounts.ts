@@ -53,7 +53,7 @@ export const cookieOf = (request: Request, name = SESSION_COOKIE): string => {
  * own entries by the server's other check (ADR 0055).
  */
 export function ownerOnly(method: string, path: string): boolean {
-  if (path.startsWith('/api/import') || path === '/api/messages' || path.startsWith('/api/users') || path.startsWith('/api/backups')) return true;
+  if (path.startsWith('/api/import') || path.startsWith('/api/export/') || path === '/api/messages' || path.startsWith('/api/users') || path.startsWith('/api/backups')) return true;
   return (path === '/api/theme' || path === '/api/theme/publish' || path === '/api/site' || path === '/api/redirects' || path === '/api/forms' || path === '/api/performance') && method !== 'GET';
 }
 

@@ -28,7 +28,7 @@ function spansOf(node: DomNode, marks: Mark[], href: string, out: Span[], nofoll
       const text = (child.textContent ?? '').replace(/ /g, ' ');
       if (!text) continue;
       const last = out[out.length - 1];
-      // A link search engines are asked not to follow keeps that as its own (ADR 0057 d6).
+      // A link search engines are asked not to follow keeps that as its own (ADR 0058 d6).
       const unfollowed = !!href && nofollow;
       if (last && (last.href ?? '') === href && !!last.nofollow === unfollowed && (last.marks ?? []).join() === marks.join()) last.text += text;
       else out.push({ text, ...(marks.length ? { marks: [...marks] } : {}), ...(href ? { href } : {}), ...(unfollowed ? { nofollow: true as const } : {}) });

@@ -26,7 +26,7 @@ export interface SiteCheck {
   seo?: SeoProblem[];
 }
 
-/** A title too long, a title another page has too, a home page hidden from search engines, or a robots.txt that shuts every page (ADR 0057 d5). */
+/** A title too long, a title another page has too, a home page hidden from search engines, or a robots.txt that shuts every page (ADR 0058 d5). */
 export interface SeoProblem {
   problem: 'long' | 'duplicate' | 'hidden' | 'blocked';
   /** The pages, by address. */

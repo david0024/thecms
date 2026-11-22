@@ -1028,7 +1028,7 @@ export class Store {
     return placePages(await this.site(), pages);
   }
 
-  /** When each published page and entry was last published (ADR 0057 d3): the sitemap's dates. */
+  /** When each published page and entry was last published (ADR 0058 d3): the sitemap's dates. */
   async publishedTimes(): Promise<{ pages: Record<string, string>; entries: Record<string, string> }> {
     const pages = await this.rows<{ slug: string; published_at: string | null }>('SELECT slug, published_at FROM pages WHERE published IS NOT NULL');
     const entries = await this.rows<{ type: string; slug: string; published_at: string | null }>('SELECT type, slug, published_at FROM entries WHERE published IS NOT NULL');
@@ -1870,6 +1870,37 @@ export class Store {
     await this.run('DELETE FROM comments WHERE LOWER(email) = ?', [email.trim().toLowerCase()]);
     await this.run('DELETE FROM comment_languages WHERE id NOT IN (SELECT id FROM comments)');
     return found;
+  }
+
+  /**
+   * Keeps a comment that was already shown on another site (ADR 0057 d3): approved, at the time it
+   * was written, and without the address it was sent from, which a content export never holds.
+   */
+  async keepShownComment(input: { type: string; entry: string; name: string; body: string; at: string; language?: string }): Promise<void> {
+    const at = new Date(input.at);
+    const id = crypto.randomUUID();
+    await this.run('INSERT INTO comments (id, type, entry, name, email, body, consent, at, approved) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', [
+      id,
+      str(input.type, 60),
+      str(input.entry, 200),
+      str(input.name, 120).trim(),
+      '',
+      str(input.body, 3000).trim(),
+      '',
+      (Number.isNaN(at.getTime()) ? new Date() : at).toISOString(),
+      1,
+    ]);
+    if (input.language) await this.run('INSERT INTO comment_languages (id, language) VALUES (?, ?)', [id, str(input.language, 20)]);
+  }
+
+  /**
+   * Every page, section or entry as it is kept: its draft and what is published, as stored
+   * (ADR 0057 d1). What a content export writes, before it is cleaned for the file.
+   */
+  async documents(table: 'pages' | 'sections' | 'entries'): Promise<{ type: string; slug: string; draft: unknown; published: unknown }[]> {
+    const order = table === 'entries' ? 'type, slug' : 'position, slug';
+    const rows = await this.rows<Row>(`SELECT ${table === 'entries' ? 'type, ' : ''}slug, draft, published FROM ${table} ORDER BY ${order}`);
+    return rows.map((r) => ({ type: table === 'entries' ? String(r.type) : '', slug: String(r.slug), draft: JSON.parse(String(r.draft)), published: r.published === null || r.published === undefined ? null : JSON.parse(String(r.published)) }));
   }
 
   /** What the site shows: the approved comments of each entry, by `type/entry`, oldest first, without their addresses. */

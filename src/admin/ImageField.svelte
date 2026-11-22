@@ -3,7 +3,7 @@
  * One image field: upload a picture, pick one already uploaded, or point at
  * an address elsewhere. The words describing the picture belong to the place
  * it is used, so they are kept with the block, not with the file. A place
- * that has none is offered words from the file's name (ADR 0057 d2).
+ * that has none is offered words from the file's name (ADR 0058 d2).
  */
 import { altFromName, type ImageValue } from '../core/index.ts';
 import { api, type MediaItem, signedIn } from './api.ts';

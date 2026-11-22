@@ -124,6 +124,11 @@ import Redirects from './Redirects.svelte';
   <textarea rows="3" maxlength="5000" value={site.robots ?? ''} onchange={(e) => set({ robots: cleanRobots(e.currentTarget.value) || undefined })} data-site-robots></textarea>
 </label>
 <small>{t.site.robotsHint}</small>
+<label class="check">
+  <input type="checkbox" checked={site.data !== false} onchange={(e) => set({ data: e.currentTarget.checked ? undefined : false })} data-site-data />
+  <span>{t.site.data}</span>
+</label>
+<small>{t.site.dataHint}</small>
 
 <h3>{t.menu.title}</h3>
 <div class="field" data-menu-builder>

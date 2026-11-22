@@ -33,7 +33,10 @@ import { backupHeader, backupName, backups, backupsFolder, isBackupName } from '
 import { DEMO_PAGES, DEMO_POSTS, DEMO_SITE } from './demo.ts';
 import { fetchImage, runImport } from '../import/run.ts';
 import { planImport } from '../import/wxr.ts';
-import { exportSite } from './export.ts';
+import { exportedFiles, exportSite } from './export.ts';
+import { isContentFile, readContentFile, runContentImport } from '../import/thecms.ts';
+import { exportContent } from './transfer.ts';
+import { zipFiles } from './zip.ts';
 import { startForms } from './forms.ts';
 import { startRuntime } from './runtime.ts';
 import { openShared } from './shared.ts';
@@ -60,10 +63,12 @@ Usage:
   ${NAME} setup-link <site.db> --public=https://cms.example.com
   ${NAME} reset-link <site.db> <email> --public=https://cms.example.com
   ${NAME} theme <site.db> <theme.json>
-  ${NAME} export <site.db> <folder>
+  ${NAME} export <site.db> <folder | site.zip>
+  ${NAME} export <site.db> <content.thecms.json> [--parts=pages,sections,forms,design,type:posts]
   ${NAME} forms <site.db> [port]
   ${NAME} run <site.db> [--port=4323] [--host=127.0.0.1]
   ${NAME} import <site.db> <export.xml> [--no-images] [--types=portfolio,team] [--categories=projects]
+  ${NAME} import <site.db> <content.thecms.json>
   ${NAME} extension <site.db> list
   ${NAME} extension <site.db> install <file> [--yes]
   ${NAME} extension <site.db> on|off|remove <name>
@@ -239,10 +244,26 @@ export async function main(args: string[]): Promise<{ stop: () => void } | undef
     if (!existsSync(extra)) throw new Error(`${extra} does not exist`);
     // Read and understood before anything is written: a file that is not an export creates nothing.
     const listed = (flag: string): string[] => flags.find((f) => f.startsWith(`${flag}=`))?.slice(flag.length + 1).split(',').map((name) => name.trim()).filter(Boolean) ?? [];
-    const plan = planImport(await Bun.file(extra).text(), new Date().toISOString().slice(0, 10), { types: listed('--types'), categories: listed('--categories') });
+    const text = await Bun.file(extra).text();
+    // A thecms content export goes into a new site or one that has content (ADR 0057 d2).
+    const content = isContentFile(text) ? readContentFile(text) : null;
+    const plan = content ? null : planImport(text, new Date().toISOString().slice(0, 10), { types: listed('--types'), categories: listed('--categories') });
     const store = await Store.open(dbPath);
     try {
       const fresh = await store.isEmpty();
+      if (content) {
+        if (fresh) {
+          await store.setTheme(DEFAULT_THEME);
+          await store.publishTheme();
+        }
+        if (content.media.length) console.log(`Storing ${content.media.length} files...`);
+        const report = await runContentImport(store, content, { fresh });
+        console.log(`Imported ${report.pages} pages, ${report.posts} posts${report.entries ? ` and ${report.entries} entries of other types` : ''} into ${shown} (${report.drafts} of them as drafts), with ${report.images} files.${report.menu ? ' The menu came over too.' : ''}`);
+        if (report.notes.length) console.log(`\nWhat to know:\n${report.notes.map((n) => `  - ${n}`).join('\n')}`);
+        console.log(`\nNext: ${NAME} edit ${shown}`);
+        return;
+      }
+      if (!plan) return;
       if (fresh) {
         await store.setTheme(DEFAULT_THEME);
         await store.publishTheme();
@@ -351,6 +372,16 @@ export async function main(args: string[]): Promise<{ stop: () => void } | undef
       if (command === 'theme') {
         await store.setTheme(await Bun.file(extra).json());
         console.log(`Theme is now "${(await store.publishTheme()).name}".`);
+      } else if (extra.endsWith('.json')) {
+        // The content in one open file, to bring into another site (ADR 0057 d1).
+        const parts = option('parts').split(',').map((p) => p.trim()).filter(Boolean);
+        const file = await exportContent(store, parts);
+        await Bun.write(extra, JSON.stringify(file));
+        console.log(`Wrote the content of ${shown} to ${extra}: ${file.pages?.length ?? 0} pages, ${file.types.reduce((n, t) => n + t.entries.length, 0)} entries, ${file.media.length} files.`);
+      } else if (extra.endsWith('.zip')) {
+        const files = await exportedFiles(store, (line) => console.log(`Note: ${line}`));
+        await Bun.write(extra, zipFiles(files));
+        console.log(`Wrote ${files.size} files into ${extra}.`);
       } else {
         const files = await exportSite(store, extra, (line) => console.log(`Note: ${line}`));
         console.log(`Wrote ${files.length} files to ${extra}.`);

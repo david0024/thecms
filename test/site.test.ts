@@ -124,7 +124,7 @@ describe('export', () => {
   test('writes the site, and replaces its own earlier export', async () => {
     const out = join(dir, 'out');
     const first = await exportSite(store, out);
-    expect(first).toEqual(['.thecms-export', '404.html', 'about/index.html', 'assets/site.css', 'contact/index.html', 'index.html', 'robots.txt', 'sitemap.xml']);
+    expect(first).toEqual(['.thecms-export', '404.html', 'about/index.html', 'about/index.json', 'assets/site.css', 'contact/index.html', 'contact/index.json', 'index.html', 'index.json', 'robots.txt', 'site.json', 'sitemap.xml']);
     expect(await Bun.file(join(out, 'about/index.html')).text()).toContain('Three people and a workshop');
 
     // Unpublished, the page leaves links to it on the others: nothing is written, the last export stays.
