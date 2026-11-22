@@ -80,7 +80,7 @@ It is not an extension now because the extension format cannot yet carry it:
 an event for each page served (ADR 0041 d4 sends events after a change, and
 never a visitor's address), and a view kind for a chart (ADR 0031). When
 both exist, the file moves into an extension and the table becomes its
-collection.
+collection. ADR 0060 d6 makes this the first step of stage 3.
 
 ### d5. A static export says it loses them
 
