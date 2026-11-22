@@ -5,7 +5,7 @@
  * it links to. Whoever draws it has already asked `fieldShown`.
  */
 import type { ContentType, FileValue, ImageValue, LinkValue, Post, TypeField } from '../core/index.ts';
-import { entryPath, linkedEntries } from '../core/index.ts';
+import { entryPath, linkedEntries, relOf } from '../core/index.ts';
 import { getLists, picture } from './editing.ts';
 import { dateText, wordsFor } from './words.ts';
 
@@ -25,7 +25,7 @@ const number = (n: number): string => {
 </script>
 
 {#if field.kind === 'link'}
-  <a href={(value as LinkValue).href}>{(value as LinkValue).label}</a>
+  <a href={(value as LinkValue).href} rel={relOf(value as LinkValue)}>{(value as LinkValue).label}</a>
 {:else if field.kind === 'image'}{@const pa = pic((value as ImageValue).src, 'card')}
   <img src={(value as ImageValue).src} srcset={pa.srcset} sizes={pa.sizes} width={pa.width} height={pa.height} alt={(value as ImageValue).alt} loading="lazy" decoding="async" />
 {:else if field.kind === 'file'}

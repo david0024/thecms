@@ -1028,6 +1028,16 @@ export class Store {
     return placePages(await this.site(), pages);
   }
 
+  /** When each published page and entry was last published (ADR 0057 d3): the sitemap's dates. */
+  async publishedTimes(): Promise<{ pages: Record<string, string>; entries: Record<string, string> }> {
+    const pages = await this.rows<{ slug: string; published_at: string | null }>('SELECT slug, published_at FROM pages WHERE published IS NOT NULL');
+    const entries = await this.rows<{ type: string; slug: string; published_at: string | null }>('SELECT type, slug, published_at FROM entries WHERE published IS NOT NULL');
+    return {
+      pages: Object.fromEntries(pages.filter((row) => row.published_at).map((row) => [row.slug, String(row.published_at)])),
+      entries: Object.fromEntries(entries.filter((row) => row.published_at).map((row) => [`${row.type}/${row.slug}`, String(row.published_at)])),
+    };
+  }
+
   /** What each published translation still shows in the main language, by its address (ADR 0032 d6). */
   async untranslated(): Promise<{ slug: string; language: string; missing: number }[]> {
     const site = await this.site();

@@ -16,6 +16,8 @@ export interface Span {
   marks?: Mark[];
   /** A link; checked with `safeHref`. */
   href?: string;
+  /** The link asks search engines not to follow it: `rel="nofollow"` (ADR 0057 d6). Only with `href`. */
+  nofollow?: true;
 }
 
 export type RichNode =
@@ -43,6 +45,7 @@ function spans(input: unknown): Span[] {
     }
     const href = safeHref(raw.href);
     if (href) span.href = href;
+    if (href && raw.nofollow === true) span.nofollow = true;
     out.push(span);
   }
   return out;

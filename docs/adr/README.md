@@ -58,3 +58,4 @@ work it decides. A new one that changes an old one says so at its top.
 - [ADR 0054 — Entries in more than one language](0054-entries-in-more-than-one-language.md)
 - [ADR 0055 — Authors and contributors](0055-authors-and-contributors.md)
 - [ADR 0056 — Archives by author and by date](0056-archives-by-author-and-date.md)
+- [ADR 0057 — What the site writes for search engines by itself](0057-what-the-site-writes-for-search-engines.md)

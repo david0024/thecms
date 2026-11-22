@@ -64,7 +64,7 @@ async function run(): Promise<void> {
       <p>{t.check.seo}</p>
       <ul data-check-seo>
         {#each check.seo as s (`${s.problem}${s.pages.join()}`)}
-          <li data-seo-problem={s.problem}>{#if s.problem !== 'hidden'}<small>{pages(s.pages)}:</small> {/if}{say(s.problem === 'long' ? t.check.seoLong : s.problem === 'duplicate' ? t.check.seoDuplicate : t.check.seoHidden, { title: s.title ?? '', count: String(LONG_TITLE) })}</li>
+          <li data-seo-problem={s.problem}>{#if s.problem !== 'hidden' && s.problem !== 'blocked'}<small>{pages(s.pages)}:</small> {/if}{say(s.problem === 'long' ? t.check.seoLong : s.problem === 'duplicate' ? t.check.seoDuplicate : s.problem === 'blocked' ? t.check.seoBlocked : t.check.seoHidden, { title: s.title ?? '', count: String(LONG_TITLE) })}</li>
         {/each}
       </ul>
     {/if}

@@ -158,6 +158,9 @@ function documentHtml(site: Site, head: Head, body: string, css: string): string
     '<meta name="viewport" content="width=device-width, initial-scale=1">',
     `<title>${esc(head.title)}</title>`,
     head.noindex ? '<meta name="robots" content="noindex">' : '',
+    // The codes that prove the site is the owner's are read on the home page only (ADR 0057 d4).
+    head.path === '/' && site.verify?.google ? `<meta name="google-site-verification" content="${esc(site.verify.google)}">` : '',
+    head.path === '/' && site.verify?.bing ? `<meta name="msvalidate.01" content="${esc(site.verify.bing)}">` : '',
     head.description ? `<meta name="description" content="${esc(head.description)}">` : '',
     canonical ? `<link rel="canonical" href="${esc(canonical)}">` : '',
     `<meta property="og:title" content="${esc(head.shareTitle)}">`,

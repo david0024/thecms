@@ -2,9 +2,10 @@
 /**
  * One image field: upload a picture, pick one already uploaded, or point at
  * an address elsewhere. The words describing the picture belong to the place
- * it is used, so they are kept with the block, not with the file.
+ * it is used, so they are kept with the block, not with the file. A place
+ * that has none is offered words from the file's name (ADR 0057 d2).
  */
-import type { ImageValue } from '../core/index.ts';
+import { altFromName, type ImageValue } from '../core/index.ts';
 import { api, type MediaItem, signedIn } from './api.ts';
 import { t } from './messages.ts';
 import { uploadImage } from './sizes.ts';
@@ -14,12 +15,15 @@ let {
   value,
   onchange,
   library: only = false,
+  named = true,
 }: {
   label: string;
   value: ImageValue | null;
   onchange: (value: ImageValue) => void;
   /** Only an image of the media library, without words of its own: a person's picture (ADR 0056 d2). */
   library?: boolean;
+  /** False: a picture whose words, left empty, are already right without them, such as the logo, read as the site's name. */
+  named?: boolean;
 } = $props();
 
 let library = $state.raw<MediaItem[] | null>(null);
@@ -29,6 +33,8 @@ let fileInput: HTMLInputElement | undefined = $state();
 
 const src = $derived(value?.src ?? '');
 const alt = $derived(value?.alt ?? '');
+/** The words a picture keeps, or else those its file's name gives; a library-only field keeps none. */
+const offered = (name: string): string => (only || !named ? alt : alt || altFromName(name));
 
 async function upload(event: Event): Promise<void> {
   const file = (event.currentTarget as HTMLInputElement).files?.[0];
@@ -38,7 +44,7 @@ async function upload(event: Event): Promise<void> {
   try {
     const { item, media } = await uploadImage(file);
     if (library) library = media.filter((m) => m.kind === 'image');
-    onchange({ src: item.path, alt });
+    onchange({ src: item.path, alt: offered(file.name) });
   } catch (error) {
     problem = error instanceof Error ? error.message : String(error);
   }
@@ -86,7 +92,7 @@ async function remove(name: string): Promise<void> {
       <ul class="grid">
         {#each library as item (item.name)}
           <li>
-            <button type="button" class="pick" class:current={item.path === src} onclick={() => onchange({ src: item.path, alt })} title={item.label} data-media={item.name}>
+            <button type="button" class="pick" class:current={item.path === src} onclick={() => onchange({ src: item.path, alt: offered(item.label) })} title={item.label} data-media={item.name}>
               <img src={item.path} alt={item.label} loading="lazy" />
             </button>
             {#if signedIn.staff}<button type="button" class="quiet drop" onclick={() => remove(item.name)} title={t.media.remove} aria-label={`${t.media.remove}: ${item.label}`}>✕</button>{/if}

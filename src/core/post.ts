@@ -5,7 +5,7 @@
  * do in a post.
  */
 import type { Byline } from './archive.ts';
-import { type Block, blocksText, cleanImage, type ImageValue, mediaSources, normalizeBlocks } from './blocks.ts';
+import { type Block, blocksText, cleanImage, describeBlocks, type ImageValue, mediaSources, normalizeBlocks } from './blocks.ts';
 import type { Words } from './localize.ts';
 import { normalizeRichText } from './richtext.ts';
 import { cleanSeo, type Seo } from './seo.ts';
@@ -181,7 +181,8 @@ export const FEED_PATH = `/${BLOG_SLUG}/feed.xml`;
 
 /** What a list shows under a post's title. */
 export const postExcerpt = (post: Post): string => post.excerpt || blocksText(post.blocks, 200);
-export const postDescription = (post: Post): string => post.description || postExcerpt(post);
+/** What search engines are told: the description, else the excerpt the owner wrote, else the entry's first words, cut where a description ends (ADR 0057 d1). */
+export const postDescription = (post: Post): string => post.description || post.excerpt || describeBlocks(post.blocks);
 
 /** Newest first; posts of the same day in a fixed order. */
 export const newestFirst = (posts: Post[]): Post[] =>

@@ -1,5 +1,5 @@
 <script lang="ts">
-import { type Block, type HeroContent, isLink } from '../core/index.ts';
+import { type Block, type HeroContent, isLink, relOf } from '../core/index.ts';
 import { isEditing, marker, picture } from './editing.ts';
 
 let { block }: { block: Block } = $props();
@@ -18,8 +18,8 @@ const shown = (link: HeroContent['action']): link is NonNullable<HeroContent['ac
     {#if c.subtitle || editing}<p class="lead" data-edit={mark('subtitle')} data-multiline={mark('1')}>{c.subtitle}</p>{/if}
     {#if shown(c.action) || shown(c.secondaryAction)}
       <p class="actions">
-        {#if shown(c.action)}<a class="button" href={c.action.href || undefined}><span data-edit={mark('action.label')}>{c.action.label}</span></a>{/if}
-        {#if shown(c.secondaryAction)}<a class="button quiet" href={c.secondaryAction.href || undefined}><span data-edit={mark('secondaryAction.label')}>{c.secondaryAction.label}</span></a>{/if}
+        {#if shown(c.action)}<a class="button" href={c.action.href || undefined} rel={relOf(c.action)}><span data-edit={mark('action.label')}>{c.action.label}</span></a>{/if}
+        {#if shown(c.secondaryAction)}<a class="button quiet" href={c.secondaryAction.href || undefined} rel={relOf(c.secondaryAction)}><span data-edit={mark('secondaryAction.label')}>{c.secondaryAction.label}</span></a>{/if}
       </p>
     {/if}
   </div>

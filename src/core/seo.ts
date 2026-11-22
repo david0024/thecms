@@ -31,3 +31,28 @@ export function cleanSeo(raw: unknown): Seo {
     ...(given.noindex === true ? { noindex: true as const } : {}),
   };
 }
+
+/**
+ * Words for a picture from its file's name, offered when it is uploaded or
+ * picked and its place has none (ADR 0057 d2): `sala-de-nunti_2.jpg` is
+ * "Sala de nunti". A name a camera or a phone gave (`IMG_1234`, `DSC0042`,
+ * `PXL_20241102_…`, `Screenshot …`) or one made only of digits says nothing,
+ * and gives nothing.
+ */
+export function altFromName(name: string): string {
+  const base = (name.split(/[\\/]/).pop() ?? '')
+    .replace(/\.[a-z0-9]{2,5}$/i, '')
+    // The sizes a program adds (`-1024x768`, `@2x`), and a copy's number (`-1`, ` (2)`).
+    .replace(/[-_ ]?\d{2,5}x\d{2,5}$/i, '')
+    .replace(/@\dx$/i, '')
+    .replace(/(?:[-_ ]\d{1,2}| \(\d+\))$/, '');
+  const spaced = base.replace(/[-_]/g, ' ');
+  if (/^(img|dsc|dscn|dscf|pxl|mvimg|screenshot|captur[ae]|whatsapp|signal|untitled)(?!\p{L})/iu.test(spaced)) return '';
+  // "photo 3", "image-12": a word that says only that it is a picture.
+  if (/^(photo|image|picture|pic|foto|poza|imagine)[\s\d]*$/iu.test(spaced)) return '';
+  const words = base.replace(/[-_.+]+/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!/\p{L}{2}/u.test(words) || /^[\d\s]+$/.test(words)) return '';
+  // A long run of letters and digits is a generated id, not words.
+  if (words.split(' ').some((word) => word.length > 20 || (/\d/.test(word) && /\p{L}/u.test(word) && word.length > 8))) return '';
+  return `${words[0]?.toLocaleUpperCase() ?? ''}${words.slice(1)}`.slice(0, 300);
+}

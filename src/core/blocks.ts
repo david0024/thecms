@@ -50,7 +50,12 @@ export interface ImageValue {
 export interface LinkValue {
   label: string;
   href: string;
+  /** Search engines are asked not to follow it: `rel="nofollow"` (ADR 0057 d6). */
+  nofollow?: true;
 }
+
+/** The `rel` a link is drawn with: `nofollow` when the owner ticked it (ADR 0057 d6). */
+export const relOf = (link: { nofollow?: true } | null | undefined): string | undefined => (link?.nofollow ? 'nofollow' : undefined);
 
 /** A file a block uses: where it is, and the words a link to it shows. */
 export interface FileValue {
@@ -324,7 +329,8 @@ export function cleanImage(raw: unknown): ImageValue | null {
 export function cleanLink(raw: unknown): LinkValue | null {
   const label = isObject(raw) ? str(raw.label, 80).trim() : '';
   const href = isObject(raw) ? safeHref(raw.href) : '';
-  return label || href ? { label, href } : null;
+  const nofollow = isObject(raw) && raw.nofollow === true && !!href;
+  return label || href ? { label, href, ...(nofollow ? { nofollow: true as const } : {}) } : null;
 }
 
 function cleanField(field: Field, raw: unknown): unknown {
@@ -456,8 +462,50 @@ export function blocksText(blocks: Block[], max = 160): string {
     }
   };
   walk(blocks);
-  const all = parts.join(' ').replace(/\s+/g, ' ').trim();
-  return all.length > max ? `${all.slice(0, max).replace(/\s+\S*$/, '')}…` : all;
+  return cutAt(parts.join(' ').replace(/\s+/g, ' ').trim(), max);
+}
+
+/** Each run of words a field holds on its own: a line of text, each paragraph, heading or list item of rich text. */
+function fieldPieces(field: Field, value: unknown): string[] {
+  if (field.kind === 'richtext') return ((value as RichText) ?? []).flatMap((node) => (node.type === 'list' ? node.items.map((item) => richTextPlain([{ type: 'paragraph', children: item }])) : [richTextPlain([node])]));
+  if (field.kind === 'list') return Array.isArray(value) ? value.flatMap((item) => Object.entries(field.item).flatMap(([k, f]) => fieldPieces(f, (item as Record<string, unknown>)[k]))) : [];
+  return [fieldText(field, value)];
+}
+
+/**
+ * The description the site writes for a page that has none (ADR 0057 d1):
+ * its words, each heading or line ended as a sentence, so that a title does
+ * not run into the paragraph under it, cut where a description ends.
+ */
+export function describeBlocks(blocks: Block[], max = 160): string {
+  const pieces: string[] = [];
+  const walk = (list: Block[]): void => {
+    for (const b of list) {
+      const def: BlockDef = BLOCKS[b.type];
+      for (const [name, field] of Object.entries(def.fields)) pieces.push(...fieldPieces(field, b.content[name]));
+      if (b.children) walk(b.children);
+    }
+  };
+  walk(blocks);
+  const sentences = pieces
+    .map((piece) => piece.replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+    .map((piece) => (/[.!?…:;]$/.test(piece) ? piece : `${piece}.`));
+  return cutAt(sentences.join(' '), max);
+}
+
+/**
+ * At most `max` letters of `text`: whole sentences when the first ones fill at
+ * least half of it, or else whole words and "…" (ADR 0057 d1). A sentence ends
+ * at ".", "!" or "?" followed by a space.
+ */
+export function cutAt(text: string, max: number): string {
+  if (text.length <= max) return text;
+  const within = text.slice(0, max + 1);
+  let end = -1;
+  for (const match of within.matchAll(/[.!?…](?=\s)/g)) end = match.index + 1;
+  if (end >= max / 2) return text.slice(0, end);
+  return `${text.slice(0, max).replace(/\s+\S*$/, '')}…`;
 }
 
 /** The address of every image on a page, as written: for knowing which stored images a page uses. */

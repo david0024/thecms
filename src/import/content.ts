@@ -45,7 +45,7 @@ const LOST = {
   shortcode: 'shortcodes, which call a plugin of the old site',
 };
 
-const sameFormat = (a: Span, b: Span): boolean => a.href === b.href && (a.marks ?? []).join() === (b.marks ?? []).join();
+const sameFormat = (a: Span, b: Span): boolean => a.href === b.href && !!a.nofollow === !!b.nofollow && (a.marks ?? []).join() === (b.marks ?? []).join();
 
 /** Spans with their spaces settled: none doubled, none at either end, neighbours with one format joined. */
 function tidy(spans: Span[]): Span[] {
@@ -104,13 +104,13 @@ class Converter {
   }
 
   /** What is inside as formatted text. Images met on the way are set aside in `images`. */
-  private inline(nodes: HtmlNode[], marks: Mark[], href: string, out: Piece[], images: Item[]): void {
+  private inline(nodes: HtmlNode[], marks: Mark[], href: string, out: Piece[], images: Item[], nofollow = false): void {
     for (const node of nodes) {
       if (!isElement(node)) {
         const lines = this.classic ? node.split(/\r?\n/) : [node];
         lines.forEach((line, i) => {
           if (i > 0) out.push('break');
-          if (line) out.push({ text: line, ...(marks.length ? { marks } : {}), ...(href ? { href } : {}) });
+          if (line) out.push({ text: line, ...(marks.length ? { marks } : {}), ...(href ? { href } : {}), ...(href && nofollow ? { nofollow: true as const } : {}) });
         });
         continue;
       }
@@ -125,11 +125,14 @@ class Converter {
       else {
         const mark = MARK_OF[node.tag];
         const inner = mark && !marks.includes(mark) ? [...marks, mark] : marks;
-        const to = node.tag === 'a' && node.attrs.href ? this.ctx.link(node.attrs.href.trim()) : href;
+        const link = node.tag === 'a' && !!node.attrs.href;
+        const to = link ? this.ctx.link((node.attrs.href as string).trim()) : href;
+        // A link WordPress kept as rel="nofollow" (or "sponsored", "ugc") stays one (ADR 0057 d6).
+        const unfollowed = link ? /\b(nofollow|sponsored|ugc)\b/i.test(node.attrs.rel ?? '') : nofollow;
         const apart = !INLINE.has(node.tag);
         // Two blocks side by side are two sets of words, not one run-on word.
         if (apart) out.push({ text: ' ' });
-        this.inline(node.children, inner, to, out, images);
+        this.inline(node.children, inner, to, out, images, unfollowed);
         if (apart) out.push({ text: ' ' });
       }
     }

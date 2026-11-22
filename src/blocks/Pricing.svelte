@@ -1,6 +1,6 @@
 <script lang="ts">
 /** Plans side by side: a name, a price, what it includes (one feature a line), and a button. */
-import { type Block, isLink, type PricingContent } from '../core/index.ts';
+import { type Block, isLink, type PricingContent, relOf } from '../core/index.ts';
 import { isEditing, marker } from './editing.ts';
 
 let { block }: { block: Block } = $props();
@@ -32,7 +32,7 @@ const shown = (link: PricingContent['plans'][number]['action']): link is NonNull
           {#each lines(plan.features) as feature}<li>{feature}</li>{/each}
         </ul>
       {/if}
-      {#if shown(plan.action)}<p class="plan-action"><a class="button" href={plan.action.href || undefined}><span data-edit={mark(`plans.${i}.action.label`)}>{plan.action.label}</span></a></p>{/if}
+      {#if shown(plan.action)}<p class="plan-action"><a class="button" href={plan.action.href || undefined} rel={relOf(plan.action)}><span data-edit={mark(`plans.${i}.action.label`)}>{plan.action.label}</span></a></p>{/if}
     </li>
   {/each}
 </ul>
