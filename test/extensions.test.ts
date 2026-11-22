@@ -17,6 +17,7 @@ import { Store } from '../src/site/store.ts';
 import plain from '../themes/plain.json';
 import { packCommand, packExtension } from '../tools/pack-extension.ts';
 
+const PNG = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='), (c) => c.charCodeAt(0));
 const dir = await mkdtemp(join(tmpdir(), 'thecms-extensions-'));
 afterAll(() => rm(dir, { recursive: true, force: true }));
 const { file } = await packExtension(join(import.meta.dir, 'fixtures', 'extension'), dir);
@@ -29,7 +30,7 @@ describe('a package', () => {
     const { pkg, problems } = parseExtension(raw);
     expect(problems).toEqual([]);
     const m = pkg!.manifest;
-    expect(m.actions.map((a) => `${a.name}:${a.on ?? 'screen'}:${a.timeoutSeconds}`)).toEqual(['louder:block:60', 'title:page:60', 'stamp:page:60', 'ping:screen:60', 'sneak:screen:60', 'slow:screen:1', 'crash:screen:60', 'rotate:screen:60', 'open:screen:60']);
+    expect(m.actions.map((a) => `${a.name}:${a.on ?? 'screen'}:${a.timeoutSeconds}`)).toEqual(['louder:block:60', 'title:page:60', 'stamp:page:60', 'ping:screen:60', 'sneak:screen:60', 'slow:screen:1', 'crash:screen:60', 'rotate:screen:60', 'open:screen:60', 'look:screen:60']);
     expect(m.collections[0]?.fields.map((f) => `${f.key}:${f.kind}:${f.initial}`)).toEqual(['name:text:null', 'key:secret:null', 'loud:boolean:true', 'style:choice:caps']);
     expect(m.views.map((v) => `${v.id}:${v.type}`)).toEqual(['shout.settings:list', 'shout.more:tabs']);
     expect(extensionAsks(m)).toEqual({
@@ -44,6 +45,7 @@ describe('a package', () => {
       routes: [],
       jobs: [],
       events: [],
+      pictures: ['Look'],
     });
     expect(extensionWord(m, 'ro', 'Louder')).toBe('Mai tare');
     expect(extensionWord(m, 'ro-MD', 'Settings')).toBe('Setări');
@@ -166,6 +168,12 @@ describe('an extension installed and run', () => {
       await expect(host.run('shout', 'sneak', { how: 'http' })).rejects.toThrow('calls out over https');
       await expect(host.run('shout', 'sneak', { how: 'write' })).rejects.toThrow('did not declare that it writes "settings"');
       await expect(host.run('shout', 'sneak', { how: 'undeclared' })).rejects.toThrow('did not declare that it reads "users"');
+      await expect(host.run('shout', 'sneak', { how: 'picture' })).rejects.toThrow("did not declare that it sees the site's pictures");
+      // An action that declared it sees a picture of the library, and nothing that is not one (ADR 0059 d3).
+      const picture = await store.addMedia(PNG, 'dot.png');
+      expect(await host.run('shout', 'look', { src: `/media/${picture.name}` })).toEqual({ type: 'image/png', bytes: PNG.length });
+      expect(await host.run('shout', 'look', { src: '/media/missing.png' })).toBeNull();
+      expect(await host.run('shout', 'look', { src: 'https://elsewhere.example/a.png' })).toBeNull();
       await expect(host.run('shout', 'nothing', null)).rejects.toThrow('has no action "nothing"');
       await expect(host.run('other', 'ping', null)).rejects.toThrow('no extension "other" is installed');
       await expect(host.run('shout', 'slow', null)).rejects.toThrow('did not answer within 1 seconds');

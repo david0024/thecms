@@ -109,6 +109,7 @@ function fakeHost(rows: Record<string, unknown>[], answer: (url: string, body: R
       return { status: a.status ?? 200, headers: { 'content-type': 'application/json' }, body: typeof a.body === 'string' ? a.body : JSON.stringify(a.body) };
     },
     site: async () => ({ name: 'Oak & Co', language: 'en', languages: ['ro'] }),
+    picture: async (src) => (src.startsWith('/media/') ? { type: 'image/webp', data: btoa(`bytes of ${src}`) } : null),
   };
   return { host, sent, usage };
 }
@@ -235,6 +236,71 @@ describe('with OpenAI and Ollama', () => {
   });
 });
 
+describe('search engines and pictures (ADR 0059)', () => {
+  test('a title for search engines is written from the page, and only that changes', async () => {
+    const { host, sent, usage } = fakeHost(ANTHROPIC, () => ({ body: claude(['  Oak tables made to measure   in Cluj  ']) }));
+    const { page: out } = await actions.title({ page, language: 'ro', site }, host);
+    expect(out.seoTitle).toBe('Oak tables made to measure in Cluj');
+    expect(out.title).toBe('About');
+    expect(out.blocks).toEqual(page.blocks);
+    expect(String(sent[0]?.body.system)).toContain('at most 60 characters');
+    expect(String(sent[0]?.body.system)).toContain('Write in Romanian');
+    expect(usage[0]?.action).toBe('title');
+  });
+
+  const gallery = {
+    id: 'g1',
+    type: 'gallery',
+    content: {
+      title: 'Our workshop',
+      items: [
+        { image: { src: '/media/a.webp', alt: '' }, caption: 'The bench' },
+        { image: { src: '/media/b.webp', alt: 'Planks drying' }, caption: '' },
+        { image: { src: 'https://elsewhere.example/c.jpg', alt: '' }, caption: '' },
+      ],
+    },
+  };
+
+  test('the pictures without words are described from the pictures themselves', async () => {
+    const { host, sent, usage } = fakeHost(ANTHROPIC, () => ({ body: claude(['A carpenter planing an oak board on a wooden bench']) }));
+    const { block } = await actions.pictures({ block: gallery, language: 'en', site }, host);
+    const items = block.content.items as { image: { src: string; alt: string } }[];
+    expect(items.map((i) => i.image.alt)).toEqual(['A carpenter planing an oak board on a wooden bench', 'Planks drying', '']);
+    expect(gallery.content.items[0]?.image.alt).toBe('');
+    const content = (sent[0]?.body.messages as { content: { type: string; source?: unknown; text?: string }[] }[])[0]?.content ?? [];
+    expect(content.map((c) => c.type)).toEqual(['image', 'text']);
+    expect(content[0]?.source).toEqual({ type: 'base64', media_type: 'image/webp', data: btoa('bytes of /media/a.webp') });
+    expect(content[1]?.text).toContain('The bench');
+    expect(content[1]?.text).not.toContain('Planks drying');
+    expect(usage[0]?.action).toBe('pictures');
+  });
+
+  test('when every picture has words, each is described again', async () => {
+    const { host } = fakeHost(ANTHROPIC, () => ({ body: claude(['One', 'Two']) }));
+    const all = { ...gallery, content: { ...gallery.content, items: gallery.content.items.slice(0, 2).map((i) => ({ ...i, image: { ...i.image, alt: 'old' } })) } };
+    const { block } = await actions.pictures({ block: all, language: 'en', site }, host);
+    expect((block.content.items as { image: { alt: string } }[]).map((i) => i.image.alt)).toEqual(['One', 'Two']);
+  });
+
+  test('says so when there is no picture to show the model', async () => {
+    const { host } = fakeHost(ANTHROPIC, () => ({ body: claude(['x']) }));
+    await expect(actions.pictures({ block: { id: 't', type: 'text', content: { body: [] } }, language: 'en', site }, host)).rejects.toThrow('no pictures');
+    const avif = { ...host, picture: async () => ({ type: 'image/avif', data: 'x' }) };
+    await expect(actions.pictures({ block: gallery, language: 'en', site }, avif)).rejects.toThrow('cannot be shown to the model');
+  });
+
+  test('OpenAI and Ollama are shown the pictures in their own way', async () => {
+    const picture = { type: 'image/png', data: 'AAAA' };
+    const ask = { system: 's', prompt: 'p', effort: 'low' as const, images: [picture] };
+    const openai = fakeHost([], () => ({ body: { choices: [{ message: { content: '{"texts":["a"]}' } }] } }));
+    await complete(chosen([{ name: 'O', kind: 'openai', model: 'gpt-x', api_key: 'sk' }]), ask, 1, openai.host);
+    expect((openai.sent[0]?.body.messages as { content: unknown }[])[1]?.content).toEqual([{ type: 'image_url', image_url: { url: 'data:image/png;base64,AAAA' } }, { type: 'text', text: 'p' }]);
+    const ollama = fakeHost([], () => ({ body: { message: { content: '{"texts":["a"]}' } } }));
+    await complete(chosen([{ name: 'L', kind: 'ollama', model: 'llava' }]), ask, 1, ollama.host);
+    expect((ollama.sent[0]?.body.messages as { images?: string[] }[])[1]?.images).toEqual(['AAAA']);
+  });
+});
+
 const dir = await mkdtemp(join(tmpdir(), 'thecms-ai-'));
 afterAll(() => rm(dir, { recursive: true, force: true }));
 
@@ -244,7 +310,8 @@ describe('the package', () => {
     const text = await Bun.file(file).text();
     const { pkg, problems } = parseExtension(JSON.parse(text));
     expect(problems).toEqual([]);
-    expect(pkg?.manifest.actions.map((a) => `${a.name}:${a.on}:${a.each}`)).toEqual(['write:block:null', 'translate:page:language', 'describe:page:null']);
+    expect(pkg?.manifest.actions.map((a) => `${a.name}:${a.on}:${a.each}`)).toEqual(['write:block:null', 'translate:page:language', 'describe:page:null', 'title:page:null', 'pictures:block:null']);
+    expect(pkg?.manifest.actions.filter((a) => a.pictures).map((a) => a.name)).toEqual(['pictures']);
     const store = await Store.open(join(dir, 'site.db'));
     const called: string[] = [];
     const host = extensionHost(store, {

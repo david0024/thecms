@@ -262,6 +262,7 @@ export const en = {
     routes: 'answer visitors at: {list}',
     job: { one: 'do “{action}” every minute', other: 'do “{action}” every {count} minutes' } as Plural,
     events: 'be told when: {list}',
+    pictures: 'see the site\'s pictures, for: {list}',
     replaces: "It replaces version {version}.",
     accept: "Accept and install",
     cancel: "Cancel",

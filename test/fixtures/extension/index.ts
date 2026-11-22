@@ -36,7 +36,12 @@ export const actions = {
     if (input.how === 'http') return host.fetch('http://api.shout.example/');
     if (input.how === 'write') return host.collections.insert('settings', { name: 'mine' });
     if (input.how === 'undeclared') return host.collections.list('users');
+    if (input.how === 'picture') return host.picture('/media/x.png');
     return { env: Object.keys(process.env).filter((k) => k !== 'PATH') };
+  },
+  async look(input: { src: string }, host: Host) {
+    const picture = await host.picture(input.src);
+    return picture && { type: picture.type, bytes: atob(picture.data).length };
   },
   async slow() {
     await new Promise((resolve) => setTimeout(resolve, 5000));

@@ -182,7 +182,8 @@ async function runOnPage(name: string, action: string, ask: Record<string, strin
   try {
     const { page: next } = await api.runOnPage(name, action, page, ask, fixed);
     failure = '';
-    change({ ...page, title: next.title || page.title, description: next.description, blocks: next.blocks });
+    // Words only: a title for search engines the action wrote (ADR 0059 d1), never the picture or the choice to hide.
+    change({ ...page, title: next.title || page.title, description: next.description, blocks: next.blocks, ...(next.seoTitle ? { seoTitle: next.seoTitle } : {}) });
   } catch (error) {
     fail(error);
   }

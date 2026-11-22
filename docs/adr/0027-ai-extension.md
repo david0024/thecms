@@ -73,9 +73,8 @@ do not include it.
 
 ## Not decided
 
-- **Image descriptions.** Writing an image's text from the image needs the
-  extension to read the site's media, which no extension can yet. It will
-  come with a way for an extension to ask for media, accepted by the owner.
+- **Image descriptions.** Decided by ADR 0059: an action that declares it
+  sees the site's pictures, and the owner accepts that before installing.
 - **Streaming.** An answer comes whole; a long page takes a while. Showing it
   as it is written needs the runner to pass parts of an answer.
 - **Limits on spending.** The usage is recorded, not capped.

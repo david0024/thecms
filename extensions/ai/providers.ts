@@ -21,6 +21,8 @@ export interface Ask {
   prompt: string;
   /** How hard the model thinks, where it can be told: translating asks for more than a description. */
   effort: 'low' | 'medium';
+  /** Pictures the model looks at, in order, before it reads the prompt (ADR 0059 d3). */
+  images?: { type: string; data: string }[];
 }
 
 export interface Answer {
@@ -97,7 +99,17 @@ async function anthropic(provider: Provider, ask: Ask, host: Host): Promise<Answ
     betas: ['server-side-fallback-2026-07-01'],
     fallbacks: 'default',
     system: ask.system,
-    messages: [{ role: 'user', content: ask.prompt }],
+    messages: [
+      {
+        role: 'user',
+        content: ask.images?.length
+          ? [
+              ...ask.images.map((image) => ({ type: 'image' as const, source: { type: 'base64' as const, media_type: image.type as 'image/png', data: image.data } })),
+              { type: 'text' as const, text: ask.prompt },
+            ]
+          : ask.prompt,
+      },
+    ],
     output_config: { effort: ask.effort, format: { type: 'json_schema', schema: SCHEMA } },
   });
   if (response.stop_reason === 'refusal') throw new Error('The model would not write this.');
@@ -114,7 +126,12 @@ async function openai(provider: Provider, ask: Ask, host: Host): Promise<Answer>
       model: provider.model,
       messages: [
         { role: 'system', content: ask.system },
-        { role: 'user', content: ask.prompt },
+        {
+          role: 'user',
+          content: ask.images?.length
+            ? [...ask.images.map((image) => ({ type: 'image_url', image_url: { url: `data:${image.type};base64,${image.data}` } })), { type: 'text', text: ask.prompt }]
+            : ask.prompt,
+        },
       ],
       response_format: { type: 'json_schema', json_schema: { name: 'texts', strict: true, schema: SCHEMA } },
     }),
@@ -136,7 +153,7 @@ async function ollama(provider: Provider, ask: Ask, host: Host): Promise<Answer>
       format: SCHEMA,
       messages: [
         { role: 'system', content: ask.system },
-        { role: 'user', content: ask.prompt },
+        { role: 'user', content: ask.prompt, ...(ask.images?.length ? { images: ask.images.map((image) => image.data) } : {}) },
       ],
     }),
   });
