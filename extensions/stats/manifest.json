@@ -1,0 +1,63 @@
+{
+  "name": "stats",
+  "displayName": "Statistics",
+  "description": "Who reads the site, counted by its own server: no cookie and no script on the pages, so visitors are asked nothing. Robots and people signed in to the admin are not counted. Keeps each day's totals for a month and each month's for good.",
+  "version": "1.0.0",
+  "publisher": "thecms",
+  "thecmsMinVersion": "0.1.0",
+  "collections": [
+    { "name": "days", "label": "Days", "fields": [
+      { "key": "day", "label": "Day", "kind": "date" },
+      { "key": "kind", "label": "What", "kind": "text" },
+      { "key": "name", "label": "Name", "kind": "text" },
+      { "key": "hits", "label": "Times", "kind": "number" }
+    ] },
+    { "name": "months", "label": "Months", "fields": [
+      { "key": "month", "label": "Month", "kind": "text" },
+      { "key": "kind", "label": "What", "kind": "text" },
+      { "key": "name", "label": "Name", "kind": "text" },
+      { "key": "hits", "label": "Times", "kind": "number" }
+    ] }
+  ],
+  "actions": [
+    { "name": "served", "label": "Count the pages seen", "writes": ["days", "months"] },
+    { "name": "searched", "label": "Count the searches", "writes": ["days", "months"] },
+    { "name": "forget", "label": "Forget the days older than a month", "reads": ["days"], "writes": ["days"] },
+    { "name": "report", "label": "Statistics", "reads": ["days", "months"] }
+  ],
+  "events": [
+    { "on": "page.served", "action": "served" },
+    { "on": "search.made", "action": "searched" }
+  ],
+  "jobs": [
+    { "action": "forget", "everyMinutes": 1440 }
+  ],
+  "views": [
+    { "spec": "thecms.view/1", "id": "stats.report", "title": "Statistics", "type": "report", "action": "report" }
+  ],
+  "messages": {
+    "ro": {
+      "Days": "Zile",
+      "Months": "Luni",
+      "Day": "Zi",
+      "Month": "Lună",
+      "What": "Ce",
+      "Name": "Nume",
+      "Times": "De câte ori",
+      "Count the pages seen": "Numără paginile văzute",
+      "Count the searches": "Numără căutările",
+      "Forget the days older than a month": "Uită zilele mai vechi de o lună",
+      "Statistics": "Statistici",
+      "Visitors": "Vizitatori",
+      "Pages seen": "Pagini văzute",
+      "Pages read most": "Cele mai citite pagini",
+      "Where visitors came from": "De unde au venit vizitatorii",
+      "Devices": "Dispozitive",
+      "Searched for on the site": "Ce au căutat pe site",
+      "Directly (a typed address or a bookmark)": "Direct (adresă scrisă sau semn de carte)",
+      "Phone": "Telefon",
+      "Tablet": "Tabletă",
+      "Computer": "Calculator"
+    }
+  }
+}

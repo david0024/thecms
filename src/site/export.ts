@@ -64,7 +64,7 @@ import { lockedPage } from './locks.ts';
 import { menuOf, pageSetting, renderBlogList, renderPage, renderPost, STYLESHEET } from './document.ts';
 import { checkRedirects, checkSeo, checkSite, describeCheck, type SiteCheck, serverOnly } from './check.ts';
 import { BASE_CSS } from './shipped.ts';
-import type { Store } from './store.ts';
+import { STATS, type Store } from './store.ts';
 
 const MARKER = '.thecms-export';
 const FEED_ENTRIES = 30;
@@ -513,7 +513,7 @@ export async function fullCheck(store: Store, files: Map<string, string | Uint8A
     ...checkSite(files),
     untranslated: await store.untranslated(),
     redirects: checkRedirects(files, await store.redirects()),
-    server: serverOnly(files, { formsElsewhere: (await store.site()).forms !== '', routes, stats: await store.hasVisits() }),
+    server: serverOnly(files, { formsElsewhere: (await store.site()).forms !== '', routes, stats: (await store.extension(STATS))?.enabled === true }),
     seo: checkSeo(files),
   };
 }

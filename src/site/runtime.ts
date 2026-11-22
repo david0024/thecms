@@ -23,7 +23,7 @@ export interface Runtime {
   url: string;
   port: number;
   fetch: (request: Request, ip?: string) => Promise<Response>;
-  /** What the runtime counts for the statistics (ADR 0053). */
+  /** What the runtime reads of each visit for the extensions that listen (ADR 0053, ADR 0062 d8). */
   visits: Visits;
   /** What visits tell the extensions that listen, in batches (ADR 0062 d2). */
   told: Batches;
@@ -100,10 +100,10 @@ export function startRuntime(
   // The extensions' routes, jobs and events (ADR 0041): their code runs apart, as in the editor.
   const own = !options.extensions;
   const extensions: ExtensionHostApi = options.extensions ?? extensionHost(store, { spawn: options.spawnExtension, log: options.log });
-  // The statistics (ADR 0053): a page counted as it is sent, apart from everything else here.
-  // What every visit tells the extensions that listen, gathered and told in batches (ADR 0062 d2).
+  // What every visit tells the extensions that listen, gathered and told in batches (ADR 0062 d2):
+  // the statistics are one of them (ADR 0062 d8).
   const told = batches(extensions, { log: options.log });
-  const visits = countVisits(store, shared, { now, log: options.log, told });
+  const visits = countVisits(store, shared, { now, told });
   const forms = startForms(store, { listen: false, mailer: options.mailer, to: options.to, from: options.from, log: options.log, shared, ask: extensions.ask });
   type Files = Map<string, string | Uint8Array>;
   let built: { version: string; files: Promise<Files>; ready: boolean } | null = null;
@@ -294,7 +294,7 @@ export function startRuntime(
     visits,
     told,
     stop: () => {
-      void visits.stop().then(() => told.stop());
+      void visits.flush().then(() => told.stop());
       clock.stop();
       unlisten();
       if (own) extensions.close();

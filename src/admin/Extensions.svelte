@@ -5,6 +5,7 @@
  * what it asks for and accepted that very file.
  */
 import { api, type ExtensionInfo, type ExtensionOffer } from './api.ts';
+import ExtensionOfferBox from './ExtensionOffer.svelte';
 import { adminLanguage, say, t } from './messages.ts';
 
 let { extensions, onchange, onopen }: { extensions: ExtensionInfo[]; onchange: (next: ExtensionInfo[]) => void; onopen: (name: string, screen: string) => void } = $props();
@@ -88,37 +89,7 @@ async function accept(): Promise<void> {
     <input type="file" accept=".thecms-extension,application/json" onchange={(e) => choose(e.currentTarget.files?.[0])} data-extension-file />
   </label>
   {#if offer}
-    <div class="offer" data-offer>
-      <p>
-        <strong>{offer.manifest.displayName} {offer.manifest.version}</strong>
-        {#if offer.manifest.publisher}<small>{say(t.ext.by, { publisher: offer.manifest.publisher })}</small>{/if}
-      </p>
-      {#if offer.manifest.description}<p>{offer.manifest.description}</p>{/if}
-      {#if offer.replaces}<p>{say(t.ext.replaces, { version: offer.replaces })}</p>{/if}
-      <p>{t.ext.asks}</p>
-      <ul data-asks>
-        {#if offer.asks.collections.length}<li>{say(t.ext.keeps, { list: offer.asks.collections.join(', ') })}</li>{/if}
-        {#if offer.asks.secrets.length}<li>{say(t.ext.secrets, { list: offer.asks.secrets.join(', ') })}</li>{/if}
-        <li>{offer.asks.egress.length ? say(t.ext.calls, { list: offer.asks.egress.join(', ') }) : t.ext.callsNothing}</li>
-        {#each offer.asks.points as point}
-          <li>{say(point.on === 'page' ? t.ext.onPage : t.ext.onBlock, { action: point.action })}</li>
-        {/each}
-        {#if offer.asks.routes.length}<li>{say(t.ext.routes, { list: offer.asks.routes.join(', ') })}</li>{/if}
-        {#each offer.asks.jobs as job}
-          <li>{say(t.ext.job, { action: job.action, count: job.everyMinutes })}</li>
-        {/each}
-        {#if offer.asks.pictures?.length}<li>{say(t.ext.pictures, { list: offer.asks.pictures.join(', ') })}</li>{/if}
-        {#if offer.asks.events.length}<li>{say(t.ext.events, { list: offer.asks.events.join(', ') })}</li>{/if}
-        {#if offer.asks.answers?.length}<li>{say(t.ext.answers, { list: offer.asks.answers.join(', ') })}</li>{/if}
-        {#if offer.asks.uses?.length}<li>{say(t.ext.uses, { list: offer.asks.uses.join(', ') })}</li>{/if}
-        {#if offer.asks.blocks?.length}<li>{say(t.ext.blocks, { list: offer.asks.blocks.join(', ') })}</li>{/if}
-      </ul>
-      <small class="sum">{say(t.ext.checksum, { sha: offer.sha256 })}</small>
-      <div class="row">
-        <button type="button" class="primary" onclick={accept} data-accept>{t.ext.accept}</button>
-        <button type="button" class="quiet" onclick={() => ((offer = null), (file = null))}>{t.ext.cancel}</button>
-      </div>
-    </div>
+    <ExtensionOfferBox {offer} onaccept={accept} oncancel={() => ((offer = null), (file = null))} />
   {/if}
 </section>
 
@@ -131,9 +102,4 @@ async function accept(): Promise<void> {
   .who p { margin: 0.2rem 0 0; color: #4a4860; }
   .who small { margin-inline-start: 0.5rem; color: #6a6880; }
   .field { display: grid; gap: 0.3rem; max-width: 46rem; }
-  .offer { max-width: 46rem; margin: 1rem 0; padding: 0.8rem 1rem; background: #f0eeff; border: 1px solid #c9c2ff; border-radius: 8px; }
-  .offer p { margin: 0 0 0.4rem; }
-  .offer ul { margin: 0 0 0.6rem; }
-  .sum { display: block; margin-bottom: 0.6rem; color: #6a6880; overflow-wrap: anywhere; }
-  .row { display: flex; flex-wrap: wrap; gap: 0.5rem; }
 </style>

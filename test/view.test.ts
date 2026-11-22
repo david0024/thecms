@@ -65,7 +65,7 @@ describe('a screen', () => {
     ]);
     expect(problems([{ ...top, id: 'Bad Id', type: 'chart' }, { ...top, type: 'list', collection: 'users' }, { ...top, type: 'list', collection: 'keys' }])).toEqual([
       'views[0]: "id" is lower case words joined by dots: "ai.providers"',
-      'views[0]: "type" is one of list, form, tabs',
+      'views[0]: "type" is one of list, form, tabs, report, calendar',
       'views[1]: "users" is not one of the extension\'s collections',
       'views[2]: the id "x" is used twice',
     ]);

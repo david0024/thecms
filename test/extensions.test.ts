@@ -83,7 +83,7 @@ describe('a package', () => {
       'thecmsMinVersion is like 0.1.0 ("x")',
       '"https://x.example/path" is not a host name it may call',
       'rows.id: a field\'s key is used once, and never "id"',
-      'rows.a: a field is one of text, longtext, number, boolean, choice, secret, url',
+      'rows.a: a field is one of text, longtext, number, boolean, choice, secret, url, date, datetime',
       'rows.b: a choice needs its options',
       'rows: a field\'s key is lower case letters, digits and _ ("B!")',
       'the collection "rows" is declared twice',
