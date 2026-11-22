@@ -11,7 +11,7 @@ import { mediaResponse } from './serve-media.ts';
 import { EMBED_ORIGINS, mediaKindOf } from '../core/index.ts';
 import { lockCookie, lockedPage } from './locks.ts';
 import { startClock } from './clock.ts';
-import { type ExtensionHostApi, extensionHost, type Spawn } from './extensions.ts';
+import { type Batches, batches, type ExtensionHostApi, extensionHost, type Spawn } from './extensions.ts';
 import { startForms } from './forms.ts';
 import { localShared, type Shared } from './shared.ts';
 import { resultsPage, search, SEARCH_MAX_QUERY, type SearchDoc, searchIndex } from './search.ts';
@@ -24,6 +24,8 @@ export interface Runtime {
   fetch: (request: Request, ip?: string) => Promise<Response>;
   /** What the runtime counts for the statistics (ADR 0053). */
   visits: Visits;
+  /** What visits tell the extensions that listen, in batches (ADR 0062 d2). */
+  told: Batches;
   stop: () => void;
 }
 
@@ -98,7 +100,9 @@ export function startRuntime(
   const own = !options.extensions;
   const extensions: ExtensionHostApi = options.extensions ?? extensionHost(store, { spawn: options.spawnExtension, log: options.log });
   // The statistics (ADR 0053): a page counted as it is sent, apart from everything else here.
-  const visits = countVisits(store, shared, { now, log: options.log });
+  // What every visit tells the extensions that listen, gathered and told in batches (ADR 0062 d2).
+  const told = batches(extensions, { log: options.log });
+  const visits = countVisits(store, shared, { now, log: options.log, told });
   const forms = startForms(store, { listen: false, mailer: options.mailer, to: options.to, from: options.from, log: options.log, shared });
   type Files = Map<string, string | Uint8Array>;
   let built: { version: string; files: Promise<Files>; ready: boolean } | null = null;
@@ -272,8 +276,9 @@ export function startRuntime(
     port,
     fetch: handle,
     visits,
+    told,
     stop: () => {
-      void visits.stop();
+      void visits.stop().then(() => told.stop());
       clock.stop();
       unlisten();
       if (own) extensions.close();

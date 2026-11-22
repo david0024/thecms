@@ -101,6 +101,7 @@ function fakeHost(rows: Record<string, unknown>[], answer: (url: string, body: R
       insert: async (_c, row) => (usage.push(row), row),
       update: async (_c, _id, row) => row,
       delete: async () => {},
+      add: async (_c, id, numbers) => ({ ...numbers, id }),
     },
     fetch: async (url, init) => {
       const body = JSON.parse(init?.body ?? '{}') as Record<string, unknown>;

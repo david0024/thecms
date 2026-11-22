@@ -9,7 +9,7 @@
  * within what the extension declared.
  */
 import { join } from 'node:path';
-import { cleanRow, egressAllows, type ExtensionAction, type ExtensionManifest, extensionAsks, EXTENSION_MAX_BYTES, mediaKindOf, mediaNameOf, parseExtension, variantOf } from '../core/index.ts';
+import { cleanRow, egressAllows, type ExtensionAction, type ExtensionEventName, type ExtensionManifest, extensionAsks, EXTENSION_MAX_BYTES, mediaKindOf, mediaNameOf, parseExtension, variantOf } from '../core/index.ts';
 import { type FromRunner, lines, type ToRunner } from './extension-runner.ts';
 import type { InstalledExtension, SiteEvent, Store } from './store.ts';
 import { isCompiled, newer } from './update.ts';
@@ -21,6 +21,10 @@ const PICTURE_MAX_BYTES = 5 * 1024 * 1024;
 const FETCH_MAX_BYTES = 5 * 1024 * 1024;
 /** A process nobody has asked anything for this long is stopped; the next action starts it again. */
 const IDLE_MS = 5 * 60_000;
+/** How long what the extensions listen to is kept before it is asked again: one installed elsewhere is heard within this. */
+const LISTENING_MS = 10_000;
+/** The name an extension gives a row it adds to. */
+const ROW_ID = /^[A-Za-z0-9._:-]{1,40}$/;
 /** What a visitor may send to an extension's route: a provider's notice, not a file. */
 export const ROUTE_MAX_BYTES = 64 * 1024;
 /** Headers a route's action is not given: the editor's session and key are not the extension's. */
@@ -144,6 +148,7 @@ export function extensionHost(store: Store, options: { spawn?: Spawn; fetch?: (u
     const offered = await offer(text);
     if (offered.sha256 !== accepted) throw new Error('this is not the file that was accepted; look at what it asks for again');
     stop(offered.manifest.name);
+    listening = null;
     return store.installExtension(JSON.parse(text), offered.sha256);
   }
 
@@ -178,6 +183,22 @@ export function extensionHost(store: Store, options: { spawn?: Spawn; fetch?: (u
         const { row, problems } = cleanRow(of, args[method === 'update' ? 2 : 1], before);
         if (problems.length) throw new Error(problems.join('; '));
         return store.saveExtensionRow(name, of.name, row, id);
+      }
+      case 'add': {
+        // Numbers added to, not written over (ADR 0062 d5): two processes counting at once lose nothing.
+        const of = collectionOf(args[0], true);
+        const id = String(args[1]);
+        if (!ROW_ID.test(id)) throw new Error('a row added to is named by up to 40 letters, digits, ".", ":", "_" and "-"');
+        const by = (args[2] ?? {}) as Record<string, unknown>;
+        const numbers: Record<string, number> = {};
+        for (const [key, value] of Object.entries(by)) {
+          if (of.fields.find((f) => f.key === key)?.kind !== 'number') throw new Error(`"${key}" is not a number of ${of.name}`);
+          if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error(`what is added to "${key}" is a number`);
+          numbers[key] = value;
+        }
+        const { row, problems } = cleanRow(of, args[3] ?? {}, null);
+        if (problems.length) throw new Error(problems.join('; '));
+        return store.addToExtensionRow(name, of.name, id, row, numbers);
       }
       case 'delete':
         return store.deleteExtensionRow(name, collectionOf(args[0], true).name, String(args[1]));
@@ -355,6 +376,19 @@ export function extensionHost(store: Store, options: { spawn?: Spawn; fetch?: (u
     await Promise.all(told);
   }
 
+  /** Which events an extension that is on listens to, asked at most once in LISTENING_MS. */
+  let listening: { at: number; names: Promise<Set<string>> } | null = null;
+  async function listens(event: ExtensionEventName): Promise<boolean> {
+    if (!listening || Date.now() - listening.at >= LISTENING_MS) {
+      const names = store
+        .extensions()
+        .then((all) => new Set(all.filter((e) => e.enabled).flatMap((e) => e.manifest.events.map((l) => l.on as string))))
+        .catch(() => new Set<string>());
+      listening = { at: Date.now(), names };
+    }
+    return (await listening.names).has(event);
+  }
+
   return {
     offer,
     install,
@@ -362,6 +396,7 @@ export function extensionHost(store: Store, options: { spawn?: Spawn; fetch?: (u
     route,
     jobs,
     deliver,
+    listens,
     /** From now on, what happens in the site is told to the extensions that listen. Returns how to stop. */
     listen(): () => void {
       return store.onEvent((event) => void deliver(event));
@@ -369,10 +404,12 @@ export function extensionHost(store: Store, options: { spawn?: Spawn; fetch?: (u
     /** Turns an extension on or off; off, its process stops. */
     async enable(name: string, enabled: boolean): Promise<void> {
       await store.enableExtension(name, enabled);
+      listening = null;
       if (!enabled) stop(name);
     },
     async uninstall(name: string): Promise<void> {
       stop(name);
+      listening = null;
       await store.uninstallExtension(name);
     },
     /** Stops every extension's process. */
@@ -383,3 +420,68 @@ export function extensionHost(store: Store, options: { spawn?: Spawn; fetch?: (u
 }
 
 export type ExtensionHostApi = ReturnType<typeof extensionHost>;
+
+/** At most this many items in one batch (ADR 0062 d2); more are told in more batches. */
+export const BATCH_MAX = 1000;
+/** What waits while a listener is still taking the last batch; beyond it, the rest is dropped and said. */
+export const WAITING_MAX = 10_000;
+/** How often what was gathered is told. */
+export const BATCH_MS = 5_000;
+
+/**
+ * Tells the events that come with every visit in batches (ADR 0062 d2): a
+ * visit does not wake an extension. Each of the site's processes gathers its
+ * own; one batch of an event is told at a time, and what comes meanwhile waits.
+ */
+export function batches(host: Pick<ExtensionHostApi, 'deliver' | 'listens'>, options: { everyMs?: number; log?: (line: string) => void } = {}) {
+  const log = options.log ?? ((line: string) => console.error(line));
+  const gathered = new Map<ExtensionEventName, Record<string, unknown>[]>();
+  const dropped = new Map<ExtensionEventName, number>();
+  const telling = new Map<ExtensionEventName, Promise<void>>();
+
+  async function tell(event: ExtensionEventName): Promise<void> {
+    const items = gathered.get(event) ?? [];
+    if (!items.length || telling.has(event)) return;
+    gathered.set(event, []);
+    const lost = dropped.get(event) ?? 0;
+    dropped.delete(event);
+    if (lost) log(`${lost} of ${event} were not told: the extensions that listen did not keep up`);
+    const told = (async () => {
+      for (let at = 0; at < items.length; at += BATCH_MAX) await host.deliver({ name: event, data: { items: items.slice(at, at + BATCH_MAX) } });
+    })()
+      .catch((error: unknown) => log(`${event} could not be told: ${error instanceof Error ? error.message : String(error)}`))
+      .finally(() => telling.delete(event));
+    telling.set(event, told);
+    await told;
+  }
+
+  const flush = async (): Promise<void> => {
+    await Promise.all([...gathered.keys()].map((event) => tell(event)));
+  };
+  const timer = setInterval(() => void flush(), options.everyMs ?? BATCH_MS);
+  (timer as { unref?: () => void }).unref?.();
+
+  return {
+    /** Whether an extension that is on listens: while none does, nothing is worked out for it. */
+    listens: (event: ExtensionEventName) => host.listens(event),
+    /** Gathers one item, to be told with the next batch. */
+    add(event: ExtensionEventName, item: Record<string, unknown>): void {
+      const items = gathered.get(event) ?? [];
+      if (items.length >= WAITING_MAX) {
+        dropped.set(event, (dropped.get(event) ?? 0) + 1);
+        return;
+      }
+      items.push(item);
+      gathered.set(event, items);
+    },
+    flush,
+    /** Tells what is left, then gathers no more by itself. */
+    async stop(): Promise<void> {
+      clearInterval(timer);
+      await Promise.all([...telling.values()]);
+      await flush();
+    },
+  };
+}
+
+export type Batches = ReturnType<typeof batches>;

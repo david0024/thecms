@@ -2168,6 +2168,32 @@ export class Store {
     return { ...rest, id: key };
   }
 
+  /**
+   * Adds to the number fields of a row (ADR 0062 d5), making it from `fresh`
+   * when there is none. Each try writes only over the row as it was read, so
+   * two processes adding at once both count: the one that lost reads again.
+   */
+  async addToExtensionRow(extension: string, collection: string, id: string, fresh: Record<string, unknown>, by: Record<string, number>, at = new Date()): Promise<ExtensionRow> {
+    const sum = (base: Record<string, unknown>): Record<string, unknown> => {
+      const next = { ...base };
+      for (const [key, value] of Object.entries(by)) next[key] = (Number(next[key]) || 0) + value;
+      return next;
+    };
+    for (let tries = 0; tries < 50; tries++) {
+      const row = await this.row<{ data: string }>('SELECT data FROM extension_rows WHERE extension = ? AND collection = ? AND id = ?', [extension, collection, id]);
+      if (!row) {
+        const made = sum(fresh);
+        const kept = await this.changed(this.dialect.insertNew('extension_rows', ['extension', 'collection', 'id', 'data', 'updated_at']), [extension, collection, id, JSON.stringify(made), at.toISOString()]);
+        if (kept === 1) return { ...made, id };
+        continue;
+      }
+      const next = sum(JSON.parse(row.data) as Record<string, unknown>);
+      const kept = await this.changed('UPDATE extension_rows SET data = ?, updated_at = ? WHERE extension = ? AND collection = ? AND id = ? AND data = ?', [JSON.stringify(next), at.toISOString(), extension, collection, id, row.data]);
+      if (kept === 1) return { ...next, id };
+    }
+    throw new Error('the row is changed by too many at once; try again');
+  }
+
   async deleteExtensionRow(extension: string, collection: string, id: string): Promise<void> {
     await this.run('DELETE FROM extension_rows WHERE extension = ? AND collection = ? AND id = ?', [extension, collection, id]);
   }
