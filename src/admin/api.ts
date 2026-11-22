@@ -30,6 +30,47 @@ export interface Performance {
   fromEnvironment: boolean;
 }
 
+/** Settings → Visitor accounts (ADR 0064): the switch, who may sign up, and, once on, the accounts and what could not be sent. */
+export interface VisitorSettings {
+  on: boolean;
+  signup: 'open' | 'invite' | 'closed';
+  privacy: string;
+}
+export interface VisitorInfo {
+  id: string;
+  email: string;
+  name: string;
+  language: string;
+  createdAt: string;
+  confirmedAt: string | null;
+  lastAt: string | null;
+  invited: boolean;
+}
+export interface VisitorsShown {
+  settings: VisitorSettings;
+  /** Whether the site has a mail server and a sender. */
+  mail: boolean;
+  visitors?: VisitorInfo[];
+  waiting?: number;
+  failed?: { id: string; to: string; what: string; error: string; failedAt: string }[];
+}
+/** Settings → E-mail (ADR 0064 d5): the server, its password only said to be set. */
+export interface MailShown {
+  settings: { host: string; port: number; security: 'tls' | 'plain'; user: string; from: string; passwordSet: boolean };
+  fromEnvironment: { server: boolean; from: boolean };
+  ready: boolean;
+}
+export interface MailTemplate {
+  subject: string;
+  text: string;
+}
+export interface MailTemplates {
+  languages: string[];
+  names: string[];
+  defaults: Record<string, Record<string, MailTemplate>>;
+  saved: Record<string, Record<string, MailTemplate>>;
+}
+
 export interface Me {
   id: string;
   email: string;
@@ -291,6 +332,18 @@ export const api = {
   messagesFrom: (email: string) => call<{ messages: Message[]; comments: Comment[]; keep: number }>('GET', `/api/messages?email=${encodeURIComponent(email.trim())}`),
   removeMessage: (id: string) => call<{ messages: Message[]; keep: number }>('DELETE', `/api/messages?id=${encodeURIComponent(id)}`),
   eraseMessagesFrom: (email: string) => call<{ messages: Message[]; keep: number }>('DELETE', `/api/messages?email=${encodeURIComponent(email.trim())}`),
+  visitors: () => call<VisitorsShown>('GET', '/api/visitors'),
+  setVisitors: (settings: Partial<VisitorSettings>) => call<VisitorsShown>('PUT', '/api/visitors', settings),
+  inviteVisitor: (email: string, name: string, language: string) => call<VisitorsShown>('POST', '/api/visitors', { email, name, language }),
+  removeVisitor: (id: string) => call<VisitorsShown>('DELETE', `/api/visitors?id=${encodeURIComponent(id)}`),
+  visitorData: (id: string) => call<{ visitor: Omit<VisitorInfo, 'invited'> }>('GET', `/api/visitors/data?id=${encodeURIComponent(id)}`),
+  retryMail: (id: string) => call<VisitorsShown>('POST', `/api/visitors/retry?id=${encodeURIComponent(id)}`, {}),
+  forgetMail: (id: string) => call<VisitorsShown>('DELETE', `/api/visitors/failed?id=${encodeURIComponent(id)}`),
+  mail: () => call<MailShown>('GET', '/api/mail'),
+  setMail: (settings: { host: string; port: number; security: 'tls' | 'plain'; user: string; password: string; from: string }) => call<MailShown>('PUT', '/api/mail', settings),
+  testMail: (to: string) => call<{ sent: boolean }>('POST', '/api/mail/test', { to }),
+  mailTemplates: () => call<MailTemplates>('GET', '/api/mail/templates'),
+  setMailTemplate: (language: string, name: string, subject: string, text: string) => call<MailTemplates>('PUT', '/api/mail/templates', { language, name, subject, text }),
   performance: () => call<Performance>('GET', '/api/performance'),
   testValkey: (address: string) => call<{ test: { ok: boolean; ms: number; error: string } }>('POST', '/api/performance', { address }),
   setValkey: (address: string) => call<Performance>('PUT', '/api/performance', { address }),

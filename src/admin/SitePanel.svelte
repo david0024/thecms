@@ -45,6 +45,8 @@ const addLanguage = (): void => {
   adding = '';
 };
 import Performance from './Performance.svelte';
+import Visitors from './Visitors.svelte';
+import EmailSettings from './EmailSettings.svelte';
 import Redirects from './Redirects.svelte';
 </script>
 
@@ -216,6 +218,10 @@ import Redirects from './Redirects.svelte';
   </fieldset>
   <small>{t.site.inLanguageHint}</small>
 {/each}
+
+<Visitors languages={[site.language, ...site.languages]} />
+
+<EmailSettings />
 
 <Redirects />
 

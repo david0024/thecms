@@ -116,6 +116,7 @@ import {
 import { wordsFor } from '../blocks/words.ts';
 import { DAYS_KEPT, type Kind, KINDS, summed } from '../../extensions/stats/rows.ts';
 import { isIndexNowKey } from './indexnow.ts';
+import { BACKED_UP_VISITOR_TABLES, visitorSchema, visitorTable } from './visitor-schema.ts';
 import './languages.ts';
 
 /** What is kept with translations: a page, or a section (ADR 0033). */
@@ -2284,6 +2285,60 @@ export class Store {
     await this.setMeta('valkey', address);
   }
 
+  /**
+   * Plain queries, for a part of the program that is off until the owner turns
+   * it on (ADR 0060 d3): it makes its own tables the first time, and only then.
+   */
+  database(): Database {
+    return {
+      kind: this.kind,
+      rows: <T = Row>(query: string, params: unknown[] = []) => this.rows<T>(query, params),
+      run: (query: string, params: unknown[] = []) => this.run(query, params),
+      changed: (query: string, params: unknown[] = []) => this.changed(query, params),
+      upsert: (table: string, columns: string[], key: string[], update: string[]) => this.dialect.upsert(table, columns, key, update),
+      make: async (statements: string[]) => {
+        for (const statement of statements) await this.sql.unsafe(statement);
+      },
+    };
+  }
+
+  /** Whether a table is there: a part that is off has none (ADR 0060 d3). */
+  async hasTable(table: string): Promise<boolean> {
+    const query =
+      this.kind === 'sqlite'
+        ? "SELECT 1 AS found FROM sqlite_master WHERE type = 'table' AND name = ?"
+        : this.kind === 'postgres'
+          ? 'SELECT 1 AS found FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = ?'
+          : 'SELECT 1 AS found FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?';
+    return (await this.rows(query, [table])).length > 0;
+  }
+
+  /** Visitor accounts' settings as saved (ADR 0064 d2, d8); the accounts read them whole. */
+  async visitorSettings(): Promise<unknown> {
+    return this.getMeta(VISITOR_SETTINGS);
+  }
+
+  async setVisitorSettings(value: unknown): Promise<void> {
+    await this.setMeta(VISITOR_SETTINGS, value);
+  }
+
+  /** The mail server set in Settings → E-mail (ADR 0064 d5), and the owner's words for each message to visitors. */
+  async mailSettings(): Promise<unknown> {
+    return this.getMeta(MAIL_SETTINGS);
+  }
+
+  async setMailSettings(value: unknown): Promise<void> {
+    await this.setMeta(MAIL_SETTINGS, value);
+  }
+
+  async mailTemplates(): Promise<unknown> {
+    return this.getMeta(MAIL_TEMPLATES);
+  }
+
+  async setMailTemplates(value: unknown): Promise<void> {
+    await this.setMeta(MAIL_TEMPLATES, value);
+  }
+
   /** The backup settings as saved (ADR 0051); the backup module reads them whole. */
   async backupSettings(): Promise<unknown> {
     return this.getMeta(BACKUP_SETTINGS);
@@ -2356,7 +2411,10 @@ export class Store {
    * Uint8Array, whichever database gave them.
    */
   async *backupRows(): AsyncGenerator<{ table: string; row: Row }> {
-    for (const table of BACKUP_TABLES) {
+    // The visitors' tables, once the owner has turned the accounts on (ADR 0064 d6).
+    const optional: string[] = [];
+    for (const table of BACKED_UP_VISITOR_TABLES) if (await this.hasTable(table)) optional.push(table);
+    for (const table of [...BACKUP_TABLES, ...optional]) {
       const key = TABLE_KEYS[table] as string[];
       const order = key.map((column) => (column === 'key' ? this.dialect.key : column)).join(', ');
       const step = table === 'media' || table === 'media_variants' ? 20 : 500;
@@ -2383,20 +2441,35 @@ export class Store {
    */
   async restoreRows(rows: AsyncIterable<{ table: string; row: Row }>): Promise<number> {
     let count = 0;
+    // The settings come first in a backup. A site whose visitor accounts were ever turned on has their
+    // tables, made before the transaction: on MySQL, making a table ends one (ADR 0064 d6).
+    const iterator = rows[Symbol.asyncIterator]();
+    const ahead: { table: string; row: Row }[] = [];
+    for (let next = await iterator.next(); !next.done; next = await iterator.next()) {
+      ahead.push(next.value);
+      if (next.value.table !== 'meta') break;
+    }
+    if (ahead.some(({ table, row }) => table === 'meta' && row.key === VISITOR_SETTINGS)) await this.database().make(visitorSchema(this.kind));
+    const optional: string[] = [];
+    for (const table of BACKED_UP_VISITOR_TABLES) if (await this.hasTable(table)) optional.push(table);
+    const all = async function* (): AsyncGenerator<{ table: string; row: Row }> {
+      yield* ahead;
+      for (let next = await iterator.next(); !next.done; next = await iterator.next()) yield next.value;
+    };
     await this.sql.begin(async (tx) => {
       const run = (query: string, params: unknown[] = []) => tx.unsafe(this.dialect.params(query), params);
       await run(`DELETE FROM meta WHERE ${this.dialect.key} NOT IN (${marks(NOT_BACKED_UP_META)})`, NOT_BACKED_UP_META);
-      for (const table of BACKUP_TABLES) if (table !== 'meta') await run(`DELETE FROM ${table}`);
+      for (const table of [...BACKUP_TABLES, ...optional]) if (table !== 'meta') await run(`DELETE FROM ${table}`);
       // A backup from before the statistics were an extension holds their totals: they go to its rows (ADR 0062 d8).
       const visits: VisitRow[] = [];
-      for await (const { table, row } of rows) {
+      for await (const { table, row } of all()) {
         if (table === 'visits') {
           visits.push({ day: String(row.day), kind: String(row.kind) as Kind, name: String(row.name ?? ''), hits: Number(row.hits) || 0 });
           count++;
           continue;
         }
         const columns = TABLE_COLUMNS[table];
-        if (!columns || !(BACKUP_TABLES as readonly string[]).includes(table)) throw new Error(`a backup holds a table this program does not know: ${table}`);
+        if (!columns || !([...BACKUP_TABLES, ...optional] as readonly string[]).includes(table)) throw new Error(`a backup holds a table this program does not know: ${table}`);
         if (table === 'meta' && NOT_BACKED_UP_META.includes(String(row.key))) continue;
         const names = Object.keys(row);
         const unknown = names.find((name) => !columns.includes(name));
@@ -2407,6 +2480,10 @@ export class Store {
       await this.addStatsRows(run, visits);
       await run('DELETE FROM sessions WHERE user_id NOT IN (SELECT id FROM users)');
       await run('DELETE FROM links WHERE user_id NOT IN (SELECT id FROM users) AND user_id <> ?', ['']);
+      if (optional.includes('visitors')) {
+        await run('DELETE FROM visitor_sessions WHERE visitor_id NOT IN (SELECT id FROM visitors)');
+        await run('DELETE FROM visitor_links WHERE visitor_id NOT IN (SELECT id FROM visitors)');
+      }
     });
     await this.touch();
     return count;
@@ -2421,6 +2498,23 @@ export interface NotFound {
   lastAt: string;
   /** The page that last led to it, as its host and path; empty when nothing did. */
   referrer: string;
+}
+
+/** Where visitor accounts' settings, the mail server and the messages' words are kept (ADR 0064). */
+const VISITOR_SETTINGS = 'visitors';
+const MAIL_SETTINGS = 'mail';
+const MAIL_TEMPLATES = 'mail:templates';
+
+/** Plain queries, for a part of the program with tables of its own (ADR 0060 d3). Written with `?`. */
+export interface Database {
+  kind: DatabaseKind;
+  rows: <T = Row>(query: string, params?: unknown[]) => Promise<T[]>;
+  run: (query: string, params?: unknown[]) => Promise<void>;
+  /** How many rows a change touched: the database's own answer. */
+  changed: (query: string, params?: unknown[]) => Promise<number>;
+  upsert: (table: string, columns: string[], key: string[], update: string[]) => string;
+  /** Makes tables, as statements for this database. */
+  make: (statements: string[]) => Promise<void>;
 }
 
 /** Where the IndexNow key is kept (ADR 0063 d2). */
@@ -2462,7 +2556,7 @@ export const BACKUP_TABLES = [
 /** Each table's columns and key, read from the schema, which says them once. */
 const TABLE_COLUMNS: Record<string, string[]> = {};
 const TABLE_KEYS: Record<string, string[]> = {};
-for (const statement of SQLITE.schema) {
+for (const statement of [...SQLITE.schema, ...BACKED_UP_VISITOR_TABLES.map((t) => visitorTable(t) as string)]) {
   const [, table, inside] = statement.match(/^CREATE TABLE IF NOT EXISTS (\w+) \((.*)\)$/) as RegExpMatchArray;
   const parts = (inside as string).split(/, (?![^()]*\))/);
   const key = parts.find((p) => p.startsWith('PRIMARY KEY'));
