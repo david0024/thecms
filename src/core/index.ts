@@ -5,6 +5,7 @@
  */
 export * from './archive.ts';
 export * from './blocks.ts';
+export * from './structured.ts';
 export * from './content.ts';
 export * from './css.ts';
 export * from './embed.ts';

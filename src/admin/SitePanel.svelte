@@ -4,7 +4,7 @@
  * in the header, the footer's words and links. How these are laid out is the
  * theme's (ADR 0006), so nothing here is a colour or a position.
  */
-import { cleanRobots, type LinkValue, languageName, MAX_LANGUAGES, type MenuList, prefixOf, type Site, type SiteText, verificationCode } from '../core/index.ts';
+import { type Business, BUSINESS_KINDS, cleanBusiness, WEEKDAYS, cleanRobots, type LinkValue, languageName, MAX_LANGUAGES, type MenuList, prefixOf, type Site, type SiteText, verificationCode } from '../core/index.ts';
 import type { LanguageInfo, PageInfo } from './api.ts';
 import ImageField from './ImageField.svelte';
 import MenuBuilder from './MenuBuilder.svelte';
@@ -29,6 +29,9 @@ let {
 const named = (l: LanguageInfo): string => (l.coverage < 1 ? `${l.name} (${say(t.site.partial, { count: Math.floor(l.coverage * 100) })})` : l.name);
 
 const set = (patch: Partial<Site>): void => onchange({ ...site, ...patch });
+/** The business as a place people come to (ADR 0061 d2): each part cleaned as it is left, so the field shows what is kept. */
+const business = $derived(site.business ?? {});
+const setBusiness = (patch: Record<string, unknown>): void => set({ business: cleanBusiness({ ...business, ...patch }) });
 const link = (value: LinkValue | null, patch: Partial<LinkValue>): LinkValue => ({ label: value?.label ?? '', href: value?.href ?? '', ...patch });
 const setFooterLink = (i: number, patch: Partial<LinkValue>): void => set({ footerLinks: site.footerLinks.map((l, j) => (j === i ? link(l, patch) : l)) });
 /** What the header and footer say in another language (ADR 0024). */
@@ -130,6 +133,29 @@ import Redirects from './Redirects.svelte';
 </label>
 <small>{t.site.dataHint}</small>
 
+<details class="business" data-business>
+  <summary>{t.business.heading}</summary>
+  <p class="hint">{t.business.intro}</p>
+  <label class="field"><span>{t.business.kind}</span>
+    <select value={business.kind ?? ''} onchange={(e) => setBusiness({ kind: (e.currentTarget.value || undefined) as Business['kind'] })} data-business-kind>
+      <option value="">{t.business.kindNone}</option>
+      {#each BUSINESS_KINDS as kind}<option value={kind}>{t.business.kinds[kind] ?? kind}</option>{/each}
+    </select>
+  </label>
+  {#each ['street', 'city', 'region', 'postalCode', 'country', 'phone', 'email', 'priceRange', 'currency'] as const as key}
+    <label class="field"><span>{t.business[key]}</span>
+      <input type="text" maxlength="200" value={business[key] ?? ''} onchange={(e) => setBusiness({ [key]: e.currentTarget.value })} data-business-field={key} />
+    </label>
+  {/each}
+  <p class="label">{t.business.hours}</p>
+  {#each WEEKDAYS as day, i}
+    <label class="day"><span>{t.business.days[day] ?? day}</span>
+      <input type="text" maxlength="60" placeholder={t.business.closed} value={business.hours?.[i] ?? ''} onchange={(e) => setBusiness({ hours: Array.from({ length: 7 }, (_, j) => (j === i ? e.currentTarget.value : (business.hours?.[j] ?? ''))) })} data-business-day={i} />
+    </label>
+  {/each}
+  <small>{t.business.hoursHint}</small>
+</details>
+
 <h3>{t.menu.title}</h3>
 <div class="field" data-menu-builder>
   <MenuBuilder {site} {pages} {lists} nodes={site.menu} onchange={(menu) => set({ menu })} />
@@ -197,4 +223,8 @@ import Redirects from './Redirects.svelte';
   .grow { flex: 1; }
   .check { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.6rem; }
   .check span { margin: 0; }
+  .business { margin: 0.8rem 0; }
+  .business summary { cursor: pointer; font-weight: 600; }
+  .day { display: grid; grid-template-columns: 7rem 1fr; align-items: center; gap: 0.5rem; margin-bottom: 0.3rem; }
+  .label { margin: 0.6rem 0 0.3rem; }
 </style>

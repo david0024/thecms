@@ -38,6 +38,9 @@ import {
   type Site,
   type Theme,
   languageOf,
+  entrySchemaData,
+  faqData,
+  organizationData,
   pagesIn,
   siteIn,
 } from '../core/index.ts';
@@ -128,14 +131,8 @@ interface Head {
   noindex?: boolean;
 }
 
-/** The business behind the site, as schema.org names it: who publishes every page. */
-const organization = (site: Site): Record<string, unknown> => ({
-  '@type': 'Organization',
-  '@id': `${site.url}/#organization`,
-  name: site.name,
-  url: `${site.url}/`,
-  ...(site.logo ? { logo: absolute(site, site.logo.src) } : {}),
-});
+/** The business behind the site, as schema.org names it: who publishes every page; a local business when the owner says where it is (ADR 0061 d2). */
+const organization = (site: Site): Record<string, unknown> => organizationData(site);
 const absolute = (site: Site, src: string): string => (src.startsWith('/') ? `${site.url}${src}` : src);
 
 /**
@@ -195,7 +192,11 @@ export function renderPage(site: Site, theme: Theme, page: Page, menu: MenuItem[
       // Only a page's own translations: a language's home page is not this page in that language.
       alternates: alternates.filter((a) => a.translated).length > 1 ? alternates.filter((a) => a.translated) : [],
       // The home page says what the site is, and whose.
-      data: page.slug === '' ? [{ '@type': 'WebSite', '@id': `${site.url}/#website`, name: site.name, url: `${site.url}/`, inLanguage: site.language, publisher: { '@id': `${site.url}/#organization` } }, organization(site)] : undefined,
+      data: [
+        ...(page.slug === '' ? [{ '@type': 'WebSite', '@id': `${site.url}/#website`, name: site.name, url: `${site.url}/`, inLanguage: site.language, publisher: { '@id': `${site.url}/#organization` } }, organization(site)] : []),
+        // The questions the page answers (ADR 0061 d1).
+        ...[faqData(page.blocks)].filter((d) => d !== null),
+      ],
     },
     body,
     css,
@@ -216,6 +217,10 @@ export function renderPost(
 ): string {
   const { body, css } = renderPostParts(site, theme, post, menu, false, type, lists, template, false, alternates);
   const trail = breadcrumbData(site.url, entryTrail(wordsFor(site.language).home, type, post));
+  // An event or a product, and the questions the entry answers (ADR 0061 d1, d3).
+  const own = entrySchemaData(site, type, post, `${site.url}${entryPath(type, post.slug)}`, postDescription(post));
+  const more = [own, faqData(post.blocks)].filter((d) => d !== null);
+  if (own) more.push(organization(site));
   return documentHtml(
     site,
     {
@@ -230,7 +235,8 @@ export function renderPost(
       // Each language the entry is in, for search engines (ADR 0054 d5).
       alternates: alternates.filter((a) => a.translated).length > 1 ? alternates.filter((a) => a.translated) : [],
       // A dated entry is an article: its headline, its day, its picture, and who published it.
-      data: type.dated
+      // A dated entry is an article, unless its type says it is an event or a product (ADR 0061 d3).
+      data: type.dated && !type.schema
         ? [
             {
               '@type': 'BlogPosting',
@@ -248,8 +254,9 @@ export function renderPost(
             },
             organization(site),
             trail,
+            ...more,
           ]
-        : [trail],
+        : [trail, ...more],
     },
     body,
     css,

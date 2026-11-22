@@ -34,7 +34,34 @@ export interface TypeField {
   to?: string;
   /** A link field holds several entries, up to {@link MAX_LINKED}; otherwise one. */
   many?: true;
+  /** What the field is, said to search engines, when its type's entries are events or products (ADR 0061 d3). */
+  means?: FieldMeaning;
 }
+
+/**
+ * What a type's entries are, said to search engines (ADR 0061 d3): events or
+ * products. A dated type is already an article (ADR 0030).
+ */
+export const ENTRY_SCHEMAS = ['event', 'product'] as const;
+export type EntrySchema = (typeof ENTRY_SCHEMAS)[number];
+
+/** What a field may mean, for each kind of entry, and which kinds of field can say it. */
+export const FIELD_MEANINGS = {
+  event: { start: ['date'], end: ['date'], place: ['text', 'longtext'], price: ['number'] },
+  product: { price: ['number'], sku: ['text'], brand: ['text'], inStock: ['yesno'] },
+} as const satisfies Record<EntrySchema, Record<string, readonly TypeFieldKind[]>>;
+export type FieldMeaning = keyof (typeof FIELD_MEANINGS)['event'] | keyof (typeof FIELD_MEANINGS)['product'];
+
+/** The meanings a field of this kind can have on entries of this schema. */
+export function meaningsFor(schema: EntrySchema | undefined, kind: TypeFieldKind): FieldMeaning[] {
+  if (!schema) return [];
+  return Object.entries(FIELD_MEANINGS[schema])
+    .filter(([, kinds]) => (kinds as readonly TypeFieldKind[]).includes(kind))
+    .map(([meaning]) => meaning as FieldMeaning);
+}
+
+/** The field of a type that means this, if one does. */
+export const fieldMeaning = (type: ContentType, meaning: FieldMeaning): TypeField | undefined => type.fields.find((f) => f.means === meaning);
 
 export interface ContentType {
   /** Stable name entries are stored under. */
@@ -56,6 +83,8 @@ export interface ContentType {
   comments?: true;
   /** Its name, address and words in the site's other languages (ADR 0054 d3). */
   translations?: Record<string, TypeTranslation>;
+  /** What its entries are, said to search engines (ADR 0061 d3); absent: articles when dated, nothing more otherwise. */
+  schema?: EntrySchema;
 }
 
 const TYPE_LANGUAGE = /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/;
@@ -128,6 +157,7 @@ function cleanFields(input: unknown): TypeField[] {
     seen.add(key);
     const kind = isKind(raw.kind) ? raw.kind : 'text';
     const field: TypeField = { key, label, kind };
+    if (typeof raw.means === 'string' && raw.means) field.means = raw.means as FieldMeaning;
     if (kind === 'choice') field.options = choicesOf(raw.options);
     if (kind === 'entries') {
       field.to = slugify(raw.to);
@@ -178,6 +208,16 @@ export function normalizeTypes(input: unknown): ContentType[] {
       ...(slugify(raw.layout) ? { layout: slugify(raw.layout) } : {}),
       ...(raw.comments === true ? { comments: true as const } : {}),
       ...(isObject(raw.translations) && Object.keys(raw.translations).length ? { translations: normalizeTypeTranslations(raw.translations) } : {}),
+      ...(ENTRY_SCHEMAS.includes(raw.schema as EntrySchema) ? { schema: raw.schema as EntrySchema } : {}),
+    });
+    // A field means something only on a type whose entries are events or products, and each meaning once.
+    const added = out[out.length - 1] as ContentType;
+    const meant = new Set<string>();
+    added.fields = added.fields.map((field) => {
+      const { means, ...rest } = field;
+      if (!means || meant.has(means) || !meaningsFor(added.schema, field.kind).includes(means)) return rest;
+      meant.add(means);
+      return field;
     });
   }
   // A link field leads to a type the site has; one whose type is gone goes with it (ADR 0052 d1).

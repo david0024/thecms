@@ -4,7 +4,7 @@
  * besides pages. A type is made here from a name and a few choices; nothing
  * about it is code.
  */
-import { type ContentType, contentTypes, languageName, prefixOf, READY_LAYOUTS, type TypeTranslation, STANDARD, type Site, slugify, TYPE_FIELD_KINDS, type TypeField, type TypeFieldKind } from '../core/index.ts';
+import { type ContentType, contentTypes, ENTRY_SCHEMAS, type EntrySchema, type FieldMeaning, meaningsFor, languageName, prefixOf, READY_LAYOUTS, type TypeTranslation, STANDARD, type Site, slugify, TYPE_FIELD_KINDS, type TypeField, type TypeFieldKind } from '../core/index.ts';
 import { layoutName } from './layouts.ts';
 import { say, t } from './messages.ts';
 
@@ -129,6 +129,15 @@ async function remove(): Promise<void> {
         </select>
       </label>
 
+      <label class="field">
+        <span>{t.ctypes.schema}</span>
+        <select value={draft.schema ?? ''} onchange={(e) => patch({ schema: (e.currentTarget.value || undefined) as EntrySchema | undefined })} data-type-schema>
+          <option value="">{draft.dated ? t.ctypes.schemaArticle : t.ctypes.schemaNone}</option>
+          {#each ENTRY_SCHEMAS as schema}<option value={schema}>{t.ctypes.schemas[schema]}</option>{/each}
+        </select>
+        <small>{t.ctypes.schemaHint}</small>
+      </label>
+
       <h2>{t.ctypes.fields}</h2>
       <p class="hint">{t.ctypes.fieldsHint}</p>
       {#each draft.fields as field, i (i)}
@@ -138,6 +147,15 @@ async function remove(): Promise<void> {
             {#each TYPE_FIELD_KINDS as kind}<option value={kind}>{t.ctypes.kinds[kind]}</option>{/each}
           </select>
           <button type="button" class="quiet" onclick={() => patch({ fields: (draft?.fields ?? []).filter((_, j) => j !== i) })} aria-label={t.inspector.remove} title={t.inspector.remove}>✕</button>
+          {#if meaningsFor(draft.schema, field.kind).length}
+            <label class="more">
+              <span>{t.ctypes.means}</span>
+              <select value={field.means ?? ''} onchange={(e) => patchField(i, { means: (e.currentTarget.value || undefined) as FieldMeaning | undefined })} data-type-field-means>
+                <option value="">{t.ctypes.meansNothing}</option>
+                {#each meaningsFor(draft.schema, field.kind) as meaning}<option value={meaning}>{t.ctypes.meanings[meaning]}</option>{/each}
+              </select>
+            </label>
+          {/if}
           {#if field.kind === 'choice'}
             <label class="more">
               <span>{t.ctypes.choices}</span>
