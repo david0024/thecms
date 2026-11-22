@@ -45,9 +45,9 @@ onMount(() => void attempt(api.comments));
     <ul class="comments">
       {#each items as c (c.id)}
         {@const on = where(c)}
-        <li data-comment={c.id} data-approved={c.approved ? 'yes' : 'no'}>
+        <li data-comment={c.id} data-approved={c.approved ? 'yes' : c.spam ? 'spam' : 'no'}>
           <p class="from">
-            <span class="state" class:waiting={!c.approved}>{c.approved ? t.comments.shown : t.comments.waiting}</span>
+            <span class="state" class:waiting={!c.approved}>{c.approved ? t.comments.shown : c.spam ? t.comments.spam : t.comments.waiting}</span>
             <strong>{c.name}</strong> <a href={`mailto:${c.email}`}>{c.email}</a>
             <small>{when(c.at)} · {#if on.href}<a href={on.href} target="_blank" rel="noopener">{say(t.comments.on, { entry: on.title })}</a>{:else}{say(t.comments.on, { entry: on.title })}{/if}</small>
           </p>

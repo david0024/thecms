@@ -349,6 +349,8 @@ export interface Comment {
   /** When it was sent, as an ISO time. */
   at: string;
   approved: boolean;
+  /** Kept apart, as an extension judged it (ADR 0062 d3): not shown, until the owner approves it. */
+  spam?: boolean;
   /** The language of the entry it was written under, when not the main one (ADR 0054 d6). */
   language?: string;
 }
@@ -1784,7 +1786,7 @@ export class Store {
     const days = (await this.site()).keepMessages;
     const before = new Date(now.getTime() - days * 86_400_000).toISOString();
     await this.run('DELETE FROM messages WHERE received_at < ?', [before]);
-    await this.run('DELETE FROM comments WHERE approved = 0 AND at < ?', [before]);
+    await this.run('DELETE FROM comments WHERE approved <> 1 AND at < ?', [before]);
     await this.forgetLooseAnswers();
   }
 
@@ -1801,9 +1803,14 @@ export class Store {
    * owner, unless an earlier comment from the same address was approved:
    * someone the owner already let speak is not held each time.
    */
-  async addComment(input: { type: string; entry: string; name: string; email: string; body: string; consent: string; language?: string }, at = new Date()): Promise<Comment> {
+  async addComment(
+    input: { type: string; entry: string; name: string; email: string; body: string; consent: string; language?: string },
+    at = new Date(),
+    /** What the extensions that check comments answered (ADR 0062 d3); the strictest wins. */
+    judged: 'hold' | 'approve' | 'spam' | null = null,
+  ): Promise<Comment> {
     const email = str(input.email, 254).trim();
-    const known = await this.row('SELECT 1 AS found FROM comments WHERE LOWER(email) = ? AND approved = 1', [email.toLowerCase()]);
+    const known = judged === 'approve' ? true : judged ? null : await this.row('SELECT 1 AS found FROM comments WHERE LOWER(email) = ? AND approved = 1', [email.toLowerCase()]);
     const comment: Comment = {
       id: crypto.randomUUID(),
       type: str(input.type, 60),
@@ -1814,6 +1821,7 @@ export class Store {
       consent: str(input.consent, 600).trim(),
       at: at.toISOString(),
       approved: known !== null,
+      ...(judged === 'spam' ? { spam: true } : {}),
       ...(input.language ? { language: str(input.language, 20) } : {}),
     };
     await this.run('INSERT INTO comments (id, type, entry, name, email, body, consent, at, approved) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', [
@@ -1825,18 +1833,18 @@ export class Store {
       comment.body,
       comment.consent,
       comment.at,
-      comment.approved ? 1 : 0,
+      comment.approved ? 1 : comment.spam ? -1 : 0,
     ]);
     // Kept beside it, as a message's answers are: a comment is shown under the entry in the language it was written in.
     if (comment.language) await this.run('INSERT INTO comment_languages (id, language) VALUES (?, ?)', [comment.id, comment.language]);
-    this.emit('comment.created', { id: comment.id, type: comment.type, entry: comment.entry, name: comment.name, body: comment.body, approved: comment.approved });
+    this.emit('comment.created', { id: comment.id, type: comment.type, entry: comment.entry, name: comment.name, body: comment.body, approved: comment.approved, spam: comment.spam === true });
     return comment;
   }
 
   /** Every comment, those waiting first and then newest first; or those one address sent. */
   async comments(email?: string): Promise<Comment[]> {
     const rows = await this.rows<Row>(
-      `SELECT c.id, c.type, c.entry, c.name, c.email, c.body, c.consent, c.at, c.approved, l.language FROM comments c LEFT JOIN comment_languages l ON l.id = c.id${email ? ' WHERE LOWER(c.email) = ?' : ''} ORDER BY c.approved, c.at DESC, c.id`,
+      `SELECT c.id, c.type, c.entry, c.name, c.email, c.body, c.consent, c.at, c.approved, l.language FROM comments c LEFT JOIN comment_languages l ON l.id = c.id${email ? ' WHERE LOWER(c.email) = ?' : ''} ORDER BY CASE c.approved WHEN 0 THEN 0 WHEN 1 THEN 1 ELSE 2 END, c.at DESC, c.id`,
       email ? [email.trim().toLowerCase()] : [],
     );
     return rows.map((r) => ({
@@ -1849,12 +1857,13 @@ export class Store {
       consent: String(r.consent),
       at: String(r.at),
       approved: Number(r.approved) === 1,
+      ...(Number(r.approved) === -1 ? { spam: true } : {}),
       ...(r.language ? { language: String(r.language) } : {}),
     }));
   }
 
   async approveComment(id: string): Promise<void> {
-    if ((await this.changed('UPDATE comments SET approved = 1 WHERE id = ? AND approved = 0', [id])) !== 1) return;
+    if ((await this.changed('UPDATE comments SET approved = 1 WHERE id = ? AND approved <> 1', [id])) !== 1) return;
     const c = (await this.comments()).find((one) => one.id === id);
     if (c) this.emit('comment.approved', { id, type: c.type, entry: c.entry, name: c.name, body: c.body });
   }

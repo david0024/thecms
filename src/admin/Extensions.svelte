@@ -109,6 +109,8 @@ async function accept(): Promise<void> {
         {/each}
         {#if offer.asks.pictures?.length}<li>{say(t.ext.pictures, { list: offer.asks.pictures.join(', ') })}</li>{/if}
         {#if offer.asks.events.length}<li>{say(t.ext.events, { list: offer.asks.events.join(', ') })}</li>{/if}
+        {#if offer.asks.answers?.length}<li>{say(t.ext.answers, { list: offer.asks.answers.join(', ') })}</li>{/if}
+        {#if offer.asks.uses?.length}<li>{say(t.ext.uses, { list: offer.asks.uses.join(', ') })}</li>{/if}
       </ul>
       <small class="sum">{say(t.ext.checksum, { sha: offer.sha256 })}</small>
       <div class="row">

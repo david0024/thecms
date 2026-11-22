@@ -90,7 +90,7 @@ export function startRuntime(
   // What every visit tells the extensions that listen, gathered and told in batches (ADR 0062 d2).
   const told = batches(extensions, { log: options.log });
   const visits = countVisits(store, shared, { now, log: options.log, told });
-  const forms = startForms(store, { listen: false, mailer: options.mailer, to: options.to, from: options.from, log: options.log, shared });
+  const forms = startForms(store, { listen: false, mailer: options.mailer, to: options.to, from: options.from, log: options.log, shared, ask: extensions.ask });
   type Files = Map<string, string | Uint8Array>;
   let built: { version: string; files: Promise<Files>; ready: boolean } | null = null;
   let asked: { at: number; version: Promise<string> } | null = null;

@@ -46,6 +46,8 @@ export interface ExtensionHost {
    * library has no such picture.
    */
   picture(src: string): Promise<{ type: string; data: string } | null>;
+  /** The published pages and entries, newest first, for an action that declared it reads them (ADR 0062 d4). */
+  published(): Promise<{ address: string; title: string; description: string; language: string; type: string; date: string }[]>;
 }
 
 export function runner(send: (message: FromRunner) => void, receive: (handler: (message: ToRunner) => void) => void): void {
@@ -75,6 +77,7 @@ export function runner(send: (message: FromRunner) => void, receive: (handler: (
       fetch: (url, init) => ask('fetch', url, init ?? {}),
       site: () => ask('site'),
       picture: (src) => ask('picture', src),
+      published: () => ask('published'),
     };
   };
   // The network is the program's to reach, for the hosts declared: say so instead of failing somewhere else.

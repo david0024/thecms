@@ -111,6 +111,7 @@ function fakeHost(rows: Record<string, unknown>[], answer: (url: string, body: R
     },
     site: async () => ({ name: 'Oak & Co', language: 'en', languages: ['ro'] }),
     picture: async (src) => (src.startsWith('/media/') ? { type: 'image/webp', data: btoa(`bytes of ${src}`) } : null),
+    published: async () => [],
   };
   return { host, sent, usage };
 }

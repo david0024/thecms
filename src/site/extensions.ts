@@ -9,7 +9,7 @@
  * within what the extension declared.
  */
 import { join } from 'node:path';
-import { cleanRow, egressAllows, type ExtensionAction, type ExtensionEventName, type ExtensionManifest, extensionAsks, EXTENSION_MAX_BYTES, mediaKindOf, mediaNameOf, parseExtension, variantOf } from '../core/index.ts';
+import { ANSWER_SECONDS, cleanRow, contentTypes, egressAllows, entryIn, entryPath, type ExtensionAction, type ExtensionEventName, pagePath, type Question, QUESTIONS, typeIn, type ExtensionManifest, extensionAsks, EXTENSION_MAX_BYTES, mediaKindOf, mediaNameOf, parseExtension, variantOf } from '../core/index.ts';
 import { type FromRunner, lines, type ToRunner } from './extension-runner.ts';
 import type { InstalledExtension, SiteEvent, Store } from './store.ts';
 import { isCompiled, newer } from './update.ts';
@@ -218,6 +218,11 @@ export function extensionHost(store: Store, options: { spawn?: Spawn; fetch?: (u
         if (body.length > FETCH_MAX_BYTES) throw new Error('the answer is larger than 5 MB');
         return { status: response.status, headers: Object.fromEntries(response.headers), body };
       }
+      case 'published': {
+        // The program's data, declared (ADR 0062 d4): what visitors can read anyway, nothing behind a password.
+        if (!action.uses.includes('published')) throw new Error(`the action "${action.name}" did not declare that it reads "published"`);
+        return publishedFor(store);
+      }
       case 'picture': {
         if (!action.pictures) throw new Error(`the action "${action.name}" did not declare that it sees the site's pictures`);
         const name = mediaNameOf(String(args[0]));
@@ -376,6 +381,37 @@ export function extensionHost(store: Store, options: { spawn?: Spawn; fetch?: (u
     await Promise.all(told);
   }
 
+  /**
+   * Asks the extensions that answer a question (ADR 0062 d3) and waits, at
+   * most ANSWER_SECONDS, for each. What one does not answer, or answers with
+   * what the question does not take, is said and left out: the program then
+   * does what it does without it.
+   */
+  async function ask(question: Question, input: Record<string, unknown>): Promise<string[]> {
+    const allowed: readonly string[] = QUESTIONS[question];
+    const asked: Promise<string | null>[] = [];
+    for (const extension of await store.extensions()) {
+      if (!extension.enabled) continue;
+      const answering = extension.manifest.answers.find((a) => a.question === question);
+      if (!answering) continue;
+      let timer: ReturnType<typeof setTimeout> | null = null;
+      const late = new Promise<never>((_, reject) => (timer = setTimeout(() => reject(new Error(`no answer within ${ANSWER_SECONDS} seconds`)), ANSWER_SECONDS * 1000)));
+      asked.push(
+        Promise.race([run(extension.manifest.name, answering.action, { question, ...input }), late])
+          .then((answer) => {
+            if (typeof answer === 'string' && allowed.includes(answer)) return answer;
+            throw new Error(`"${String(answer).slice(0, 40)}" is not one of ${allowed.join(', ')}`);
+          })
+          .catch((error: unknown) => {
+            log(`${extension.manifest.displayName} did not answer ${question}: ${error instanceof Error ? error.message : String(error)}`);
+            return null;
+          })
+          .finally(() => timer && clearTimeout(timer)),
+      );
+    }
+    return (await Promise.all(asked)).filter((a): a is string => a !== null);
+  }
+
   /** Which events an extension that is on listens to, asked at most once in LISTENING_MS. */
   let listening: { at: number; names: Promise<Set<string>> } | null = null;
   async function listens(event: ExtensionEventName): Promise<boolean> {
@@ -397,6 +433,7 @@ export function extensionHost(store: Store, options: { spawn?: Spawn; fetch?: (u
     jobs,
     deliver,
     listens,
+    ask,
     /** From now on, what happens in the site is told to the extensions that listen. Returns how to stop. */
     listen(): () => void {
       return store.onEvent((event) => void deliver(event));
@@ -485,3 +522,29 @@ export function batches(host: Pick<ExtensionHostApi, 'deliver' | 'listens'>, opt
 }
 
 export type Batches = ReturnType<typeof batches>;
+
+/**
+ * The published pages and entries, newest first (ADR 0062 d4): each with its
+ * address, title, description, language, type and date. A page behind a
+ * password is not one of them; nor is anything in draft.
+ */
+export async function publishedFor(store: Store): Promise<{ address: string; title: string; description: string; language: string; type: string; date: string }[]> {
+  const site = await store.site();
+  const locked = new Set(await store.lockedPages());
+  const times = await store.publishedTimes();
+  const out: { address: string; title: string; description: string; language: string; type: string; date: string }[] = [];
+  for (const page of await store.published()) {
+    if (locked.has(page.of) || locked.has(page.slug)) continue;
+    out.push({ address: pagePath(page.slug), title: page.title, description: page.description, language: page.language, type: 'page', date: (times.pages[page.of] ?? '').slice(0, 10) });
+  }
+  for (const type of contentTypes(site)) {
+    for (const entry of await store.publishedEntries(type.id)) {
+      for (const language of [site.language, ...site.languages.filter((l) => l !== site.language)]) {
+        const shown = language === site.language ? entry : entryIn(site, type, entry, language);
+        if (!shown) continue;
+        out.push({ address: entryPath(typeIn(site, type, language), shown.slug), title: shown.title, description: shown.description, language, type: type.id, date: entry.date });
+      }
+    }
+  }
+  return out.sort((a, b) => b.date.localeCompare(a.date) || a.address.localeCompare(b.address));
+}
