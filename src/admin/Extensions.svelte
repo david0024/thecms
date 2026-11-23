@@ -86,7 +86,7 @@ async function accept(): Promise<void> {
   <h2>{t.ext.install}</h2>
   <label class="field">
     <span>{t.ext.file}</span>
-    <input type="file" accept=".thecms-extension,application/json" onchange={(e) => choose(e.currentTarget.files?.[0])} data-extension-file />
+    <input type="file" accept=".uhlaka-extension,.thecms-extension,application/json" onchange={(e) => choose(e.currentTarget.files?.[0])} data-extension-file />
   </label>
   {#if offer}
     <ExtensionOfferBox {offer} onaccept={accept} oncancel={() => ((offer = null), (file = null))} />

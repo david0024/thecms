@@ -1,6 +1,6 @@
 /**
  * The language packs this installation has (ADR 0021): the ones that ship
- * (`languages/`, inside the program), and any in the folder THECMS_LANGUAGES
+ * (`languages/`, inside the program), and any in the folder UHLAKA_LANGUAGES
  * names, read when the program starts. Each is checked against English before it is used; what
  * does not fit is left out, and said once on the console.
  */
@@ -11,7 +11,7 @@ import { en as admin } from '../admin/messages.ts';
 import { en as site, useSitePacks } from '../blocks/words.ts';
 import { SHIPPED_LANGUAGES } from './shipped.ts';
 
-/** Every word thecms says, in English: what every pack is checked against, and what a pack leaves out falls back to. */
+/** Every word Uhlaka says, in English: what every pack is checked against, and what a pack leaves out falls back to. */
 export const ENGLISH = { admin, site } as unknown as Catalog;
 
 export interface LanguageInfo {
@@ -50,7 +50,7 @@ export function readLanguages(folders: string[], shipped: Record<string, unknown
   return { packs: [...found.values()], problems };
 }
 
-const loaded = readLanguages([process.env.THECMS_LANGUAGES ?? ''].filter(Boolean));
+const loaded = readLanguages([process.env.UHLAKA_LANGUAGES ?? ''].filter(Boolean));
 if (loaded.problems.length) console.error(`Language packs: ${loaded.problems.length} messages were left out.\n${loaded.problems.map((p) => `  ${p}`).join('\n')}`);
 useSitePacks(loaded.packs);
 

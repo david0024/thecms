@@ -15,7 +15,7 @@ import { startEditor } from '../src/site/server.ts';
 import { Store } from '../src/site/store.ts';
 import plain from '../themes/plain.json';
 
-const dir = await mkdtemp(join(tmpdir(), 'thecms-field-translation-'));
+const dir = await mkdtemp(join(tmpdir(), 'uhlaka-field-translation-'));
 afterAll(() => rm(dir, { recursive: true, force: true }));
 
 const blocks = [
@@ -113,7 +113,7 @@ describe('the store and the editor', () => {
       const response = await editor.fetch(
         new Request(`http://127.0.0.1:4321${path}`, {
           method,
-          headers: { host: '127.0.0.1:4321', 'x-thecms-token': editor.token, ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
+          headers: { host: '127.0.0.1:4321', 'x-uhlaka-token': editor.token, ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
           body: body === undefined ? undefined : JSON.stringify(body),
         }),
       );

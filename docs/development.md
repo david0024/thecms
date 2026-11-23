@@ -8,17 +8,17 @@ bun run cms init site.db              # a sample site, in one file
 bun run cms edit site.db              # the site and its editor; open the address it prints
 bun run cms run site.db               # the site alone, for visitors
 bun run cms export site.db dist       # or the published site as static files (site.zip: as a ZIP)
-bun run cms export site.db site.thecms.json   # the content in one file; `import` takes it back
+bun run cms export site.db site.uhlaka.json   # the content in one file; `import` takes it back
 ```
 
 The site's forms, comments and search are answered by its own server. To be
-told of a message by email, set `THECMS_SMTP` and `THECMS_MAIL_TO`. A site
+told of a message by email, set `UHLAKA_SMTP` and `UHLAKA_MAIL_TO`. A site
 exported as files can send its forms to the small form service (ADR 0019): run
 it where visitors can reach it, put its address in Site settings, and export
 again:
 
 ```sh
-THECMS_SMTP=smtps://user:pass@mail.example.com THECMS_MAIL_TO=you@example.com \
+UHLAKA_SMTP=smtps://user:pass@mail.example.com UHLAKA_MAIL_TO=you@example.com \
   bun run cms forms site.db 4322     # receives at /send; messages show in the admin
 ```
 
@@ -32,7 +32,7 @@ bun run cms edit mysql://user:pass@localhost:3306/mysite
 
 MySQL 8.4 must allow `mysql_native_password` for the site's user for now
 (`--mysql-native-password=ON`); Postgres needs nothing special. To run the
-store's tests on them too, set `THECMS_TEST_POSTGRES` and `THECMS_TEST_MYSQL`
+store's tests on them too, set `UHLAKA_TEST_POSTGRES` and `UHLAKA_TEST_MYSQL`
 to the address of an empty database each.
 
 The admin opens on the list of pages, with sections for posts, media, the menu
@@ -86,7 +86,7 @@ measured by no test.
 
 ```sh
 bun test --coverage --coverage-reporter=lcov --coverage-dir=coverage
-for t in editor import templates forms admin accounts translations export; do THECMS_COVERAGE=coverage node e2e/$t.cjs; done
+for t in editor import templates forms admin accounts translations export; do UHLAKA_COVERAGE=coverage node e2e/$t.cjs; done
 bun run coverage           # the table, coverage/all.lcov, and the gate
 ```
 
@@ -102,7 +102,7 @@ src/blocks/   one Svelte 5 component per block type, and the shared layout CSS
 src/site/     the store (SQLite, Postgres or MySQL), the static export, the editing server, the command line
 src/admin/    the editor: a Svelte 5 app and the script that runs inside the canvas
 themes/       themes, as JSON
-languages/    language packs, as JSON (more from the folder in THECMS_LANGUAGES)
+languages/    language packs, as JSON (more from the folder in UHLAKA_LANGUAGES)
 docs/adr/     decisions, with their reasons
 ```
 

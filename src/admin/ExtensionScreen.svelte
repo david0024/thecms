@@ -1,6 +1,6 @@
 <script lang="ts">
 /**
- * An extension's screen (ADR 0031): one `thecms.view/1` document, drawn by
+ * An extension's screen (ADR 0031): one `uhlaka.view/1` document, drawn by
  * this admin. The document says what is shown and which actions run; how it
  * looks is this admin's. No code of the extension runs here.
  */

@@ -2,7 +2,7 @@
 /**
  * Settings → E-mail (ADR 0064 d5): the mail server the site sends through,
  * the sender, a test message, and the words of each message to visitors in
- * each language, the site's and those extensions declare. THECMS_SMTP and THECMS_MAIL_FROM are stronger, and it says so.
+ * each language, the site's and those extensions declare. UHLAKA_SMTP and UHLAKA_MAIL_FROM are stronger, and it says so.
  */
 import { onMount } from 'svelte';
 import { api, type MailShown, type MailTemplates } from './api.ts';

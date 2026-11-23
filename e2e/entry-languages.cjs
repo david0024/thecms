@@ -22,7 +22,7 @@ const assert = (condition, message) => {
 const PORT = 4400;
 
 (async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'thecms-e2e-entry-languages-'));
+  const dir = mkdtempSync(join(tmpdir(), 'uhlaka-e2e-entry-languages-'));
   const db = join(dir, 'site.db');
   const shots = process.argv[2];
   cli('init', db);

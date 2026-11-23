@@ -3,8 +3,8 @@
   "displayName": "Statistics",
   "description": "Who reads the site, counted by its own server: no cookie and no script on the pages, so visitors are asked nothing. Robots and people signed in to the admin are not counted. Keeps each day's totals for a month and each month's for good.",
   "version": "1.0.0",
-  "publisher": "thecms",
-  "thecmsMinVersion": "0.1.0",
+  "publisher": "uhlaka",
+  "uhlakaMinVersion": "0.1.0",
   "collections": [
     { "name": "days", "label": "Days", "fields": [
       { "key": "day", "label": "Day", "kind": "date" },
@@ -33,7 +33,7 @@
     { "action": "forget", "everyMinutes": 1440 }
   ],
   "views": [
-    { "spec": "thecms.view/1", "id": "stats.report", "title": "Statistics", "type": "report", "action": "report" }
+    { "spec": "uhlaka.view/1", "id": "stats.report", "title": "Statistics", "type": "report", "action": "report" }
   ],
   "messages": {
     "ro": {

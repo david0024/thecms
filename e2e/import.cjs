@@ -20,7 +20,7 @@ const assert = (condition, message) => {
 };
 
 (async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'thecms-e2e-import-'));
+  const dir = mkdtempSync(join(tmpdir(), 'uhlaka-e2e-import-'));
   const db = join(dir, 'site.db');
   const shots = process.argv[2];
   cli('init', db);

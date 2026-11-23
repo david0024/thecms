@@ -23,7 +23,7 @@ const assert = (condition, message) => {
 };
 
 (async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'thecms-e2e-'));
+  const dir = mkdtempSync(join(tmpdir(), 'uhlaka-e2e-'));
   const db = join(dir, 'site.db');
   const shots = process.argv[2];
   cli('init', db);
@@ -199,7 +199,7 @@ const assert = (condition, message) => {
     const token = url.split('#token=')[1];
     const stored = async () => {
       await saved();
-      return page.evaluate(async (t) => (await (await fetch('/api/page?slug=preturi-si-comenzi', { headers: { 'x-thecms-token': t } })).json()).page.blocks, token);
+      return page.evaluate(async (t) => (await (await fetch('/api/page?slug=preturi-si-comenzi', { headers: { 'x-uhlaka-token': t } })).json()).page.blocks, token);
     };
     const format = (name) => canvas.locator(`.cms-format button[data-format="${name}"]`).click();
 

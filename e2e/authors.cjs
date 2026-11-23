@@ -24,7 +24,7 @@ const PUBLIC = `http://127.0.0.1:${PORT}`;
 const PASSWORD = 'a long enough password';
 
 (async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'thecms-e2e-authors-'));
+  const dir = mkdtempSync(join(tmpdir(), 'uhlaka-e2e-authors-'));
   const db = join(dir, 'site.db');
   const shots = process.argv[2];
   cli('init', db);

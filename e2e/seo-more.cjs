@@ -23,7 +23,7 @@ const assert = (condition, message) => {
 const PORT = 4398;
 
 (async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'thecms-e2e-seo-more-'));
+  const dir = mkdtempSync(join(tmpdir(), 'uhlaka-e2e-seo-more-'));
   const db = join(dir, 'site.db');
   const shots = process.argv[2];
   cli('init', db);
@@ -51,7 +51,7 @@ const PORT = 4398;
     const saved = () => page.locator('.status[data-state="saved"]').waitFor();
     const stored = async () => {
       await saved();
-      return page.evaluate(async (t) => (await (await fetch('/api/page?slug=about', { headers: { 'x-thecms-token': t } })).json()).page.blocks, token);
+      return page.evaluate(async (t) => (await (await fetch('/api/page?slug=about', { headers: { 'x-uhlaka-token': t } })).json()).page.blocks, token);
     };
     await page.goto(url);
 

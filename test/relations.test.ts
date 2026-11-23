@@ -217,7 +217,7 @@ describe('the store and the editor keep links whole', () => {
   let store: Store;
   let editor: EditorServer;
   const call = (path: string, init: RequestInit = {}): Promise<Response> =>
-    editor.fetch(new Request(`http://127.0.0.1:${editor.port}${path}`, { ...init, headers: { 'x-thecms-token': editor.token, host: `127.0.0.1:${editor.port}`, 'content-type': 'application/json' } }));
+    editor.fetch(new Request(`http://127.0.0.1:${editor.port}${path}`, { ...init, headers: { 'x-uhlaka-token': editor.token, host: `127.0.0.1:${editor.port}`, 'content-type': 'application/json' } }));
   beforeEach(async () => {
     store = await Store.open(':memory:');
     await store.setSite(site);

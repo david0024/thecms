@@ -63,7 +63,7 @@ describe('the form service', () => {
   const good = (): Record<string, string> => ({ back: '/contact/', form: block.id, name: 'Ana Pop', email: 'ana@example.org', message: 'Hello.\nA table for 12?', consent: 'yes', website: '' });
 
   beforeEach(async () => {
-    dir = await mkdtemp(join(tmpdir(), 'thecms-forms-'));
+    dir = await mkdtemp(join(tmpdir(), 'uhlaka-forms-'));
     store = await Store.open(join(dir, 'site.db'));
     await store.setSite({ name: 'Atelier', url: SITE, forms: 'https://forms.example.com' });
     block = formBlock();
@@ -132,7 +132,7 @@ describe('the form service', () => {
 
   test('the admin reads, deletes and erases them; nobody else can', async () => {
     const editor: EditorServer = await startEditor(store, { listen: false });
-    const call = (path: string, method = 'GET', token = editor.token) => editor.fetch(new Request(`http://127.0.0.1:4321${path}`, { method, headers: { host: '127.0.0.1:4321', 'x-thecms-token': token } }));
+    const call = (path: string, method = 'GET', token = editor.token) => editor.fetch(new Request(`http://127.0.0.1:4321${path}`, { method, headers: { host: '127.0.0.1:4321', 'x-uhlaka-token': token } }));
     try {
       const one = await store.addMessage({ form: block.id, page: '/', name: 'A', email: 'a@example.org', body: 'x', consent: 'c' });
       await store.addMessage({ form: block.id, page: '/', name: 'B', email: 'b@example.org', body: 'y', consent: 'c' });

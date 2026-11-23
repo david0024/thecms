@@ -8,7 +8,7 @@ import plain from '../../themes/plain.json';
 import studio from '../../themes/studio.json';
 import ro from '../../languages/ro.json';
 import baseCss from '../blocks/base.css' with { type: 'text' };
-import statsPackage from '../../extensions/stats/stats.thecms-extension' with { type: 'text' };
+import statsPackage from '../../extensions/stats/stats.uhlaka-extension' with { type: 'text' };
 
 /** The themes in `themes/`, by file name. */
 export const SHIPPED_THEMES: Record<string, unknown> = { 'plain.json': plain, 'studio.json': studio };

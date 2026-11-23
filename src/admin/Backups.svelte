@@ -19,7 +19,7 @@ let asked = $state('');
 let uploading = $state<File | null>(null);
 let input = $state<HTMLInputElement | null>(null);
 
-const EMPTY_S3 = { endpoint: '', bucket: '', region: 'auto', accessKeyId: '', secretAccessKey: '', prefix: 'thecms/' };
+const EMPTY_S3 = { endpoint: '', bucket: '', region: 'auto', accessKeyId: '', secretAccessKey: '', prefix: 'uhlaka/' };
 let s3 = $state({ ...EMPTY_S3 });
 let useS3 = $state(false);
 
@@ -180,7 +180,7 @@ const upload = () =>
 
     <h2>{t.backups.upload}</h2>
     <p class="hint">{say(t.backups.uploadHint, { size: size(shown.limit) })}</p>
-    <input type="file" accept=".thecms-backup" bind:this={input} onchange={(e) => (uploading = e.currentTarget.files?.[0] ?? null)} data-backup-file />
+    <input type="file" accept=".uhlaka-backup,.thecms-backup" bind:this={input} onchange={(e) => (uploading = e.currentTarget.files?.[0] ?? null)} data-backup-file />
     {#if uploading}
       <div class="confirm" role="alertdialog" data-backup-upload-confirm>
         <p>{say(t.backups.confirmUpload, { name: uploading.name })}</p>

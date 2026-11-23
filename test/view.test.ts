@@ -1,5 +1,5 @@
 /**
- * The screens of an extension (ADR 0031): `thecms.view/1`, checked against
+ * The screens of an extension (ADR 0031): `uhlaka.view/1`, checked against
  * its vocabulary and against what the extension declares, and what every
  * front end does the same way when it draws one.
  */
@@ -56,12 +56,12 @@ describe('a screen', () => {
     const problems = (views: unknown): string[] => checkViews(views, scope).problems;
     expect(problems('nope')).toEqual(['views: a list of screens']);
     expect(problems(Array.from({ length: 25 }, (_, i) => ({ ...top, id: `x${i}`, type: 'list', collection: 'keys' })))).toEqual(['views: at most 24 screens']);
-    expect(problems([{ id: 'x' }, 'nonsense'])).toEqual(['views[0]: a screen starts with "spec": "thecms.view/1"', 'views[1]: a screen starts with "spec": "thecms.view/1"']);
+    expect(problems([{ id: 'x' }, 'nonsense'])).toEqual(['views[0]: a screen starts with "spec": "uhlaka.view/1"', 'views[1]: a screen starts with "spec": "uhlaka.view/1"']);
     expect(problems([{ spec: VIEW_SPEC, type: 'list', collection: 'keys', url: '/x', class: 'big' }])).toEqual([
       'views[0]: "id" is required',
       'views[0]: "title" is a short text',
-      'views[0]: "url" is not part of thecms.view/1',
-      'views[0]: "class" is not part of thecms.view/1',
+      'views[0]: "url" is not part of uhlaka.view/1',
+      'views[0]: "class" is not part of uhlaka.view/1',
     ]);
     expect(problems([{ ...top, id: 'Bad Id', type: 'chart' }, { ...top, type: 'list', collection: 'users' }, { ...top, type: 'list', collection: 'keys' }])).toEqual([
       'views[0]: "id" is lower case words joined by dots: "ai.providers"',
@@ -130,7 +130,7 @@ describe('a screen', () => {
       'views[0].rowActions[5]: "confirm" is a short text',
       'views[0].rowActions[5]: "tone" is one of neutral, success, warning, danger, muted',
       'views[0].rowActions[6]: "navigate" names a view by its id',
-      'views[0].rowActions[7]: "href" is not part of thecms.view/1',
+      'views[0].rowActions[7]: "href" is not part of uhlaka.view/1',
       'views[0].rowActions[7]: no view has the id "nowhere"',
     ]);
     expect(problems([], [{ label: 'R', action: 'rotate', input: { id: { $record: 'id' } }, when: [] }])).toEqual(['views[0].actions[0].input.id: $record is only for a button on a row', 'views[0].actions[0]: "when" is only for a button on a row']);

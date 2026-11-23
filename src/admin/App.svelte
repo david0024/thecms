@@ -358,7 +358,7 @@ const patch = (id: string, fn: (b: Block) => Block, options?: { redraw?: boolean
 };
 
 function onFrameMessage(event: MessageEvent): void {
-  if (event.origin !== location.origin || event.source !== frame?.contentWindow || event.data?.thecms !== true) return;
+  if (event.origin !== location.origin || event.source !== frame?.contentWindow || event.data?.uhlaka !== true) return;
   const message = event.data as { type: string; id: string | null; path: string; value: unknown; action: 'up'; parent: string | null; index: number; blockType: string };
   const place = (): boolean => (message.parent === null || typeof message.parent === 'string') && Number.isInteger(message.index);
   if (message.type === 'ready') {
@@ -859,7 +859,7 @@ onMount(() => {
               type="button"
               draggable="true"
               ondragstart={(e) => {
-                e.dataTransfer?.setData('application/x-thecms-type', type);
+                e.dataTransfer?.setData('application/x-uhlaka-type', type);
                 if (e.dataTransfer) e.dataTransfer.effectAllowed = 'copy';
               }}
               onclick={() => add(type)}
@@ -872,7 +872,7 @@ onMount(() => {
               type="button"
               draggable="true"
               ondragstart={(e) => {
-                e.dataTransfer?.setData('application/x-thecms-type', `extension:${one.id}`);
+                e.dataTransfer?.setData('application/x-uhlaka-type', `extension:${one.id}`);
                 if (e.dataTransfer) e.dataTransfer.effectAllowed = 'copy';
               }}
               onclick={() => add('extension', { block: one.id })}

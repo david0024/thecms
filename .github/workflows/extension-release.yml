@@ -46,7 +46,7 @@ jobs:
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
-          NOTES: 'Install it from Extensions in the admin, or with: thecms extension <site> install <file>. Its SHA-256 is in SHA256SUMS.'
+          NOTES: 'Install it from Extensions in the admin, or with: uhlaka extension <site> install <file>. Its SHA-256 is in SHA256SUMS.'
         run: |
           if gh release view "$TAG" > /dev/null 2>&1; then
             gh release upload "$TAG" dist-ext/* --clobber

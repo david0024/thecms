@@ -26,7 +26,7 @@ const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebK
 const GOOGLEBOT = 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)';
 
 (async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'thecms-e2e-stats-'));
+  const dir = mkdtempSync(join(tmpdir(), 'uhlaka-e2e-stats-'));
   const db = join(dir, 'site.db');
   const shots = process.argv[2];
   cli('init', db);

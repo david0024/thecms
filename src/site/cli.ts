@@ -1,32 +1,33 @@
 #!/usr/bin/env bun
 /**
- * thecms: the command line. Installed, it is one executable (tools/build.ts).
+ * uhlaka: the command line. Installed, it is one executable (tools/build.ts).
  *
- *   thecms                                the site here (site.db, made if new) in the editor; with
- *                                         --public=URL or THECMS_PUBLIC, served with accounts
- *   thecms init <site.db> [--if-new]      a new site with sample pages
- *   thecms edit <site.db> [port]          open the visual editor in a browser
- *   thecms theme <site.db> <theme.json>   set and publish the site's theme
- *   thecms export <site.db> <folder>      write the published site as static files
- *   thecms import <site.db> <export.xml>  bring in a WordPress site (add --no-images to skip copying images)
- *   thecms forms <site.db> [port]         receive what visitors send through the site's forms (ADR 0019)
- *   thecms run <site.db> [--port=4323] [--host=127.0.0.1]
+ *   uhlaka                                the site here (site.db, made if new) in the editor; with
+ *                                         --public=URL or UHLAKA_PUBLIC, served with accounts
+ *   uhlaka init <site.db> [--if-new]      a new site with sample pages
+ *   uhlaka edit <site.db> [port]          open the visual editor in a browser
+ *   uhlaka theme <site.db> <theme.json>   set and publish the site's theme
+ *   uhlaka export <site.db> <folder>      write the published site as static files
+ *   uhlaka import <site.db> <export.xml>  bring in a WordPress site (add --no-images to skip copying images)
+ *   uhlaka forms <site.db> [port]         receive what visitors send through the site's forms (ADR 0019)
+ *   uhlaka run <site.db> [--port=4323] [--host=127.0.0.1]
  *                                         serve the published site, and what cannot be static under /_/ (ADR 0038)
- *   thecms serve <site.db> --public=https://cms.example.com [--port=4321] [--host=127.0.0.1]
+ *   uhlaka serve <site.db> --public=https://cms.example.com [--port=4321] [--host=127.0.0.1]
  *                                         the editor for others to reach, with accounts (ADR 0022)
- *   thecms reset-link <site.db> <email> --public=https://cms.example.com
+ *   uhlaka reset-link <site.db> <email> --public=https://cms.example.com
  *                                         a one-time link to choose a new password, for an owner locked out
- *   thecms setup-link <site.db> --public=https://cms.example.com
+ *   uhlaka setup-link <site.db> --public=https://cms.example.com
  *                                         a new link for the first owner, while there is none
- *   thecms extension <site.db> install <file> [--yes]
+ *   uhlaka extension <site.db> install <file> [--yes]
  *                                         what an extension asks for, and with --yes, installed (ADR 0026)
- *   thecms extension <site.db> list | on|off|remove <name>
- *   thecms backup <site.db> [folder]     the whole site in one file, now (ADR 0051)
- *   thecms restore <site.db> <file>      a backup put back, after a backup of what is there
- *   thecms check-database <address>       whether a database answers, for the installer (ADR 0048)
- *   thecms update [--check]               the newest release, in place of this program
- *   thecms version
+ *   uhlaka extension <site.db> list | on|off|remove <name>
+ *   uhlaka backup <site.db> [folder]     the whole site in one file, now (ADR 0051)
+ *   uhlaka restore <site.db> <file>      a backup put back, after a backup of what is there
+ *   uhlaka check-database <address>       whether a database answers, for the installer (ADR 0048)
+ *   uhlaka update [--check]               the newest release, in place of this program
+ *   uhlaka version
  */
+import './old-env.ts';
 import { copyFileSync, existsSync, mkdirSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { backupHeader, backupName, backups, backupsFolder, isBackupName } from './backup.ts';
@@ -34,7 +35,7 @@ import { DEMO_PAGES, DEMO_POSTS, DEMO_SITE } from './demo.ts';
 import { fetchImage, runImport } from '../import/run.ts';
 import { planImport } from '../import/wxr.ts';
 import { exportedFiles, exportSite } from './export.ts';
-import { isContentFile, readContentFile, runContentImport } from '../import/thecms.ts';
+import { isContentFile, readContentFile, runContentImport } from '../import/uhlaka.ts';
 import { exportContent } from './transfer.ts';
 import { zipFiles } from './zip.ts';
 import { startForms } from './forms.ts';
@@ -64,22 +65,22 @@ Usage:
   ${NAME} reset-link <site.db> <email> --public=https://cms.example.com
   ${NAME} theme <site.db> <theme.json>
   ${NAME} export <site.db> <folder | site.zip>
-  ${NAME} export <site.db> <content.thecms.json> [--parts=pages,sections,forms,design,type:posts,visitors]
+  ${NAME} export <site.db> <content.uhlaka.json> [--parts=pages,sections,forms,design,type:posts,visitors]
   ${NAME} forms <site.db> [port]
   ${NAME} run <site.db> [--port=4323] [--host=127.0.0.1]
   ${NAME} import <site.db> <export.xml> [--no-images] [--types=portfolio,team] [--categories=projects]
-  ${NAME} import <site.db> <content.thecms.json>
+  ${NAME} import <site.db> <content.uhlaka.json>
   ${NAME} extension <site.db> list
   ${NAME} extension <site.db> install <file> [--yes]
   ${NAME} extension <site.db> on|off|remove <name>
   ${NAME} backup <site.db> [folder]
-  ${NAME} restore <site.db> <file.thecms-backup>
+  ${NAME} restore <site.db> <file.uhlaka-backup>
   ${NAME} check-database <postgres://... | mysql://...>
   ${NAME} update [--check]
   ${NAME} version
 
-THECMS_SITE and THECMS_PUBLIC stand for the site and the public address when they are not given.
-Backups are kept in THECMS_BACKUPS, or in "backups" beside the site's file.`;
+UHLAKA_SITE and UHLAKA_PUBLIC stand for the site and the public address when they are not given.
+Backups are kept in UHLAKA_BACKUPS, or in "backups" beside the site's file.`;
 
 /** Fills a new site with the sample pages and posts. False when it already holds one: then nothing is written. */
 async function fill(store: Store): Promise<boolean> {
@@ -115,12 +116,12 @@ export function describeOffer(offer: ExtensionOffer): string {
 }
 
 /** How the owner is told of a message or a comment: a mail server's address, as a database is given. */
-const mail = () => ({ mailer: smtpMailer(process.env.THECMS_SMTP), to: process.env.THECMS_MAIL_TO ?? '', from: process.env.THECMS_MAIL_FROM });
+const mail = () => ({ mailer: smtpMailer(process.env.UHLAKA_SMTP), to: process.env.UHLAKA_MAIL_TO ?? '', from: process.env.UHLAKA_MAIL_FROM });
 
-/** Where the site's processes share what they keep (ADR 0044 d4): Valkey from THECMS_VALKEY_URL, and a folder beside a site that is a file. */
+/** Where the site's processes share what they keep (ADR 0044 d4): Valkey from UHLAKA_VALKEY_URL, and a folder beside a site that is a file. */
 const kept = (dbPath: string) => ({
-  valkey: process.env.THECMS_VALKEY_URL ?? '',
-  cacheDir: databaseKind(dbPath) === 'sqlite' ? join(dirname(dbPath.replace(/^sqlite:\/\//i, '')), '.thecms-cache') : undefined,
+  valkey: process.env.UHLAKA_VALKEY_URL ?? '',
+  cacheDir: databaseKind(dbPath) === 'sqlite' ? join(dirname(dbPath.replace(/^sqlite:\/\//i, '')), '.uhlaka-cache') : undefined,
   backups: backupsFolder(dbPath),
 });
 
@@ -135,11 +136,11 @@ export async function main(args: string[]): Promise<{ stop: () => void } | undef
   }
   // Without a command: the site here, made if new, edited on this computer or served for others.
   if (!words.length) {
-    const site = process.env.THECMS_SITE || 'site.db';
+    const site = process.env.UHLAKA_SITE || 'site.db';
     const store = await Store.open(site);
     if (await fill(store)) console.log(`Created ${shownAddress(site)} with ${DEMO_PAGES.length} sample pages; change them, or remove them, in the editor.`);
     await store.close();
-    const served = option('public') || process.env.THECMS_PUBLIC;
+    const served = option('public') || process.env.UHLAKA_PUBLIC;
     return main(served ? ['serve', site, `--public=${served}`, ...flags.filter((f) => !f.startsWith('--public='))] : ['edit', site, ...(option('port') ? [option('port')] : [])]);
   }
   const [command, dbPath, extra] = words;
@@ -200,7 +201,7 @@ export async function main(args: string[]): Promise<{ stop: () => void } | undef
   }
   if ((command === 'backup' || command === 'restore') && dbPath) {
     if (missing()) throw new Error(`${shown} does not exist`);
-    if (command === 'restore' && !extra) throw new Error(`give the backup file: ${NAME} restore <site.db> <file.thecms-backup>`);
+    if (command === 'restore' && !extra) throw new Error(`give the backup file: ${NAME} restore <site.db> <file.uhlaka-backup>`);
     const store = await Store.open(dbPath);
     try {
       if (command === 'backup') {
@@ -250,7 +251,7 @@ export async function main(args: string[]): Promise<{ stop: () => void } | undef
     // Read and understood before anything is written: a file that is not an export creates nothing.
     const listed = (flag: string): string[] => flags.find((f) => f.startsWith(`${flag}=`))?.slice(flag.length + 1).split(',').map((name) => name.trim()).filter(Boolean) ?? [];
     const text = await Bun.file(extra).text();
-    // A thecms content export goes into a new site or one that has content (ADR 0057 d2).
+    // A Uhlaka content export goes into a new site or one that has content (ADR 0057 d2).
     const content = isContentFile(text) ? readContentFile(text) : null;
     const plan = content ? null : planImport(text, new Date().toISOString().slice(0, 10), { types: listed('--types'), categories: listed('--categories') });
     const store = await Store.open(dbPath);
@@ -296,15 +297,15 @@ export async function main(args: string[]): Promise<{ stop: () => void } | undef
   if (command === 'forms' && dbPath) {
     if (missing()) throw new Error(`${shown} does not exist`);
     // Where the owner is told of a message, and through which mail server: the same way a database is given, as an address.
-    const mailer = smtpMailer(process.env.THECMS_SMTP);
-    const to = process.env.THECMS_MAIL_TO ?? '';
+    const mailer = smtpMailer(process.env.UHLAKA_SMTP);
+    const to = process.env.UHLAKA_MAIL_TO ?? '';
     const store = await Store.open(dbPath);
     const checks = extensionHost(store);
-    const forms = startForms(store, { port: extra ? Number(extra) : 4322, hostname: process.env.THECMS_FORMS_HOST ?? '127.0.0.1', mailer, to, from: process.env.THECMS_MAIL_FROM, ask: checks.ask });
+    const forms = startForms(store, { port: extra ? Number(extra) : 4322, hostname: process.env.UHLAKA_FORMS_HOST ?? '127.0.0.1', mailer, to, from: process.env.UHLAKA_MAIL_FROM, ask: checks.ask });
     console.log(
       `Receiving forms for ${shown} at ${forms.url}/send.
 ` +
-        `${mailer && to ? `Each message is also sent to ${to}.` : 'Messages are kept and shown in the admin. Set THECMS_SMTP and THECMS_MAIL_TO to be told by email.'}
+        `${mailer && to ? `Each message is also sent to ${to}.` : 'Messages are kept and shown in the admin. Set UHLAKA_SMTP and UHLAKA_MAIL_TO to be told by email.'}
 ` +
         'Put the public address of this service in Site settings, then export the site again.',
     );
@@ -312,12 +313,12 @@ export async function main(args: string[]): Promise<{ stop: () => void } | undef
   }
   if (command === 'run' && dbPath) {
     if (missing()) throw new Error(`${shown} does not exist`);
-    const mailer = smtpMailer(process.env.THECMS_SMTP);
-    const to = process.env.THECMS_MAIL_TO ?? '';
+    const mailer = smtpMailer(process.env.UHLAKA_SMTP);
+    const to = process.env.UHLAKA_MAIL_TO ?? '';
     const store = await Store.open(dbPath);
     const { valkey, cacheDir } = kept(dbPath);
     const shared = openShared(valkey || (await store.valkeyAddress()), { dir: cacheDir });
-    const runtime = startRuntime(store, { port: option('port') ? Number(option('port')) : 4323, hostname: option('host') || '127.0.0.1', mailer, to, from: process.env.THECMS_MAIL_FROM, shared });
+    const runtime = startRuntime(store, { port: option('port') ? Number(option('port')) : 4323, hostname: option('host') || '127.0.0.1', mailer, to, from: process.env.UHLAKA_MAIL_FROM, shared });
     const stop = runtime.stop;
     runtime.stop = () => {
       stop();
@@ -325,7 +326,7 @@ export async function main(args: string[]): Promise<{ stop: () => void } | undef
     };
     console.log(
       `Serving the published site of ${shown} at ${runtime.url}, and its forms at ${runtime.url}/_/send.\n` +
-        `${mailer && to ? `Each message is also sent to ${to}.` : 'Messages are kept and shown in the admin. Set THECMS_SMTP and THECMS_MAIL_TO to be told by email.'}\n` +
+        `${mailer && to ? `Each message is also sent to ${to}.` : 'Messages are kept and shown in the admin. Set UHLAKA_SMTP and UHLAKA_MAIL_TO to be told by email.'}\n` +
         'A publication shows within a second. The editor serves the site this way too; this command serves it without the editor.',
     );
     return runtime;

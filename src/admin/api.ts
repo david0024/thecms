@@ -27,7 +27,7 @@ export interface SharedStatus {
 export interface Performance {
   status: SharedStatus;
   address: string;
-  /** Set by THECMS_VALKEY_URL on the server, which the admin cannot change. */
+  /** Set by UHLAKA_VALKEY_URL on the server, which the admin cannot change. */
   fromEnvironment: boolean;
 }
 
@@ -289,7 +289,7 @@ const hash = new URLSearchParams(location.hash.slice(1));
 const token = hash.get('token') ?? '';
 /** A one-time link's secret: the first owner, an invitation, a new password. */
 export const linkSecret = hash.get('link') ?? '';
-const who = (): Record<string, string> => (token ? { 'x-thecms-token': token } : { 'x-thecms-request': '1' });
+const who = (): Record<string, string> => (token ? { 'x-uhlaka-token': token } : { 'x-uhlaka-request': '1' });
 
 async function answer<T>(response: Response): Promise<T> {
   const data = (await response.json()) as T & { error?: string; signIn?: boolean };
@@ -409,7 +409,7 @@ export const api = {
   async exportFile(what: 'content' | 'files', parts: string[] = []): Promise<{ blob: Blob; name: string }> {
     const response = await fetch(`/api/export/${what}${what === 'content' ? `?parts=${encodeURIComponent(parts.join(','))}` : ''}`, { headers: who() });
     if (!response.ok) await answer(response);
-    const name = /filename="([^"]+)"/.exec(response.headers.get('content-disposition') ?? '')?.[1] ?? (what === 'content' ? 'site.thecms.json' : 'site.zip');
+    const name = /filename="([^"]+)"/.exec(response.headers.get('content-disposition') ?? '')?.[1] ?? (what === 'content' ? 'site.uhlaka.json' : 'site.zip');
     return { blob: await response.blob(), name };
   },
   locks: () => call<{ locked: string[] }>('GET', '/api/locks'),

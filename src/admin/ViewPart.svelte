@@ -1,6 +1,6 @@
 <script lang="ts">
 /**
- * One `thecms.view/1` view of an extension's screen (ADR 0031), drawn by this
+ * One `uhlaka.view/1` view of an extension's screen (ADR 0031), drawn by this
  * admin: a list of a collection's rows, a form (the collection's one row, or
  * an action's questions), or tabs of other views. No code of the extension
  * runs here: rows come from the program, and a button runs a declared action

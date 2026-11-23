@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 /**
- * `thecms.view/1`: how an extension describes its screens (ADR 0031), on the
+ * `uhlaka.view/1`: how an extension describes its screens (ADR 0031), on the
  * model of Zveltio's `zveltio.view/2`.
  *
  * A view is semantic. It names the extension's collections, their fields and
@@ -11,13 +11,13 @@
  *
  * This module stands on its own: it imports nothing, so another front end, a
  * tool that writes views or the packer can take it as it is. Additions within
- * `thecms.view/1` are new optional keys or view kinds; removing or narrowing
- * anything is `thecms.view/2`.
+ * `uhlaka.view/1` are new optional keys or view kinds; removing or narrowing
+ * anything is `uhlaka.view/2`.
  */
 
-export const VIEW_SPEC = 'thecms.view/1';
+export const VIEW_SPEC = 'uhlaka.view/1';
 
-/** The kinds of view. A kind is added within `thecms.view/1` only with a front end that draws it. */
+/** The kinds of view. A kind is added within `uhlaka.view/1` only with a front end that draws it. */
 export const VIEW_KINDS = ['list', 'form', 'tabs', 'report', 'calendar'] as const;
 export type ViewKind = (typeof VIEW_KINDS)[number];
 

@@ -1,5 +1,5 @@
 /**
- * `thecms update`: the newest release from GitHub Releases, put in place of
+ * `uhlaka update`: the newest release from GitHub Releases, put in place of
  * the program that runs it. The file is checked against the release's
  * `checksums.sha256` before anything is replaced; a file that does not match
  * is thrown away, and the program stays as it was.

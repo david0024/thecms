@@ -13,12 +13,12 @@ import { type EditorServer, startEditor } from '../src/site/server.ts';
 import { cleanEmail, passwordProblem, Store } from '../src/site/store.ts';
 import plain from '../themes/plain.json';
 
-const dir = await mkdtemp(join(tmpdir(), 'thecms-accounts-'));
+const dir = await mkdtemp(join(tmpdir(), 'uhlaka-accounts-'));
 afterAll(() => rm(dir, { recursive: true, force: true }));
 
 const databases: [string, string][] = [['SQLite', join(dir, 'store.db')]];
-if (process.env.THECMS_TEST_POSTGRES) databases.push(['Postgres', process.env.THECMS_TEST_POSTGRES]);
-if (process.env.THECMS_TEST_MYSQL) databases.push(['MySQL', process.env.THECMS_TEST_MYSQL]);
+if (process.env.UHLAKA_TEST_POSTGRES) databases.push(['Postgres', process.env.UHLAKA_TEST_POSTGRES]);
+if (process.env.UHLAKA_TEST_MYSQL) databases.push(['MySQL', process.env.UHLAKA_TEST_MYSQL]);
 
 const PASSWORD = 'a long enough password';
 
@@ -107,7 +107,7 @@ test('an address, a password and a public address are checked before they are ke
   expect(cleanPublicAddress('http://127.0.0.1:4400')).toBe('http://127.0.0.1:4400');
   for (const bad of ['http://cms.example.com', 'https://cms.example.com/admin', 'https://u:p@cms.example.com', 'https://cms.example.com/?a=1', 'https://cms.example.com/#x', 'ftp://cms.example.com', 'cms.example.com'])
     expect(cleanPublicAddress(bad)).toBe('');
-  expect(cookieOf(new Request('http://x/', { headers: { cookie: 'a=1; thecms_session=abc=; b=2' } }))).toBe('abc=');
+  expect(cookieOf(new Request('http://x/', { headers: { cookie: 'a=1; uhlaka_session=abc=; b=2' } }))).toBe('abc=');
   expect(cookieOf(new Request('http://x/'))).toBe('');
   expect(ownerOnly('GET', '/api/users')).toBe(true);
   expect(ownerOnly('GET', '/api/theme')).toBe(false);
@@ -126,7 +126,7 @@ describe('the served editor', () => {
     const response = await editor.fetch(
       new Request(`${PUBLIC}${path}`, {
         method,
-        headers: { host: 'cms.example.com', origin: PUBLIC, 'x-thecms-request': '1', ...(cookie ? { cookie } : {}), ...(body === undefined ? {} : { 'content-type': 'application/json' }), ...headers },
+        headers: { host: 'cms.example.com', origin: PUBLIC, 'x-uhlaka-request': '1', ...(cookie ? { cookie } : {}), ...(body === undefined ? {} : { 'content-type': 'application/json' }), ...headers },
         body: body === undefined ? undefined : JSON.stringify(body),
       }),
     );
@@ -136,7 +136,7 @@ describe('the served editor', () => {
   const session = (setCookie: string): string => setCookie.split(';')[0] ?? '';
 
   beforeEach(async () => {
-    siteDir = await mkdtemp(join(tmpdir(), 'thecms-served-'));
+    siteDir = await mkdtemp(join(tmpdir(), 'uhlaka-served-'));
     store = await Store.open(join(siteDir, 'site.db'));
     await store.setSite({ name: 'S' });
     await store.setTheme(plain);
@@ -165,7 +165,7 @@ describe('the served editor', () => {
     expect(await store.site()).toMatchObject({ name: 'Atelierul Anei', language: 'ro', adminLanguage: 'ro' });
     expect(used.status).toBe(200);
     expect(used.data.me).toMatchObject({ email: 'ana@example.com', name: 'Ana', role: 'owner' });
-    expect(used.cookie).toMatch(/^thecms_session=[\w-]+; Path=\/; HttpOnly; SameSite=Strict; Max-Age=2592000; Secure$/);
+    expect(used.cookie).toMatch(/^uhlaka_session=[\w-]+; Path=\/; HttpOnly; SameSite=Strict; Max-Age=2592000; Secure$/);
     const state = await call('GET', '/api/state', undefined, session(used.cookie));
     expect(state.data).toMatchObject({ accounts: true, me: { role: 'owner' } });
     expect((await call('POST', '/api/link/use', { secret, name: 'Eve', email: 'eve@example.com', password: PASSWORD })).status).toBe(410);
@@ -180,13 +180,13 @@ describe('the served editor', () => {
 
   test('a call must come from the admin itself: its host, its origin and its header', async () => {
     const owner = await store.addUser({ email: 'ana@example.com', role: 'owner', password: PASSWORD });
-    const cookie = `thecms_session=${await store.startSession(owner.id)}`;
+    const cookie = `uhlaka_session=${await store.startSession(owner.id)}`;
     expect((await call('GET', '/api/state', undefined, cookie)).status).toBe(200);
     expect((await call('GET', '/api/state', undefined, cookie, { host: '127.0.0.1:4321' })).data.error).toBe('wrong host');
     expect((await call('GET', '/api/state', undefined, cookie, { origin: 'https://evil.example' })).data.error).toBe('wrong origin');
-    expect((await call('GET', '/api/state', undefined, cookie, { 'x-thecms-request': '' })).data.error).toBe('not a call from the admin');
+    expect((await call('GET', '/api/state', undefined, cookie, { 'x-uhlaka-request': '' })).data.error).toBe('not a call from the admin');
     // The key of the editor on one's own computer means nothing here.
-    expect((await call('GET', '/api/state', undefined, '', { 'x-thecms-token': editor.token })).data).toEqual({ error: 'sign in first', signIn: true });
+    expect((await call('GET', '/api/state', undefined, '', { 'x-uhlaka-token': editor.token })).data).toEqual({ error: 'sign in first', signIn: true });
   });
 
   test('signing in, too many wrong passwords, and signing out', async () => {
@@ -210,7 +210,7 @@ describe('the served editor', () => {
 
   test('the owner invites; an editor writes content and nothing else', async () => {
     const owner = await store.addUser({ email: 'ana@example.com', role: 'owner', password: PASSWORD });
-    const ownerCookie = `thecms_session=${await store.startSession(owner.id)}`;
+    const ownerCookie = `uhlaka_session=${await store.startSession(owner.id)}`;
     expect(((await call('GET', '/api/users', undefined, ownerCookie)).data.me as { email: string }).email).toBe('ana@example.com');
     const invited = await call('POST', '/api/users', { email: 'ion@example.com', role: 'editor' }, ownerCookie);
     expect(invited.status).toBe(200);
@@ -259,9 +259,9 @@ describe('the served editor', () => {
 
   test('on one\'s own computer there are no accounts, and a public address must be one', async () => {
     const local = await startEditor(store, { listen: false });
-    const response = await local.fetch(new Request('http://127.0.0.1:4321/api/users', { headers: { host: '127.0.0.1:4321', 'x-thecms-token': local.token } }));
+    const response = await local.fetch(new Request('http://127.0.0.1:4321/api/users', { headers: { host: '127.0.0.1:4321', 'x-uhlaka-token': local.token } }));
     expect(response.status).toBe(404);
-    const state = (await (await local.fetch(new Request('http://127.0.0.1:4321/api/state', { headers: { host: '127.0.0.1:4321', 'x-thecms-token': local.token } }))).json()) as Record<string, unknown>;
+    const state = (await (await local.fetch(new Request('http://127.0.0.1:4321/api/state', { headers: { host: '127.0.0.1:4321', 'x-uhlaka-token': local.token } }))).json()) as Record<string, unknown>;
     expect(state).toMatchObject({ accounts: false, me: { role: 'owner' } });
     expect(local.setupUrl).toBe('');
     await expect(startEditor(store, { listen: false, public: 'http://cms.example.com' })).rejects.toThrow('the public address is https://');

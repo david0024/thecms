@@ -1,6 +1,6 @@
 /**
  * The site's content in one open file (ADR 0057 d1): what WordPress gives
- * from Tools → Export, and what another thecms site takes back in from its
+ * from Tools → Export, and what another Uhlaka site takes back in from its
  * import screen. A backup (ADR 0051) puts a whole site back as it was; this
  * moves content between sites, so it holds the content and never the people
  * who sign in, their passwords, the messages visitors sent or the counts.
@@ -13,8 +13,8 @@ import { normalizeVisitorSettings } from './visitor-gate.ts';
 import type { ContentVisitor } from './visitor-transfer.ts';
 import { VERSION } from './version.ts';
 
-export const CONTENT_FORMAT = 'thecms.content/1';
-export const CONTENT_SUFFIX = '.thecms.json';
+export const CONTENT_FORMAT = 'uhlaka.content/1';
+export const CONTENT_SUFFIX = '.uhlaka.json';
 
 /** A page, a section or an entry, as kept: what is being written and what visitors see. */
 export interface ContentDoc {
@@ -160,7 +160,7 @@ export async function exportContent(store: Store, asked: string[] = [], now = ne
 
   const file: ContentFile = {
     format: CONTENT_FORMAT,
-    program: `thecms ${VERSION}`,
+    program: `uhlaka ${VERSION}`,
     madeAt: now.toISOString(),
     parts,
     from: { name: site.name, url: site.url, language: site.language, languages: site.languages },

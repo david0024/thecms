@@ -166,7 +166,7 @@ describe('the store keeps every type', () => {
 
 describe('a site made before there were content types', () => {
   let dir: string;
-  beforeEach(async () => void (dir = await mkdtemp(join(tmpdir(), 'thecms-types-'))));
+  beforeEach(async () => void (dir = await mkdtemp(join(tmpdir(), 'uhlaka-types-'))));
   afterEach(() => rm(dir, { recursive: true, force: true }));
 
   test('its posts are still its posts', async () => {
@@ -244,7 +244,7 @@ describe('the editing API', () => {
   let store: Store;
   let editor: EditorServer;
   const call = (path: string, init: RequestInit = {}): Promise<Response> =>
-    editor.fetch(new Request(`http://127.0.0.1:${editor.port}${path}`, { ...init, headers: { 'x-thecms-token': editor.token, host: `127.0.0.1:${editor.port}`, 'content-type': 'application/json' } }));
+    editor.fetch(new Request(`http://127.0.0.1:${editor.port}${path}`, { ...init, headers: { 'x-uhlaka-token': editor.token, host: `127.0.0.1:${editor.port}`, 'content-type': 'application/json' } }));
   beforeEach(async () => {
     store = await Store.open(':memory:');
     await store.setSite(site);

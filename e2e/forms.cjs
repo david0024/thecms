@@ -38,7 +38,7 @@ const started = (child, pattern) =>
   });
 
 (async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'thecms-e2e-forms-'));
+  const dir = mkdtempSync(join(tmpdir(), 'uhlaka-e2e-forms-'));
   const db = join(dir, 'site.db');
   const out = join(dir, 'out');
   const shots = process.argv[2];

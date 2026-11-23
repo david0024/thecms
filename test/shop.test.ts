@@ -17,7 +17,7 @@ import { SHOP_TABLES, shopSchema } from '../src/site/shop-schema.ts';
 import { Store } from '../src/site/store.ts';
 import plain from '../themes/plain.json';
 
-const dir = await mkdtemp(join(tmpdir(), 'thecms-shop-'));
+const dir = await mkdtemp(join(tmpdir(), 'uhlaka-shop-'));
 afterAll(() => rm(dir, { recursive: true, force: true }));
 const text = (body: string) => ({ id: `b_${Math.random().toString(36).slice(2, 10)}`, type: 'text', content: { body: [{ type: 'paragraph', children: [{ text: body }] }] } });
 
@@ -35,7 +35,7 @@ async function admin(store: Store) {
   const editor = await startEditor(store, { listen: false, log: () => {} });
   const call = async (method: string, path: string, body?: unknown): Promise<{ status: number; body: Record<string, unknown> }> => {
     const response = await editor.fetch(
-      new Request(`http://127.0.0.1:4321${path}`, { method, headers: { host: '127.0.0.1:4321', 'x-thecms-token': editor.token, 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) }),
+      new Request(`http://127.0.0.1:4321${path}`, { method, headers: { host: '127.0.0.1:4321', 'x-uhlaka-token': editor.token, 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) }),
     );
     return { status: response.status, body: (await response.json()) as Record<string, unknown> };
   };

@@ -29,7 +29,7 @@ interface Render {
   labels: { types: Record<string, string>; fields: Record<string, string>; empty: Record<string, string>; actions: Record<string, string>; format: Record<string, string> };
 }
 
-const post = (message: Up): void => parent.postMessage({ thecms: true, ...message }, location.origin);
+const post = (message: Up): void => parent.postMessage({ uhlaka: true, ...message }, location.origin);
 
 const root = document.getElementById('cms-root') as HTMLElement;
 const own = document.getElementById('cms-own') as HTMLStyleElement;
@@ -477,8 +477,8 @@ exec('defaultParagraphSeparator', 'p');
 // the admin's list. The page only says where it was dropped: which container
 // and at which place in it. The admin moves it in the document.
 
-const BLOCK_MIME = 'application/x-thecms-block';
-const TYPE_MIME = 'application/x-thecms-type';
+const BLOCK_MIME = 'application/x-uhlaka-block';
+const TYPE_MIME = 'application/x-uhlaka-type';
 
 interface Place {
   parent: string | null;

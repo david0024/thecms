@@ -39,8 +39,8 @@ jobs:
         run: |
           RELEASE_URL="file://$PWD/dist-bin" INSTALL_DIR="$RUNNER_TEMP/bin" sh install.sh
           cd "$RUNNER_TEMP"
-          bin/thecms init site.db
-          bin/thecms export site.db out
+          bin/uhlaka init site.db
+          bin/uhlaka export site.db out
           grep -q '<h1>Solid wood furniture, made to measure</h1>' out/index.html
       - name: Publish
         env:

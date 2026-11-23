@@ -1,6 +1,6 @@
 # Decisions
 
-Every decision that shapes thecms is written down, with its reason, before the
+Every decision that shapes Uhlaka is written down, with its reason, before the
 work it decides. A new one that changes an old one says so at its top.
 
 - [ADR 0001 — Foundations](0001-foundations.md)
@@ -67,3 +67,4 @@ work it decides. A new one that changes an old one says so at its top.
 - [ADR 0063 — Addresses not found, and IndexNow](0063-addresses-not-found-and-indexnow.md)
 - [ADR 0064 — Visitor accounts, members, and e-mail to visitors](0064-visitor-accounts-and-members.md)
 - [ADR 0065 — The shop](0065-the-shop.md)
+- [ADR 0066 — The name: Uhlaka](0066-the-name-uhlaka.md)

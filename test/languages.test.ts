@@ -93,7 +93,7 @@ describe('the packs that ship', () => {
   });
 
   test('a folder of packs is read; what does not fit is named, and a later folder wins', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'thecms-languages-'));
+    const dir = await mkdtemp(join(tmpdir(), 'uhlaka-languages-'));
     try {
       await writeFile(join(dir, 'ro.json'), JSON.stringify({ $language: 'ro', $name: 'Mine', 'site.menu': 'Meniul meu', 'site.nope': 'x' }));
       await writeFile(join(dir, 'broken.json'), '{');
@@ -124,7 +124,7 @@ describe('the admin in a language', () => {
   });
 
   test("is sent the words of the admin's language, or the site's", async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'thecms-admin-language-'));
+    const dir = await mkdtemp(join(tmpdir(), 'uhlaka-admin-language-'));
     const store = await Store.open(join(dir, 'site.db'));
     const editor = await startEditor(store, { listen: false });
     const page = async () => (await editor.fetch(new Request('http://127.0.0.1:4321/admin/', { headers: { host: '127.0.0.1:4321' } }))).text();
@@ -138,7 +138,7 @@ describe('the admin in a language', () => {
       expect(await page()).toContain('"admin.nav.pages":"Pagini"');
       await store.setSite({ name: 'S', language: 'ro', adminLanguage: 'en' });
       expect(await page()).toContain('<html lang="en">');
-      const state = (await (await editor.fetch(new Request('http://127.0.0.1:4321/api/state', { headers: { host: '127.0.0.1:4321', 'x-thecms-token': editor.token } }))).json()) as { languages: { language: string }[] };
+      const state = (await (await editor.fetch(new Request('http://127.0.0.1:4321/api/state', { headers: { host: '127.0.0.1:4321', 'x-uhlaka-token': editor.token } }))).json()) as { languages: { language: string }[] };
       expect(state.languages.map((l) => l.language)).toEqual(['en', 'ro']);
     } finally {
       editor.stop();

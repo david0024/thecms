@@ -5,8 +5,8 @@
  *
  * The server is given as an address, like a database:
  *
- *   THECMS_SMTP=smtps://user:password@mail.example.com:465   (TLS from the start)
- *   THECMS_SMTP=smtp://127.0.0.1:2525                          (plain, this machine only)
+ *   UHLAKA_SMTP=smtps://user:password@mail.example.com:465   (TLS from the start)
+ *   UHLAKA_SMTP=smtp://127.0.0.1:2525                          (plain, this machine only)
  *
  * A plain connection carries the password in the clear, so it is refused
  * anywhere but on this machine.

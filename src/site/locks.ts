@@ -10,7 +10,7 @@ import './languages.ts';
 const escape = (text: string): string => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 /** The cookie that holds a page's key: one for each page, named by it. */
-export const lockCookie = (slug: string): string => `thecms-page-${new Bun.CryptoHasher('sha256').update(slug).digest('hex').slice(0, 16)}`;
+export const lockCookie = (slug: string): string => `uhlaka-page-${new Bun.CryptoHasher('sha256').update(slug).digest('hex').slice(0, 16)}`;
 
 /**
  * The page a visitor sees in place of one behind a password: the site's

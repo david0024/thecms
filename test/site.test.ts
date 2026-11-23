@@ -17,7 +17,7 @@ const bodyOf = (html: string): string => html.slice(html.indexOf('<body>'));
 let dir: string;
 let store: Store;
 beforeEach(async () => {
-  dir = await mkdtemp(join(tmpdir(), 'thecms-'));
+  dir = await mkdtemp(join(tmpdir(), 'uhlaka-'));
   store = await Store.open(join(dir, 'site.db'));
   await store.setSite(site);
   await store.setTheme(plain);
@@ -124,7 +124,7 @@ describe('export', () => {
   test('writes the site, and replaces its own earlier export', async () => {
     const out = join(dir, 'out');
     const first = await exportSite(store, out);
-    expect(first).toEqual(['.thecms-export', '404.html', 'about/index.html', 'about/index.json', 'assets/site.css', 'contact/index.html', 'contact/index.json', 'index.html', 'index.json', 'robots.txt', 'site.json', 'sitemap.xml']);
+    expect(first).toEqual(['.uhlaka-export', '404.html', 'about/index.html', 'about/index.json', 'assets/site.css', 'contact/index.html', 'contact/index.json', 'index.html', 'index.json', 'robots.txt', 'site.json', 'sitemap.xml']);
     expect(await Bun.file(join(out, 'about/index.html')).text()).toContain('Three people and a workshop');
 
     // Unpublished, the page leaves links to it on the others: nothing is written, the last export stays.

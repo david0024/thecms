@@ -1,5 +1,5 @@
 #!/bin/sh
-# Installs thecms from its GitHub releases, checked against the release's
+# Installs Uhlaka from its GitHub releases, checked against the release's
 # checksums before anything is put in place (ADR 0023). It asks, one step at a
 # time, where the site will live and what it needs there (ADR 0048):
 #
@@ -33,7 +33,7 @@
 set -eu
 
 # The product's name, as in src/core/name.ts (a test keeps them the same).
-NAME=thecms
+NAME=uhlaka
 REPOSITORY=uhlaka-devs/uhlaka
 
 host=
@@ -186,8 +186,8 @@ fi
 previous_site=
 previous_public=
 if [ "$host" = server ] && [ -f "/etc/$NAME/env" ]; then
-  previous_site=$(sed -n 's/^THECMS_SITE=//p' "/etc/$NAME/env")
-  previous_public=$(sed -n 's/^THECMS_PUBLIC=//p' "/etc/$NAME/env")
+  previous_site=$(sed -n 's/^UHLAKA_SITE=//p' "/etc/$NAME/env")
+  previous_public=$(sed -n 's/^UHLAKA_PUBLIC=//p' "/etc/$NAME/env")
   [ -n "$database" ] || database=$previous_site
   [ -n "$public" ] || public=$previous_public
   echo "This server already has a site; the program is updated and the site is left as it is."
@@ -319,12 +319,12 @@ if [ "$host" = docker ]; then
     {
       echo "# The site's settings (ADR 0048); compose reads them. Changed here, they count from the next start."
       echo "COMPOSE_PROFILES=$profiles"
-      echo "THECMS_SITE=$site"
-      echo "THECMS_PUBLIC=$public"
-      echo "THECMS_PORT=$port"
-      echo "THECMS_VERSION=${tag:-$version}"
+      echo "UHLAKA_SITE=$site"
+      echo "UHLAKA_PUBLIC=$public"
+      echo "UHLAKA_PORT=$port"
+      echo "UHLAKA_VERSION=${tag:-$version}"
       echo "DATABASE_PASSWORD=$password"
-      [ "$valkey" = no ] || echo "THECMS_VALKEY_URL=redis://valkey:6379"
+      [ "$valkey" = no ] || echo "UHLAKA_VALKEY_URL=redis://valkey:6379"
     } >"$folder/.env"
     umask 022
   fi
@@ -475,16 +475,16 @@ if [ "$valkey" = yes ]; then
     done
     start valkey-server valkey && valkey_url=redis://127.0.0.1:6379
   fi
-  [ -n "$valkey_url" ] || echo "Valkey could not be installed here; the site keeps its pages and counters in its own memory. Install it later and set THECMS_VALKEY_URL in /etc/$NAME/env."
+  [ -n "$valkey_url" ] || echo "Valkey could not be installed here; the site keeps its pages and counters in its own memory. Install it later and set UHLAKA_VALKEY_URL in /etc/$NAME/env."
 fi
 
 umask 077
 cat >"/etc/$NAME/env" <<EOF
-THECMS_SITE=$site
-THECMS_PUBLIC=$public
-THECMS_EXTENSION_RUNNER=/run/$NAME-extensions/runner.sock
+UHLAKA_SITE=$site
+UHLAKA_PUBLIC=$public
+UHLAKA_EXTENSION_RUNNER=/run/$NAME-extensions/runner.sock
 EOF
-[ -z "$valkey_url" ] || echo "THECMS_VALKEY_URL=$valkey_url" >>"/etc/$NAME/env"
+[ -z "$valkey_url" ] || echo "UHLAKA_VALKEY_URL=$valkey_url" >>"/etc/$NAME/env"
 chown "root:$NAME" "/etc/$NAME/env"
 chmod 640 "/etc/$NAME/env"
 umask 022

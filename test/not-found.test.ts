@@ -14,7 +14,7 @@ import { startEditor } from '../src/site/server.ts';
 import { NOT_FOUND_KEPT, Store } from '../src/site/store.ts';
 import plain from '../themes/plain.json';
 
-const dir = await mkdtemp(join(tmpdir(), 'thecms-not-found-'));
+const dir = await mkdtemp(join(tmpdir(), 'uhlaka-not-found-'));
 afterAll(() => rm(dir, { recursive: true, force: true }));
 
 /** A site with a home page and an about page, published. */
@@ -88,7 +88,7 @@ describe('addresses not found (ADR 0063 d1)', () => {
   test('the owner reads and forgets them in the admin', async () => {
     const store = await site('admin');
     const editor = await startEditor(store, { listen: false, log: () => {} });
-    const call = (method: string, path: string) => editor.fetch(new Request(`http://127.0.0.1:4321${path}`, { method, headers: { host: '127.0.0.1:4321', 'x-thecms-token': editor.token } }));
+    const call = (method: string, path: string) => editor.fetch(new Request(`http://127.0.0.1:4321${path}`, { method, headers: { host: '127.0.0.1:4321', 'x-uhlaka-token': editor.token } }));
     try {
       await store.addNotFound('/a/', '');
       await store.addNotFound('/b c/', '');

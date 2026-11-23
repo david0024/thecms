@@ -23,7 +23,7 @@ const PORT = 4397;
 const LONG = 'Handmade oak tables, benches and shelves from a small family workshop';
 
 (async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'thecms-e2e-seo-'));
+  const dir = mkdtempSync(join(tmpdir(), 'uhlaka-e2e-seo-'));
   const db = join(dir, 'site.db');
   const shots = process.argv[2];
   cli('init', db);

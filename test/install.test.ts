@@ -14,7 +14,7 @@ import { VERSION } from '../src/site/version.ts';
 import { build, PLATFORMS } from '../tools/build.ts';
 
 const root = new URL('..', import.meta.url).pathname;
-const dir = await mkdtemp(join(tmpdir(), 'thecms-install-'));
+const dir = await mkdtemp(join(tmpdir(), 'uhlaka-install-'));
 afterAll(() => rm(dir, { recursive: true, force: true }));
 
 const sha256 = (bytes: Uint8Array | string): string => new Bun.CryptoHasher('sha256').update(bytes).digest('hex');
@@ -86,7 +86,7 @@ describe('the install script', () => {
     const sums = await Promise.all(files.map(async (name) => `${sha256(await readFile(join(release, name)))}  ${name}`));
     await writeFile(join(release, 'checksums.sha256'), `${sums.join('\n')}\n`);
     const env = { RELEASE_URL: `file://${release}` };
-    const settings = async (folder: string) => Object.fromEntries((await readFile(join(folder, 'thecms', '.env'), 'utf8')).split('\n').filter((l) => /^[A-Z]/.test(l)).map((l) => l.split(/=(.*)/s).slice(0, 2)));
+    const settings = async (folder: string) => Object.fromEntries((await readFile(join(folder, 'uhlaka', '.env'), 'utf8')).split('\n').filter((l) => /^[A-Z]/.test(l)).map((l) => l.split(/=(.*)/s).slice(0, 2)));
 
     // Answered by options: PostgreSQL beside it, with Valkey, at the address on this computer.
     const optioned = join(dir, 'docker-options');
@@ -94,17 +94,17 @@ describe('the install script', () => {
     const run = sh(['install.sh', '--host=docker', '--database=postgres', '--yes', '--version=1.2.3'], env, optioned);
     expect(run.err).toBe('');
     expect(run.out).toContain('docker compose up -d --build');
-    expect((await readdir(join(optioned, 'thecms'))).sort()).toEqual(['.env', 'Dockerfile', 'compose.yaml', 'install.sh']);
+    expect((await readdir(join(optioned, 'uhlaka'))).sort()).toEqual(['.env', 'Dockerfile', 'compose.yaml', 'install.sh']);
     const kept = await settings(optioned);
     expect(kept.COMPOSE_PROFILES).toBe('postgres,valkey');
     expect(kept.DATABASE_PASSWORD).toMatch(/^[0-9a-f]{36}$/);
-    expect(kept.THECMS_SITE).toBe(`postgres://thecms:${kept.DATABASE_PASSWORD}@postgres:5432/thecms`);
-    expect(kept.THECMS_PUBLIC).toBe('http://localhost:4321');
-    expect(kept.THECMS_VERSION).toBe('1.2.3');
-    expect(kept.THECMS_VALKEY_URL).toBe('redis://valkey:6379');
+    expect(kept.UHLAKA_SITE).toBe(`postgres://uhlaka:${kept.DATABASE_PASSWORD}@postgres:5432/uhlaka`);
+    expect(kept.UHLAKA_PUBLIC).toBe('http://localhost:4321');
+    expect(kept.UHLAKA_VERSION).toBe('1.2.3');
+    expect(kept.UHLAKA_VALKEY_URL).toBe('redis://valkey:6379');
     // Run again, the settings are kept: the database's password among them.
     expect(sh(['install.sh', '--host=docker', '--database=mysql', '--yes'], env, optioned).out).toContain('they are left as they are');
-    expect((await settings(optioned)).THECMS_SITE).toBe(kept.THECMS_SITE);
+    expect((await settings(optioned)).UHLAKA_SITE).toBe(kept.UHLAKA_SITE);
 
     // Asked: Docker, a database of mine (PostgreSQL, on another server), its details, and an address.
     const asked = join(dir, 'docker-asked');
@@ -116,25 +116,25 @@ describe('the install script', () => {
     expect(mine.out).toContain('Which database is it?');
     expect(mine.out).toContain('The site connects to your database when it starts');
     const own = await settings(asked);
-    expect(own.THECMS_SITE).toBe('postgres://ana:p%40ss%3Aw%2Frd%20%C3%A9@db.example.com:5432/shop');
-    expect(own.THECMS_PUBLIC).toBe('https://shop.example.com');
+    expect(own.UHLAKA_SITE).toBe('postgres://ana:p%40ss%3Aw%2Frd%20%C3%A9@db.example.com:5432/shop');
+    expect(own.UHLAKA_PUBLIC).toBe('https://shop.example.com');
     expect(own.COMPOSE_PROFILES).toBe('');
-    expect(own.THECMS_VALKEY_URL).toBeUndefined();
+    expect(own.UHLAKA_VALKEY_URL).toBeUndefined();
 
     // SQLite: a file in the site's volume, and no database to start.
     const plain = join(dir, 'docker-sqlite');
     await mkdir(plain);
     sh(['install.sh', '--host=docker', '--yes', '--port=8080'], env, plain);
-    expect(await settings(plain)).toMatchObject({ THECMS_SITE: '/site/site.db', COMPOSE_PROFILES: 'valkey', THECMS_PUBLIC: 'http://localhost:8080', THECMS_PORT: '8080' });
+    expect(await settings(plain)).toMatchObject({ UHLAKA_SITE: '/site/site.db', COMPOSE_PROFILES: 'valkey', UHLAKA_PUBLIC: 'http://localhost:8080', UHLAKA_PORT: '8080' });
   });
 
   test('the compose file starts only the database the settings name', async () => {
     const compose = await readFile(join(root, 'docker', 'compose.yaml'), 'utf8');
     for (const service of ['postgres', 'mysql', 'mariadb', 'valkey']) expect(compose).toContain(`profiles: [${service}]`);
-    expect(compose).toContain('127.0.0.1:${THECMS_PORT:-4321}:4321');
+    expect(compose).toContain('127.0.0.1:${UHLAKA_PORT:-4321}:4321');
     const dockerfile = await readFile(join(root, 'docker', 'Dockerfile'), 'utf8');
     expect(dockerfile).toContain('install.sh --host=computer --yes');
-    expect(dockerfile).toContain('setpriv --reuid=thecms');
+    expect(dockerfile).toContain('setpriv --reuid=uhlaka');
   });
 
   test('installs a file only when it matches the checksum the release lists', async () => {
@@ -220,8 +220,8 @@ describe('update', () => {
     expect(platformName('win32', 'x64')).toBe('windows-x64');
     expect(platformName('darwin', 'arm64')).toBe('darwin-arm64');
     expect(releaseFile('linux-arm64')).toBe(`${NAME}-linux-arm64`);
-    expect(isCompiled('/$bunfs/root/thecms')).toBe(true);
-    expect(isCompiled('B:\\~BUN\\root\\thecms.exe')).toBe(true);
+    expect(isCompiled('/$bunfs/root/uhlaka')).toBe(true);
+    expect(isCompiled('B:\\~BUN\\root\\uhlaka.exe')).toBe(true);
     expect(isCompiled()).toBe(false);
   });
 });

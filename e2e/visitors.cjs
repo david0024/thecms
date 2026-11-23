@@ -55,14 +55,14 @@ function mailServer(mails) {
 }
 
 (async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'thecms-e2e-visitors-'));
+  const dir = mkdtempSync(join(tmpdir(), 'uhlaka-e2e-visitors-'));
   const db = join(dir, 'site.db');
   const shots = process.argv[2];
   const mails = [];
   const smtp = mailServer(mails);
   cli('init', db);
 
-  const server = spawn('bun', ['src/site/cli.ts', 'edit', db, String(PORT)], { cwd: root, env: { ...process.env, THECMS_SMTP: '', THECMS_MAIL_FROM: '' } });
+  const server = spawn('bun', ['src/site/cli.ts', 'edit', db, String(PORT)], { cwd: root, env: { ...process.env, UHLAKA_SMTP: '', UHLAKA_MAIL_FROM: '' } });
   const url = await new Promise((resolve, reject) => {
     let out = '';
     server.stdout.on('data', (chunk) => {

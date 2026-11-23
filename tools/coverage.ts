@@ -2,7 +2,7 @@
  * Coverage of the whole source tree, from the unit tests and the browser.
  *
  *   bun test --coverage --coverage-reporter=lcov --coverage-dir=coverage
- *   THECMS_COVERAGE=coverage node e2e/editor.cjs   (and the other e2e scripts)
+ *   UHLAKA_COVERAGE=coverage node e2e/editor.cjs   (and the other e2e scripts)
  *   bun tools/coverage.ts coverage --lines=90 --file=50
  *
  * `bun test --coverage` counts only the files the unit tests load. The admin

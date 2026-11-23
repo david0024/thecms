@@ -13,7 +13,7 @@ let editor: EditorServer;
 const HOST = '127.0.0.1:4321';
 
 beforeAll(async () => {
-  dir = await mkdtemp(join(tmpdir(), 'thecms-'));
+  dir = await mkdtemp(join(tmpdir(), 'uhlaka-'));
   store = await Store.open(join(dir, 'site.db'));
   await store.setSite(DEMO_SITE);
   await store.setTheme(plain);
@@ -30,7 +30,7 @@ const call = (path: string, init: { method?: string; body?: unknown; headers?: R
   editor.fetch(
     new Request(`http://${HOST}${path}`, {
       method: init.method ?? 'GET',
-      headers: { host: HOST, 'x-thecms-token': editor.token, ...(init.body ? { 'content-type': 'application/json' } : {}), ...init.headers },
+      headers: { host: HOST, 'x-uhlaka-token': editor.token, ...(init.body ? { 'content-type': 'application/json' } : {}), ...init.headers },
       body: init.body ? JSON.stringify(init.body) : undefined,
     }),
   );
@@ -40,7 +40,7 @@ describe('who may call the editing API', () => {
     // The last character is changed to one it is not: a token ending in 0 would otherwise be left as it is.
     const off = `${editor.token.slice(0, -1)}${editor.token.endsWith('0') ? '1' : '0'}`;
     for (const token of ['', 'x', off, `${editor.token}0`]) {
-      const response = await call('/api/state', { headers: { 'x-thecms-token': token } });
+      const response = await call('/api/state', { headers: { 'x-uhlaka-token': token } });
       expect(response.status).toBe(401);
     }
     expect((await call('/api/state')).status).toBe(200);
@@ -59,7 +59,7 @@ describe('who may call the editing API', () => {
 
   test('a write without the token changes nothing', async () => {
     const before = JSON.stringify(await store.pages());
-    const response = await call('/api/page?slug=about', { method: 'DELETE', headers: { 'x-thecms-token': '' } });
+    const response = await call('/api/page?slug=about', { method: 'DELETE', headers: { 'x-uhlaka-token': '' } });
     expect(response.status).toBe(401);
     expect(JSON.stringify(await store.pages())).toBe(before);
   });

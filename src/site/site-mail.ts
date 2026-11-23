@@ -1,7 +1,7 @@
 /**
  * The site's mail server, as the owner sets it in Settings → E-mail (ADR 0064
- * d5), and the messages the site sends to visitors. `THECMS_SMTP` and
- * `THECMS_MAIL_FROM`, when given, are stronger than the settings.
+ * d5), and the messages the site sends to visitors. `UHLAKA_SMTP` and
+ * `UHLAKA_MAIL_FROM`, when given, are stronger than the settings.
  */
 import { wordsFor } from '../blocks/words.ts';
 import { isEmail, type Mailer, smtpMailer } from './mail.ts';
@@ -45,7 +45,7 @@ export function mailAddress(settings: MailSettings): string {
   return `${settings.security === 'tls' ? 'smtps' : 'smtp'}://${who}${settings.host}:${settings.port}`;
 }
 
-/** What the environment gives (`THECMS_SMTP`, `THECMS_MAIL_FROM`), stronger than the settings. */
+/** What the environment gives (`UHLAKA_SMTP`, `UHLAKA_MAIL_FROM`), stronger than the settings. */
 export interface MailEnvironment {
   mailer?: Mailer | null;
   from?: string;

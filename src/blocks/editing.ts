@@ -9,7 +9,7 @@
 import { getContext, setContext } from 'svelte';
 import { type ContentType, type Post, pictureAttrs, type Share, type Site } from '../core/index.ts';
 
-const KEY = 'thecms:editing';
+const KEY = 'uhlaka:editing';
 
 export const setEditing = (on: boolean): void => {
   setContext(KEY, on);
@@ -44,7 +44,7 @@ export interface EntryContext {
   inBody?: boolean;
 }
 
-const ENTRY = 'thecms:entry';
+const ENTRY = 'uhlaka:entry';
 
 export const setEntry = (entry: EntryContext): void => {
   setContext(ENTRY, entry);
@@ -52,7 +52,7 @@ export const setEntry = (entry: EntryContext): void => {
 
 export const getEntry = (): EntryContext | undefined => getContext(ENTRY) as EntryContext | undefined;
 
-const SITE = 'thecms:site';
+const SITE = 'uhlaka:site';
 
 /** The site a page is drawn for, and the page's own address: what a form needs to know to send and to come back. */
 export const setSite = (site: Site, path: string): void => {
@@ -60,7 +60,7 @@ export const setSite = (site: Site, path: string): void => {
 };
 export const getSite = (): { site: Site; path: string } | undefined => getContext(SITE) as { site: Site; path: string } | undefined;
 
-const LISTS = 'thecms:lists';
+const LISTS = 'uhlaka:lists';
 
 export const setLists = (lists: EntryLists, language: string): void => {
   setContext(LISTS, { lists, language });
@@ -69,7 +69,7 @@ export const setLists = (lists: EntryLists, language: string): void => {
 export const getLists = (): { lists: EntryLists; language: string } =>
   (getContext(LISTS) as { lists: EntryLists; language: string } | undefined) ?? { lists: {}, language: 'en' };
 
-const MEASURE = 'thecms:measure';
+const MEASURE = 'uhlaka:measure';
 
 /** How wide the content runs where a block is drawn, so a picture in it can say which copy fits (ADR 0005 d8). */
 export const setMeasure = (layout: string, measure: string): void => {

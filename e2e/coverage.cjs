@@ -1,7 +1,7 @@
 /**
  * What the browser ran in an end-to-end test, kept for tools/coverage.ts.
  *
- * With THECMS_COVERAGE set to a folder, every page the test opens records the
+ * With UHLAKA_COVERAGE set to a folder, every page the test opens records the
  * JavaScript of the admin and of the editor's canvas that it ran, and closing
  * the browser writes it there. Without it, this changes nothing.
  *
@@ -12,7 +12,7 @@
 const { mkdirSync, writeFileSync } = require('node:fs');
 const { join } = require('node:path');
 
-const dir = process.env.THECMS_COVERAGE;
+const dir = process.env.UHLAKA_COVERAGE;
 const ADMIN_SCRIPT = /\/admin\/(app|frame)\.js$/;
 const isAdmin = (url) => {
   try {

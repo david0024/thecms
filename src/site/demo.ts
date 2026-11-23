@@ -1,4 +1,4 @@
-/** A small site to start from: what `thecms init` writes. */
+/** A small site to start from: what `uhlaka init` writes. */
 import { paragraphs, postsType } from '../core/index.ts';
 
 export const DEMO_SITE = {

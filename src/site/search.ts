@@ -58,7 +58,7 @@ export function searchIndex(files: Map<string, string | Uint8Array>): SearchDoc[
   for (const [file, body] of files) {
     // A page behind a password is not found by search: its words would be shown to anyone (ADR 0043).
     // Nor is one hidden from search engines (ADR 0050 d3).
-    if (typeof body !== 'string' || !file.endsWith('index.html') || body.includes('http-equiv="refresh"') || body.includes('<meta name="thecms-locked"') || body.includes('<meta name="thecms-members"') || body.includes('<meta name="robots" content="noindex">')) continue;
+    if (typeof body !== 'string' || !file.endsWith('index.html') || body.includes('http-equiv="refresh"') || body.includes('<meta name="uhlaka-locked"') || body.includes('<meta name="uhlaka-members"') || body.includes('<meta name="robots" content="noindex">')) continue;
     const main = /<main[^>]*>([\s\S]*?)<\/main>/.exec(body)?.[1] ?? '';
     if (main.includes('class="b blog"')) continue;
     const title = decode(/<meta property="og:title" content="([^"]*)">/.exec(body)?.[1] ?? '');

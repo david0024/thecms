@@ -253,7 +253,7 @@ describe('carrying the plan out', () => {
   };
 
   beforeEach(async () => {
-    dir = await mkdtemp(join(tmpdir(), 'thecms-import-'));
+    dir = await mkdtemp(join(tmpdir(), 'uhlaka-import-'));
     store = await Store.open(join(dir, 'site.db'));
     await store.setTheme(plain);
     await store.publishTheme();

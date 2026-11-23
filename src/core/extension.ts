@@ -11,14 +11,15 @@
  * This file only reads and checks a package. Running one is `src/site/extensions.ts`.
  */
 import { allViews, checkViews, type ViewDocument } from '../view/index.ts';
+import { fromOldName } from './name.ts';
 import { isObject, str } from './util.ts';
 
 /** The format a package is written in now: the second, with what the program tells, asks and lends (ADR 0062). */
-export const EXTENSION_FORMAT = 'thecms.extension/3';
+export const EXTENSION_FORMAT = 'uhlaka.extension/3';
 /** The second format (ADR 0041), still read: routes, jobs and the events of the site's changes. */
-export const EXTENSION_FORMAT_2 = 'thecms.extension/2';
+export const EXTENSION_FORMAT_2 = 'uhlaka.extension/2';
 /** The first format (ADR 0026), still read: a package in it has no routes, jobs or events. */
-export const EXTENSION_FORMAT_1 = 'thecms.extension/1';
+export const EXTENSION_FORMAT_1 = 'uhlaka.extension/1';
 const FORMATS: readonly string[] = [EXTENSION_FORMAT, EXTENSION_FORMAT_2, EXTENSION_FORMAT_1];
 export const EXTENSION_MAX_BYTES = 5 * 1024 * 1024;
 
@@ -196,7 +197,7 @@ export interface ExtensionManifest {
   version: string;
   publisher: string;
   /** The first version of this program it works with. */
-  thecmsMinVersion: string;
+  uhlakaMinVersion: string;
   /** The hosts its code may call, and nothing else. */
   egress: string[];
   collections: ExtensionCollection[];
@@ -450,16 +451,18 @@ function thirdParts(m: Record<string, unknown>, actions: ExtensionAction[], prob
 }
 
 /** Reads a package, with every reason it cannot be installed. */
-export function parseExtension(raw: unknown): { pkg: ExtensionPackage | null; problems: string[] } {
+export function parseExtension(given: unknown): { pkg: ExtensionPackage | null; problems: string[] } {
   const problems: string[] = [];
+  // A package made before the rename is read as it would be written now (ADR 0066).
+  const raw = fromOldName(given);
   if (!isObject(raw) || typeof raw.format !== 'string' || !FORMATS.includes(raw.format)) return { pkg: null, problems: [`this is not an extension (${EXTENSION_FORMAT})`] };
   const m = isObject(raw.manifest) ? raw.manifest : {};
   const name = text(m.name, 40);
   if (!NAME.test(name)) problems.push(`an extension's name is lower case letters, digits and - ("${name}")`);
   const version = text(m.version, 40);
   if (!VERSION.test(version)) problems.push(`its version is like 1.0.0 ("${version}")`);
-  const min = text(m.thecmsMinVersion, 40) || '0.0.0';
-  if (!VERSION.test(min)) problems.push(`thecmsMinVersion is like 0.1.0 ("${min}")`);
+  const min = text(m.uhlakaMinVersion, 40) || '0.0.0';
+  if (!VERSION.test(min)) problems.push(`uhlakaMinVersion is like 0.1.0 ("${min}")`);
   const egress = [...new Set(list(m.egress).map((h) => text(h, 253).toLowerCase()))].slice(0, 10);
   for (const host of egress) if (!HOST.test(host)) problems.push(`"${host}" is not a host name it may call`);
 
@@ -478,7 +481,7 @@ export function parseExtension(raw: unknown): { pkg: ExtensionPackage | null; pr
     if (actions.some((x) => x.name === one.name)) problems.push(`the action "${one.name}" is declared twice`);
     else actions.push(one);
   }
-  // Screens are checked against thecms.view/1 and against what this manifest declares.
+  // Screens are checked against uhlaka.view/1 and against what this manifest declares.
   const { views, problems: viewProblems } = checkViews(m.views, { collections: collections.map((c) => ({ name: c.name, fields: c.fields })), actions });
   problems.push(...viewProblems);
   if (raw.format !== EXTENSION_FORMAT) for (const v of allViews(views)) if (VIEWS_3.includes(v.type)) problems.push(`a screen of the kind "${v.type}" needs ${EXTENSION_FORMAT}`);
@@ -508,7 +511,7 @@ export function parseExtension(raw: unknown): { pkg: ExtensionPackage | null; pr
         description: text(m.description, 400),
         version,
         publisher: text(m.publisher, 80),
-        thecmsMinVersion: min,
+        uhlakaMinVersion: min,
         egress,
         collections,
         actions,
