@@ -109,6 +109,8 @@ export function describeOffer(offer: ExtensionOffer): string {
   if (asks.pictures.length) lines.push(`  see the site's pictures, for: ${asks.pictures.join(', ')}`);
   if (asks.answers.length) lines.push(`  be asked, and waited for: ${asks.answers.join(', ')}`);
   if (asks.uses.length) lines.push(`  read the site's data: ${asks.uses.join(', ')}`);
+  if (asks.mails?.length) lines.push(`  send visitors these messages: ${asks.mails.join(', ')}`);
+  if (offer.accountsOff) lines.push('It works with visitor accounts, which are off: it does that part once they are turned on.');
   return lines.join('\n');
 }
 

@@ -136,3 +136,41 @@ extensions are given (d7).
   each later change of the settings.
 - Left for later: the visitors as a part of the complete export (ADR 0057),
   and the events of d7 (PR c).
+
+### What PR (c) settled in building it
+
+Proposed in the project thread on 2026-11-23 and built as below.
+
+- **Events.** `account.made` is told when an account becomes one: its address
+  confirmed, or an invitation taken up; a sign-up not yet confirmed is not.
+  `account.removed` is told when a confirmed account is deleted, by the visitor
+  or the owner. `member.changed` is told with `levels`, `added` and `removed`
+  whenever a confirmed member's levels change: given or taken by the owner, by
+  an extension, or a level the owner took away from everyone; a change that
+  changes nothing is not told. The level for new accounts goes with
+  `account.made`, not as a change of its own. Each carries the visitor's id
+  and levels only.
+- **`members`.** `host.members.get(id)` and `host.members.find(email)` give a
+  confirmed member's id, name, e-mail, language and levels, or null;
+  `host.members.levels()` the levels the owner named; `host.members.give(id,
+  level)` and `take` change a level the owner named and answer the member's
+  levels. There is no list of every visitor: an extension knows of one from an
+  event, a route or an address it was given.
+- **`mail`.** `host.mail.send(id, message, { link })` puts a message to one
+  confirmed member in the queue of d5, never to an address the extension
+  gives. The message is one the extension declares in `mails` (a name, a
+  subject and a text, translated by its `messages`, with `{name}`, `{site}`,
+  `{link}`), or the site's welcome; the site's other messages carry links only
+  the program makes. A link is an address of the site, made whole with the
+  site's own address, or over https on a host the extension declared. An
+  extension may send one visitor at most ten messages an hour. The owner sees
+  the messages before installing; changing their words in Settings → E-mail
+  is left for later.
+- **The visitor on a route.** The action is given `visitor: { id, levels }`,
+  or null. A route that changes something for the visitor should take POST:
+  the cookie is `SameSite=Lax`, so a link from another site still brings it
+  on a GET.
+- **Off.** While the accounts are off nothing is told, `members` and `mail`
+  answer that the accounts are off, and a route is given no visitor; nothing
+  of the accounts is loaded for it. An extension that works with them may be
+  installed then, and the owner is told it does that part once they are on.

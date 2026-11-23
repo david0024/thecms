@@ -165,6 +165,8 @@ export function startRuntime(
   // Visitor accounts (ADR 0064): nothing of them is loaded while the owner has not turned them on (ADR 0060 d3).
   const mail = { mailer: options.mailer ?? null, from: options.from };
   const visitors = visitorGate(store, { shared, log: options.log ?? ((line) => console.log(line)), mail, frame: frameFor, headers: HEADERS }, async () => (await siteMailer(store, mail)) !== null);
+  // What they lend extensions (ADR 0064 d7): refused while they are off, and nothing loaded for it.
+  extensions.lend(visitors.lent);
 
   /** Passwords a visitor may try in a window: enough for a person, too few to guess one. */
   const tooMany = async (ip: string): Promise<boolean> => (await shared.hit(`unlock:${ip}`, 10 * 60_000)) > 10;

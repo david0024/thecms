@@ -9,9 +9,10 @@
  * within what the extension declared.
  */
 import { join } from 'node:path';
-import { ANSWER_SECONDS, cleanBlockPost, cleanRow, contentTypes, egressAllows, entryIn, entryPath, type ExtensionAction, type ExtensionEventName, pagePath, type Question, QUESTIONS, typeIn, type ExtensionManifest, extensionAsks, EXTENSION_MAX_BYTES, mediaKindOf, mediaNameOf, parseExtension, variantOf } from '../core/index.ts';
+import { ANSWER_SECONDS, extensionWord, cleanBlockPost, cleanRow, contentTypes, egressAllows, entryIn, entryPath, type ExtensionAction, type ExtensionEventName, pagePath, type Question, QUESTIONS, typeIn, type ExtensionManifest, extensionAsks, EXTENSION_MAX_BYTES, mediaKindOf, mediaNameOf, parseExtension, variantOf } from '../core/index.ts';
 import { type FromRunner, lines, type ToRunner } from './extension-runner.ts';
 import type { InstalledExtension, SiteEvent, Store } from './store.ts';
+import type { AccountsLent } from './visitor-gate.ts';
 import { isCompiled, newer } from './update.ts';
 import { VERSION } from './version.ts';
 
@@ -48,6 +49,8 @@ export interface ExtensionOffer {
   asks: ReturnType<typeof extensionAsks>;
   /** The version installed now, when this one replaces it. */
   replaces: string | null;
+  /** It works with visitor accounts, and they are off (ADR 0064 d7): the owner is told before installing. */
+  accountsOff: boolean;
 }
 
 /** How a process for an extension is started: the program again, as the runner. */
@@ -135,6 +138,12 @@ export function extensionHost(store: Store, options: { spawn?: Spawn; fetch?: (u
   const outbound = options.fetch ?? ((url, init) => fetch(url, init));
   const running = new Map<string, Running>();
   let runs = 0;
+  /** What visitor accounts lend (ADR 0064 d7), given by the runtime that serves them. */
+  let accounts: AccountsLent | null = null;
+  const lent = (): AccountsLent => {
+    if (!accounts) throw new Error('visitor accounts are not reachable here');
+    return accounts;
+  };
 
   /** Reads a package file and says what it asks for. Nothing is kept. */
   async function offer(text: string): Promise<ExtensionOffer> {
@@ -149,7 +158,9 @@ export function extensionHost(store: Store, options: { spawn?: Spawn; fetch?: (u
     if (!pkg) throw new Error(problems.join('; '));
     if (newer(pkg.manifest.thecmsMinVersion, VERSION.split('-')[0] as string)) throw new Error(`${pkg.manifest.displayName} needs version ${pkg.manifest.thecmsMinVersion} of this program; this is ${VERSION} (update it first)`);
     const before = await store.extension(pkg.manifest.name);
-    return { manifest: pkg.manifest, sha256: sha256(text), asks: extensionAsks(pkg.manifest), replaces: before?.manifest.version ?? null };
+    const asks = extensionAsks(pkg.manifest);
+    const accountsOff = asks.accounts && (await store.visitorSettings().then((v) => (v as { on?: unknown } | null)?.on !== true));
+    return { manifest: pkg.manifest, sha256: sha256(text), asks, replaces: before?.manifest.version ?? null, accountsOff };
   }
 
   /** Installs the file the owner accepted: the same bytes, or nothing. */
@@ -232,6 +243,33 @@ export function extensionHost(store: Store, options: { spawn?: Spawn; fetch?: (u
         if (!action.uses.includes('published')) throw new Error(`the action "${action.name}" did not declare that it reads "published"`);
         return publishedFor(store);
       }
+      case 'members.get':
+      case 'members.find':
+      case 'members.levels':
+      case 'members.give':
+      case 'members.take': {
+        // The members, declared (ADR 0064 d7): read by one id or one address, never all of them.
+        if (!action.uses.includes('members')) throw new Error(`the action "${action.name}" did not declare that it uses "members"`);
+        const what = method.slice(8) as 'get' | 'find' | 'levels' | 'give' | 'take';
+        if (what === 'levels') return (await lent().levels()).map((l) => ({ id: l.id, name: l.name }));
+        if (what === 'get' || what === 'find') return lent()[what](String(args[0] ?? ''));
+        return lent()[what](String(args[0] ?? ''), String(args[1] ?? ''));
+      }
+      case 'mail.send': {
+        // E-mail to one visitor, declared (ADR 0064 d7): never to an address the extension gives.
+        if (!action.uses.includes('mail')) throw new Error(`the action "${action.name}" did not declare that it uses "mail"`);
+        const asked = String(args[1] ?? '');
+        const own = extension.manifest.mails.find((m) => m.name === asked);
+        if (asked !== 'welcome' && !own) throw new Error(`"${asked.slice(0, 40)}" is not one of its messages, nor the site's welcome`);
+        const values = (args[2] && typeof args[2] === 'object' ? args[2] : {}) as { link?: unknown };
+        const link = await linkFor(extension, typeof values.link === 'string' ? values.link : asked === 'welcome' ? '/_/account' : '');
+        const manifest = extension.manifest;
+        return lent().send(
+          String(args[0] ?? ''),
+          own ? { what: `${name}:${own.name}`, words: (language) => ({ subject: extensionWord(manifest, language, own.subject), text: extensionWord(manifest, language, own.text) }) } : 'welcome',
+          link,
+        );
+      }
       case 'picture': {
         if (!action.pictures) throw new Error(`the action "${action.name}" did not declare that it sees the site's pictures`);
         const name = mediaNameOf(String(args[0]));
@@ -247,6 +285,42 @@ export function extensionHost(store: Store, options: { spawn?: Spawn; fetch?: (u
       default:
         throw new Error(`there is no "${method}"`);
     }
+  }
+
+  /**
+   * The link a message to a visitor carries (ADR 0064 d7): an address of the
+   * site, made whole with the site's own address, or one on a host the
+   * extension declared. Nothing else, so a message from the site never leads
+   * somewhere the owner did not accept.
+   */
+  async function linkFor(extension: InstalledExtension, link: string): Promise<string> {
+    if (link === '') return '';
+    if (link.length > 2000 || /[\s<>"]/.test(link)) throw new Error('a link is an address of the site, or of a host it declared');
+    if (/^\/(?!\/)/.test(link)) {
+      let origin = '';
+      try {
+        const own = new URL((await store.site()).url);
+        if (own.protocol === 'https:' || own.protocol === 'http:') origin = own.origin;
+      } catch {
+        // No address set.
+      }
+      if (!origin) throw new Error("the site's own address is not set, so a link of the site cannot be made");
+      return `${origin}${link}`;
+    }
+    let url: URL;
+    try {
+      url = new URL(link);
+    } catch {
+      throw new Error('a link is an address of the site, or of a host it declared');
+    }
+    let site = '';
+    try {
+      site = new URL((await store.site()).url).hostname;
+    } catch {
+      // No address set.
+    }
+    if (url.protocol !== 'https:' || !(url.hostname === site || egressAllows(extension.manifest.egress, url.hostname))) throw new Error(`a link leads to the site, or over https to a host it declared (${url.hostname})`);
+    return url.href;
   }
 
   function start(extension: InstalledExtension): Running {
@@ -349,12 +423,22 @@ export function extensionHost(store: Store, options: { spawn?: Spawn; fetch?: (u
       if (problems.length) return new Response(null, { status: 303, headers: { location: `${to}${anchor ? `${anchor}-failed` : ''}` } });
       sent = { block: block.name, fields };
     }
+    // The visitor signed in, by id and levels, never the cookie (ADR 0064 d7); null while accounts are off.
+    let visitor: { id: string; levels: string[] } | null = null;
+    if (accounts) {
+      try {
+        visitor = await accounts.visitor(request);
+      } catch (error) {
+        log(`Visitor accounts could not say who is signed in: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
     const input = {
       method,
       path: found.path,
       query: Object.fromEntries(url.searchParams),
       headers: Object.fromEntries([...request.headers].filter(([key]) => !UNSAID.has(key.toLowerCase()))),
       body,
+      visitor,
       ...(sent ?? {}),
     };
     let answer: unknown;
@@ -473,6 +557,10 @@ export function extensionHost(store: Store, options: { spawn?: Spawn; fetch?: (u
     deliver,
     listens,
     ask,
+    /** What visitor accounts lend extensions (ADR 0064 d7), from the runtime that serves them. */
+    lend(given: AccountsLent): void {
+      accounts = given;
+    },
     /** From now on, what happens in the site is told to the extensions that listen. Returns how to stop. */
     listen(): () => void {
       return store.onEvent((event) => void deliver(event));
