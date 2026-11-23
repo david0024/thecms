@@ -8,7 +8,7 @@ import { afterAll, describe, expect, test } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { combinations, moneyOf, moneyText, normalizeProduct, normalizeRates, normalizeShopSettings, normalizeTypes, paid, priceOf, rateFor, typedMoney } from '../src/core/index.ts';
+import { combinations, moneyOf, moneyText, normalizeProduct, normalizeRates, normalizeShopSettings, normalizeTypes, paid, priceOf, rateFor, SHOP_OFF, typedMoney } from '../src/core/index.ts';
 import { exportedFiles } from '../src/site/export.ts';
 import { startRuntime } from '../src/site/runtime.ts';
 import { startEditor } from '../src/site/server.ts';
@@ -109,8 +109,8 @@ describe('money and products', () => {
   test('the settings and the rates are cleaned', () => {
     expect(normalizeRates(['21', 9.5, 9.5, '200', -1, 'x'])).toEqual([21, 9.5]);
     expect(normalizeRates([])).toEqual([21, 11, 0]);
-    expect(normalizeShopSettings(null)).toEqual({ on: false, vat: true, rates: [21, 11, 0] });
-    expect(normalizeShopSettings({ on: true, vat: false, rates: [19] })).toEqual({ on: true, vat: false, rates: [19] });
+    expect(normalizeShopSettings(null)).toEqual(SHOP_OFF);
+    expect(normalizeShopSettings({ on: true, vat: false, rates: [19] })).toEqual({ ...SHOP_OFF, on: true, vat: false, rates: [19] });
   });
 
   test('the tables are made in the words of each database', () => {
@@ -133,7 +133,7 @@ describe('the shop, off', () => {
     try {
       const state = await call('GET', '/api/state');
       expect((state.body as { shop: { on: boolean } }).shop.on).toBe(false);
-      expect((await call('GET', '/api/shop')).body).toEqual({ settings: { on: false, vat: true, rates: [21, 11, 0] } });
+      expect((await call('GET', '/api/shop')).body).toEqual({ settings: SHOP_OFF });
       expect((await call('GET', '/api/shop/stock?kind=x&slug=y')).status).toBe(404);
       for (const table of SHOP_TABLES) expect(await store.hasTable(table)).toBe(false);
       expect(shopGate(store).loaded()).toBe(false);

@@ -62,7 +62,7 @@ describe('visitor accounts, off', () => {
     try {
       expect((await runtime.fetch(new Request('https://example.com/_/account'))).status).toBe(404);
       expect((await runtime.fetch(new Request('https://example.com/_/account/signup', { method: 'POST' }))).status).toBe(404);
-      await runtime.visitors.chores(new Date());
+      await runtime.chores(new Date());
       for (const table of VISITOR_TABLES) expect(await store.hasTable(table)).toBe(false);
       expect(runtime.visitors.loaded()).toBe(false);
     } finally {
@@ -129,7 +129,7 @@ describe('visitor accounts, on', () => {
       expect(await made.text()).toContain('ana@example.com');
       // Nothing is sent by the request: the clock sends it.
       expect(sent).toHaveLength(0);
-      await runtime.visitors.chores(new Date());
+      await runtime.chores(new Date());
       expect(sent).toHaveLength(1);
       expect(sent[0]?.to).toBe('ana@example.com');
       expect(sent[0]?.from).toBe('site@example.com');
@@ -138,7 +138,7 @@ describe('visitor accounts, on', () => {
       // Not confirmed: no way in, and the link goes again.
       const early = await tab.go('POST', '/_/account/signin', { email: 'ana@example.com', current: 'long enough pass' });
       expect(early.status).toBe(403);
-      await runtime.visitors.chores(new Date());
+      await runtime.chores(new Date());
       expect(sent).toHaveLength(2);
 
       const confirm = linkIn(sent[0]);
@@ -156,7 +156,7 @@ describe('visitor accounts, on', () => {
       const mine = await (await tab.go('GET', '/_/account?said=confirmed')).text();
       expect(mine).toContain('Hello, Ana');
       expect(mine).toContain('Your address is confirmed.');
-      await runtime.visitors.chores(new Date());
+      await runtime.chores(new Date());
       expect(sent.at(-1)?.subject).toBe('Welcome to Atelier');
 
       const data = await tab.go('GET', '/_/account/data');
@@ -177,7 +177,7 @@ describe('visitor accounts, on', () => {
       const again = sent.length;
       expect((await tab.go('POST', '/_/account/signout', {})).status).toBe(303);
       expect((await tab.go('POST', '/_/account/signup', { name: 'Eve', email: 'ana@example.com', password: 'another password', consent: 'yes' })).status).toBe(200);
-      await runtime.visitors.chores(new Date());
+      await runtime.chores(new Date());
       expect(sent).toHaveLength(again);
     } finally {
       runtime.stop();
@@ -191,7 +191,7 @@ describe('visitor accounts, on', () => {
     const runtime = startRuntime(store, { listen: false, log: () => {}, mailer: async (mail) => void sent.push(mail), from: 'site@example.com' });
     await store.setVisitorSettings({ on: true, signup: 'open' });
     const tab = browser((r) => runtime.fetch(r));
-    const tick = () => runtime.visitors.chores(new Date());
+    const tick = () => runtime.chores(new Date());
     try {
       // Signed up from the Romanian pages: the messages are in Romanian.
       await tab.go('POST', '/_/account/signup?l=ro', { name: 'Ion', email: 'ion@example.com', password: 'parola lunga 1', consent: 'yes' });
@@ -251,9 +251,9 @@ describe('visitor accounts, on', () => {
       for (let i = 0; i < 10; i++) await tab.go('POST', '/_/account/signin', { email: 'x@example.com', current: 'nope' });
       expect((await tab.go('POST', '/_/account/signin', { email: 'x@example.com', current: 'nope' })).status).toBe(429);
       await tab.go('POST', '/_/account/signup', { name: 'Old', email: 'old@example.com', password: 'long enough pass', consent: 'yes' });
-      await runtime.visitors.chores(new Date());
+      await runtime.chores(new Date());
       expect((await store.database().rows('SELECT id FROM visitors'))).toHaveLength(1);
-      await runtime.visitors.chores(new Date(Date.now() + 8 * 86_400_000));
+      await runtime.chores(new Date(Date.now() + 8 * 86_400_000));
       expect((await store.database().rows('SELECT id FROM visitors'))).toHaveLength(0);
     } finally {
       runtime.stop();
@@ -281,7 +281,7 @@ describe('visitor accounts, on', () => {
       expect(invited.waiting).toBe(1);
       expect((await call('POST', '/api/visitors', { email: 'guest@example.com' })).status).toBe(409);
       // Many hours later each time: tried five times, then given up.
-      for (let i = 1; i <= 6; i++) await runtime.visitors.chores(new Date(Date.now() + i * 3 * 3_600_000));
+      for (let i = 1; i <= 6; i++) await runtime.chores(new Date(Date.now() + i * 3 * 3_600_000));
       expect(tries).toBe(5);
       const listed = (await (await call('GET', '/api/visitors')).json()) as { failed: { id: string; to: string; what: string; error: string }[]; waiting: number };
       expect(listed.waiting).toBe(0);
@@ -289,7 +289,7 @@ describe('visitor accounts, on', () => {
       expect(lines.some((l) => l.includes('could not be sent (invite, after 5 tries)'))).toBe(true);
       // Tried again at the owner's word, or forgotten.
       expect(((await (await call('POST', `/api/visitors/retry?id=${listed.failed[0]?.id}`, {})).json()) as { waiting: number }).waiting).toBe(1);
-      await runtime.visitors.chores(new Date(Date.now() + 60 * 3_600_000));
+      await runtime.chores(new Date(Date.now() + 60 * 3_600_000));
       const again = (await (await call('GET', '/api/visitors')).json()) as { failed: { id: string }[] };
       expect(((await (await call('DELETE', `/api/visitors/failed?id=${again.failed[0]?.id}`)).json()) as { failed: unknown[]; waiting: number })).toMatchObject({ failed: [], waiting: 1 });
       // The owner deletes the account.
@@ -316,7 +316,7 @@ describe('visitor accounts, on', () => {
       // By invitation, nobody signs up alone.
       expect((await tab.go('GET', '/_/account/signup')).status).toBe(403);
       await call('POST', '/api/visitors', { email: 'guest@example.com' });
-      await runtime.visitors.chores(new Date());
+      await runtime.chores(new Date());
       expect(sent[0]?.subject).toBe('An invitation to Atelier');
       const link = linkIn(sent[0]);
       expect(await (await tab.go('GET', link)).text()).toContain('name="consent"');

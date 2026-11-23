@@ -3,7 +3,8 @@
  * the key from the address the command printed; on a served admin, the
  * session cookie and a header only the admin's own page sends (ADR 0022).
  */
-import type { Audience, Audiences, Block, Level, ExtensionAction, Form, Redirect, RedirectProblem, ExtensionCollection, Page, Post, ShopSettings, Site, Theme } from '../core/index.ts';
+import type { Audience, Audiences, Block, Level, ExtensionAction, Form, Redirect, RedirectProblem, ExtensionCollection, Page, Post, ShopSettings, Site, Theme, OrderState } from '../core/index.ts';
+import type { Order } from '../site/shop-pages.ts';
 import type { ViewDocument } from '../view/index.ts';
 import type { ExtensionOffer } from '../site/extensions.ts';
 import type { ImportPreview, ImportProgress } from '../site/server.ts';
@@ -29,6 +30,20 @@ export interface Performance {
   /** Set by THECMS_VALKEY_URL on the server, which the admin cannot change. */
   fromEnvironment: boolean;
 }
+
+/** An order as the Orders screen lists it (ADR 0065 d7). */
+export interface OrderListed {
+  id: string;
+  number: number;
+  state: OrderState;
+  createdAt: string;
+  name: string;
+  email: string;
+  total: number;
+  currency: string;
+  items: number;
+}
+export type { Order, OrderState };
 
 /** Settings → Visitor accounts (ADR 0064): the switch, who may sign up, and, once on, the accounts and what could not be sent. */
 export interface VisitorSettings {
@@ -344,6 +359,15 @@ export const api = {
   setShop: (settings: Partial<ShopSettings>) => call<{ settings: ShopSettings }>('PUT', '/api/shop', settings),
   stock: (kind: string, slug: string) => call<{ stock: Record<string, number> }>('GET', `/api/shop/stock?kind=${encodeURIComponent(kind)}&slug=${encodeURIComponent(slug)}`),
   setStock: (kind: string, slug: string, stock: Record<string, number | null>) => call<{ stock: Record<string, number> }>('PUT', '/api/shop/stock', { kind, slug, stock }),
+  orders: (state = '') => call<{ orders: OrderListed[] }>('GET', `/api/shop/orders${state ? `?state=${encodeURIComponent(state)}` : ''}`),
+  order: (id: string) => call<{ order: Order }>('GET', `/api/shop/orders?id=${encodeURIComponent(id)}`),
+  setOrder: (id: string, change: { state?: OrderState; tracking?: string }) => call<{ order: Order }>('PUT', '/api/shop/orders', { id, ...change }),
+  /** The orders as a CSV file: fetched, because a link could not carry the key. */
+  async ordersFile(): Promise<Blob> {
+    const response = await fetch('/api/shop/orders.csv', { headers: who() });
+    if (!response.ok) await answer(response);
+    return response.blob();
+  },
   visitors: () => call<VisitorsShown>('GET', '/api/visitors'),
   setVisitors: (settings: Partial<VisitorSettings>) => call<VisitorsShown>('PUT', '/api/visitors', settings),
   inviteVisitor: (email: string, name: string, language: string) => call<VisitorsShown>('POST', '/api/visitors', { email, name, language }),

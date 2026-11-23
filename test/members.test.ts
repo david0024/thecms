@@ -283,7 +283,7 @@ describe('on the runtime', () => {
     const tab = browser((r) => runtime.fetch(r));
     try {
       await tab.go('POST', '/_/account/signup', { name: 'Ion', email: 'ion@example.com', password: 'long enough pass', consent: 'yes' });
-      await runtime.visitors.chores(new Date());
+      await runtime.chores(new Date());
       const link = /https:\/\/example\.com(\/_\/account\/link\?k=[A-Za-z0-9_-]+)/.exec(sent[0]?.text ?? '')?.[1] as string;
       expect((await tab.go('POST', '/_/account/link', { k: new URL(`https://example.com${link}`).searchParams.get('k') as string })).status).toBe(303);
       expect((await tab.go('GET', '/club/')).status).toBe(200);

@@ -171,9 +171,31 @@ export function priceOf(product: Product, variant = ''): { price: number | null;
 /** What a visitor pays for one: the sale price when there is one. */
 export const paid = (p: { price: number | null; sale: number | null }): number | null => p.sale ?? p.price;
 
+/** A way an order is delivered (ADR 0065 d6): at a fixed price, free above a sum, or picked up at an address. */
+export interface ShippingMethod {
+  id: string;
+  name: string;
+  /** With VAT included, in the smallest unit. */
+  price: number;
+  /** An order of at least this much is sent free; null for never. */
+  free: number | null;
+  /** Picked up here: no delivery address is asked for. '' for a method that sends. */
+  pickup: string;
+}
+
+/** Paying by bank transfer (ADR 0065 d6): the account the buyer is told to pay into. */
+export interface BankTransfer {
+  on: boolean;
+  /** Whose the account is: the business's name. */
+  holder: string;
+  iban: string;
+  bank: string;
+}
+
 /**
- * The shop's settings (ADR 0065 d5, d10). Only what the first pull request
- * needs; the cart's, the payments' and the shipping's come with theirs.
+ * The shop's settings (ADR 0065 d4–d7, d10): the switch, VAT, how buyers pay
+ * and how orders are delivered, the terms they agree to, and who handles the
+ * orders.
  */
 export interface ShopSettings {
   /** The one switch of Settings → Shop. */
@@ -181,14 +203,104 @@ export interface ShopSettings {
   /** The site charges VAT: the cart and the order show it. */
   vat: boolean;
   rates: number[];
+  transfer: BankTransfer;
+  /** Cash on delivery. */
+  cod: boolean;
+  shipping: ShippingMethod[];
+  /** The site's terms page, which a buyer agrees to; '' for none yet. */
+  terms: string;
+  /** Only a visitor signed in buys (when visitor accounts are on). */
+  account: boolean;
+  /** Editors handle orders too, not the owner alone (ADR 0065 d7). */
+  editors: boolean;
+  /** Where each new order is told; '' for the owner's own address. */
+  notify: string;
 }
 
-export const SHOP_OFF: ShopSettings = { on: false, vat: true, rates: [...DEFAULT_RATES] };
+export const MAX_SHIPPING = 10;
+
+export const SHOP_OFF: ShopSettings = {
+  on: false,
+  vat: true,
+  rates: [...DEFAULT_RATES],
+  transfer: { on: false, holder: '', iban: '', bank: '' },
+  cod: false,
+  shipping: [],
+  terms: '',
+  account: false,
+  editors: false,
+  notify: '',
+};
+
+/** An IBAN as people type it, in groups or not: `RO49 AAAA 1B31…` → `RO49AAAA1B31…`; '' for what is not one. */
+export function ibanOf(value: unknown): string {
+  const typed = str(value, 60).replace(/[\s-]/g, '').toUpperCase();
+  if (!/^[A-Z]{2}\d{2}[A-Z0-9]{10,30}$/.test(typed)) return '';
+  // The check digits: the country and digits moved to the end, read as a number, leave 1 over 97.
+  const moved = `${typed.slice(4)}${typed.slice(0, 4)}`.replace(/[A-Z]/g, (c) => String(c.charCodeAt(0) - 55));
+  let rest = 0;
+  for (const digit of moved) rest = (rest * 10 + Number(digit)) % 97;
+  return rest === 1 ? typed : '';
+}
+
+/** A link to a page of the site, or to an address on the web: nothing a link could run. */
+export const pageLink = (value: unknown): string => {
+  const typed = str(value, 500).trim();
+  return /^(\/(?!\/)|https?:\/\/)[^\s"<>]*$/.test(typed) ? typed : '';
+};
+
+const line = (value: unknown, max: number): string => str(value, max).replace(/\s+/g, ' ').trim();
+
+function cleanShipping(input: unknown): ShippingMethod[] {
+  const out: ShippingMethod[] = [];
+  for (const raw of Array.isArray(input) ? input : []) {
+    if (!isObject(raw) || out.length >= MAX_SHIPPING) continue;
+    const name = line(raw.name, 80);
+    if (!name) continue;
+    let id = /^[a-z0-9-]{1,40}$/.test(String(raw.id ?? '')) ? String(raw.id) : '';
+    if (!id || out.some((m) => m.id === id)) {
+      let n = out.length + 1;
+      while (out.some((m) => m.id === `m${n}`)) n++;
+      id = `m${n}`;
+    }
+    const free = moneyOf(raw.free);
+    out.push({ id, name, price: moneyOf(raw.price) ?? 0, free: free && free > 0 ? free : null, pickup: line(raw.pickup, 300) });
+  }
+  return out;
+}
 
 export function normalizeShopSettings(input: unknown): ShopSettings {
   const raw = isObject(input) ? input : {};
-  return { on: raw.on === true, vat: raw.vat !== false, rates: normalizeRates(raw.rates) };
+  const transfer = isObject(raw.transfer) ? raw.transfer : {};
+  const iban = ibanOf(transfer.iban);
+  const notify = line(raw.notify, 254).toLowerCase();
+  return {
+    on: raw.on === true,
+    vat: raw.vat !== false,
+    rates: normalizeRates(raw.rates),
+    // Without an account to pay into, there is no paying by transfer.
+    transfer: { on: transfer.on === true && iban !== '', holder: line(transfer.holder, 120), iban, bank: line(transfer.bank, 120) },
+    cod: raw.cod === true,
+    shipping: cleanShipping(raw.shipping),
+    terms: pageLink(raw.terms),
+    account: raw.account === true,
+    editors: raw.editors === true,
+    notify: /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(notify) ? notify : '',
+  };
 }
+
+/** What a shipping method costs an order of this much: nothing above its sum, or when picked up for free. */
+export const shippingCost = (method: ShippingMethod, subtotal: number): number => (method.free !== null && subtotal >= method.free ? 0 : method.price);
+
+/** The states of an order (ADR 0065 d7), in the order an order usually goes through them. */
+export const ORDER_STATES = ['waiting', 'paid', 'preparing', 'sent', 'completed', 'cancelled', 'refunded'] as const;
+export type OrderState = (typeof ORDER_STATES)[number];
+
+/** A cancelled order has given its stock back and is not taken up again; a refunded one is over. */
+export const isFinal = (state: OrderState): boolean => state === 'cancelled' || state === 'refunded';
+
+/** The VAT inside a sum that includes it, at a rate: 121 at 21% holds 21. */
+export const vatIn = (gross: number, rate: number): number => (rate > 0 ? Math.round((gross * rate) / (100 + rate)) : 0);
 
 /**
  * What a page is drawn with while the shop is on (ADR 0065 d3): the currency,

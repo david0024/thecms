@@ -163,7 +163,7 @@ describe('while visitor accounts are on', () => {
     try {
       // Signed up, not yet confirmed: nothing is told.
       await tab.go('POST', '/_/account/signup', { name: 'Ion', email: 'ion@example.com', password: 'long enough pass', consent: 'yes' });
-      await runtime.visitors.chores(new Date());
+      await runtime.chores(new Date());
       await Bun.sleep(100);
       expect(await store.extensionRows('club', 'heard')).toEqual([]);
       const k = /k=([A-Za-z0-9_-]+)/.exec(sent[0]?.text ?? '')?.[1] as string;
@@ -208,7 +208,7 @@ describe('while visitor accounts are on', () => {
       await tab.go('POST', '/_/account/signup?l=ro', { name: 'Ana', email: 'ana@example.com', password: 'long enough pass', consent: 'yes', l: 'ro' });
       // Not confirmed yet: not a member an extension may read.
       expect(await host.run('club', 'look', { id: 'nobody', email: 'ana@example.com' })).toEqual({ byId: null, byMail: null, levels: LEVELS });
-      await runtime.visitors.chores(new Date());
+      await runtime.chores(new Date());
       const k = /k=([A-Za-z0-9_-]+)/.exec(sent[0]?.text ?? '')?.[1] as string;
       await tab.go('POST', '/_/account/link', { k, l: 'ro' });
       const id = String((await heard(store, 1))[0]?.id);
@@ -245,11 +245,11 @@ describe('while visitor accounts are on', () => {
     const tab = browser((r) => runtime.fetch(r));
     try {
       await tab.go('POST', '/_/account/signup?l=ro', { name: 'Ana', email: 'ana@example.com', password: 'long enough pass', consent: 'yes', l: 'ro' });
-      await runtime.visitors.chores(new Date());
+      await runtime.chores(new Date());
       const k = /k=([A-Za-z0-9_-]+)/.exec(sent[0]?.text ?? '')?.[1] as string;
       await tab.go('POST', '/_/account/link', { k, l: 'ro' });
       const id = String((await heard(store, 1))[0]?.id);
-      await runtime.visitors.chores(new Date());
+      await runtime.chores(new Date());
       sent.length = 0;
 
       await host.run('club', 'mail', { id, message: 'receipt', values: { link: '/receipts/7/' } });
@@ -257,7 +257,7 @@ describe('while visitor accounts are on', () => {
       await host.run('club', 'mail', { id, message: 'welcome' });
       // Waiting in the queue until the clock sends it: no action waits for a mail server.
       expect(sent).toEqual([]);
-      await runtime.visitors.chores(new Date());
+      await runtime.chores(new Date());
       expect(sent.map((m) => [m.to, m.subject, m.text])).toEqual([
         ['ana@example.com', 'Chitanța ta de la Atelier', 'Salut Ana, e la https://example.com/receipts/7/'],
         ['ana@example.com', 'Chitanța ta de la Atelier', 'Salut Ana, e la https://pay.example/r/7'],
@@ -308,15 +308,15 @@ describe('while visitor accounts are on', () => {
       expect(changed.saved).toEqual({ ro: { 'club:receipt': { subject: 'Plata ta la {site}', text: 'Mulțumim, {name}: {link}' } } });
 
       await tab.go('POST', '/_/account/signup?l=ro', { name: 'Ana', email: 'ana@example.com', password: 'long enough pass', consent: 'yes', l: 'ro' });
-      await runtime.visitors.chores(new Date());
+      await runtime.chores(new Date());
       const k = /k=([A-Za-z0-9_-]+)/.exec(sent[0]?.text ?? '')?.[1] as string;
       await tab.go('POST', '/_/account/link', { k, l: 'ro' });
       const id = String((await heard(store, 1))[0]?.id);
-      await runtime.visitors.chores(new Date());
+      await runtime.chores(new Date());
       sent.length = 0;
       // Sent with the owner's words, filled in as the extension's would be.
       await host.run('club', 'mail', { id, message: 'receipt', values: { link: '/receipts/7/' } });
-      await runtime.visitors.chores(new Date());
+      await runtime.chores(new Date());
       expect(sent.map((m) => [m.subject, m.text])).toEqual([['Plata ta la Atelier', 'Mulțumim, Ana: https://example.com/receipts/7/']]);
 
       // Uninstalled, its messages leave the list and the owner's words for them are forgotten; the site's stay.

@@ -19,7 +19,18 @@ let which = $state('confirm');
 let subject = $state('');
 let body = $state('');
 
-const NAMES: Record<string, string> = { confirm: t.mail.confirm, reset: t.mail.reset, welcome: t.mail.welcome, invite: t.mail.invite, deleted: t.mail.deleted };
+const NAMES: Record<string, string> = {
+  confirm: t.mail.confirm,
+  reset: t.mail.reset,
+  welcome: t.mail.welcome,
+  invite: t.mail.invite,
+  deleted: t.mail.deleted,
+  orderReceived: t.mail.orderReceived,
+  orderPaid: t.mail.orderPaid,
+  orderSent: t.mail.orderSent,
+  orderCancelled: t.mail.orderCancelled,
+  orderNew: t.mail.orderNew,
+};
 
 const take = (next: MailShown): void => {
   shown = next;
@@ -122,6 +133,7 @@ const saveWords = (back = false) =>
         <select bind:value={language} onchange={pick} data-mail-language>{#each words.languages as l (l)}<option value={l}>{l}</option>{/each}</select>
       {/if}
     </div>
+    {#if which.startsWith('order')}<small data-mail-order-hint>{t.mail.orderHint}</small>{/if}
     <small>{own ? t.mail.own : which.includes(':') ? t.mail.revertedExtension : t.mail.reverted}</small>
     <label class="field"><span>{t.mail.subject}</span><input type="text" maxlength="200" bind:value={subject} data-mail-subject /></label>
     <label class="field"><span>{t.mail.text}</span><textarea rows="7" maxlength="5000" bind:value={body} data-mail-text></textarea></label>

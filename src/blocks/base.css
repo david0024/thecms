@@ -237,7 +237,15 @@ summary.faq-question{cursor:pointer}
 .sub,.mega .sub{position:static;margin-top:var(--t-space-xs)}
 .menu details[open]>summary::before{content:none}
 }
-.b-account h2{margin-top:var(--t-space-lg)}
+.b-account h2,.b-shop h2{margin-top:var(--t-space-lg)}
+.cart-lines,.cart-totals{width:100%;border-collapse:collapse;margin:var(--t-space-sm) 0}
+.cart-lines th,.cart-lines td,.cart-totals th,.cart-totals td{text-align:start;padding:.45em .5em;border-bottom:1px solid var(--t-color-border);vertical-align:top}
+.cart-lines th:nth-child(n+2),.cart-lines td:nth-child(n+2),.cart-totals td{text-align:end;white-space:nowrap}
+.cart-lines input[type=number]{width:5em}
+.cart-totals{max-width:24rem;margin-inline-start:auto}
+.cart-total{font-weight:600}
+.cart-gone{opacity:.6}
+.cart-remove{background:none;border:0;padding:0;color:inherit;text-decoration:underline;cursor:pointer;font:inherit}
 .buy{display:grid;gap:var(--t-space-sm);justify-items:start;margin:var(--t-space-md) 0}
 .buy-price{font-size:1.4em;font-weight:600;margin:0}
 .buy-price del{font-weight:400;opacity:.65}

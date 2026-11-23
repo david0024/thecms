@@ -17,7 +17,7 @@ import { mediaResponse } from './serve-media.ts';
 import { startClock } from './clock.ts';
 import { backups, type Remote, type S3Settings } from './backup.ts';
 import { isEmail, type Mailer, smtpMailer } from './mail.ts';
-import { defaultTemplate as defaultMail, extensionMailKey, mailAddress, normalizeMailSettings, normalizeTemplates, siteMailer, type Template, TEMPLATES } from './site-mail.ts';
+import { defaultTemplate as defaultMail, extensionMailKey, mailAddress, normalizeMailSettings, normalizeTemplates, ORDER_TEMPLATES, siteMailer, type Template, TEMPLATES } from './site-mail.ts';
 import { startRuntime } from './runtime.ts';
 import { zoneFor } from './stats.ts';
 import { isValkeyAddress, openShared, type Shared, shownAddress, switchable, testValkey } from './shared.ts';
@@ -744,7 +744,11 @@ export async function startEditor(
       const all = [site.language, ...site.languages];
       const saved = normalizeTemplates(await store.mailTemplates());
       // The site's messages, then those the installed extensions declare (ADR 0064), each with the words it has by itself.
-      const program = new Map<string, { label: string; words: (language: string) => Template }>(TEMPLATES.map((n) => [n, { label: '', words: (l: string) => defaultMail(n, l) }]));
+      // The shop's messages are offered only while it is on (ADR 0065 d10).
+      const selling = (await shop.settings()).on;
+      const program = new Map<string, { label: string; words: (language: string) => Template }>(
+        TEMPLATES.filter((n) => selling || !ORDER_TEMPLATES.includes(n)).map((n) => [n, { label: '', words: (l: string) => defaultMail(n, l) }]),
+      );
       for (const extension of await store.extensions()) {
         const manifest = extension.manifest;
         for (const mail of manifest.mails) {
@@ -1213,8 +1217,8 @@ export async function startEditor(
   const jobs = async (now: Date): Promise<void> => {
     if (backed) void backed.tick(now).catch((error: unknown) => (options.log ?? console.log)(`The backup could not be made: ${error instanceof Error ? error.message : String(error)}`));
     await extensions.jobs(now);
-    // What visitor accounts wait for: mail to send, accounts never confirmed (ADR 0064).
-    await site.visitors.chores(now).catch((error: unknown) => (options.log ?? console.log)(`Visitor accounts: ${error instanceof Error ? error.message : String(error)}`));
+    // What visitor accounts and the shop wait for: mail to send, accounts never confirmed, carts forgotten (ADR 0064, ADR 0065).
+    await site.chores(now);
   };
   const clock = startClock(store, { run: server !== null, jobs, claim: (key, ms) => shared.claim(key, ms) });
   // Search engines told of what is published, when the owner asks for it (ADR 0063 d2).

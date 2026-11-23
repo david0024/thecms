@@ -20,6 +20,8 @@ import { visits as countVisits, type Visits } from './stats.ts';
 import type { Store } from './store.ts';
 import { siteMailer } from './site-mail.ts';
 import { type VisitorGate, visitorGate } from './visitor-gate.ts';
+import { type ShopGate, shopGate } from './shop-gate.ts';
+import { openMailQueue } from './mail-queue.ts';
 
 export interface Runtime {
   url: string;
@@ -31,6 +33,10 @@ export interface Runtime {
   told: Batches;
   /** Visitor accounts (ADR 0064), loaded only once the owner turns them on. */
   visitors: VisitorGate;
+  /** The shop (ADR 0065), loaded only once the owner turns it on. */
+  shop: ShopGate;
+  /** What the site's clock does for the parts the owner turned on: their chores, and the mail they wait to send. */
+  chores: (now: Date) => Promise<void>;
   stop: () => void;
 }
 
@@ -164,7 +170,37 @@ export function startRuntime(
   };
   // Visitor accounts (ADR 0064): nothing of them is loaded while the owner has not turned them on (ADR 0060 d3).
   const mail = { mailer: options.mailer ?? null, from: options.from };
-  const visitors = visitorGate(store, { shared, log: options.log ?? ((line) => console.log(line)), mail, frame: frameFor, headers: HEADERS }, async () => (await siteMailer(store, mail)) !== null);
+  const log = options.log ?? ((line: string) => console.log(line));
+  // The shop (ADR 0065): nothing of it is loaded while the owner has not turned it on either.
+  const shop = shopGate(store);
+  const visitors = visitorGate(
+    store,
+    { shared, log, mail, frame: frameFor, headers: HEADERS, orders: (id, language) => shop.ordersOf(id, language) },
+    async () => (await siteMailer(store, mail)) !== null,
+  );
+  /** What the shop is told of the buyer: who is signed in, while visitor accounts are on. */
+  const shopDeps = {
+    frame: frameFor,
+    headers: HEADERS,
+    accounts: async () => (await visitors.settings()).on,
+    visitor: async (request: Request) => {
+      const signed = await visitors.lent.visitor(request);
+      const member = signed ? await visitors.lent.get(signed.id) : null;
+      return member ? { id: member.id, name: member.name, email: member.email } : null;
+    },
+  };
+  /**
+   * What the clock does for the parts the owner turned on (ADR 0060 d3): the
+   * mail they wait to send goes from one queue, the site's (ADR 0065 d7).
+   */
+  const chores = async (at: Date): Promise<void> => {
+    const said = (part: string) => (error: unknown) => log(`${part}: ${error instanceof Error ? error.message : String(error)}`);
+    const accountsOn = (await visitors.settings()).on;
+    const shopOn = (await shop.settings()).on;
+    await visitors.chores(at).catch(said('Visitor accounts'));
+    await shop.chores(at).catch(said('The shop'));
+    if (accountsOn || shopOn) await (await openMailQueue(store, mail, log)).send(at).catch(said('Mail'));
+  };
   // What they lend extensions (ADR 0064 d7): refused while they are off, and nothing loaded for it.
   extensions.lend(visitors.lent);
 
@@ -242,6 +278,8 @@ export function startRuntime(
       page.headers.set('cache-control', 'no-store');
       return page;
     }
+    // The cart, checkout and an order (ADR 0065 d4): not found while the shop is off (d10).
+    if (url.pathname === '/_/cart' || url.pathname === '/_/checkout' || url.pathname.startsWith('/_/order/')) return shop.fetch(request, url, shopDeps);
     // A visitor's account (ADR 0064 d1): not found while the accounts are off (d8).
     if (url.pathname === '/_/account' || url.pathname.startsWith('/_/account/')) return visitors.fetch(request, url, ip);
     if (url.pathname === '/_' || url.pathname === '/_/') return new Response('thecms runtime\n', { headers: { 'content-type': 'text/plain; charset=utf-8' } });
@@ -315,7 +353,7 @@ export function startRuntime(
   // Mail to visitors waits in a queue this clock sends (ADR 0064 d5).
   const jobs = async (at: Date): Promise<void> => {
     await extensions.jobs(at);
-    await visitors.chores(at).catch((error: unknown) => (options.log ?? console.log)(`Visitor accounts: ${error instanceof Error ? error.message : String(error)}`));
+    await chores(at);
   };
   const clock = startClock(store, { run: server !== null, log: options.log, jobs, claim: (key, ms) => shared.claim(key, ms) });
   const unlisten = own ? extensions.listen() : () => {};
@@ -326,6 +364,8 @@ export function startRuntime(
     visits,
     told,
     visitors,
+    shop,
+    chores,
     stop: () => {
       void visits.flush().then(() => told.stop());
       clock.stop();

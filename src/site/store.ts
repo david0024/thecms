@@ -1666,6 +1666,13 @@ export class Store {
     return listed(type, rows.map((row) => normalizePost(JSON.parse(row.published), undefined, type).post));
   }
 
+  /** One entry as visitors see it: what was last published, or null. The shop reads a product's price here (ADR 0065 d3). */
+  async publishedEntry(typeId: string, slug: string): Promise<Post | null> {
+    const type = await this.type(typeId);
+    const row = await this.row('SELECT published FROM entries WHERE type = ? AND slug = ? AND published IS NOT NULL', [typeId, slug]);
+    return row ? normalizePost(JSON.parse(String(row.published)), undefined, type).post : null;
+  }
+
   // Posts are the content type every site has; these say so by name.
   savePost(input: unknown): Promise<Post> {
     return this.saveEntry(POSTS_TYPE, input);

@@ -75,6 +75,7 @@ import People from './People.svelte';
 import Profile from './Profile.svelte';
 import Reviews from './Reviews.svelte';
 import Messages from './Messages.svelte';
+import Orders from './Orders.svelte';
 import Backups from './Backups.svelte';
 import Stats from './Stats.svelte';
 import Forms from './Forms.svelte';
@@ -97,7 +98,7 @@ let kind = $state<Kind>('page');
 let translation = $state<TranslationInfo | null>(null);
 const fixed = $derived(translation !== null && !translation.split);
 /** Which section of the admin is showing: a list, or the builder with one page or post open. */
-let view = $state<'pages' | 'sections' | 'forms' | 'layouts' | 'media' | 'messages' | 'backups' | 'stats' | 'comments' | 'people' | 'me' | 'review' | 'types' | 'import' | 'export' | 'extensions' | 'edit' | `list:${string}` | `ext:${string}`>('pages');
+let view = $state<'pages' | 'sections' | 'forms' | 'layouts' | 'media' | 'messages' | 'orders' | 'backups' | 'stats' | 'comments' | 'people' | 'me' | 'review' | 'types' | 'import' | 'export' | 'extensions' | 'edit' | `list:${string}` | `ext:${string}`>('pages');
 let selected = $state<string | null>(null);
 /** The form the Forms screen opens on, when a form block asked for it (ADR 0049). */
 let formAsked = $state('');
@@ -734,6 +735,9 @@ onMount(() => {
       {#if staff && types.some((ty) => ty.comments)}
         <button type="button" aria-current={view === 'comments' ? 'page' : undefined} onclick={() => (view = 'comments')} data-nav="comments">{t.nav.comments}</button>
       {/if}
+      {#if site.shop.on && (owner || (staff && site.shop.editors))}
+        <button type="button" aria-current={view === 'orders' ? 'page' : undefined} onclick={() => (view = 'orders')} data-nav="orders">{t.nav.orders}</button>
+      {/if}
       {#if owner}
         <button type="button" aria-current={view === 'forms' ? 'page' : undefined} onclick={() => ((formAsked = ''), (view = 'forms'))} data-nav="forms">{t.nav.forms}</button>
         <button type="button" aria-current={view === 'messages' ? 'page' : undefined} onclick={() => (view = 'messages')} data-nav="messages">{t.nav.messages}</button>
@@ -781,6 +785,8 @@ onMount(() => {
       {#key formAsked}<Forms site={site.site} open={formAsked} onchange={(forms) => site && (site = { ...site, forms: forms.map((f) => ({ name: f.name, title: f.title })) })} />{/key}
     {:else if view === 'messages'}
       <Messages />
+    {:else if view === 'orders'}
+      <Orders />
     {:else if view === 'backups'}
       <Backups />
     {:else if view === 'stats'}
