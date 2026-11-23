@@ -52,8 +52,8 @@ const addLanguage = (): void => {
   adding = '';
 };
 import Performance from './Performance.svelte';
-import Visitors from './Visitors.svelte';
 import ShopSettingsPanel from './ShopSettings.svelte';
+import Visitors from './Visitors.svelte';
 import EmailSettings from './EmailSettings.svelte';
 import Redirects from './Redirects.svelte';
 </script>
