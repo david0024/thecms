@@ -22,6 +22,8 @@ const mine = (all: Audiences): Audience | null => all[part[kind]][key] ?? null;
 $effect(() => {
   api.audiences().then(
     (shown) => {
+      // Visitor accounts are off: no "Who sees it".
+      if (!shown.audiences || !shown.levels) return;
       levels = shown.levels;
       audience = mine(shown.audiences);
     },

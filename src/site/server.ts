@@ -860,7 +860,8 @@ export async function startEditor(
     if (url.pathname === '/api/audiences') {
       // Who sees a page, an entry or a whole type (ADR 0064 d4), with the levels to choose from. Nothing of it while the accounts are off (d8).
       const settings = await site.visitors.settings();
-      if (!settings.on) return json({ error: 'visitor accounts are off' }, 404);
+      // Asked by every page's panel: off is an answer, not an error.
+      if (!settings.on) return request.method === 'GET' ? json({ on: false }) : json({ error: 'visitor accounts are off' }, 404);
       if (request.method === 'PUT') {
         const kind = String(body.kind ?? '');
         if (kind !== 'page' && kind !== 'entry' && kind !== 'type') return json({ error: 'say whether it is a page, an entry or a type' }, 400);

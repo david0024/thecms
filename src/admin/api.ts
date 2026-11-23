@@ -344,7 +344,7 @@ export const api = {
   retryMail: (id: string) => call<VisitorsShown>('POST', `/api/visitors/retry?id=${encodeURIComponent(id)}`, {}),
   setVisitorLevels: (id: string, levels: string[]) => call<VisitorsShown>('PUT', `/api/visitors/levels?id=${encodeURIComponent(id)}`, { levels }),
   /** Who sees a page, an entry or a type (ADR 0064 d4): refused while visitor accounts are off. */
-  audiences: () => call<{ audiences: Audiences; levels: Level[] }>('GET', '/api/audiences'),
+  audiences: () => call<{ on?: false; audiences?: Audiences; levels?: Level[] }>('GET', '/api/audiences'),
   setAudience: (kind: 'page' | 'entry' | 'type', key: string, audience: Audience | null) => call<{ audiences: Audiences; levels: Level[] }>('PUT', '/api/audiences', { kind, key, audience }),
   forgetMail: (id: string) => call<VisitorsShown>('DELETE', `/api/visitors/failed?id=${encodeURIComponent(id)}`),
   mail: () => call<MailShown>('GET', '/api/mail'),

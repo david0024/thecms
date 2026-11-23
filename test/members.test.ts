@@ -301,7 +301,8 @@ describe('in the admin', () => {
     const call = async (method: string, path: string, body?: unknown) =>
       editor.fetch(new Request(`http://127.0.0.1:4321${path}`, { method, headers: { host: '127.0.0.1:4321', 'x-thecms-token': editor.token, 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) }));
     try {
-      expect((await call('GET', '/api/audiences')).status).toBe(404);
+      expect(await (await call('GET', '/api/audiences')).json()).toEqual({ on: false });
+      expect((await call('PUT', '/api/audiences', { kind: 'page', key: 'club', audience: null })).status).toBe(404);
       await call('PUT', '/api/visitors', { on: true, signup: 'invite', levels: LEVELS, welcome: 'premium' });
       const shown = (await (await call('GET', '/api/visitors')).json()) as { settings: { levels: unknown; welcome: string } };
       expect(shown.settings).toMatchObject({ levels: LEVELS, welcome: 'premium' });
@@ -314,7 +315,7 @@ describe('in the admin', () => {
       expect(String((await publishedSite(store)).get('index.html'))).toContain('href="/_/account"');
       await call('PUT', '/api/visitors', { on: false });
       expect(String((await publishedSite(store)).get('index.html'))).not.toContain('href="/_/account"');
-      expect((await call('GET', '/api/audiences')).status).toBe(404);
+      expect(await (await call('GET', '/api/audiences')).json()).toEqual({ on: false });
       // What was chosen stays: the page is still for members.
       expect(String((await publishedSite(store)).get('club/index.html'))).toContain('thecms-members');
     } finally {
