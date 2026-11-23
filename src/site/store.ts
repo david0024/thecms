@@ -438,6 +438,14 @@ export class Store {
     return () => this.listeners.delete(listener);
   }
 
+  /**
+   * Tells what visitor accounts did (ADR 0064 d7): they keep their tables
+   * apart and are loaded only while on, so they say it themselves.
+   */
+  tell(name: 'account.made' | 'account.removed' | 'member.changed', data: Record<string, unknown>): void {
+    this.emit(name, data);
+  }
+
   /** Tells whoever listens. A listener's failure is its own: what happened has happened. */
   private emit(name: ExtensionEventName, data: Record<string, unknown>): void {
     for (const listener of this.listeners) {

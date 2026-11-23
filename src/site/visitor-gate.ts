@@ -4,7 +4,8 @@
  * exist and `/_/account` is not found. Turned on, the accounts are loaded the
  * first time they are needed, and make their tables then.
  */
-import { type Audience, type Level, normalizeLevels } from '../core/index.ts';
+import { type Audience, type Level, NAME, normalizeLevels } from '../core/index.ts';
+import type { Member } from './extension-runner.ts';
 import type { MailEnvironment } from './site-mail.ts';
 import type { Shared } from './shared.ts';
 import { escape, framed } from './visitor-pages.ts';
@@ -55,12 +56,33 @@ export interface VisitorDeps {
   headers: Record<string, string>;
 }
 
+/** A message an extension sends a visitor (ADR 0064 d7): its words in the visitor's language, or the site's welcome. */
+export type LentMail = { what: string; words: (language: string) => { subject: string; text: string } } | 'welcome';
+
+/**
+ * What the accounts lend extensions (ADR 0064 d7). Each is refused while the
+ * accounts are off, and a visitor is one whose address is confirmed.
+ */
+export interface AccountsLent {
+  get: (id: string) => Promise<Member | null>;
+  find: (email: string) => Promise<Member | null>;
+  levels: () => Promise<Level[]>;
+  /** Gives or takes a level the owner named; the visitor's levels after. */
+  give: (id: string, level: string) => Promise<string[]>;
+  take: (id: string, level: string) => Promise<string[]>;
+  /** Puts a message to the visitor in the queue; `link` is already an address the extension may give. */
+  send: (id: string, mail: LentMail, link: string) => Promise<void>;
+  /** The visitor signed in on this request, by id and levels; never the cookie. */
+  visitor: (request: Request) => Promise<{ id: string; levels: string[] } | null>;
+}
+
 /** What the accounts do, once loaded (`visitors.ts`). */
 export interface Visitors {
   fetch: (request: Request, url: URL, ip: string) => Promise<Response>;
   chores: (now: Date) => Promise<void>;
   admin: (request: Request, url: URL, me: User, body: Record<string, unknown>) => Promise<Response>;
   guard: (request: Request, url: URL, audience: Audience, language: string) => Promise<Response | null>;
+  lent: AccountsLent;
 }
 
 export interface VisitorGate {
@@ -78,9 +100,14 @@ export interface VisitorGate {
    * accounts are off, nobody may.
    */
   guard: (request: Request, url: URL, audience: Audience, language: string) => Promise<Response | null>;
+  /** What extensions are lent (ADR 0064 d7): refused while off, and nothing is loaded for it. */
+  lent: AccountsLent;
   /** Whether the accounts' code was loaded in this process: never, while they stay off (the tests ask). */
   loaded: () => boolean;
 }
+
+/** The accounts' cookie is in the request: only then is the session worth asking for. */
+const hasCookie = (request: Request): boolean => (request.headers.get('cookie') ?? '').split(';').some((part) => part.trim().startsWith(`${NAME}_visitor=`));
 
 const json = (data: unknown, status = 200): Response =>
   new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } });
@@ -95,6 +122,10 @@ export function visitorGate(store: Store, deps: VisitorDeps, mailReady: () => Pr
     return loading;
   };
   const settings = async (): Promise<VisitorSettings> => normalizeVisitorSettings(await store.visitorSettings());
+  const lend = async <T>(use: (lent: AccountsLent) => Promise<T>): Promise<T> => {
+    if (!(await settings()).on) throw new Error('visitor accounts are off: the owner turns them on in Settings → Visitor accounts');
+    return use((await open()).lent);
+  };
 
   return {
     settings,
@@ -129,6 +160,16 @@ export function visitorGate(store: Store, deps: VisitorDeps, mailReady: () => Pr
       const said = wordsFor(language);
       const body = frame === null ? `${said.membersClosed}\n` : framed(frame, said.members, `<p class="lead">${escape(said.membersClosed)}</p>`);
       return new Response(body, { status: 403, headers: { 'content-type': frame === null ? 'text/plain; charset=utf-8' : 'text/html; charset=utf-8', 'cache-control': 'private, no-store', ...deps.headers } });
+    },
+    lent: {
+      get: (id) => lend((l) => l.get(id)),
+      find: (email) => lend((l) => l.find(email)),
+      levels: () => lend((l) => l.levels()),
+      give: (id, level) => lend((l) => l.give(id, level)),
+      take: (id, level) => lend((l) => l.take(id, level)),
+      send: (id, mail, link) => lend((l) => l.send(id, mail, link)),
+      // Off, or no cookie: nobody is signed in, and nothing is loaded to say so.
+      visitor: async (request) => (hasCookie(request) && (await settings()).on ? (await open()).lent.visitor(request) : null),
     },
     loaded: () => loading !== null,
   };

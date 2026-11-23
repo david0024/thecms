@@ -95,11 +95,11 @@ describe('a package in the second format', () => {
     ]);
     const asks = extensionAsks(pkg!.manifest);
     expect([asks.routes[0], asks.jobs, asks.events]).toEqual(['/_/x/notices/stripe/confirm', [{ action: 'Sync stock', everyMinutes: 15 }], ['page.published', 'comment.created']]);
-    const said = describeOffer({ manifest: pkg!.manifest, sha256: 'x', asks, replaces: null });
+    const said = describeOffer({ manifest: pkg!.manifest, sha256: 'x', asks, replaces: null, accountsOff: false });
     expect(said).toContain('answer visitors at /_/x/notices/stripe/confirm');
     expect(said).toContain('do "Sync stock" every 15 minutes');
     expect(said).toContain('be told when: page.published, comment.created');
-    expect(describeOffer({ manifest: pkg!.manifest, sha256: 'x', asks: { ...asks, jobs: [{ action: 'Tick', everyMinutes: 1 }] }, replaces: null })).toContain('do "Tick" every minute');
+    expect(describeOffer({ manifest: pkg!.manifest, sha256: 'x', asks: { ...asks, jobs: [{ action: 'Tick', everyMinutes: 1 }] }, replaces: null, accountsOff: false })).toContain('do "Tick" every minute');
   });
 
   test('in the first format, has none of them', () => {

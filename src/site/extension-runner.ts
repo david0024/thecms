@@ -48,6 +48,36 @@ export interface ExtensionHost {
   picture(src: string): Promise<{ type: string; data: string } | null>;
   /** The published pages and entries, newest first, for an action that declared it reads them (ADR 0062 d4). */
   published(): Promise<{ address: string; title: string; description: string; language: string; type: string; date: string }[]>;
+  /**
+   * The site's members, for an action that declared `members` (ADR 0064 d7):
+   * a visitor whose address is confirmed, read by id or by e-mail; the levels
+   * the owner named; a level given or taken. There is no list of them all.
+   */
+  members: {
+    get(id: string): Promise<Member | null>;
+    find(email: string): Promise<Member | null>;
+    levels(): Promise<{ id: string; name: string }[]>;
+    give(id: string, level: string): Promise<string[]>;
+    take(id: string, level: string): Promise<string[]>;
+  };
+  /**
+   * E-mail to one visitor, for an action that declared `mail` (ADR 0064 d7):
+   * one of the extension's messages, or the site's welcome, through the
+   * site's queue. `link` is an address of the site (`/…`) or of a host the
+   * extension declared.
+   */
+  mail: {
+    send(id: string, message: string, values?: { link?: string }): Promise<void>;
+  };
+}
+
+/** A visitor as an extension that uses `members` reads them (ADR 0064 d7). */
+export interface Member {
+  id: string;
+  name: string;
+  email: string;
+  language: string;
+  levels: string[];
 }
 
 export function runner(send: (message: FromRunner) => void, receive: (handler: (message: ToRunner) => void) => void): void {
@@ -78,6 +108,16 @@ export function runner(send: (message: FromRunner) => void, receive: (handler: (
       site: () => ask('site'),
       picture: (src) => ask('picture', src),
       published: () => ask('published'),
+      members: {
+        get: (id) => ask('members.get', id),
+        find: (email) => ask('members.find', email),
+        levels: () => ask('members.levels'),
+        give: (id, level) => ask('members.give', id, level),
+        take: (id, level) => ask('members.take', id, level),
+      },
+      mail: {
+        send: (id, message, values) => ask('mail.send', id, message, values ?? {}),
+      },
     };
   };
   // The network is the program's to reach, for the hosts declared: say so instead of failing somewhere else.

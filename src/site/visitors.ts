@@ -13,7 +13,7 @@ import { type Audience, languageName, mayView, NAME, type Site } from '../core/i
 import { normalizeTemplates, renderTemplate, siteMailer, type TemplateName } from './site-mail.ts';
 import { cleanEmail, PASSWORD_MIN, type Database, type Store, type User } from './store.ts';
 import { type Notice, escape, framed, parts } from './visitor-pages.ts';
-import { normalizeVisitorSettings, type VisitorDeps, type Visitors, type VisitorSettings } from './visitor-gate.ts';
+import { type AccountsLent, normalizeVisitorSettings, type VisitorDeps, type Visitors, type VisitorSettings } from './visitor-gate.ts';
 import { visitorSchema } from './visitor-schema.ts';
 
 export const VISITOR_COOKIE = `${NAME}_visitor`;
@@ -32,6 +32,8 @@ const MAILS_PER_VISITOR = 10;
 const HOUR = 3_600_000;
 /** After a failed try, a message is tried again after these minutes; after the last one it is given up (ADR 0064 d5). */
 const RETRY_MINUTES = [1, 5, 30, 120];
+/** Messages extensions may send one visitor in an hour (ADR 0064 d7). */
+const LENT_MAILS_PER_VISITOR = 10;
 /** At most this many messages are sent at one tick of the clock. */
 const SENT_AT_ONCE = 20;
 
@@ -98,22 +100,45 @@ export async function openVisitors(store: Store, deps: VisitorDeps): Promise<Vis
     const row = id ? await one('SELECT * FROM visitors WHERE id = ?', [id]) : null;
     return row ? withLevels(row) : null;
   };
-  /** The levels a visitor holds, given and taken at once (ADR 0064 d3): only levels the owner named. */
-  const setLevels = async (id: string, levels: string[]): Promise<void> => {
+  /**
+   * What extensions are told of a member's levels (ADR 0064 d7): only of an
+   * account whose address is confirmed, and only when something changed.
+   */
+  const changed = async (id: string, before: string[], after: string[]): Promise<void> => {
+    const added = after.filter((l) => !before.includes(l));
+    const removed = before.filter((l) => !after.includes(l));
+    if (!added.length && !removed.length) return;
+    if (!(await one('SELECT id FROM visitors WHERE id = ? AND confirmed_at IS NOT NULL', [id]))) return;
+    store.tell('member.changed', { id, levels: after, added, removed });
+  };
+  /**
+   * The levels a visitor holds, given and taken at once (ADR 0064 d3): only
+   * levels the owner named. Told to extensions, unless the account is being
+   * made, which tells its levels with it.
+   */
+  const setLevels = async (id: string, levels: string[], tell = true): Promise<string[]> => {
     const known = new Set(normalizeVisitorSettings(await store.visitorSettings()).levels.map((l) => l.id));
+    const before = await levelsOf(id);
     await db.run('DELETE FROM visitor_levels WHERE visitor_id = ?', [id]);
     for (const level of new Set(levels)) if (known.has(level)) await db.run('INSERT INTO visitor_levels (visitor_id, level) VALUES (?, ?)', [id, level]);
+    const after = await levelsOf(id);
+    if (tell) await changed(id, before, after);
+    return after;
   };
-  /** A new account receives the level the owner chose for new accounts, if any. */
+  /** A new account receives the level the owner chose for new accounts, if any; then extensions are told it was made. */
   const welcomed = async (id: string): Promise<void> => {
     const { welcome } = normalizeVisitorSettings(await store.visitorSettings());
-    if (welcome) await setLevels(id, [...(await levelsOf(id)), welcome]);
+    if (welcome) await setLevels(id, [...(await levelsOf(id)), welcome], false);
+    store.tell('account.made', { id, levels: await levelsOf(id) });
   };
   const remove = async (id: string): Promise<void> => {
+    const was = await byId(id);
     await db.run('DELETE FROM visitor_levels WHERE visitor_id = ?', [id]);
     await db.run('DELETE FROM visitor_sessions WHERE visitor_id = ?', [id]);
     await db.run('DELETE FROM visitor_links WHERE visitor_id = ?', [id]);
     await db.run('DELETE FROM visitors WHERE id = ?', [id]);
+    // An account never confirmed was never told as made.
+    if (was?.confirmedAt) store.tell('account.removed', { id, levels: was.levels });
   };
 
   // Sessions: the secret in the visitor's cookie, its hash here.
@@ -153,11 +178,13 @@ export async function openVisitors(store: Store, deps: VisitorDeps): Promise<Vis
 
   // The queue (ADR 0064 d5).
   const siteOf = (): Promise<Site> => store.site();
+  const queue = async (to: string, what: string, message: { subject: string; text: string }): Promise<void> => {
+    const now = new Date().toISOString();
+    await db.run('INSERT INTO mail_queue (id, to_address, subject, body, what, tries, next_at, failed_at, error, created_at) VALUES (?, ?, ?, ?, ?, 0, ?, NULL, ?, ?)', [crypto.randomUUID(), to, message.subject, message.text, what.slice(0, 100), now, '', now]);
+  };
   const enqueue = async (to: string, what: TemplateName, language: string, values: { name: string; link: string }): Promise<void> => {
     const site = await siteOf();
-    const message = renderTemplate(normalizeTemplates(await store.mailTemplates()), what, language, { ...values, site: site.name });
-    const now = new Date().toISOString();
-    await db.run('INSERT INTO mail_queue (id, to_address, subject, body, what, tries, next_at, failed_at, error, created_at) VALUES (?, ?, ?, ?, ?, 0, ?, NULL, ?, ?)', [crypto.randomUUID(), to, message.subject, message.text, what, now, '', now]);
+    await queue(to, what, renderTemplate(normalizeTemplates(await store.mailTemplates()), what, language, { ...values, site: site.name }));
   };
   const sendDue = async (now: Date): Promise<void> => {
     const due = await db.rows<Row>('SELECT * FROM mail_queue WHERE failed_at IS NULL AND next_at <= ? ORDER BY next_at, id LIMIT ' + SENT_AT_ONCE, [now.toISOString()]);
@@ -536,8 +563,13 @@ export async function openVisitors(store: Store, deps: VisitorDeps): Promise<Vis
       case 'PUT /api/visitors': {
         // A level the owner took away is taken from everyone who held it.
         const known = normalizeVisitorSettings(await store.visitorSettings()).levels.map((l) => l.id);
-        if (known.length) await db.run(`DELETE FROM visitor_levels WHERE level NOT IN (${known.map(() => '?').join(', ')})`, known);
-        else await db.run('DELETE FROM visitor_levels');
+        const gone = known.length ? `WHERE level NOT IN (${known.map(() => '?').join(', ')})` : '';
+        const held = new Set((await db.rows<Row>(`SELECT DISTINCT visitor_id FROM visitor_levels ${gone}`, known)).map((r) => String(r.visitor_id)));
+        const before = new Map<string, string[]>();
+        for (const visitorId of held) before.set(visitorId, await levelsOf(visitorId));
+        await db.run(`DELETE FROM visitor_levels ${gone}`, known);
+        // Each member who lost a level is told of, as when the owner takes it from them (ADR 0064 d7).
+        for (const [visitorId, had] of before) await changed(visitorId, had, await levelsOf(visitorId));
         return json(await listed());
       }
       case 'PUT /api/visitors/levels': {
@@ -611,5 +643,50 @@ export async function openVisitors(store: Store, deps: VisitorDeps): Promise<Vis
     return page(framed(frame, said.members, inside), 403);
   }
 
-  return { fetch, chores, admin, guard };
+  /** A member as an extension reads them (ADR 0064 d7): only an account whose address is confirmed. */
+  const member = (visitor: (Visitor & { password: string }) | null) =>
+    visitor?.confirmedAt ? { id: visitor.id, name: visitor.name, email: visitor.email, language: visitor.language, levels: visitor.levels } : null;
+  const confirmed = async (id: unknown): Promise<Visitor & { password: string }> => {
+    const visitor = typeof id === 'string' && id.length <= 100 ? await byId(id) : null;
+    if (!visitor?.confirmedAt) throw new Error('no member has that id');
+    return visitor;
+  };
+  const named = async (level: unknown): Promise<string> => {
+    const found = normalizeVisitorSettings(await store.visitorSettings()).levels.find((l) => l.id === level);
+    if (!found) throw new Error(`"${String(level).slice(0, 40)}" is not one of the levels the owner named`);
+    return found.id;
+  };
+
+  /** What extensions are lent (ADR 0064 d7), each call checked here as well as by the host. */
+  const lent: AccountsLent = {
+    get: async (id) => member(typeof id === 'string' && id.length <= 100 ? await byId(id) : null),
+    find: async (email) => member(cleanEmail(String(email).slice(0, 300)) ? await byEmail(cleanEmail(String(email).slice(0, 300))) : null),
+    levels: async () => normalizeVisitorSettings(await store.visitorSettings()).levels,
+    give: async (id, level) => {
+      const visitor = await confirmed(id);
+      return setLevels(visitor.id, [...visitor.levels, await named(level)]);
+    },
+    take: async (id, level) => {
+      const visitor = await confirmed(id);
+      const taken = await named(level);
+      return setLevels(visitor.id, visitor.levels.filter((l) => l !== taken));
+    },
+    send: async (id, mail, link) => {
+      const visitor = await confirmed(id);
+      // Enough for what a visitor needs to hear from a site; too few to fill their mailbox.
+      if ((await shared.hit(`visitor-mail-lent:${visitor.id}`, HOUR)) > LENT_MAILS_PER_VISITOR) throw new Error(`a visitor is sent at most ${LENT_MAILS_PER_VISITOR} messages an hour by extensions`);
+      const site = await siteOf();
+      if (mail === 'welcome') return enqueue(visitor.email, 'welcome', visitor.language, { name: visitor.name, link });
+      const words = mail.words(visitor.language);
+      const values: Record<string, string> = { name: visitor.name, link, site: site.name };
+      const fill = (text: string): string => text.replace(/\{(name|link|site)\}/g, (_whole, key: string) => values[key] as string);
+      await queue(visitor.email, mail.what, { subject: fill(words.subject).replace(/[\r\n]+/g, ' ').slice(0, 300), text: fill(words.text) });
+    },
+    visitor: async (request) => {
+      const me = await sessionVisitor(cookieOf(request));
+      return me ? { id: me.id, levels: me.levels } : null;
+    },
+  };
+
+  return { fetch, chores, admin, guard, lent };
 }

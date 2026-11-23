@@ -346,6 +346,8 @@ export const en = {
     answers: 'be asked, and waited for: {list}',
     uses: 'read the site\'s data: {list}',
     blocks: 'add blocks to the site\'s pages: {list}',
+    mails: 'send visitors these messages: {list}',
+    accountsOff: 'It works with visitor accounts, which are off: it does that part once you turn them on in Settings → Visitor accounts.',
     earlier: 'The month before',
     later: 'The month after',
     blockMissing: 'An extension\'s block that is not there',

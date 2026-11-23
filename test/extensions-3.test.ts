@@ -240,7 +240,7 @@ describe('a question the program waits for', () => {
       code: CHECKER,
     });
     expect(wrong.problems).toEqual([
-      'an extension reads published of the program\'s data ("orders")',
+      'an extension reads published, members, mail of the program\'s data ("orders")',
       'list: it reads "published", which the extension does not declare in "uses"',
       'an extension answers one of comment.check ("order.pay")',
       'answering comment.check runs "nothing", which is not one of its actions',

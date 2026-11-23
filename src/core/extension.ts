@@ -91,8 +91,12 @@ export interface ExtensionAction {
   timeoutSeconds: number;
 }
 
-/** The program's data an extension may read, declared (ADR 0062 d4). */
-export const PROGRAM_DATA = ['published'] as const;
+/**
+ * The program's data an extension may read, declared (ADR 0062 d4): the
+ * published pages, and with visitor accounts (ADR 0064 d7) the members and
+ * e-mail to them.
+ */
+export const PROGRAM_DATA = ['published', 'members', 'mail'] as const;
 export type ProgramData = (typeof PROGRAM_DATA)[number];
 
 /** The questions the program asks an extension and waits for (ADR 0062 d3), and what each may answer. */
@@ -155,7 +159,9 @@ export interface ExtensionJob {
 }
 
 /** What happens in the site that an extension may hear of, and what it is told. */
-export const EXTENSION_EVENTS = ['page.published', 'entry.published', 'comment.created', 'comment.approved', 'message.received', 'page.served', 'search.made'] as const;
+export const EXTENSION_EVENTS = ['page.published', 'entry.published', 'comment.created', 'comment.approved', 'message.received', 'page.served', 'search.made', 'account.made', 'account.removed', 'member.changed'] as const;
+/** What visitor accounts tell (ADR 0064 d7): the visitor's id and levels, never their e-mail, password or session. */
+export const ACCOUNT_EVENTS: readonly ExtensionEventName[] = ['account.made', 'account.removed', 'member.changed'];
 /** What the second format may listen to: the site's changes, not its visits. */
 const EVENTS_2: readonly string[] = EXTENSION_EVENTS.slice(0, 5);
 /**
@@ -169,6 +175,19 @@ export interface ExtensionListener {
   on: ExtensionEventName;
   action: string;
 }
+
+/**
+ * A message an extension sends a visitor (ADR 0064 d7), with `{name}`,
+ * `{site}` and `{link}`; its words are translated by the extension's
+ * `messages`, as its other words are.
+ */
+export interface ExtensionMail {
+  name: string;
+  subject: string;
+  text: string;
+}
+/** Of the site's own messages, the one an extension may send: the others carry links only the program makes. */
+export const SITE_MAILS_LENT: readonly string[] = ['welcome'];
 
 export interface ExtensionManifest {
   name: string;
@@ -195,6 +214,8 @@ export interface ExtensionManifest {
   uses: ProgramData[];
   /** The blocks it adds to the public site (ADR 0062 d6). */
   blocks: PublicBlock[];
+  /** The messages it sends visitors, with `uses: ["mail"]` (ADR 0064 d7). */
+  mails: ExtensionMail[];
 }
 
 export interface ExtensionPackage {
@@ -395,7 +416,7 @@ function publicBlocks(m: Record<string, unknown>, routes: ExtensionRoute[], prob
 }
 
 /** What the third format adds (ADR 0062): the questions it answers and the program's data it reads. */
-function thirdParts(m: Record<string, unknown>, actions: ExtensionAction[], problems: string[]): Pick<ExtensionManifest, 'answers' | 'uses'> {
+function thirdParts(m: Record<string, unknown>, actions: ExtensionAction[], problems: string[]): Pick<ExtensionManifest, 'answers' | 'uses' | 'mails'> {
   const uses = PROGRAM_DATA.filter((d) => list(m.uses).includes(d));
   for (const u of list(m.uses)) if (!PROGRAM_DATA.includes(u as ProgramData)) problems.push(`an extension reads ${PROGRAM_DATA.join(', ')} of the program's data ("${text(u, 40)}")`);
   for (const a of actions) for (const u of a.uses) if (!uses.includes(u)) problems.push(`${a.name}: it reads "${u}", which the extension does not declare in "uses"`);
@@ -413,7 +434,19 @@ function thirdParts(m: Record<string, unknown>, actions: ExtensionAction[], prob
     else if (answers.some((x) => x.question === question)) problems.push(`it answers ${question} twice`);
     else answers.push({ question, action: action.name });
   }
-  return { answers, uses };
+  const mails: ExtensionMail[] = [];
+  for (const raw of list(m.mails).slice(0, 12)) {
+    if (!isObject(raw)) continue;
+    const name = text(raw.name, 40);
+    const subject = text(raw.subject, 200).replace(/[\r\n]+/g, ' ');
+    const body = typeof raw.text === 'string' ? raw.text.slice(0, 5000) : '';
+    if (!NAME.test(name)) problems.push(`a message's name is lower case letters, digits and - ("${name}")`);
+    else if (SITE_MAILS_LENT.includes(name) || mails.some((x) => x.name === name)) problems.push(`the message "${name}" is declared twice, or is one of the site's`);
+    else if (!subject || !body.trim()) problems.push(`the message "${name}" has a subject and a text`);
+    else mails.push({ name, subject, text: body });
+  }
+  if (mails.length && !uses.includes('mail')) problems.push('it declares messages to visitors, and does not declare "mail" in "uses"');
+  return { answers, uses, mails };
 }
 
 /** Reads a package, with every reason it cannot be installed. */
@@ -462,7 +495,7 @@ export function parseExtension(raw: unknown): { pkg: ExtensionPackage | null; pr
   }
   // The first format has none of these: what such a package says of them is not read.
   const server = raw.format !== EXTENSION_FORMAT_1 ? serverParts(m, actions, problems, String(raw.format)) : { routes: [], jobs: [], events: [] };
-  const third = raw.format === EXTENSION_FORMAT ? { ...thirdParts(m, actions, problems), blocks: publicBlocks(m, server.routes, problems) } : { answers: [], uses: [], blocks: [] };
+  const third = raw.format === EXTENSION_FORMAT ? { ...thirdParts(m, actions, problems), blocks: publicBlocks(m, server.routes, problems) } : { answers: [], uses: [], blocks: [], mails: [] };
   const code = typeof raw.code === 'string' ? raw.code : '';
   if (actions.length > 0 && !code.trim()) problems.push('it has actions and no code');
   if (code.length > EXTENSION_MAX_BYTES) problems.push('its code is larger than 5 MB');
@@ -512,6 +545,10 @@ export function extensionAsks(manifest: ExtensionManifest): {
   uses: string[];
   /** The blocks it adds to the public site (ADR 0062 d6). */
   blocks: string[];
+  /** The messages it sends visitors (ADR 0064 d7), by their subject. */
+  mails: string[];
+  /** Whether it works with visitor accounts (ADR 0064 d7): their events, the members or e-mail to them. */
+  accounts: boolean;
 } {
   const label = (name: string): string => manifest.actions.find((a) => a.name === name)?.label ?? name;
   return {
@@ -526,6 +563,8 @@ export function extensionAsks(manifest: ExtensionManifest): {
     answers: manifest.answers.map((a) => a.question),
     uses: manifest.uses,
     blocks: manifest.blocks.map((b) => b.label),
+    mails: manifest.mails.map((m) => m.subject),
+    accounts: manifest.uses.includes('members') || manifest.uses.includes('mail') || manifest.events.some((e) => ACCOUNT_EVENTS.includes(e.on)),
   };
 }
 

@@ -33,7 +33,9 @@ let { offer, onaccept, oncancel }: { offer: ExtensionOffer; onaccept: () => void
     {#if offer.asks.answers?.length}<li>{say(t.ext.answers, { list: offer.asks.answers.join(', ') })}</li>{/if}
     {#if offer.asks.uses?.length}<li>{say(t.ext.uses, { list: offer.asks.uses.join(', ') })}</li>{/if}
     {#if offer.asks.blocks?.length}<li>{say(t.ext.blocks, { list: offer.asks.blocks.join(', ') })}</li>{/if}
+    {#if offer.asks.mails?.length}<li>{say(t.ext.mails, { list: offer.asks.mails.join(', ') })}</li>{/if}
   </ul>
+  {#if offer.accountsOff}<p data-accounts-off>{t.ext.accountsOff}</p>{/if}
   <small class="sum">{say(t.ext.checksum, { sha: offer.sha256 })}</small>
   <div class="row">
     <button type="button" class="primary" onclick={onaccept} data-accept>{t.ext.accept}</button>
