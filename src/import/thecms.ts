@@ -4,15 +4,34 @@
  * and shown first, then written; nothing already in the site is replaced,
  * and what was left as it was is said.
  */
-import { isObject, normalizeTypes, POSTS_TYPE, READY_LAYOUTS, reservedSlugs, type ContentType, type Layout, type Site } from '../core/index.ts';
+import { type Audience, isObject, normalizeAudience, normalizeLevels, normalizeTypes, POSTS_TYPE, READY_LAYOUTS, reservedSlugs, type ContentType, type Layout, type Site } from '../core/index.ts';
 import { CONTENT_FORMAT, type ContentDoc, type ContentFile } from '../site/transfer.ts';
 import { cleanEmail, type Store } from '../site/store.ts';
+import { normalizeVisitorSettings } from '../site/visitor-gate.ts';
+import type { ContentVisitor } from '../site/visitor-transfer.ts';
 import type { ImportReport } from './run.ts';
 
 /** Whether a file's text is a thecms content file rather than a WordPress export. */
 export const isContentFile = (text: string): boolean => /^\s*\{/.test(text) && text.includes(CONTENT_FORMAT);
 
 const list = <T>(value: unknown): T[] => (Array.isArray(value) ? (value as T[]) : []);
+/** Who sees it; a file of before the levels went in the file said only that it was for members, which is kept as "signed in". */
+const audienceOf = (d: Record<string, unknown>): { audience: Audience } | Record<string, never> => {
+  const audience = normalizeAudience(d.audience) ?? (d.members === true ? { who: 'signed' as const } : null);
+  return audience ? { audience } : {};
+};
+const visitors = (value: unknown): ContentVisitor[] =>
+  list<unknown>(value)
+    .filter(isObject)
+    .filter((v) => typeof v.email === 'string')
+    .map((v) => ({
+      email: String(v.email),
+      name: String(v.name ?? ''),
+      language: String(v.language ?? ''),
+      createdAt: String(v.createdAt ?? ''),
+      confirmedAt: String(v.confirmedAt ?? ''),
+      levels: list<unknown>(v.levels).filter((l): l is string => typeof l === 'string'),
+    }));
 const docs = (value: unknown): ContentDoc[] =>
   list<unknown>(value)
     .filter(isObject)
@@ -23,6 +42,7 @@ const docs = (value: unknown): ContentDoc[] =>
       published: isObject(d.published) ? d.published : null,
       ...(typeof d.scheduled === 'string' ? { scheduled: d.scheduled } : {}),
       ...(d.locked === true ? { locked: true as const } : {}),
+      ...audienceOf(d),
       ...(typeof d.author === 'string' ? { author: d.author } : {}),
     }));
 
@@ -49,12 +69,14 @@ export function readContentFile(text: string): ContentFile {
     ...(Array.isArray(raw.pages) ? { pages: docs(raw.pages) } : {}),
     ...(Array.isArray(raw.sections) ? { sections: docs(raw.sections) } : {}),
     ...(Array.isArray(raw.forms) ? { forms: raw.forms } : {}),
+    ...(Array.isArray(raw.levels) ? { levels: normalizeLevels(raw.levels) } : {}),
+    ...(Array.isArray(raw.visitors) ? { visitors: visitors(raw.visitors) } : {}),
     types: list<unknown>(raw.types)
       .filter(isObject)
       .flatMap((t) => {
         const type = normalizeTypes([t.type])[0];
         const template = isObject(t.template) ? t.template : {};
-        return type ? [{ type, template: { draft: Array.isArray(template.draft) ? template.draft : null, published: Array.isArray(template.published) ? template.published : null }, entries: docs(t.entries) }] : [];
+        return type ? [{ type, template: { draft: Array.isArray(template.draft) ? template.draft : null, published: Array.isArray(template.published) ? template.published : null }, ...audienceOf(t), entries: docs(t.entries) }] : [];
       }),
     people: list<unknown>(raw.people)
       .filter(isObject)
@@ -75,6 +97,10 @@ export function contentPreview(file: ContentFile) {
   const notes: string[] = [`A thecms content export of "${file.from.name}", made ${file.madeAt.slice(0, 10)} by ${file.program}.`];
   const locked = (file.pages ?? []).filter((p) => p.locked).length;
   if (locked) notes.push(`${locked === 1 ? 'One page was' : `${locked} pages were`} behind a password there. The password is not in the file, so ${locked === 1 ? 'it comes' : 'they come'} as a draft; give a password again, then publish.`);
+  const forMembers = forMembersCount(file);
+  if (forMembers) notes.push(`${forMembers === 1 ? 'One page, entry or type is' : `${forMembers} pages, entries or types are`} for visitors signed in or for members, and stay${forMembers === 1 ? 's' : ''} so here: closed to everyone but you while visitor accounts are off.`);
+  if (file.visitors?.length)
+    notes.push(`${file.visitors.length === 1 ? 'One visitor account' : `${file.visitors.length} visitor accounts`}, without passwords: they come only if visitor accounts are on here, and each visitor chooses a new password with "Forgot your password?". No message is sent.`);
   return {
     kind: 'thecms' as const,
     site: { name: file.from.name, url: file.from.url },
@@ -91,6 +117,10 @@ export function contentPreview(file: ContentFile) {
     notes,
   };
 }
+
+/** The pages, entries and types the file keeps for visitors signed in or for members. */
+const forMembersCount = (file: ContentFile): number =>
+  [...(file.pages ?? []), ...file.types.flatMap((t) => t.entries)].filter((d) => d.audience).length + file.types.filter((t) => t.audience).length;
 
 const same = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
 const reason = (error: unknown): string => (error instanceof Error ? error.message : String(error));
@@ -138,13 +168,30 @@ export async function runContentImport(store: Store, file: ContentFile, options:
   const missing = (file.layouts ?? []).filter((l) => isObject(l) && !layouts.some((o) => o.id === l.id));
   if (missing.length) await store.setSite({ ...site, layouts: [...layouts, ...missing] }).catch((error: unknown) => notes.push(`The layouts were not added: ${reason(error)}.`));
 
-  // Each kind of entry, added where this site lacks it.
+  // The member levels who sees something or a visitor names, where this site lacks them (ADR 0064 d3).
+  if (file.levels?.length) {
+    const settings = normalizeVisitorSettings(await store.visitorSettings());
+    const missing = file.levels.filter((l) => !settings.levels.some((o) => o.id === l.id));
+    if (missing.length) {
+      const levels = normalizeLevels([...settings.levels, ...missing]);
+      await store.setVisitorSettings({ ...settings, levels });
+      const left = missing.filter((l) => !levels.some((o) => o.id === l.id));
+      if (left.length) notes.push(`A site has at most ${levels.length} member levels, so ${left.map((l) => `"${l.name}"`).join(', ')} ${left.length === 1 ? 'was' : 'were'} not added; what is only for ${left.length === 1 ? 'it' : 'them'} stays closed.`);
+    }
+  }
+  /** Who sees what was brought, as on the site it came from: never opened to everyone by coming here. */
+  const keepAudience = async (kind: 'page' | 'entry' | 'type', key: string, audience: Audience | undefined): Promise<void> => {
+    if (audience) await store.setAudience(kind, key, audience);
+  };
+
+  // Each kind of entry, added where this site lacks it, with who sees it.
   const brought: string[] = [];
-  for (const { type } of file.types) {
+  for (const { type, audience } of file.types) {
     const now = await store.site();
     if (!now.types.some((t) => t.id === type.id)) {
       try {
         await store.setSite({ ...now, types: [...now.types, type] });
+        await keepAudience('type', type.id, audience);
       } catch (error) {
         notes.push(`The content type "${type.name}" was not added, and its entries were not brought: ${reason(error)}.`);
         continue;
@@ -175,13 +222,19 @@ export async function runContentImport(store: Store, file: ContentFile, options:
    */
   const bring = async (kind: string, doc: ContentDoc, save: (doc: unknown) => Promise<{ slug: string }>, publish: (slug: string) => Promise<void>, open = true): Promise<boolean> => {
     const draft = local({ ...(doc.draft as object), slug: doc.slug });
+    // Who sees it is set before it is published, so it is never shown to everyone in between.
+    const audienced = async (slug: string): Promise<string> => {
+      if (kind === 'page') await keepAudience('page', slug, doc.audience);
+      else if (kind !== 'section') await keepAudience('entry', `${kind}/${slug}`, doc.audience);
+      return slug;
+    };
     let slug: string;
     if (doc.published && open) {
       const published = local({ ...(doc.published as object), slug: doc.slug });
-      slug = (await save(published)).slug;
+      slug = await audienced((await save(published)).slug);
       await publish(slug);
       if (!same(draft, published)) await save(draft);
-    } else slug = (await save(draft)).slug;
+    } else slug = await audienced((await save(draft)).slug);
     if (doc.scheduled && Date.parse(doc.scheduled) > Date.now()) await store.schedule(kind, slug, doc.scheduled).catch(() => undefined);
     return !!(doc.published && open);
   };
@@ -282,6 +335,17 @@ export async function runContentImport(store: Store, file: ContentFile, options:
       if (file.theme.draft) await store.setTheme(file.theme.draft);
     } catch (error) {
       notes.push(`The old site's theme was not taken: ${reason(error)}.`);
+    }
+  }
+
+  // The visitors, last: only into a site whose accounts are on, and without passwords (ADR 0064 d6).
+  if (file.visitors?.length) {
+    const { importVisitors } = await import('../site/visitor-transfer.ts');
+    const came = await importVisitors(store, file.visitors);
+    if (came.off) notes.push(`The file holds ${file.visitors.length === 1 ? 'one visitor account' : `${file.visitors.length} visitor accounts`}, and visitor accounts are off here, so none was brought. Turn them on in Settings → Visitor accounts and import the file again.`);
+    else {
+      if (came.added) notes.push(`${came.added === 1 ? 'One visitor account was' : `${came.added} visitor accounts were`} brought, with ${came.added === 1 ? 'its' : 'their'} levels and without a password: each visitor chooses one with "Forgot your password?". No message was sent.`);
+      if (came.kept) notes.push(`${came.kept === 1 ? 'One visitor already had' : `${came.kept} visitors already had`} an account here under the same address, left as it was.`);
     }
   }
 

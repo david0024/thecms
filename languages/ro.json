@@ -461,6 +461,8 @@
   "admin.exp.sections": "Secțiunile",
   "admin.exp.forms": "Formularele",
   "admin.exp.design": "Tema, setările, meniul și adresele vechi",
+  "admin.exp.visitors": "Conturile vizitatorilor și nivelurile lor",
+  "admin.exp.visitorsHint": "Nu face parte din tot site-ul: alege-o doar ca să muți vizitatorii pe alt site. Conține e-mailul, numele, limba și nivelurile fiecărui vizitor confirmat, niciodată parola: acolo își aleg una nouă cu „Ți-ai uitat parola?”. Fișierul conține atunci date personale, așa că păstrează-l cu grijă și șterge-l după ce l-ai folosit.",
   "admin.exp.downloadContent": "Descarcă conținutul",
   "admin.exp.filesHeading": "Site-ul ca fișiere, pentru o gazdă statică",
   "admin.exp.filesIntro": "Site-ul publicat ca fișiere simple într-un ZIP, pentru o gazdă care doar servește fișiere (Netlify, Cloudflare Pages, GitHub Pages, orice server web). De obicei site-ul e servit chiar de thecms, cu toate funcțiile; alege asta doar pentru un site simplu.",

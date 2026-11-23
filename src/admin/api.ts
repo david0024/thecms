@@ -372,7 +372,7 @@ export const api = {
     return response.blob();
   },
   /** What a content export can hold (ADR 0057): pages, each content type, sections, forms, the design. */
-  exportParts: () => call<{ parts: { id: string; name: string }[] }>('GET', '/api/export/parts'),
+  exportParts: () => call<{ parts: { id: string; name: string; apart?: true }[] }>('GET', '/api/export/parts'),
   /** The content file, or the published site as a ZIP: fetched, because a link could not carry the key. */
   async exportFile(what: 'content' | 'files', parts: string[] = []): Promise<{ blob: Blob; name: string }> {
     const response = await fetch(`/api/export/${what}${what === 'content' ? `?parts=${encodeURIComponent(parts.join(','))}` : ''}`, { headers: who() });
