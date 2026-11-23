@@ -2,7 +2,7 @@
 /**
  * Settings → E-mail (ADR 0064 d5): the mail server the site sends through,
  * the sender, a test message, and the words of each message to visitors in
- * each language. THECMS_SMTP and THECMS_MAIL_FROM are stronger, and it says so.
+ * each language, the site's and those extensions declare. THECMS_SMTP and THECMS_MAIL_FROM are stronger, and it says so.
  */
 import { onMount } from 'svelte';
 import { api, type MailShown, type MailTemplates } from './api.ts';
@@ -35,6 +35,9 @@ const attempt = async (work: () => Promise<void>): Promise<void> => {
   }
 };
 const own = $derived(words?.saved[language]?.[which] ?? null);
+// The messages extensions declare (ADR 0064) are kept as `extension:message`.
+const siteNames = $derived((words?.names ?? []).filter((n) => !n.includes(':')));
+const extensionNames = $derived((words?.names ?? []).filter((n) => n.includes(':')));
 function pick(): void {
   const chosen = words?.saved[language]?.[which] ?? words?.defaults[language]?.[which];
   subject = chosen?.subject ?? '';
@@ -108,18 +111,23 @@ const saveWords = (back = false) =>
     <small>{t.mail.templatesHint}</small>
     <div class="row">
       <select bind:value={which} onchange={pick} aria-label={t.mail.template} data-mail-template>
-        {#each words.names as n (n)}<option value={n}>{NAMES[n] ?? n}</option>{/each}
+        {#if extensionNames.length}
+          <optgroup label={t.mail.siteMails}>{#each siteNames as n (n)}<option value={n}>{NAMES[n] ?? n}</option>{/each}</optgroup>
+          <optgroup label={t.mail.extensionMails}>{#each extensionNames as n (n)}<option value={n}>{words.labels[n] ?? n}</option>{/each}</optgroup>
+        {:else}
+          {#each siteNames as n (n)}<option value={n}>{NAMES[n] ?? n}</option>{/each}
+        {/if}
       </select>
       {#if words.languages.length > 1}
         <select bind:value={language} onchange={pick} data-mail-language>{#each words.languages as l (l)}<option value={l}>{l}</option>{/each}</select>
       {/if}
     </div>
-    <small>{own ? t.mail.own : t.mail.reverted}</small>
+    <small>{own ? t.mail.own : which.includes(':') ? t.mail.revertedExtension : t.mail.reverted}</small>
     <label class="field"><span>{t.mail.subject}</span><input type="text" maxlength="200" bind:value={subject} data-mail-subject /></label>
     <label class="field"><span>{t.mail.text}</span><textarea rows="7" maxlength="5000" bind:value={body} data-mail-text></textarea></label>
     <div class="row">
       <button type="button" onclick={() => saveWords()} data-mail-template-save>{t.mail.save}</button>
-      {#if own}<button type="button" class="quiet" onclick={() => saveWords(true)}>{t.mail.backToProgram}</button>{/if}
+      {#if own}<button type="button" class="quiet" onclick={() => saveWords(true)}>{which.includes(':') ? t.mail.backToExtension : t.mail.backToProgram}</button>{/if}
     </div>
   {/if}
 {/if}

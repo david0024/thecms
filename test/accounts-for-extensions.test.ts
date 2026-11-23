@@ -4,6 +4,7 @@
  * read by one id or one address, a level given or taken; e-mail to one
  * visitor through the site's queue; the visitor signed in on a route. While
  * the accounts are off, none of it is there and nothing is loaded for it.
+ * The owner changes the words of an extension's messages in Settings → E-mail.
  */
 import { afterAll, describe, expect, test } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -13,6 +14,7 @@ import { EXTENSION_FORMAT, EXTENSION_FORMAT_2, extensionAsks, parseExtension } f
 import { describeOffer } from '../src/site/cli.ts';
 import { extensionHost } from '../src/site/extensions.ts';
 import { startRuntime } from '../src/site/runtime.ts';
+import { startEditor } from '../src/site/server.ts';
 import { Store, type User } from '../src/site/store.ts';
 import { VISITOR_TABLES } from '../src/site/visitor-schema.ts';
 import plain from '../themes/plain.json';
@@ -272,6 +274,60 @@ describe('while visitor accounts are on', () => {
       await expect(host.run('club', 'mail', { id, message: 'receipt' })).rejects.toThrow('at most 10 messages an hour');
     } finally {
       unlisten();
+      runtime.stop();
+      host.close();
+      await store.close();
+    }
+  });
+
+  test("the owner changes an extension's messages in Settings → E-mail; they go with the extension", async () => {
+    const store = await site('words');
+    const sent: { to: string; subject: string; text: string }[] = [];
+    await store.setVisitorSettings({ on: true, signup: 'open', levels: LEVELS });
+    const host = extensionHost(store, { log: () => {} });
+    await host.install(PACKAGE, (await host.offer(PACKAGE)).sha256);
+    const unlisten = host.listen();
+    const runtime = startRuntime(store, { listen: false, log: () => {}, extensions: host, mailer: async (mail) => void sent.push(mail as never), from: 'site@example.com' });
+    const editor = await startEditor(store, { listen: false, log: () => {} });
+    const ask = async (method: string, path: string, body?: unknown) =>
+      editor.fetch(new Request(`http://127.0.0.1:4321${path}`, { method, headers: { host: '127.0.0.1:4321', 'x-thecms-token': editor.token, 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) }));
+    type Words = { names: string[]; labels: Record<string, string>; defaults: Record<string, Record<string, { subject: string; text: string }>>; saved: Record<string, Record<string, unknown>> };
+    const tab = browser((r) => runtime.fetch(r));
+    try {
+      // Listed after the site's own, by the extension's name, with its own words in each language.
+      const listed = (await (await ask('GET', '/api/mail/templates')).json()) as Words;
+      expect(listed.names).toEqual(['confirm', 'reset', 'welcome', 'invite', 'deleted', 'club:receipt']);
+      expect(listed.labels).toEqual({ 'club:receipt': 'Club: Your receipt from {site}' });
+      expect(listed.defaults.ro?.['club:receipt']).toEqual({ subject: 'Chitanța ta de la {site}', text: 'Salut {name}, e la {link}' });
+      expect(listed.defaults.en?.['club:receipt']).toEqual({ subject: 'Your receipt from {site}', text: 'Hello {name}, it is at {link}' });
+      // One it does not declare is refused; the extension's own words are no change of the owner's.
+      expect((await ask('PUT', '/api/mail/templates', { language: 'ro', name: 'club:refund', subject: 'a', text: 'b' })).status).toBe(400);
+      expect((await ask('PUT', '/api/mail/templates', { language: 'ro', name: 'other:receipt', subject: 'a', text: 'b' })).status).toBe(400);
+      expect(((await (await ask('PUT', '/api/mail/templates', { language: 'ro', name: 'club:receipt', subject: 'Chitanța ta de la {site}', text: 'Salut {name}, e la {link}' })).json()) as Words).saved).toEqual({});
+      const changed = (await (await ask('PUT', '/api/mail/templates', { language: 'ro', name: 'club:receipt', subject: 'Plata ta la {site}', text: 'Mulțumim, {name}: {link}' })).json()) as Words;
+      expect(changed.saved).toEqual({ ro: { 'club:receipt': { subject: 'Plata ta la {site}', text: 'Mulțumim, {name}: {link}' } } });
+
+      await tab.go('POST', '/_/account/signup?l=ro', { name: 'Ana', email: 'ana@example.com', password: 'long enough pass', consent: 'yes', l: 'ro' });
+      await runtime.visitors.chores(new Date());
+      const k = /k=([A-Za-z0-9_-]+)/.exec(sent[0]?.text ?? '')?.[1] as string;
+      await tab.go('POST', '/_/account/link', { k, l: 'ro' });
+      const id = String((await heard(store, 1))[0]?.id);
+      await runtime.visitors.chores(new Date());
+      sent.length = 0;
+      // Sent with the owner's words, filled in as the extension's would be.
+      await host.run('club', 'mail', { id, message: 'receipt', values: { link: '/receipts/7/' } });
+      await runtime.visitors.chores(new Date());
+      expect(sent.map((m) => [m.subject, m.text])).toEqual([['Plata ta la Atelier', 'Mulțumim, Ana: https://example.com/receipts/7/']]);
+
+      // Uninstalled, its messages leave the list and the owner's words for them are forgotten; the site's stay.
+      await ask('PUT', '/api/mail/templates', { language: 'ro', name: 'welcome', subject: 'Salut {name}', text: 'Bun venit la {site}.' });
+      await host.uninstall('club');
+      const after = (await (await ask('GET', '/api/mail/templates')).json()) as Words;
+      expect(after.names).not.toContain('club:receipt');
+      expect(after.saved).toEqual({ ro: { welcome: { subject: 'Salut {name}', text: 'Bun venit la {site}.' } } });
+    } finally {
+      unlisten();
+      editor.stop();
       runtime.stop();
       host.close();
       await store.close();
