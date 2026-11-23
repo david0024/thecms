@@ -33,7 +33,7 @@ ever breaking it.
 
 **Pages and design**
 - Blocks for headings, text, images, galleries, services, prices, testimonials,
-  questions and answers, buttons, tables, video, sound, documents, and players
+  questions and answers, buttons, tables, code, video, sound, documents, and players
   from YouTube, Vimeo, Spotify, SoundCloud, Google Maps and OpenStreetMap,
   made from the address you paste.
 - A header, a footer and menus (with sub-menus and wide menus), from the site's

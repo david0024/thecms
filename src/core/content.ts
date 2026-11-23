@@ -89,6 +89,14 @@ export interface TableContent {
   table: TableValue;
   caption: string;
 }
+export interface CodeContent {
+  title: string;
+  /** As written: every line and space kept (ADR 0067). */
+  code: string;
+  /** What it is written in (`sh`, `ts`), only to name it; '' for none. */
+  language: string;
+  caption: string;
+}
 export interface EmbedContent {
   /** The address the author pasted; `embedOf` makes the player's own. */
   url: string;

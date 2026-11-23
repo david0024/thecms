@@ -7,7 +7,7 @@
  * has no block to become (a form, a script, an embedded player) is left out
  * and named through `lost`, so the owner is told instead of finding out.
  */
-import { type Block, type Mark, newId, type RichNode, type Span } from '../core/index.ts';
+import { type Block, CODE_MAX, codeLanguage, type Mark, newId, type RichNode, type Span } from '../core/index.ts';
 import { find, type HtmlElement, type HtmlNode, isElement, parseHtml, plainText } from './html.ts';
 
 export interface ContentContext {
@@ -22,7 +22,10 @@ export interface ContentContext {
 }
 
 type Piece = Span | 'break';
-type Item = { kind: 'rich'; node: RichNode } | { kind: 'image'; src: string; alt: string; caption: string };
+type Item =
+  | { kind: 'rich'; node: RichNode }
+  | { kind: 'image'; src: string; alt: string; caption: string }
+  | { kind: 'code'; code: string; language: string };
 
 const INLINE = new Set([
   'a', 'abbr', 'b', 'big', 'br', 'cite', 'code', 'del', 'em', 'font', 'i', 'img', 'ins', 'kbd', 'label', 'mark', 'q', 's',
@@ -40,7 +43,6 @@ const LOST = {
   table: 'tables: their text was kept, one line for each row',
   columns: 'column layouts: their content was kept, one part under another',
   nested: 'lists inside lists: the items were kept in one list',
-  pre: 'preformatted text: kept line by line',
   dynamic: 'blocks WordPress fills in by itself',
   shortcode: 'shortcodes, which call a plugin of the old site',
 };
@@ -91,7 +93,8 @@ class Converter {
         continue;
       }
       flush();
-      out.push({ id: newId(), type: 'image', content: { image: { src: item.src, alt: item.alt }, caption: item.caption } });
+      if (item.kind === 'code') out.push({ id: newId(), type: 'code', content: { title: '', code: item.code, language: item.language, caption: '' } });
+      else out.push({ id: newId(), type: 'image', content: { image: { src: item.src, alt: item.alt }, caption: item.caption } });
     }
     flush();
     return out;
@@ -254,9 +257,13 @@ class Converter {
       }
       return;
     }
+    // Preformatted text is a code block, its lines and spaces kept (ADR 0067);
+    // the language is read from `class="language-…"`, as Markdown and WordPress write it.
     if (tag === 'pre') {
-      this.ctx.lost(LOST.pre);
-      for (const text of plainLines(el.children)) into.push({ kind: 'rich', node: { type: 'paragraph', children: [{ text, marks: ['code'] }] } });
+      const code = rawText(el.children).replace(/\r\n?/g, '\n').replace(/^(?:[ \t]*\n)+/, '').replace(/\s+$/, '');
+      if (!code) return;
+      const named = [el, ...el.children.filter(isElement)].map((e) => /\blang(?:uage)?-([A-Za-z0-9+#.-]+)/.exec(e.attrs.class ?? '')?.[1] ?? '').find(Boolean);
+      into.push({ kind: 'code', code: code.slice(0, CODE_MAX), language: codeLanguage(named) });
       return;
     }
     if (tag === 'script') return this.ctx.lost(LOST.script);
@@ -290,10 +297,9 @@ class Converter {
   }
 }
 
-/** The text inside, one entry for each line that holds something. */
-function plainLines(nodes: HtmlNode[]): string[] {
-  const walk = (list: HtmlNode[]): string => list.map((n) => (isElement(n) ? (n.tag === 'br' ? '\n' : walk(n.children)) : n)).join('');
-  return walk(nodes).split(/\r?\n/).map((line) => line.replace(/\s+$/, '')).filter((line) => line.trim());
+/** The text inside, every space and line kept: a `<br>` is a line. */
+function rawText(nodes: HtmlNode[]): string {
+  return nodes.map((n) => (isElement(n) ? (n.tag === 'br' ? '\n' : rawText(n.children)) : n)).join('');
 }
 
 const attr = (value: string): string => value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');

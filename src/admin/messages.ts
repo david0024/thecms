@@ -993,8 +993,10 @@ export const en = {
     upload: 'Upload a theme file',
     notATheme: 'This file is not a valid theme.',
   },
-  types: { hero: 'Hero', text: 'Text', image: 'Image', services: 'Services', contact: 'Contact', form: 'Contact form', extension: 'From an extension', search: 'Search', gallery: 'Gallery', faq: 'Questions and answers', testimonials: 'Testimonials', pricing: 'Prices', buttons: 'Buttons', table: 'Table', embed: 'Video, song or map from another site', video: 'Video', audio: 'Sound', files: 'Documents', entries: 'List of entries', archive: 'Archive by month', entry: 'Part of the entry', section: 'Section', group: 'Group' } as Record<string, string>,
+  types: { hero: 'Hero', text: 'Text', image: 'Image', services: 'Services', contact: 'Contact', form: 'Contact form', extension: 'From an extension', search: 'Search', gallery: 'Gallery', faq: 'Questions and answers', testimonials: 'Testimonials', pricing: 'Prices', buttons: 'Buttons', table: 'Table', code: 'Code', embed: 'Video, song or map from another site', video: 'Video', audio: 'Sound', files: 'Documents', entries: 'List of entries', archive: 'Archive by month', entry: 'Part of the entry', section: 'Section', group: 'Group' } as Record<string, string>,
   fields: {
+    code: 'Code, as it is written',
+    language: 'Language (sh, ts, json), to name it',
     form: 'Which form',
     block: 'Which block',
     section: 'Which section',

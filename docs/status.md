@@ -60,3 +60,4 @@ and in the README; stage 3, part by part, in [ADR 0060](adr/0060-stage-3-core-an
 | Valkey on a server for built pages, the clock's lock, sessions and the counters that limit tries, with a fallback in memory and on disk; Settings → Performance tests it | done |
 | Documents (PDF, Word, Excel, PowerPoint, OpenDocument, ZIP), sound and video in the media library, read from their bytes; a page that links to one exports it and keeps it from being deleted | done |
 | Blocks for buttons, tables, video, sound, documents, and players from YouTube, Vimeo, Spotify, SoundCloud, Google Maps and OpenStreetMap, made from the address an author pastes | done |
+| A block of code (ADR 0067): lines and spaces kept, a fixed-width font, scrolled sideways on a phone, its language as a class; never translated; each `<pre>` imported as one | done |
