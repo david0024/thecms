@@ -8,6 +8,7 @@ import type { Site } from './page.ts';
 import type { Post } from './post.ts';
 import { richTextPlain, type RichText } from './richtext.ts';
 import { WEEKDAYS } from './seo.ts';
+import { combinations, inStock, paid, priceOf, type ShopShown, stockKey } from './shop.ts';
 import { type ContentType, fieldMeaning, type FieldMeaning } from './types.ts';
 
 type Data = Record<string, unknown>;
@@ -117,9 +118,33 @@ export function entrySchemaData(site: Site, type: ContentType, post: Post, url: 
       ...offer(),
     };
   }
-  const sku = meant(type, post, 'sku');
   const brand = meant(type, post, 'brand');
-  const inStock = meant(type, post, 'inStock');
+  // A product the shop sells (ADR 0065 d1) says the shop's price, code and stock, while the shop is on.
+  if (type.sells && post.product && site.shop) {
+    const product = post.product;
+    const slug = post.of ?? post.slug;
+    const keys = product.options.length ? combinations(product.options) : [''];
+    const sold = keys.map((key) => ({ ...priceOf(product, key), left: inStock(site.shop as ShopShown, product, stockKey(type.id, slug, key)) })).filter((c) => c.price !== null);
+    const prices = sold.map((c) => (paid(c) as number) / 100);
+    const availability = `https://schema.org/${sold.some((c) => c.left) ? 'InStock' : 'OutOfStock'}`;
+    const offers = !prices.length
+      ? {}
+      : prices.length === 1 || Math.min(...prices) === Math.max(...prices)
+        ? { offers: { '@type': 'Offer', price: prices[0], priceCurrency: site.shop.currency, url, availability } }
+        : { offers: { '@type': 'AggregateOffer', lowPrice: Math.min(...prices), highPrice: Math.max(...prices), offerCount: prices.length, priceCurrency: site.shop.currency, url, availability } };
+    return {
+      '@type': 'Product',
+      name: post.title,
+      url,
+      ...(description ? { description } : {}),
+      ...(image ? { image } : {}),
+      ...(product.sku ? { sku: product.sku } : {}),
+      ...(typeof brand === 'string' ? { brand: { '@type': 'Brand', name: brand } } : {}),
+      ...offers,
+    };
+  }
+  const sku = meant(type, post, 'sku');
+  const stocked = meant(type, post, 'inStock');
   return {
     '@type': 'Product',
     name: post.title,
@@ -128,6 +153,6 @@ export function entrySchemaData(site: Site, type: ContentType, post: Post, url: 
     ...(image ? { image } : {}),
     ...(typeof sku === 'string' ? { sku } : {}),
     ...(typeof brand === 'string' ? { brand: { '@type': 'Brand', name: brand } } : {}),
-    ...offer(typeof inStock === 'boolean' ? { availability: `https://schema.org/${inStock ? 'InStock' : 'OutOfStock'}` } : {}),
+    ...offer(typeof stocked === 'boolean' ? { availability: `https://schema.org/${stocked ? 'InStock' : 'OutOfStock'}` } : {}),
   };
 }

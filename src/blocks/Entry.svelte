@@ -7,7 +7,8 @@
 import type { Block, EntryContent, ImageValue, LinkValue } from '../core/index.ts';
 import { fieldShown, isLink } from '../core/index.ts';
 import BlockView from './BlockView.svelte';
-import { getEntry, getLists, picture, setEditing, setEntry } from './editing.ts';
+import Buy from './Buy.svelte';
+import { getEntry, getLists, getSite, picture, setEditing, setEntry } from './editing.ts';
 import EntryFields from './EntryFields.svelte';
 import FieldValue from './FieldValue.svelte';
 import PostMeta from './PostMeta.svelte';
@@ -17,6 +18,8 @@ import { dateText } from './words.ts';
 let { block }: { block: Block } = $props();
 const c = $derived(block.content as unknown as EntryContent);
 const entry = getEntry();
+/** While the shop is on (ADR 0065 d3): what a product's Buy part is drawn with. */
+const shop = getSite()?.site.shop;
 const pic = picture();
 const { lists } = getLists();
 const shown = entry && !entry.inBody ? entry : undefined;
@@ -36,6 +39,7 @@ const value = $derived(field && shown ? shown.post.fields[field.key] : undefined
       <h1>{post.title}</h1>
       {#if post.cover}{@const pa = pic(post.cover.src, 'full')}<img class="post-cover" src={post.cover.src} srcset={pa.srcset} sizes={pa.sizes} width={pa.width} height={pa.height} alt={post.cover.alt} />{/if}
       <EntryFields {type} {post} {language} />
+      {#if shop && type.sells}<Buy {shop} {post} typeId={type.id} {language} />{/if}
     </div>
   {:else if c.part === 'title'}
     <h1>{post.title}</h1>
@@ -45,6 +49,8 @@ const value = $derived(field && shown ? shown.post.fields[field.key] : undefined
     {#if post.cover}{@const pa = pic(post.cover.src, 'full')}<img class="post-cover" src={post.cover.src} srcset={pa.srcset} sizes={pa.sizes} width={pa.width} height={pa.height} alt={post.cover.alt} />{/if}
   {:else if c.part === 'fields'}
     <EntryFields {type} {post} {language} />
+  {:else if c.part === 'buy'}
+    {#if shop && type.sells}<Buy {shop} {post} typeId={type.id} {language} />{/if}
   {:else if c.part === 'related'}
     <Related {type} {post} {language} wrapped={false} />
   {:else if c.part === 'body'}

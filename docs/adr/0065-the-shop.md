@@ -142,3 +142,31 @@ and variants, its stock and its Buy part; (b) the cart, checkout, the manual
 payments and shipping, orders, their screen and their e-mails; (c) coupons,
 what extensions are given (d9), and the shop's tables in backups and in the
 complete export.
+
+### What PR (a) settled in building it
+
+- **Money** is kept as a whole number in the currency's smallest unit (bani),
+  typed as `49,99` or `49.99`; shown with the site's language and currency.
+- **The VAT rate** of a product is one of the site's rates, or "the site's
+  first" (kept as none), so a product whose rate the owner removes takes the
+  first rather than a rate the site no longer has.
+- **A combination** is named by its values (`M / Red`); a value renamed is a
+  new combination, which takes the product's price until given its own. At
+  most a hundred combinations a product. A combination that changes nothing is
+  not kept.
+- **Stock** is kept by product and combination in `shop_stock`, saved at once
+  from the entry's editor with its own button; a product counted with nothing
+  set has none left. The site is built again only when something runs out or
+  comes back.
+- **Turning the shop on** makes the type "Products" in the site's language
+  ("Produse" in Romanian), at the first free address (`products`,
+  `products-2`); turned on again, no second type is made.
+- **The Buy part** is drawn under the entry's fields in the default page, and
+  where the owner puts it in a type's own page; on the editor's canvas too. A
+  combination is chosen from one list, each with its price when they differ
+  and "Out of stock" when it is.
+- **For search engines** a product the shop sells says the shop's price and
+  stock (an `Offer`, or an `AggregateOffer` when its combinations cost
+  differently) in place of the fields of ADR 0061 d3.
+- Left for later: the option names in another language (a product's options
+  are written in the site's language for now).

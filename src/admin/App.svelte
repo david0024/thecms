@@ -66,6 +66,7 @@ import Schedule from './Schedule.svelte';
 import Versions from './Versions.svelte';
 import ContentTypes from './ContentTypes.svelte';
 import EntryFieldsForm from './EntryFieldsForm.svelte';
+import ProductForm from './ProductForm.svelte';
 import ImageField from './ImageField.svelte';
 import ImportScreen from './ImportScreen.svelte';
 import ExportScreen from './ExportScreen.svelte';
@@ -766,7 +767,7 @@ onMount(() => {
     {:else if view === 'layouts'}
       <Layouts site={site.site} sections={site.sections} onsave={saveLayouts} />
     {:else if view === 'types'}
-      <ContentTypes site={site.site} counts={Object.fromEntries(types.map((ty) => [ty.id, site?.entries[ty.id]?.length ?? 0]))} templates={site.templates} terms={Object.fromEntries(types.map((ty) => [ty.id, [...new Set((site?.entries[ty.id] ?? []).flatMap((e) => e.terms ?? []))]]))} onsave={saveTypes} ondesign={(id) => edit(id, `template:${id}`)} />
+      <ContentTypes site={site.site} shop={site.shop.on} counts={Object.fromEntries(types.map((ty) => [ty.id, site?.entries[ty.id]?.length ?? 0]))} templates={site.templates} terms={Object.fromEntries(types.map((ty) => [ty.id, [...new Set((site?.entries[ty.id] ?? []).flatMap((e) => e.terms ?? []))]]))} onsave={saveTypes} ondesign={(id) => edit(id, `template:${id}`)} />
     {:else if view.startsWith('list:')}
       {@const listed = types.find((ty) => `list:${ty.id}` === view)}
       {#if listed}
@@ -883,7 +884,7 @@ onMount(() => {
     <aside class="right">
       {#if siteMode}
         <h2>{t.site.heading}</h2>
-        <SitePanel site={site.site} pages={pagesIn(site.site, site.site.language, site.pages)} lists={menuLists} languages={site.languages} onchange={editSite} onadminlanguage={setAdminLanguage} />
+        <SitePanel site={site.site} pages={pagesIn(site.site, site.site.language, site.pages)} lists={menuLists} languages={site.languages} onchange={editSite} onadminlanguage={setAdminLanguage} shop={site.shop} onshop={reload} />
       {:else if themeMode}
         <h2>{t.theme.heading}</h2>
         <ThemeBuilder theme={site.theme} onchange={editTheme} />
@@ -1036,6 +1037,9 @@ onMount(() => {
             <ImageField label={t.posts.cover} value={post.cover} onchange={(cover) => change({ ...post, cover: cover.src ? cover : null }, { step: false })} />
           </div>
           <EntryFieldsForm {type} {types} entries={site.entries} own={post.slug} values={post.fields} onchange={(fields) => change({ ...post, fields }, { step: false })} />
+          {#if type.sells && site.shop.on}
+            <ProductForm product={post.product} shop={site.shop} kind={type.id} slug={post.slug} onchange={(product) => change({ ...post, product }, { step: false })} />
+          {/if}
           {@const entry = info as PostInfo | undefined}
           {#if staff && site.accounts}
             <label class="field">

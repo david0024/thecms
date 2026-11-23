@@ -9,6 +9,7 @@ import { type Block, blocksText, cleanImage, describeBlocks, type ImageValue, me
 import type { Words } from './localize.ts';
 import { normalizeRichText } from './richtext.ts';
 import { cleanSeo, type Seo } from './seo.ts';
+import { normalizeProduct, type Product } from './shop.ts';
 import { BLOG_SLUG, cleanTypeFields, type ContentType, postsType } from './types.ts';
 import { type Issue, isObject, slugify, str } from './util.ts';
 
@@ -30,6 +31,8 @@ export interface Post extends Seo {
   /** What its type asks for besides: a client's name, a price, a second picture (ADR 0010). */
   fields: Record<string, unknown>;
   blocks: Block[];
+  /** What the shop sells it at (ADR 0065 d2): only on an entry of a type that sells. */
+  product?: Product;
   /** Who wrote it, as the site shows them (ADR 0055 d3): filled in to draw it, never kept. */
   author?: Byline;
   /** What visitors wrote under it and the owner approved, oldest first (ADR 0040): filled in to draw it, never kept. */
@@ -155,6 +158,7 @@ export function normalizePost(input: unknown, today = '1970-01-01', type: Conten
       tags: type.categories ? cleanCategories(raw.tags, MAX_TAGS) : [],
       fields: cleanTypeFields(type, raw.fields, isDate),
       blocks,
+      ...(type.sells ? { product: normalizeProduct(raw.product) } : {}),
       ...cleanSeo(raw),
       ...(isObject(raw.translations) && Object.keys(raw.translations).length ? { translations: normalizeEntryTranslations(raw.translations) } : {}),
     },

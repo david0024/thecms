@@ -9,6 +9,7 @@ import type { Pictures } from './media.ts';
 import { type Business, cleanBusiness, cleanSeo, type Seo } from './seo.ts';
 import { pageSlug, prefixOf } from './translation.ts';
 import { BLOG_SLUG, type ContentType, normalizeTypes, POSTS_TYPE, postsType, RESERVED_SLUGS } from './types.ts';
+import type { ShopShown } from './shop.ts';
 import { type Issue, isObject, safeHref, slugify, str } from './util.ts';
 
 export interface Page extends Seo {
@@ -85,6 +86,8 @@ export interface Site {
   pictures?: Pictures;
   /** True while visitor accounts are on (ADR 0064 d8): the menu's "My account" is drawn only then. Filled in to draw a page, never kept. */
   accounts?: boolean;
+  /** While the shop is on (ADR 0065 d3): its currency and what was in stock. Filled in to draw a page, never kept. */
+  shop?: ShopShown;
 }
 
 /** The site's own words in another language: the footer and the header's button. */

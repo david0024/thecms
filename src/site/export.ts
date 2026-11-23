@@ -69,6 +69,7 @@ import { lockedPage, membersPage } from './locks.ts';
 import { menuOf, pageSetting, renderBlogList, renderPage, renderPost, STYLESHEET } from './document.ts';
 import { checkRedirects, checkSeo, checkSite, describeCheck, type SiteCheck, serverOnly } from './check.ts';
 import { BASE_CSS } from './shipped.ts';
+import { shopGate } from './shop-gate.ts';
 import { STATS, type Store } from './store.ts';
 
 const MARKER = '.thecms-export';
@@ -571,7 +572,9 @@ export async function publishedSite(store: Store, served = false): Promise<Map<s
   // Each form block is drawn with the form it names (ADR 0049), each extension's block with what it asks (ADR 0062 d6).
   // "My account" is in the menu only while visitor accounts are on (ADR 0064 d8).
   const accounts = ((await store.visitorSettings()) as { on?: unknown } | null)?.on === true;
-  const site = { ...(await store.site()), formDefs: await store.formsByName(), extensionBlocks: await store.extensionBlocks(), accounts };
+  // A product's Buy part, only on a served site while the shop is on (ADR 0065 d3, d10): a static host has no cart.
+  const shop = served ? await shopGate(store).shown() : null;
+  const site = { ...(await store.site()), formDefs: await store.formsByName(), extensionBlocks: await store.extensionBlocks(), accounts, ...(shop ? { shop } : {}) };
   const entries: Record<string, Post[]> = {};
   const templates: Record<string, Block[] | null> = {};
   for (const type of contentTypes(site)) {

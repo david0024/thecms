@@ -85,6 +85,8 @@ export interface ContentType {
   translations?: Record<string, TypeTranslation>;
   /** What its entries are, said to search engines (ADR 0061 d3); absent: articles when dated, nothing more otherwise. */
   schema?: EntrySchema;
+  /** Its entries are products the shop sells (ADR 0065 d1): said to search engines as products, priced by the shop. */
+  sells?: true;
 }
 
 const TYPE_LANGUAGE = /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/;
@@ -208,7 +210,8 @@ export function normalizeTypes(input: unknown): ContentType[] {
       ...(slugify(raw.layout) ? { layout: slugify(raw.layout) } : {}),
       ...(raw.comments === true ? { comments: true as const } : {}),
       ...(isObject(raw.translations) && Object.keys(raw.translations).length ? { translations: normalizeTypeTranslations(raw.translations) } : {}),
-      ...(ENTRY_SCHEMAS.includes(raw.schema as EntrySchema) ? { schema: raw.schema as EntrySchema } : {}),
+      // A type that sells is one of products (ADR 0065 d1).
+      ...(raw.sells === true ? { schema: 'product' as const, sells: true as const } : ENTRY_SCHEMAS.includes(raw.schema as EntrySchema) ? { schema: raw.schema as EntrySchema } : {}),
     });
     // A field means something only on a type whose entries are events or products, and each meaning once.
     const added = out[out.length - 1] as ContentType;
