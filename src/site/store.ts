@@ -70,6 +70,9 @@ import {
   normalizePost,
   normalizeRedirects,
   normalizeSite,
+  normalizeAudience,
+  normalizeAudiences,
+  type Audiences,
   variantName,
   variantOf,
   wantedWidths,
@@ -854,6 +857,13 @@ export class Store {
     await this.run('UPDATE versions SET slug = ? WHERE kind = ? AND slug = ?', [to, 'page', from]);
     await this.run('UPDATE page_locks SET slug = ? WHERE slug = ?', [to, from]);
     await this.run('UPDATE schedule SET slug = ? WHERE kind = ? AND slug = ?', [to, 'page', from]);
+    // Who sees it goes with the page (ADR 0064 d4).
+    const audiences = await this.audiences();
+    if (audiences.pages[from]) {
+      audiences.pages[to] = audiences.pages[from];
+      delete audiences.pages[from];
+      await this.setMeta(AUDIENCES, audiences);
+    }
     // The menu names a page by its address: it follows the page.
     if (site.menu) {
       const follow = (nodes: MenuNode[]): MenuNode[] => nodes.map((n) => ({ ...n, target: n.target.kind === 'page' && n.target.slug === from ? { kind: 'page', slug: to } : n.target, children: follow(n.children) }));
@@ -1020,6 +1030,7 @@ export class Store {
     await this.run('DELETE FROM versions WHERE kind = ? AND slug = ?', ['page', slug]);
     await this.run('DELETE FROM schedule WHERE kind = ? AND slug = ?', ['page', slug]);
     await this.run('DELETE FROM page_locks WHERE slug = ?', [slug]);
+    await this.forgetAudience('pages', slug);
   }
 
   // Pages behind a password (ADR 0043).
@@ -1039,6 +1050,51 @@ export class Store {
       await this.run(this.dialect.upsert('page_locks', ['slug', 'hash'], ['slug'], ['hash']), [slug, await Bun.password.hash(password, { algorithm: 'argon2id' })]);
     }
     return this.lockedPages();
+  }
+
+  // Who sees a page, an entry or a whole type (ADR 0064 d4). Kept beside the content, not in it:
+  // it applies at once to what is published, as a password does.
+
+  /** Each page, entry and type that is not for everyone, with who sees it. */
+  async audiences(): Promise<Audiences> {
+    return normalizeAudiences(await this.getMeta(AUDIENCES));
+  }
+
+  /**
+   * Who sees a page (by any of its addresses: it goes with each translation),
+   * an entry (`type/entry`) or a type (its id); null is everyone. The home
+   * page is for everyone.
+   */
+  async setAudience(kind: 'page' | 'entry' | 'type', key: string, audience: unknown): Promise<Audiences> {
+    const all = await this.audiences();
+    const clean = normalizeAudience(audience);
+    let at = key;
+    let part: keyof Audiences;
+    if (kind === 'page') {
+      const found = await this.locate(key);
+      at = found?.translated ? found.of : key;
+      if (at === '') throw new Error('the home page is for everyone');
+      if (!(await this.row('SELECT 1 AS found FROM pages WHERE slug = ?', [at]))) throw new Error(`no page "${at}"`);
+      part = 'pages';
+    } else if (kind === 'entry') {
+      const [typeId = '', slug = ''] = key.split('/');
+      if (!(await this.row('SELECT 1 AS found FROM entries WHERE type = ? AND slug = ?', [typeId, slug]))) throw new Error(`no entry "${key}"`);
+      part = 'entries';
+    } else {
+      await this.type(key);
+      part = 'types';
+    }
+    if (clean) all[part][at] = clean;
+    else delete all[part][at];
+    await this.setMeta(AUDIENCES, all);
+    return all;
+  }
+
+  private async forgetAudience(part: keyof Audiences, key: string): Promise<void> {
+    const all = await this.audiences();
+    if (!all[part][key]) return;
+    delete all[part][key];
+    await this.setMeta(AUDIENCES, all);
   }
 
   /** The pages behind a password, by the address of their main language. */
@@ -1546,6 +1602,7 @@ export class Store {
     await this.run('DELETE FROM schedule WHERE kind = ? AND slug = ?', [typeId, slug]);
     await this.run('DELETE FROM comments WHERE type = ? AND entry = ?', [typeId, slug]);
     await this.run('DELETE FROM comment_languages WHERE id NOT IN (SELECT id FROM comments)');
+    await this.forgetAudience('entries', `${typeId}/${slug}`);
   }
 
   /**
@@ -2483,6 +2540,7 @@ export class Store {
       if (optional.includes('visitors')) {
         await run('DELETE FROM visitor_sessions WHERE visitor_id NOT IN (SELECT id FROM visitors)');
         await run('DELETE FROM visitor_links WHERE visitor_id NOT IN (SELECT id FROM visitors)');
+        if (optional.includes('visitor_levels')) await run('DELETE FROM visitor_levels WHERE visitor_id NOT IN (SELECT id FROM visitors)');
       }
     });
     await this.touch();
@@ -2499,6 +2557,9 @@ export interface NotFound {
   /** The page that last led to it, as its host and path; empty when nothing did. */
   referrer: string;
 }
+
+/** Who sees each page, entry and type that is not for everyone (ADR 0064 d4). */
+const AUDIENCES = 'audiences';
 
 /** Where visitor accounts' settings, the mail server and the messages' words are kept (ADR 0064). */
 const VISITOR_SETTINGS = 'visitors';
@@ -2577,6 +2638,9 @@ const TOUCHING = [
   'deleteTranslation',
   'deletePage',
   'lockPage',
+  'setAudience',
+  // Turning visitor accounts on or off shows or hides "My account" in the menu (ADR 0064 d8).
+  'setVisitorSettings',
   'publishSection',
   'deleteSection',
   'publishEntry',

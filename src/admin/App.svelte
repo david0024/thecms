@@ -79,6 +79,7 @@ import Stats from './Stats.svelte';
 import Forms from './Forms.svelte';
 import Comments from './Comments.svelte';
 import PageLock from './PageLock.svelte';
+import Audience from './Audience.svelte';
 import Fields from './Fields.svelte';
 import { adminLanguage, say, t } from './messages.ts';
 import { setPath } from './paths.ts';
@@ -1112,6 +1113,7 @@ onMount(() => {
         {#if !designing && !sectioning && !translation && !contributor}
           {#key `${kind}/${page.slug}`}<Schedule slug={page.slug} {kind} />{/key}
           {#if kind === 'page' && page.slug !== ''}{#key page.slug}<PageLock slug={page.slug} />{/key}{/if}
+          {#if type || page.slug !== ''}{#key `${kind}/${page.slug}`}<Audience kind={type ? 'entry' : 'page'} key={type ? `${kind}/${page.slug}` : page.slug} />{/key}{/if}
         {/if}
         {#if !designing && !(type && translation)}
           {#key `${kind}/${page.slug}`}<Versions slug={page.slug} {kind} onrestore={(doc) => change(doc)} />{/key}

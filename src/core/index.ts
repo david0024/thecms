@@ -4,6 +4,7 @@
  * `test/gates.test.ts` holds it to that.
  */
 export * from './archive.ts';
+export * from './audience.ts';
 export * from './blocks.ts';
 export * from './structured.ts';
 export * from './content.ts';

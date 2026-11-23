@@ -115,3 +115,24 @@ members stay closed to everyone but the admin.
 Three pull requests: (a) the accounts, their pages, the mail queue, the
 templates and Settings → E-mail; (b) the levels and "Who sees it"; (c) what
 extensions are given (d7).
+
+### What PR (b) settled in building it
+
+- A level is a name the owner gives and an address-like id made from it
+  (`premium`); at most twenty. A level taken away is taken from everyone who
+  held it. The level for new accounts is given when the address is confirmed
+  or the invitation taken up.
+- "Who sees it" is kept beside the content, as a password is (ADR 0043), so
+  it applies at once to what is published, goes with a page that moves and
+  is forgotten with what is deleted. A page's goes with each of its
+  translations; a type's is stronger than its entries' own.
+- The runtime knows a page for members by a mark in the built page, which
+  names who sees it; the visitor is asked of the accounts at each request.
+- A list still names an entry for members, as WordPress's membership
+  plugins do; its page asks who opens it. The feeds, the site's data, the
+  sitemap, the search and what extensions read leave it out; a whole type
+  for members has no feed, and each of its lists is for members too.
+- Open sign-up is refused without a mail server when it is turned on, not at
+  each later change of the settings.
+- Left for later: the visitors as a part of the complete export (ADR 0057),
+  and the events of d7 (PR c).

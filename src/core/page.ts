@@ -83,6 +83,8 @@ export interface Site {
   data?: false;
   /** The stored pictures' sizes and smaller copies (ADR 0005 d8): filled in to draw a page for export, never kept. */
   pictures?: Pictures;
+  /** True while visitor accounts are on (ADR 0064 d8): the menu's "My account" is drawn only then. Filled in to draw a page, never kept. */
+  accounts?: boolean;
 }
 
 /** The site's own words in another language: the footer and the header's button. */

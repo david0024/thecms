@@ -4,8 +4,11 @@
  * exist and `/_/account` is not found. Turned on, the accounts are loaded the
  * first time they are needed, and make their tables then.
  */
+import { type Audience, type Level, normalizeLevels } from '../core/index.ts';
 import type { MailEnvironment } from './site-mail.ts';
 import type { Shared } from './shared.ts';
+import { escape, framed } from './visitor-pages.ts';
+import { wordsFor } from '../blocks/words.ts';
 import type { Store, User } from './store.ts';
 
 /** Who may make an account (ADR 0064 d2). */
@@ -18,18 +21,25 @@ export interface VisitorSettings {
   signup: Signup;
   /** The site's privacy page, linked beside the consent on the sign-up form; '' for none. */
   privacy: string;
+  /** The member levels the owner named (ADR 0064 d3). */
+  levels: Level[];
+  /** The level each new account receives, '' for none. */
+  welcome: string;
 }
 
-export const VISITORS_OFF: VisitorSettings = { on: false, signup: 'closed', privacy: '' };
+export const VISITORS_OFF: VisitorSettings = { on: false, signup: 'closed', privacy: '', levels: [], welcome: '' };
 
 export function normalizeVisitorSettings(input: unknown): VisitorSettings {
   const raw = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>;
   const privacy = typeof raw.privacy === 'string' ? raw.privacy.trim().slice(0, 500) : '';
+  const levels = normalizeLevels(raw.levels);
   return {
     on: raw.on === true,
     signup: SIGNUPS.includes(raw.signup as Signup) ? (raw.signup as Signup) : 'closed',
     // A page of the site, or an address on the web; nothing a link could run.
     privacy: /^(\/(?!\/)|https?:\/\/)[^\s"<>]*$/.test(privacy) ? privacy : '',
+    levels,
+    welcome: levels.some((l) => l.id === raw.welcome) ? (raw.welcome as string) : '',
   };
 }
 
@@ -50,6 +60,7 @@ export interface Visitors {
   fetch: (request: Request, url: URL, ip: string) => Promise<Response>;
   chores: (now: Date) => Promise<void>;
   admin: (request: Request, url: URL, me: User, body: Record<string, unknown>) => Promise<Response>;
+  guard: (request: Request, url: URL, audience: Audience, language: string) => Promise<Response | null>;
 }
 
 export interface VisitorGate {
@@ -60,6 +71,13 @@ export interface VisitorGate {
   chores: (now: Date) => Promise<void>;
   /** The owner's calls under `/api/visitors` (the admin's Settings → Visitor accounts). */
   admin: (request: Request, url: URL, me: User, body: Record<string, unknown>) => Promise<Response>;
+  /**
+   * A page for visitors signed in, or for members (ADR 0064 d4): null when
+   * this visitor may see it; otherwise the page they get in its place, with
+   * the sign-in form, or a line saying the page is for members. While the
+   * accounts are off, nobody may.
+   */
+  guard: (request: Request, url: URL, audience: Audience, language: string) => Promise<Response | null>;
   /** Whether the accounts' code was loaded in this process: never, while they stay off (the tests ask). */
   loaded: () => boolean;
 }
@@ -93,7 +111,9 @@ export function visitorGate(store: Store, deps: VisitorDeps, mailReady: () => Pr
       if (url.pathname === '/api/visitors' && request.method === 'PUT') {
         const asked = normalizeVisitorSettings({ ...now, ...body });
         // Confirming an address and a forgotten password need mail that works (ADR 0064 d2).
-        if (asked.on && asked.signup === 'open' && !(await mailReady())) return json({ error: 'open sign-up needs a mail server: set one in Settings → E-mail first' }, 409);
+        // Asked when it is turned on: what else the owner changes later is saved, even while the mail server fails.
+        const opening = asked.on && asked.signup === 'open' && !(now.on && now.signup === 'open');
+        if (opening && !(await mailReady())) return json({ error: 'open sign-up needs a mail server: set one in Settings → E-mail first' }, 409);
         await store.setVisitorSettings(asked);
         if (!asked.on) return json({ settings: asked, mail: await mailReady() });
       } else if (!now.on) {
@@ -101,6 +121,14 @@ export function visitorGate(store: Store, deps: VisitorDeps, mailReady: () => Pr
         return url.pathname === '/api/visitors' && request.method === 'GET' ? json({ settings: now, mail: await mailReady() }) : json({ error: 'visitor accounts are off' }, 404);
       }
       return (await open()).admin(request, url, me, body);
+    },
+    async guard(request, url, audience, language) {
+      if ((await settings()).on) return (await open()).guard(request, url, audience, language);
+      // Off: the page stays closed to everyone, and nothing of the accounts is loaded (ADR 0064 d8).
+      const frame = await deps.frame(language);
+      const said = wordsFor(language);
+      const body = frame === null ? `${said.membersClosed}\n` : framed(frame, said.members, `<p class="lead">${escape(said.membersClosed)}</p>`);
+      return new Response(body, { status: 403, headers: { 'content-type': frame === null ? 'text/plain; charset=utf-8' : 'text/html; charset=utf-8', 'cache-control': 'private, no-store', ...deps.headers } });
     },
     loaded: () => loading !== null,
   };

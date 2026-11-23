@@ -8,7 +8,8 @@ import { onMount } from 'svelte';
 import { api, type VisitorsShown } from './api.ts';
 import { say, t } from './messages.ts';
 
-let { languages = [] }: { languages?: string[] } = $props();
+let { languages = [], onswitch }: { languages?: string[]; /** Told whether the accounts are on, each time that is known. */ onswitch?: (on: boolean) => void } = $props();
+let levelName = $state('');
 let shown = $state<VisitorsShown | null>(null);
 let problem = $state('');
 let email = $state('');
@@ -20,6 +21,7 @@ async function load(call: () => Promise<VisitorsShown>): Promise<void> {
   try {
     shown = await call();
     problem = '';
+    onswitch?.(shown.settings.on);
   } catch (error) {
     problem = error instanceof Error ? error.message : String(error);
   }
@@ -32,6 +34,21 @@ async function invite(): Promise<void> {
     email = '';
     name = '';
   }
+}
+
+/** The levels the owner names (ADR 0064 d3); one taken away is taken from everyone. */
+async function addLevel(): Promise<void> {
+  if (!shown || !levelName.trim()) return;
+  await load(() => api.setVisitors({ levels: [...(shown as VisitorsShown).settings.levels, { id: '', name: levelName.trim() }] }));
+  if (!problem) levelName = '';
+}
+function removeLevel(id: string, name: string): void {
+  if (!shown || !confirm(say(t.visitors.removeLevelConfirm, { name }))) return;
+  const settings = shown.settings;
+  void load(() => api.setVisitors({ levels: settings.levels.filter((l) => l.id !== id), welcome: settings.welcome === id ? '' : settings.welcome }));
+}
+function giveLevel(id: string, held: string[], level: string, on: boolean): void {
+  void load(() => api.setVisitorLevels(id, on ? [...held, level] : held.filter((l) => l !== level)));
 }
 
 async function download(id: string, address: string): Promise<void> {
@@ -71,6 +88,27 @@ async function download(id: string, address: string): Promise<void> {
     </label>
     {#if !shown.mail}<p class="bad">{t.visitors.noMail}</p>{/if}
 
+    <h4>{t.visitors.levels}</h4>
+    <p class="hint">{t.visitors.levelsHint}</p>
+    {#if shown.settings.levels.length}
+      <ul class="list" data-visitors-levels>
+        {#each shown.settings.levels as level (level.id)}
+          <li data-level={level.id}><span class="grow">{level.name}</span><button type="button" class="quiet" onclick={() => removeLevel(level.id, level.name)} data-level-remove>{t.visitors.removeLevel}</button></li>
+        {/each}
+      </ul>
+      <label class="field">
+        <span>{t.visitors.welcome}</span>
+        <select value={shown.settings.welcome} onchange={(e) => load(() => api.setVisitors({ welcome: e.currentTarget.value }))} data-visitors-welcome>
+          <option value="">{t.visitors.welcomeNone}</option>
+          {#each shown.settings.levels as level (level.id)}<option value={level.id}>{level.name}</option>{/each}
+        </select>
+      </label>
+    {/if}
+    <div class="row">
+      <input type="text" maxlength="60" placeholder={t.visitors.levelName} aria-label={t.visitors.levelName} bind:value={levelName} data-level-name />
+      <button type="button" onclick={addLevel} disabled={!levelName.trim()} data-level-add>{t.visitors.addLevel}</button>
+    </div>
+
     <h4>{t.visitors.list}</h4>
     {#if shown.waiting}<p class="hint" data-visitors-waiting>{say(t.visitors.waiting, { count: shown.waiting })}</p>{/if}
     {#if shown.visitors?.length}
@@ -84,6 +122,13 @@ async function download(id: string, address: string): Promise<void> {
                 {v.invited ? t.visitors.invited : !v.confirmedAt ? t.visitors.unconfirmed : say(t.visitors.since, { date: day(v.confirmedAt) })}
                 {#if v.lastAt} · {say(t.visitors.lastSeen, { date: day(v.lastAt) })}{/if}
               </small>
+              {#if shown.settings.levels.length}
+                <span class="held" aria-label={t.visitors.levelsOf}>
+                  {#each shown.settings.levels as level (level.id)}
+                    <label><input type="checkbox" checked={v.levels.includes(level.id)} onchange={(e) => giveLevel(v.id, v.levels, level.id, e.currentTarget.checked)} data-visitor-level={level.id} /> {level.name}</label>
+                  {/each}
+                </span>
+              {/if}
             </span>
             <button type="button" class="quiet" onclick={() => download(v.id, v.email)}>{t.visitors.download}</button>
             <button type="button" class="quiet" onclick={() => confirm(say(t.visitors.removeConfirm, { email: v.email })) && load(() => api.removeVisitor(v.id))} data-visitor-remove>{t.visitors.remove}</button>
@@ -134,6 +179,10 @@ async function download(id: string, address: string): Promise<void> {
   .list li { display: flex; align-items: center; gap: 0.4rem; }
   .list small { display: block; }
   .grow { flex: 1; min-width: 0; }
+  .row { display: flex; gap: 0.4rem; margin-top: 0.4rem; }
+  .row input { flex: 1; min-width: 0; }
+  .held { display: flex; flex-wrap: wrap; gap: 0.2rem 0.6rem; }
+  .held label { display: flex; align-items: center; gap: 0.2rem; }
   p { font-size: 13px; }
   .bad { color: #b42318; }
 </style>

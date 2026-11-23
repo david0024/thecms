@@ -22,6 +22,8 @@ export interface ContentDoc {
   scheduled?: string;
   /** Behind a password on the site it came from (ADR 0043). The password is never in the file. */
   locked?: true;
+  /** Only for visitors signed in or for members on the site it came from (ADR 0064 d4): who sees it is the other site's to choose. */
+  members?: true;
   /** Who wrote it: a key into `people`. */
   author?: string;
 }
@@ -121,12 +123,15 @@ export async function exportContent(store: Store, asked: string[] = [], now = ne
   const site = await store.site();
   const scheduled = new Map((await store.scheduled()).map((s) => [`${s.kind}/${s.slug}`, s.at]));
   const locked = new Set(await store.lockedPages());
+  const audiences = await store.audiences();
+  const forMembers = (kind: string, slug: string): boolean => (kind === 'page' ? !!audiences.pages[slug] : !!(audiences.types[kind] ?? audiences.entries[`${kind}/${slug}`]));
   const doc = (kind: string, row: { slug: string; draft: unknown; published: unknown }): ContentDoc => ({
     slug: row.slug,
     draft: row.draft,
     published: row.published,
     ...(scheduled.has(`${kind}/${row.slug}`) ? { scheduled: scheduled.get(`${kind}/${row.slug}`) as string } : {}),
     ...(kind === 'page' && locked.has(row.slug) ? { locked: true as const } : {}),
+    ...(kind !== 'section' && forMembers(kind, row.slug) ? { members: true as const } : {}),
   });
 
   const file: ContentFile = {

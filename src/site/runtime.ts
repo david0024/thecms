@@ -6,7 +6,7 @@
  */
 import { timingSafeEqual } from 'node:crypto';
 import type { Mailer } from './mail.ts';
-import { lockOf, publishedSite } from './export.ts';
+import { lockOf, membersOf, publishedSite } from './export.ts';
 import { mediaResponse } from './serve-media.ts';
 import { EMBED_ORIGINS, mediaKindOf } from '../core/index.ts';
 import { lockCookie, lockedPage } from './locks.ts';
@@ -258,6 +258,12 @@ export function startRuntime(
     // An old address the export keeps answers here with a real 301, as Cloudflare and Apache do with its lists (ADR 0036).
     const moved = typeof body === 'string' ? /<meta http-equiv="refresh" content="0; url=([^"]+)">/.exec(body)?.[1] : undefined;
     if (moved) return new Response(null, { status: 301, headers: { location: moved.replaceAll('&amp;', '&') } });
+    // For visitors signed in or for members (ADR 0064 d4): asked of the accounts, and kept by no cache in between.
+    const members = typeof body === 'string' ? membersOf(body) : null;
+    if (members !== null) {
+      const closed = await visitors.guard(request, url, members, /<html lang="([^"]+)"/.exec(body as string)?.[1] ?? '');
+      if (closed) return closed;
+    }
     const locked = typeof body === 'string' ? lockOf(body) : null;
     if (locked !== null) {
       // Behind a password: shown only to a visitor holding its key, and kept by no cache in between.
@@ -277,7 +283,9 @@ export function startRuntime(
     }
     if (body !== undefined) {
       if (own.endsWith('.html')) void visits.seen(request, ip, url.pathname).catch(() => {});
-      return file(own, body);
+      const shown = file(own, body);
+      if (members !== null) shown.headers.set('cache-control', 'private, no-store');
+      return shown;
     }
     const files = await site();
     // An address without its last slash leads to the page that has one.
