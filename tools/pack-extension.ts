@@ -1,11 +1,11 @@
 /**
- * Packs an extension's folder into the one file thecms installs (ADR 0026):
+ * Packs an extension's folder into the one file Uhlaka installs (ADR 0026):
  *
  *   bun tools/pack-extension.ts <folder> [out-folder]
  *
  * The folder holds `manifest.json` and, when it has actions, `index.ts`,
  * which exports `actions`. The code is bundled into one module: nothing is
- * installed beside it. The package is checked as thecms will check it.
+ * installed beside it. The package is checked as Uhlaka will check it.
  */
 import { join } from 'node:path';
 import { EXTENSION_FORMAT, parseExtension } from '../src/core/index.ts';
@@ -23,7 +23,7 @@ export async function packExtension(folder: string, out = folder): Promise<{ fil
   const { pkg, problems } = parseExtension(raw);
   if (!pkg) throw new Error(problems.join('\n'));
   const text = `${JSON.stringify(raw)}\n`;
-  const file = join(out, `${pkg.manifest.name}-${pkg.manifest.version}.thecms-extension`);
+  const file = join(out, `${pkg.manifest.name}-${pkg.manifest.version}.uhlaka-extension`);
   await Bun.write(file, text);
   return { file, sha256: new Bun.CryptoHasher('sha256').update(text).digest('hex') };
 }

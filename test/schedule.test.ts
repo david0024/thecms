@@ -11,7 +11,7 @@ import { startClock } from '../src/site/clock.ts';
 import { startEditor } from '../src/site/server.ts';
 import { Store } from '../src/site/store.ts';
 
-const dir = await mkdtemp(join(tmpdir(), 'thecms-schedule-'));
+const dir = await mkdtemp(join(tmpdir(), 'uhlaka-schedule-'));
 afterAll(() => rm(dir, { recursive: true, force: true }));
 
 const NOW = new Date('2026-11-20T10:00:00Z');
@@ -87,7 +87,7 @@ describe('publishing later', () => {
       const response = await editor.fetch(
         new Request(`http://127.0.0.1:4321${path}`, {
           method,
-          headers: { host: '127.0.0.1:4321', 'x-thecms-token': editor.token, 'content-type': 'application/json' },
+          headers: { host: '127.0.0.1:4321', 'x-uhlaka-token': editor.token, 'content-type': 'application/json' },
           body: body === undefined ? undefined : JSON.stringify(body),
         }),
       );

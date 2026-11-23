@@ -37,7 +37,7 @@ describe('an import from the admin (ADR 0012)', () => {
   afterEach(async () => await store.close());
 
   const call = (path: string, init: { method?: string; body?: string; headers?: Record<string, string> } = {}): Promise<Response> =>
-    editor.fetch(new Request(`http://${HOST}${path}`, { method: init.method ?? 'GET', headers: { host: HOST, 'x-thecms-token': editor.token, ...init.headers }, body: init.body }));
+    editor.fetch(new Request(`http://${HOST}${path}`, { method: init.method ?? 'GET', headers: { host: HOST, 'x-uhlaka-token': editor.token, ...init.headers }, body: init.body }));
   const finished = async (): Promise<ImportProgress> => {
     for (let i = 0; i < 200; i++) {
       const progress = (await (await call('/api/import')).json()) as ImportProgress;
@@ -72,7 +72,7 @@ describe('an import from the admin (ADR 0012)', () => {
     expect(run.status).toBe(400);
     expect(await finished()).toEqual({ status: 'idle' });
     expect((await call('/api/import/plan', { method: 'POST', body: WXR, headers: { 'content-length': String(IMPORT_MAX_BYTES + 1) } })).status).toBe(413);
-    expect((await call('/api/import/run', { method: 'POST', body: WXR, headers: { 'x-thecms-token': 'no' } })).status).toBe(401);
+    expect((await call('/api/import/run', { method: 'POST', body: WXR, headers: { 'x-uhlaka-token': 'no' } })).status).toBe(401);
     expect(await store.posts()).toHaveLength(0);
   });
 

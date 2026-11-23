@@ -16,7 +16,7 @@ import { Store } from '../src/site/store.ts';
 import { VISITOR_TABLES } from '../src/site/visitor-schema.ts';
 import plain from '../themes/plain.json';
 
-const dir = await mkdtemp(join(tmpdir(), 'thecms-visitors-'));
+const dir = await mkdtemp(join(tmpdir(), 'uhlaka-visitors-'));
 afterAll(() => rm(dir, { recursive: true, force: true }));
 const text = (body: string) => ({ id: `b_${Math.random().toString(36).slice(2, 10)}`, type: 'text', content: { body: [{ type: 'paragraph', children: [{ text: body }] }] } });
 
@@ -75,7 +75,7 @@ describe('visitor accounts, off', () => {
     const store = await site('off-admin');
     const editor = await startEditor(store, { listen: false, log: () => {} });
     const call = async (method: string, path: string, body?: unknown) =>
-      editor.fetch(new Request(`http://127.0.0.1:4321${path}`, { method, headers: { host: '127.0.0.1:4321', 'x-thecms-token': editor.token, 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) }));
+      editor.fetch(new Request(`http://127.0.0.1:4321${path}`, { method, headers: { host: '127.0.0.1:4321', 'x-uhlaka-token': editor.token, 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) }));
     try {
       const off = (await (await call('GET', '/api/visitors')).json()) as Record<string, unknown>;
       expect(off).toEqual({ settings: { on: false, signup: 'closed', privacy: '', levels: [], welcome: '' }, mail: false });
@@ -147,7 +147,7 @@ describe('visitor accounts, on', () => {
       expect(await ask.text()).toContain('name="k"');
       const done = await tab.go('POST', '/_/account/link', { k: secretOf(confirm) });
       expect(done.status).toBe(303);
-      expect(done.headers.get('set-cookie')).toContain('thecms_visitor=');
+      expect(done.headers.get('set-cookie')).toContain('uhlaka_visitor=');
       expect(done.headers.get('set-cookie')).toContain('HttpOnly; SameSite=Lax; Max-Age=2592000');
       // The other link was for the same account; it is spent with the first.
       expect((await tab.go('GET', linkIn(sent[1]))).status).toBe(410);
@@ -273,7 +273,7 @@ describe('visitor accounts, on', () => {
     // The clock of a runtime on the same site sends what waits.
     const runtime = startRuntime(store, { listen: false, log: (line) => lines.push(line), mailer, from: 'site@example.com' });
     const call = async (method: string, path: string, body?: unknown) =>
-      editor.fetch(new Request(`http://127.0.0.1:4321${path}`, { method, headers: { host: '127.0.0.1:4321', 'x-thecms-token': editor.token, 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) }));
+      editor.fetch(new Request(`http://127.0.0.1:4321${path}`, { method, headers: { host: '127.0.0.1:4321', 'x-uhlaka-token': editor.token, 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) }));
     try {
       await call('PUT', '/api/visitors', { on: true, signup: 'invite' });
       const invited = (await (await call('POST', '/api/visitors', { email: 'guest@example.com' })).json()) as { visitors: { email: string; invited: boolean }[]; waiting: number };
@@ -309,7 +309,7 @@ describe('visitor accounts, on', () => {
     const editor = await startEditor(store, { listen: false, log: () => {}, mailer, from: 'site@example.com' });
     const runtime = startRuntime(store, { listen: false, log: () => {}, mailer, from: 'site@example.com' });
     const call = async (method: string, path: string, body?: unknown) =>
-      editor.fetch(new Request(`http://127.0.0.1:4321${path}`, { method, headers: { host: '127.0.0.1:4321', 'x-thecms-token': editor.token, 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) }));
+      editor.fetch(new Request(`http://127.0.0.1:4321${path}`, { method, headers: { host: '127.0.0.1:4321', 'x-uhlaka-token': editor.token, 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) }));
     const tab = browser((r) => runtime.fetch(r));
     try {
       await call('PUT', '/api/visitors', { on: true, signup: 'invite' });
@@ -339,7 +339,7 @@ describe('Settings → E-mail', () => {
     const store = await site('mail');
     const editor = await startEditor(store, { listen: false, log: () => {} });
     const call = async (method: string, path: string, body?: unknown) =>
-      editor.fetch(new Request(`http://127.0.0.1:4321${path}`, { method, headers: { host: '127.0.0.1:4321', 'x-thecms-token': editor.token, 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) }));
+      editor.fetch(new Request(`http://127.0.0.1:4321${path}`, { method, headers: { host: '127.0.0.1:4321', 'x-uhlaka-token': editor.token, 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) }));
     try {
       expect(((await (await call('GET', '/api/mail')).json()) as { ready: boolean }).ready).toBe(false);
       expect((await call('PUT', '/api/mail', { host: 'mail.example.com', security: 'plain', port: 25, from: 'site@example.com' })).status).toBe(400);
@@ -357,7 +357,7 @@ describe('Settings → E-mail', () => {
     const sent: Mail[] = [];
     const strong = await startEditor(store, { listen: false, log: () => {}, mailer: async (m) => void sent.push(m), from: 'env@example.com' });
     const ask = async (method: string, path: string, body?: unknown) =>
-      strong.fetch(new Request(`http://127.0.0.1:4321${path}`, { method, headers: { host: '127.0.0.1:4321', 'x-thecms-token': strong.token, 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) }));
+      strong.fetch(new Request(`http://127.0.0.1:4321${path}`, { method, headers: { host: '127.0.0.1:4321', 'x-uhlaka-token': strong.token, 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) }));
     try {
       expect(((await (await ask('GET', '/api/mail')).json()) as { fromEnvironment: unknown }).fromEnvironment).toEqual({ server: true, from: true });
       expect(((await (await ask('POST', '/api/mail/test', { to: 'owner@example.com' })).json()) as { sent: boolean }).sent).toBe(true);

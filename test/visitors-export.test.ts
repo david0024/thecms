@@ -9,7 +9,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { POSTS_TYPE } from '../src/core/index.ts';
-import { contentPreview, readContentFile, runContentImport } from '../src/import/thecms.ts';
+import { contentPreview, readContentFile, runContentImport } from '../src/import/uhlaka.ts';
 import { publishedSite } from '../src/site/export.ts';
 import { Store } from '../src/site/store.ts';
 import { contentParts, exportContent } from '../src/site/transfer.ts';
@@ -17,7 +17,7 @@ import { normalizeVisitorSettings } from '../src/site/visitor-gate.ts';
 import { visitorSchema } from '../src/site/visitor-schema.ts';
 import plain from '../themes/plain.json';
 
-const dir = await mkdtemp(join(tmpdir(), 'thecms-visitors-export-'));
+const dir = await mkdtemp(join(tmpdir(), 'uhlaka-visitors-export-'));
 afterAll(() => rm(dir, { recursive: true, force: true }));
 
 const text = (body: string) => ({ id: `b_${Math.random().toString(36).slice(2, 10)}`, type: 'text', content: { body: [{ type: 'paragraph', children: [{ text: body }] }] } });
@@ -160,9 +160,9 @@ describe('the visitors in the content file (ADR 0064 d6)', () => {
         types: { courses: { who: 'members', levels: ['member'] } },
       });
       const files = await publishedSite(off);
-      expect(String(files.get('club/index.html'))).toContain('<meta name="thecms-members" content="members:premium">');
-      expect(String(files.get('blog/inside/index.html'))).toContain('<meta name="thecms-members" content="signed">');
-      expect(String(files.get('courses/oak/index.html'))).toContain('<meta name="thecms-members" content="members:member">');
+      expect(String(files.get('club/index.html'))).toContain('<meta name="uhlaka-members" content="members:premium">');
+      expect(String(files.get('blog/inside/index.html'))).toContain('<meta name="uhlaka-members" content="signed">');
+      expect(String(files.get('courses/oak/index.html'))).toContain('<meta name="uhlaka-members" content="members:member">');
     } finally {
       await off.close();
     }
@@ -194,7 +194,7 @@ describe('the visitors in the content file (ADR 0064 d6)', () => {
 
   test('a file from before the levels were in it keeps a page for members closed', () => {
     const file = readContentFile(
-      JSON.stringify({ format: 'thecms.content/1', from: {}, parts: ['pages'], pages: [{ slug: 'club', draft: { title: 'Club', blocks: [] }, published: { title: 'Club', blocks: [] }, members: true }], types: [] }),
+      JSON.stringify({ format: 'uhlaka.content/1', from: {}, parts: ['pages'], pages: [{ slug: 'club', draft: { title: 'Club', blocks: [] }, published: { title: 'Club', blocks: [] }, members: true }], types: [] }),
     );
     expect(file.pages?.[0]?.audience).toEqual({ who: 'signed' });
   });

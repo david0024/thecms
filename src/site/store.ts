@@ -2348,7 +2348,7 @@ export class Store {
     await this.setMeta('published:version', crypto.randomUUID());
   }
 
-  /** Valkey's address set in Settings → Performance (ADR 0044 d4); THECMS_VALKEY_URL, when set, comes first. */
+  /** Valkey's address set in Settings → Performance (ADR 0044 d4); UHLAKA_VALKEY_URL, when set, comes first. */
   async valkeyAddress(): Promise<string> {
     return String((await this.getMeta('valkey')) ?? '');
   }

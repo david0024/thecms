@@ -148,7 +148,7 @@ describe('the site check (d5)', () => {
       ['blog/page/2/index.html', html('Blog · Atelier')],
       ['long/index.html', html(`${'Very long words '.repeat(5)}&amp; more`)],
       ['old/index.html', html('About · Atelier', '<meta http-equiv="refresh" content="0; url=/about/">')],
-      ['secret/index.html', html('About · Atelier', '<meta name="thecms-locked" content="secret">')],
+      ['secret/index.html', html('About · Atelier', '<meta name="uhlaka-locked" content="secret">')],
       ['hidden/index.html', html('About · Atelier', '<meta name="robots" content="noindex">')],
     ]);
     const found = checkSeo(files);
@@ -170,7 +170,7 @@ describe('the picture for sharing is a picture the site uses', () => {
   let dir: string;
   let store: Store;
   beforeEach(async () => {
-    dir = await mkdtemp(join(tmpdir(), 'thecms-seo-'));
+    dir = await mkdtemp(join(tmpdir(), 'uhlaka-seo-'));
     store = await Store.open(join(dir, 'site.db'));
   });
   afterEach(async () => {

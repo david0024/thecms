@@ -24,8 +24,8 @@ const manifest = {
   ],
   actions: [{ name: 'numbers', label: 'Numbers', reads: ['visits'] }],
   views: [
-    { spec: 'thecms.view/1', id: 'bookings.report', title: 'Report', type: 'report', action: 'numbers', ranges: ['7', '30'] },
-    { spec: 'thecms.view/1', id: 'bookings.calendar', title: 'Calendar', type: 'calendar', collection: 'visits', date: 'starts', name: 'guest', create: false },
+    { spec: 'uhlaka.view/1', id: 'bookings.report', title: 'Report', type: 'report', action: 'numbers', ranges: ['7', '30'] },
+    { spec: 'uhlaka.view/1', id: 'bookings.calendar', title: 'Calendar', type: 'calendar', collection: 'visits', date: 'starts', name: 'guest', create: false },
   ],
 };
 
@@ -45,14 +45,14 @@ describe('the screens of the third format', () => {
       manifest: {
         ...manifest,
         views: [
-          { spec: 'thecms.view/1', id: 'a', title: 'A', type: 'report', action: 'missing', ranges: ['week'], url: '/x' },
-          { spec: 'thecms.view/1', id: 'b', title: 'B', type: 'calendar', collection: 'visits', date: 'guest', name: 'nobody' },
+          { spec: 'uhlaka.view/1', id: 'a', title: 'A', type: 'report', action: 'missing', ranges: ['week'], url: '/x' },
+          { spec: 'uhlaka.view/1', id: 'b', title: 'B', type: 'calendar', collection: 'visits', date: 'guest', name: 'nobody' },
         ],
       },
       code: 'export const actions = {};',
     });
     expect(wrong.problems).toEqual([
-      'views[0]: "url" is not part of thecms.view/1',
+      'views[0]: "url" is not part of uhlaka.view/1',
       'views[0]: "missing" is not one of the extension\'s actions',
       'views[0]: "ranges" lists some of today, 7, 30, 365, each once',
       'views[1].name: "visits" has no field "nobody"',
@@ -64,7 +64,7 @@ describe('the screens of the third format', () => {
     const { problems } = parseExtension({ format: EXTENSION_FORMAT_2, manifest, code: 'export const actions = {};' });
     expect(problems).toContain('visits.day: a field is one of text, longtext, number, boolean, choice, secret, url');
     const screens = parseExtension({ format: EXTENSION_FORMAT_2, manifest: { ...manifest, collections: [{ ...manifest.collections[0], fields: [{ key: 'guest', label: 'Guest', kind: 'text' }] }], views: [manifest.views[0]] }, code: 'export const actions = {};' });
-    expect(screens.problems).toEqual(['a screen of the kind "report" needs thecms.extension/3']);
+    expect(screens.problems).toEqual(['a screen of the kind "report" needs uhlaka.extension/3']);
   });
 });
 

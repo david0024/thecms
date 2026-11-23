@@ -35,12 +35,12 @@ import { Store } from '../src/site/store.ts';
 import plain from '../themes/plain.json';
 
 const PNG = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='), (c) => c.charCodeAt(0));
-const dir = await mkdtemp(join(tmpdir(), 'thecms-backup-'));
+const dir = await mkdtemp(join(tmpdir(), 'uhlaka-backup-'));
 afterAll(() => rm(dir, { recursive: true, force: true }));
 
 const databases: [string, string][] = [['SQLite', join(dir, 'site.db')]];
-if (process.env.THECMS_TEST_POSTGRES) databases.push(['Postgres', process.env.THECMS_TEST_POSTGRES]);
-if (process.env.THECMS_TEST_MYSQL) databases.push(['MySQL', process.env.THECMS_TEST_MYSQL]);
+if (process.env.UHLAKA_TEST_POSTGRES) databases.push(['Postgres', process.env.UHLAKA_TEST_POSTGRES]);
+if (process.env.UHLAKA_TEST_MYSQL) databases.push(['MySQL', process.env.UHLAKA_TEST_MYSQL]);
 
 const TABLES = ['meta', 'pages', 'sections', 'entries', 'media', 'messages', 'users', 'sessions', 'links', 'extensions', 'extension_rows', 'versions', 'media_sizes', 'schedule', 'media_variants', 'page_locks', 'extension_jobs', 'comments', 'message_answers', 'comment_languages', 'visits'];
 /** A database emptied, then a small site in it: a page, a picture, an owner signed in, a message. */
@@ -86,7 +86,7 @@ describe('backup settings and the schedule', () => {
       hour: 23,
       offset: -120,
       keep: 1,
-      s3: { endpoint: '', bucket: 'b', region: 'auto', accessKeyId: '', secretAccessKey: '', prefix: 'thecms/' },
+      s3: { endpoint: '', bucket: 'b', region: 'auto', accessKeyId: '', secretAccessKey: '', prefix: 'uhlaka/' },
     });
     expect(normalizeBackupSettings({ on: 'yes', hour: '', keep: 500, s3: { endpoint: 'https://s3.example.com/', bucket: 'b', prefix: '/../site', secretAccessKey: 's' } })).toMatchObject({
       on: false,
@@ -134,9 +134,9 @@ describe('backup settings and the schedule', () => {
     expect(backupsFolder('sqlite:///var/sites/b.db', '')).toBe('/var/sites/backups');
     expect(backupsFolder('postgres://u:p@h/db', '')).toBe(resolve('backups'));
     expect(backupsFolder('site.db', '/mnt/kept')).toBe('/mnt/kept');
-    expect(backupName('site', new Date('2026-11-21T03:00:07.123Z'))).toBe('site-2026-11-21-030007.thecms-backup');
-    expect(isBackupName('site-2026-11-21-030007.thecms-backup')).toBe(true);
-    for (const name of ['../site.thecms-backup', 'site.db', 'a/b.thecms-backup', 'Site.thecms-backup', '.thecms-backup']) expect(isBackupName(name)).toBe(false);
+    expect(backupName('site', new Date('2026-11-21T03:00:07.123Z'))).toBe('site-2026-11-21-030007.uhlaka-backup');
+    expect(isBackupName('site-2026-11-21-030007.uhlaka-backup')).toBe(true);
+    for (const name of ['../site.uhlaka-backup', 'site.db', 'a/b.uhlaka-backup', 'Site.uhlaka-backup', '.uhlaka-backup']) expect(isBackupName(name)).toBe(false);
   });
 
   test('only the owner calls /api/backups, whatever the method', () => {
@@ -162,14 +162,14 @@ for (const [name, address] of databases) {
       await store.setBackupSettings({ keep: 3 });
       await store.setValkeyAddress('redis://127.0.0.1:6379');
       const file = await writeBackup(store, folder, 'site', new Date('2026-11-21T03:00:00Z'));
-      expect(file.name).toBe('site-2026-11-21-030000.thecms-backup');
+      expect(file.name).toBe('site-2026-11-21-030000.uhlaka-backup');
       expect(file.size).toBeGreaterThan(0);
       expect(readdirSync(folder)).toEqual([file.name]);
       // One more within the same second is kept beside it.
       const twin = await writeBackup(store, folder, 'site', new Date('2026-11-21T03:00:00Z'));
-      expect(twin.name).toBe('site-2026-11-21-030000-2.thecms-backup');
+      expect(twin.name).toBe('site-2026-11-21-030000-2.uhlaka-backup');
       pruneBackups(folder, 1, file.name);
-      expect(await backupHeader(join(folder, file.name))).toEqual({ format: 'thecms.backup/1', version: expect.any(String), at: '2026-11-21T03:00:00.000Z', database: store.kind });
+      expect(await backupHeader(join(folder, file.name))).toEqual({ format: 'uhlaka.backup/1', version: expect.any(String), at: '2026-11-21T03:00:00.000Z', database: store.kind });
       // What the server keeps for itself is not in the file; the site's sessions are not either.
       const tables = new Set<string>();
       for await (const { table, row } of readBackup(join(folder, file.name))) {
@@ -207,16 +207,16 @@ for (const [name, address] of databases) {
     });
 
     test('a file that is not a backup, or is damaged, changes nothing', async () => {
-      const bad = join(folder, 'bad.thecms-backup');
+      const bad = join(folder, 'bad.uhlaka-backup');
       writeFileSync(bad, 'not gzip at all');
-      await expect(backupHeader(bad)).rejects.toThrow('this file is not a thecms backup');
+      await expect(backupHeader(bad)).rejects.toThrow('this file is not a Uhlaka backup');
       writeFileSync(bad, gzipSync('{"format":"something else"}\n'));
-      await expect(backupHeader(bad)).rejects.toThrow('this file is not a thecms backup');
+      await expect(backupHeader(bad)).rejects.toThrow('this file is not a Uhlaka backup');
       writeFileSync(bad, gzipSync('not json\n'));
-      await expect(backupHeader(bad)).rejects.toThrow('this file is not a thecms backup');
+      await expect(backupHeader(bad)).rejects.toThrow('this file is not a Uhlaka backup');
       writeFileSync(bad, gzipSync(''));
-      await expect(backupHeader(bad)).rejects.toThrow('this file is not a thecms backup');
-      const head = '{"format":"thecms.backup/1"}\n';
+      await expect(backupHeader(bad)).rejects.toThrow('this file is not a Uhlaka backup');
+      const head = '{"format":"uhlaka.backup/1"}\n';
       const cases: [string, string][] = [
         [`${head}\n{"t":"pages"}\n`, 'the backup is damaged'],
         [`${head}not json\n`, 'the backup is damaged'],
@@ -234,7 +234,7 @@ for (const [name, address] of databases) {
       writeFileSync(bad, gzipSync(`${head}{"t":"meta","r":{"key":"valkey","value":"\\"redis://elsewhere\\""}}\n`));
       await store.restoreRows(readBackup(bad));
       expect(await store.valkeyAddress()).toBe('');
-      await expect(backupHeader(join(folder, 'missing.thecms-backup'))).rejects.toThrow();
+      await expect(backupHeader(join(folder, 'missing.uhlaka-backup'))).rejects.toThrow();
       await store.close();
     });
 
@@ -244,12 +244,12 @@ for (const [name, address] of databases) {
       const kept = backups(store, { dir: folder, remote: () => remote, log: (line) => said.push(line) });
       await store.setBackupSettings({ keep: 2, s3: { bucket: 'b', secretAccessKey: 's' } });
       const first = await kept.make('site', new Date('2026-11-19T01:00:00Z'));
-      expect(first).toMatchObject({ ok: true, sent: 'yes', name: 'site-2026-11-19-010000.thecms-backup' });
+      expect(first).toMatchObject({ ok: true, sent: 'yes', name: 'site-2026-11-19-010000.uhlaka-backup' });
       await kept.make('site', new Date('2026-11-20T01:00:00Z'));
       await kept.make('site', new Date('2026-11-21T01:00:00Z'));
       // Two are kept, here and there; a file there the site did not make stays.
       expect(listBackups(folder)).toHaveLength(2);
-      expect([...remote.files.keys()].sort()).toEqual(['site-2026-11-20-010000.thecms-backup', 'site-2026-11-21-010000.thecms-backup']);
+      expect([...remote.files.keys()].sort()).toEqual(['site-2026-11-20-010000.uhlaka-backup', 'site-2026-11-21-010000.uhlaka-backup']);
       // A copy that cannot be sent is said; the backup is kept.
       remote.fail = 'Access Denied';
       const unsent = await kept.make('site', new Date('2026-11-21T02:00:00Z'));
@@ -276,9 +276,9 @@ for (const [name, address] of databases) {
       expect(await kept.restore(oldest, new Date('2026-11-24T06:00:00Z'))).toBeGreaterThan(0);
       expect((await store.site()).name).toBe('Atelier ăîșț 🌲');
       expect(listBackups(folder).map((f) => f.name)).toContain(oldest);
-      expect(listBackups(folder).map((f) => f.name)).toContain('before-restore-2026-11-24-060000.thecms-backup');
+      expect(listBackups(folder).map((f) => f.name)).toContain('before-restore-2026-11-24-060000.uhlaka-backup');
       expect(said.at(-1)).toMatch(/^Put back .* what was there before is in before-restore-/);
-      await expect(kept.restore('nothing.thecms-backup')).rejects.toThrow('there is no such backup');
+      await expect(kept.restore('nothing.uhlaka-backup')).rejects.toThrow('there is no such backup');
       await expect(kept.restore('../site.db')).rejects.toThrow('there is no such backup');
       await store.close();
     });
@@ -359,17 +359,17 @@ describe('a copy in S3', () => {
     try {
       const settings = normalizeBackupSettings({ s3: { endpoint: `http://127.0.0.1:${server.port}`, bucket: 'bucket', accessKeyId: 'k', secretAccessKey: 's', prefix: 'mine' } });
       const remote = s3Remote(settings.s3 as NonNullable<typeof settings.s3>);
-      const file = join(dir, 'one.thecms-backup');
+      const file = join(dir, 'one.uhlaka-backup');
       writeFileSync(file, 'bytes');
-      await remote.put('site-2026-11-21-010000.thecms-backup', file);
-      expect(objects.has('mine/site-2026-11-21-010000.thecms-backup')).toBe(true);
+      await remote.put('site-2026-11-21-010000.uhlaka-backup', file);
+      expect(objects.has('mine/site-2026-11-21-010000.uhlaka-backup')).toBe(true);
       objects.set('mine/notes.txt', new Uint8Array());
-      expect(await remote.names()).toEqual(['site-2026-11-21-010000.thecms-backup']);
-      await remote.remove('site-2026-11-21-010000.thecms-backup');
+      expect(await remote.names()).toEqual(['site-2026-11-21-010000.uhlaka-backup']);
+      await remote.remove('site-2026-11-21-010000.uhlaka-backup');
       expect(await remote.names()).toEqual([]);
       await remote.test();
-      expect(seen).toContain('PUT /bucket/mine/thecms-test.txt');
-      expect(objects.has('mine/thecms-test.txt')).toBe(false);
+      expect(seen).toContain('PUT /bucket/mine/uhlaka-test.txt');
+      expect(objects.has('mine/uhlaka-test.txt')).toBe(false);
     } finally {
       server.stop(true);
     }
@@ -386,7 +386,7 @@ describe('the admin\'s calls', () => {
       editor.fetch(
         new Request(`http://127.0.0.1:4321${path}`, {
           method: init.method ?? 'GET',
-          headers: { host: '127.0.0.1:4321', 'x-thecms-token': editor.token, ...(init.body ? { 'content-type': 'application/json' } : {}), ...init.headers },
+          headers: { host: '127.0.0.1:4321', 'x-uhlaka-token': editor.token, ...(init.body ? { 'content-type': 'application/json' } : {}), ...init.headers },
           body: init.raw ? new Blob([init.raw as Uint8Array<ArrayBuffer>]) : init.body ? JSON.stringify(init.body) : undefined,
         }),
       );
@@ -431,7 +431,7 @@ describe('the admin\'s calls', () => {
       expect((await store.site()).name).toBe('Atelier ăîșț 🌲');
       const refused = await call('/api/backups/upload', { method: 'POST', raw: new TextEncoder().encode('hello') });
       expect(refused.status).toBe(400);
-      expect(((await refused.json()) as { error: string }).error).toBe('this file is not a thecms backup');
+      expect(((await refused.json()) as { error: string }).error).toBe('this file is not a Uhlaka backup');
       expect(readdirSync(folder).some((n) => n.endsWith('.part'))).toBe(false);
       expect((await call('/api/backups/upload', { method: 'POST', raw: new Uint8Array(1), headers: { 'content-length': String(65 * 1024 * 1024) } })).status).toBe(413);
 
@@ -455,7 +455,7 @@ describe('the admin\'s calls', () => {
     const store = await fresh(join(dir, 'none.db'));
     const editor = await startEditor(store, { listen: false });
     try {
-      const response = await editor.fetch(new Request('http://127.0.0.1:4321/api/backups', { headers: { host: '127.0.0.1:4321', 'x-thecms-token': editor.token } }));
+      const response = await editor.fetch(new Request('http://127.0.0.1:4321/api/backups', { headers: { host: '127.0.0.1:4321', 'x-uhlaka-token': editor.token } }));
       expect(response.status).toBe(404);
     } finally {
       editor.stop();
@@ -473,7 +473,7 @@ describe('the command line', () => {
       mkdirSync(join(dir, 'cli'));
       await main(['init', db]);
       await main(['backup', db]);
-      expect(said.at(-1)).toMatch(/^Backed up .*site\.db to .*\/cli\/backups\/site-.*\.thecms-backup \(\d+ KB\)\.$/);
+      expect(said.at(-1)).toMatch(/^Backed up .*site\.db to .*\/cli\/backups\/site-.*\.uhlaka-backup \(\d+ KB\)\.$/);
       const elsewhere = join(dir, 'cli-elsewhere');
       await main(['backup', db, elsewhere]);
       const file = join(elsewhere, readdirSync(elsewhere)[0] as string);

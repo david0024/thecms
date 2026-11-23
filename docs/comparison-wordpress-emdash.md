@@ -1,12 +1,12 @@
-# thecms next to WordPress and EmDash
+# Uhlaka next to WordPress and EmDash
 
 - **Date:** 2026-11-19
 - **Status:** Analysis, for discussion. It decides nothing; each item it
   recommends gets its own ADR when its work begins.
-- **Compared:** thecms at `main` (ADR 0001 to 0016; ADR 0017 open as a pull
+- **Compared:** Uhlaka at `main` (ADR 0001 to 0016; ADR 0017 open as a pull
   request), **WordPress 7.0** (released 2026-05-20) and **EmDash 1.0**, the CMS
   Cloudflare announced on 2026-04-01 and released as stable on 2026-09-28.
-- **Also answers:** whether thecms should be framework-agnostic through an SDK,
+- **Also answers:** whether Uhlaka should be framework-agnostic through an SDK,
   and whether the admin should be a client of it (asked by the owner the same
   day).
 - **Out of scope here:** language packs for the admin and tags, which have their
@@ -38,7 +38,7 @@ from a JSON schema. 1.0 added a signed, decentralised plugin registry on AT
 Protocol. Its themes are Astro projects, which means code, and it has no
 point-and-click site builder.
 
-**thecms** is Svelte 5 on Bun, GPL-3.0-or-later, on SQLite, Postgres or MySQL.
+**Uhlaka** is Svelte 5 on Bun, GPL-3.0-or-later, on SQLite, Postgres or MySQL.
 Pages are block trees saved as data, edited visually on the real page. A block
 keeps content and style apart, and style binds to theme tokens. A theme is a
 data document with a visual builder and contains no code. The site is
@@ -46,11 +46,11 @@ published as static files. Content types are made in the admin, and a WordPress
 export comes over with a plan shown first, images, links rewritten, old
 addresses kept alive and a report of what did not come.
 
-## Where thecms is already ahead
+## Where Uhlaka is already ahead
 
 These are worth protecting. None of the other two has all of them.
 
-| | thecms | WordPress 7.0 | EmDash 1.0 |
+| | uhlaka | WordPress 7.0 | EmDash 1.0 |
 |---|---|---|---|
 | Visual editing on the real page, for non-developers | yes | yes | inline text editing; no site builder |
 | Content and style kept apart, style bound to tokens | yes, by rule (ADR 0001 d7) | partly: `theme.json` presets, but free values and custom CSS live in the block | not a CMS concern; styling is in Astro code |
@@ -64,17 +64,17 @@ These are worth protecting. None of the other two has all of them.
 The positioning that follows: **WordPress's ease, without WordPress's attack
 surface, and without being tied to one cloud.** EmDash is the closest
 competitor in spirit, but it is aimed at developers (Astro themes, code-first
-templates). thecms is aimed at the people who use WordPress without writing
+templates). Uhlaka is aimed at the people who use WordPress without writing
 code, and that gap is real.
 
-## What they have and thecms lacks
+## What they have and Uhlaka lacks
 
 Grouped by what a WordPress user notices first. "Take" means worth taking;
 "adapt" means take the idea, not the shape.
 
 ### Running a site with more than one person
 
-| Feature | WordPress | EmDash | thecms today | Verdict |
+| Feature | WordPress | EmDash | Uhlaka today | Verdict |
 |---|---|---|---|---|
 | Accounts and login | yes | passkeys first, magic link, OAuth | the editor is local, opened with a key (ADR 0003 d5) | **take**, passkeys first |
 | Roles | 5 (Admin, Editor, Author, Contributor, Subscriber) | 4 | none | **take** the four EmDash keeps; the names are the ones WordPress users know |
@@ -87,7 +87,7 @@ Grouped by what a WordPress user notices first. "Take" means worth taking;
 
 ### Content
 
-| Feature | WordPress | EmDash | thecms today | Verdict |
+| Feature | WordPress | EmDash | Uhlaka today | Verdict |
 |---|---|---|---|---|
 | Tags, authors, author pages | yes | yes | categories only | tags: other thread. **take** authors |
 | Comments | yes | "comment-ready" template | none (ADR 0007) | **adapt**: as a moderated form, or left to a module; do not build WordPress comments |
@@ -101,7 +101,7 @@ Grouped by what a WordPress user notices first. "Take" means worth taking;
 
 ### Look and media
 
-| Feature | WordPress | EmDash | thecms today | Verdict |
+| Feature | WordPress | EmDash | Uhlaka today | Verdict |
 |---|---|---|---|---|
 | Responsive images (`srcset`, `width`/`height`, AVIF/WebP) | yes | via Astro | named as missing (ADR 0005) | **take**, at export |
 | Crop and focal point | yes, new editor in 7.0 | no | none | **take** focal point; crop later |
@@ -112,7 +112,7 @@ Grouped by what a WordPress user notices first. "Take" means worth taking;
 
 ### Being found
 
-| Feature | WordPress | EmDash | thecms today | Verdict |
+| Feature | WordPress | EmDash | Uhlaka today | Verdict |
 |---|---|---|---|---|
 | SEO title, description, share image | plugin (Yoast and others) | core fields | description, Open Graph, canonical, sitemap, robots | **take**: per-entry SEO title and `noindex` |
 | Structured data (`BlogPosting`, `BreadcrumbList`) | plugin | plugin | named as missing (ADR 0007) | **take** |
@@ -121,7 +121,7 @@ Grouped by what a WordPress user notices first. "Take" means worth taking;
 
 ### Moving in and out
 
-| Feature | WordPress | EmDash | thecms today | Verdict |
+| Feature | WordPress | EmDash | Uhlaka today | Verdict |
 |---|---|---|---|---|
 | Import from a live site (REST API) and WordPress.com | n/a | yes | export file only (ADR 0009 d1, on purpose) | **take** as a second source, keeping the plan-first rule |
 | Gutenberg blocks mapped to own blocks | n/a | to Portable Text | meaning only (ADR 0009 d3) | **take** the common ones: columns, group, cover, gallery, buttons, quote |
@@ -135,13 +135,13 @@ Abilities API; EmDash ships an MCP server, a CLI, Agent Skills, sandboxed
 plugins with capability manifests, admin screens as JSON, and a signed plugin
 registry. All of this belongs to ADR 0014's thread. Three things from EmDash
 seem worth that thread's attention: a plugin's admin screen described as data,
-which matches thecms's own rule that nothing typed becomes markup; signed
+which matches uhlaka's own rule that nothing typed becomes markup; signed
 releases checked against the bundle before install; and an MCP server that
 goes through the same permissions as a person.
 
 ## Framework-agnostic, and the admin as an SDK client
 
-The owner asked two questions on 2026-11-19: can thecms be framework-agnostic
+The owner asked two questions on 2026-11-19: can uhlaka be framework-agnostic
 like Zveltio, with Svelte what we ship but React or Vue possible through an
 SDK; and should the admin be a client of that SDK, as Zveltio's Studio is. And:
 the Zveltio model may be too much, so consider lighter options.
@@ -163,7 +163,7 @@ Read at `zveltio-devs/zveltio` on 2026-11-19, read-only.
   its own framework.
 
 That fits Zveltio, which is an application platform: its users build their own
-front ends over their data, so many clients are the point. **thecms is
+front ends over their data, so many clients are the point. **Uhlaka is
 different in one way that changes the answer.** Its visitors receive static
 HTML and CSS. The markup of a block is the same under every theme (ADR 0006
 d3), and the theme is a stylesheet made from tokens. For a visitor the site is
@@ -171,7 +171,7 @@ already framework-agnostic: no Svelte reaches the browser.
 
 ### Where a framework could matter
 
-1. **Someone wants their own front end** (Next, Nuxt, Astro) and uses thecms
+1. **Someone wants their own front end** (Next, Nuxt, Astro) and uses Uhlaka
    only for content. They need the content, in a stable shape. They do not need
    Svelte, and they do not need our block components, if they can take the
    block's HTML or its JSON.
@@ -192,12 +192,12 @@ already framework-agnostic: no Svelte reaches the browser.
 |---|---|---|---|
 | **A. Content as files** | The export writes, next to each page's HTML, its document as JSON, plus an index per content type and the theme's CSS. Same rules: only what is published. | Small. No server, no API to keep stable beyond the document format, which `src/core` already defines and validates. | Any framework can read the site at build time, from any static host. Headless use, and the open export of P2, almost free. |
 | **B. One documented API, and the admin uses only it** | The `/api/` routes become the public, versioned API (read and write, behind the accounts of P0). `src/admin/api.ts` becomes a small typed client over it, published as a pure TypeScript package with no framework. The admin, the CLI and later the MCP server of ADR 0014 all use it; no route exists only for the admin. | Medium, and mostly work P0 forces anyway: once there are accounts, every route needs authentication, permissions and a stable shape. Adds a promise to keep: versioning and deprecation. | Whatever the admin can do, an integration or an agent can do, through the same checks. Bugs in the API show up in our own admin first. |
-| **C. Zveltio's model** | The SDK above plus `@thecms/react` and `@thecms/vue`, block components per framework, real-time and offline. | Large and permanent: each block type × each framework, a contract test per renderer, two more packages to release, and a visual editor that cannot show those renderers. | Developers who want our blocks inside their React or Vue app. Today nobody is asking. |
+| **C. Zveltio's model** | The SDK above plus `@uhlaka/react` and `@uhlaka/vue`, block components per framework, real-time and offline. | Large and permanent: each block type × each framework, a contract test per renderer, two more packages to release, and a visual editor that cannot show those renderers. | Developers who want our blocks inside their React or Vue app. Today nobody is asking. |
 
 ### Recommendation
 
 - **Take A and B. Do not take C now.** Zveltio's model is right for Zveltio and
-  too much for thecms; the owner's doubt is justified.
+  too much for Uhlaka; the owner's doubt is justified.
 - **B goes with accounts (P0, item 1)**, because that is when every route is
   touched anyway. The rule to write in its ADR: the admin talks to the server
   only through the public API, and a test fails if a route has no entry in
@@ -214,10 +214,10 @@ already framework-agnostic: no Svelte reaches the browser.
   inside closed front ends, it should be MIT, as Zveltio's SDKs and the shared
   packages of ADR 0001 d5 are, while the core stays GPL-3.0-or-later.
 
-## What thecms should not take
+## What Uhlaka should not take
 
 - **Code in themes** (EmDash's Astro themes, WordPress's PHP). Themes as data is
-  thecms's best idea.
+  uhlaka's best idea.
 - **Per-block custom CSS and an HTML block with script** (WordPress 7.0). ADR
   0001 d7 refuses them in core for a security reason, and that still holds.
 - **Rendering on every request as the default.** Static output is cheaper,
@@ -306,4 +306,4 @@ ADR 0014 and are not ranked here.
   [InfoQ](https://infoq.com/news/2026/04/cloudflare-emdash-wordpress),
   [Joost de Valk's review](https://joost.blog/emdash-cms/),
   [internationalization guide](https://emdashcmseverything.pages.dev/official-docs/guides/internationalization)
-- thecms: `README.md` and `docs/adr/`, read at `main` on 2026-11-19.
+- uhlaka: `README.md` and `docs/adr/`, read at `main` on 2026-11-19.

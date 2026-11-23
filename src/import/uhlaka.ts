@@ -1,18 +1,18 @@
 /**
- * A thecms content file brought back in (ADR 0057 d2), from the same screen
+ * A Uhlaka content file brought back in (ADR 0057 d2), from the same screen
  * and with the same rules as a WordPress export (ADR 0009, ADR 0012): read
  * and shown first, then written; nothing already in the site is replaced,
  * and what was left as it was is said.
  */
-import { type Audience, isObject, normalizeAudience, normalizeLevels, normalizeTypes, POSTS_TYPE, READY_LAYOUTS, reservedSlugs, type ContentType, type Layout, type Site } from '../core/index.ts';
+import { type Audience, fromOldName, isObject, OLD_NAME, normalizeAudience, normalizeLevels, normalizeTypes, POSTS_TYPE, READY_LAYOUTS, reservedSlugs, type ContentType, type Layout, type Site } from '../core/index.ts';
 import { CONTENT_FORMAT, type ContentDoc, type ContentFile } from '../site/transfer.ts';
 import { cleanEmail, type Store } from '../site/store.ts';
 import { normalizeVisitorSettings } from '../site/visitor-gate.ts';
 import type { ContentVisitor } from '../site/visitor-transfer.ts';
 import type { ImportReport } from './run.ts';
 
-/** Whether a file's text is a thecms content file rather than a WordPress export. */
-export const isContentFile = (text: string): boolean => /^\s*\{/.test(text) && text.includes(CONTENT_FORMAT);
+/** Whether a file's text is a Uhlaka content file rather than a WordPress export. */
+export const isContentFile = (text: string): boolean => /^\s*\{/.test(text) && (text.includes(CONTENT_FORMAT) || text.includes(`${OLD_NAME}.content/1`));
 
 const list = <T>(value: unknown): T[] => (Array.isArray(value) ? (value as T[]) : []);
 /** Who sees it; a file of before the levels went in the file said only that it was for members, which is kept as "signed in". */
@@ -50,11 +50,12 @@ const docs = (value: unknown): ContentDoc[] =>
 export function readContentFile(text: string): ContentFile {
   let raw: unknown;
   try {
-    raw = JSON.parse(text);
+    // A file made before the rename is read as it would be written now (ADR 0066).
+    raw = fromOldName(JSON.parse(text));
   } catch {
-    throw new Error('this file is not a thecms content export: it is not JSON that can be read');
+    throw new Error('this file is not a Uhlaka content export: it is not JSON that can be read');
   }
-  if (!isObject(raw) || raw.format !== CONTENT_FORMAT) throw new Error(`this file is not a thecms content export (${CONTENT_FORMAT})`);
+  if (!isObject(raw) || raw.format !== CONTENT_FORMAT) throw new Error(`this file is not a Uhlaka content export (${CONTENT_FORMAT})`);
   const from = isObject(raw.from) ? raw.from : {};
   return {
     format: CONTENT_FORMAT,
@@ -94,7 +95,7 @@ export function readContentFile(text: string): ContentFile {
 /** What a content file would bring, counted, in the shape the import screen shows for a WordPress export. */
 export function contentPreview(file: ContentFile) {
   const posts = file.types.find((t) => t.type.id === POSTS_TYPE)?.entries.length ?? 0;
-  const notes: string[] = [`A thecms content export of "${file.from.name}", made ${file.madeAt.slice(0, 10)} by ${file.program}.`];
+  const notes: string[] = [`A Uhlaka content export of "${file.from.name}", made ${file.madeAt.slice(0, 10)} by ${file.program}.`];
   const locked = (file.pages ?? []).filter((p) => p.locked).length;
   if (locked) notes.push(`${locked === 1 ? 'One page was' : `${locked} pages were`} behind a password there. The password is not in the file, so ${locked === 1 ? 'it comes' : 'they come'} as a draft; give a password again, then publish.`);
   const forMembers = forMembersCount(file);
@@ -102,7 +103,7 @@ export function contentPreview(file: ContentFile) {
   if (file.visitors?.length)
     notes.push(`${file.visitors.length === 1 ? 'One visitor account' : `${file.visitors.length} visitor accounts`}, without passwords: they come only if visitor accounts are on here, and each visitor chooses a new password with "Forgot your password?". No message is sent.`);
   return {
-    kind: 'thecms' as const,
+    kind: 'uhlaka' as const,
     site: { name: file.from.name, url: file.from.url },
     pages: file.pages?.length ?? 0,
     posts,

@@ -282,7 +282,7 @@ export function startRuntime(
     if (url.pathname === '/_/cart' || url.pathname === '/_/checkout' || url.pathname.startsWith('/_/order/')) return shop.fetch(request, url, shopDeps);
     // A visitor's account (ADR 0064 d1): not found while the accounts are off (d8).
     if (url.pathname === '/_/account' || url.pathname.startsWith('/_/account/')) return visitors.fetch(request, url, ip);
-    if (url.pathname === '/_' || url.pathname === '/_/') return new Response('thecms runtime\n', { headers: { 'content-type': 'text/plain; charset=utf-8' } });
+    if (url.pathname === '/_' || url.pathname === '/_/') return new Response('uhlaka runtime\n', { headers: { 'content-type': 'text/plain; charset=utf-8' } });
     if (url.pathname.startsWith('/_/')) return new Response('not found\n', { status: 404, headers: { 'content-type': 'text/plain; charset=utf-8' } });
     if (request.method !== 'GET' && request.method !== 'HEAD') return new Response('a page is read with GET\n', { status: 405, headers: { allow: 'GET, HEAD' } });
 

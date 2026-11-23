@@ -1,4 +1,4 @@
-# thecms on Docker and on a ready platform
+# Uhlaka on Docker and on a ready platform
 
 The installer asks where the site will live (ADR 0048). This page is for two of
 its answers: **Docker** on a machine of yours, and a **ready platform** that runs
@@ -15,13 +15,13 @@ curl -fsSL https://github.com/uhlaka-devs/uhlaka/releases/download/v0.1.0-alpha.
 ```
 
 It asks which database (SQLite, PostgreSQL, MySQL, MariaDB, or one of yours)
-and the address people will open, and writes a folder `thecms/` with
+and the address people will open, and writes a folder `uhlaka/` with
 `compose.yaml`, the `Dockerfile` and `.env`, which holds the answers and the
 database's password. Then:
 
 ```sh
-cd thecms && docker compose up -d --build
-docker compose logs thecms        # the link for the first page
+cd uhlaka && docker compose up -d --build
+docker compose logs uhlaka        # the link for the first page
 ```
 
 The database and Valkey run beside the site and are reached only from it. The
@@ -41,9 +41,9 @@ Each release publishes an image: `ghcr.io/uhlaka-devs/uhlaka:<version>` (and
 | Image | `ghcr.io/uhlaka-devs/uhlaka:latest` |
 | Port | `4321` |
 | A volume (a disk) | mounted at `/site`; the site lives there as a file |
-| `THECMS_PUBLIC` | the site's address, `https://...` |
-| `THECMS_SITE` (optional) | a database's address, `postgres://...` or `mysql://...`, instead of the file |
-| `THECMS_VALKEY_URL` (optional) | a Valkey or Redis address, when the site runs in more than one copy |
+| `UHLAKA_PUBLIC` | the site's address, `https://...` |
+| `UHLAKA_SITE` (optional) | a database's address, `postgres://...` or `mysql://...`, instead of the file |
+| `UHLAKA_VALKEY_URL` (optional) | a Valkey or Redis address, when the site runs in more than one copy |
 
 The link for the first page is in the service's logs.
 
@@ -51,17 +51,17 @@ The link for the first page is in the service's logs.
 
 1. New project → **Deploy a Docker image** → `ghcr.io/uhlaka-devs/uhlaka:latest`.
 2. On the service: **Settings → Networking → Generate domain**, port `4321`.
-3. **Variables**: `THECMS_PUBLIC` = the domain it generated, with `https://`.
+3. **Variables**: `UHLAKA_PUBLIC` = the domain it generated, with `https://`.
 4. Right-click the service → **Attach volume**, mounted at `/site`.
 5. With Railway's PostgreSQL instead of the file: add it to the project, and set
-   `THECMS_SITE` = `${{Postgres.DATABASE_URL}}`.
+   `UHLAKA_SITE` = `${{Postgres.DATABASE_URL}}`.
 
 ### Render
 
 1. **New → Web Service → Existing image** → `ghcr.io/uhlaka-devs/uhlaka:latest`.
-2. **Environment**: `THECMS_PUBLIC` = `https://<name>.onrender.com` (or your domain).
+2. **Environment**: `UHLAKA_PUBLIC` = `https://<name>.onrender.com` (or your domain).
 3. **Disk**: mounted at `/site` (it needs a paid instance; without a disk, use
-   Render's PostgreSQL and set `THECMS_SITE` to its *Internal Database URL*).
+   Render's PostgreSQL and set `UHLAKA_SITE` to its *Internal Database URL*).
 4. Render finds port `4321` by itself.
 
 ### Fly.io
@@ -75,7 +75,7 @@ app = "my-site"
   image = "ghcr.io/uhlaka-devs/uhlaka:latest"
 
 [env]
-  THECMS_PUBLIC = "https://my-site.fly.dev"
+  UHLAKA_PUBLIC = "https://my-site.fly.dev"
 
 [mounts]
   source = "site"
@@ -93,5 +93,5 @@ and `fly logs` for the link.
 ## Not here
 
 Shared hosting with cPanel runs PHP, not a program that stays running, so
-thecms cannot live there. Cloudflare comes with the site running on Workers
+Uhlaka cannot live there. Cloudflare comes with the site running on Workers
 (ADR 0037 d4, stage 3).

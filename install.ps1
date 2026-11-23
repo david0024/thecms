@@ -1,15 +1,15 @@
-# Installs thecms on Windows from its GitHub releases, checked against the
+# Installs Uhlaka on Windows from its GitHub releases, checked against the
 # release's checksums before anything is put in place.
 #
 #   irm https://github.com/uhlaka-devs/uhlaka/releases/download/v0.1.0-alpha.3/install.ps1 | iex
 #
-# The program goes in %LOCALAPPDATA%\thecms\bin, which is added to your PATH.
+# The program goes in %LOCALAPPDATA%\uhlaka\bin, which is added to your PATH.
 # Run again to update. $env:INSTALL_VERSION picks a version; $env:RELEASE_URL
 # a folder of release files, to try a build.
 $ErrorActionPreference = 'Stop'
 
 # The product's name, as in src/core/name.ts (a test keeps them the same).
-$Name = 'thecms'
+$Name = 'uhlaka'
 $Repository = 'uhlaka-devs/uhlaka'
 
 if (-not [Environment]::Is64BitOperatingSystem) { throw "$Name needs 64-bit Windows" }

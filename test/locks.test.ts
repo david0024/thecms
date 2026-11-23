@@ -14,7 +14,7 @@ import { startEditor } from '../src/site/server.ts';
 import { Store } from '../src/site/store.ts';
 import plain from '../themes/plain.json';
 
-const dir = await mkdtemp(join(tmpdir(), 'thecms-locks-'));
+const dir = await mkdtemp(join(tmpdir(), 'uhlaka-locks-'));
 afterAll(() => rm(dir, { recursive: true, force: true }));
 const text = (body: string) => ({ id: `b_${Math.random().toString(36).slice(2, 10)}`, type: 'text', content: { body: [{ type: 'paragraph', children: [{ text: body }] }] } });
 
@@ -64,7 +64,7 @@ describe('a page behind a password', () => {
       await store.lockPage('members', 'open sesame');
       const files = await publishedSite(store);
       const html = String(files.get('members/index.html'));
-      expect(html).toContain('<meta name="thecms-locked" content="members">');
+      expect(html).toContain('<meta name="uhlaka-locked" content="members">');
       expect(html).toContain('<meta name="robots" content="noindex">');
       expect(String(files.get('sitemap.xml'))).not.toContain('/members/');
 
@@ -160,7 +160,7 @@ describe('the editor', () => {
       const response = await editor.fetch(
         new Request(`http://127.0.0.1:4321${path}`, {
           method,
-          headers: { host: '127.0.0.1:4321', 'x-thecms-token': editor.token, 'content-type': 'application/json' },
+          headers: { host: '127.0.0.1:4321', 'x-uhlaka-token': editor.token, 'content-type': 'application/json' },
           body: body === undefined ? undefined : JSON.stringify(body),
         }),
       );

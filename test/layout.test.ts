@@ -98,7 +98,7 @@ describe('the logo is an image of the site', () => {
   let dir: string;
   let store: Store;
   beforeEach(async () => {
-    dir = await mkdtemp(join(tmpdir(), 'thecms-'));
+    dir = await mkdtemp(join(tmpdir(), 'uhlaka-'));
     store = await Store.open(join(dir, 'site.db'));
     await store.setSite(DEMO_SITE);
     await store.setTheme(plain);

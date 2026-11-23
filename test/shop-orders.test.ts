@@ -20,7 +20,7 @@ import { totalsOf } from '../src/site/shop.ts';
 import { Store, type User } from '../src/site/store.ts';
 import plain from '../themes/plain.json';
 
-const dir = await mkdtemp(join(tmpdir(), 'thecms-orders-'));
+const dir = await mkdtemp(join(tmpdir(), 'uhlaka-orders-'));
 afterAll(() => rm(dir, { recursive: true, force: true }));
 const text = (body: string) => ({ id: `b_${Math.random().toString(36).slice(2, 10)}`, type: 'text', content: { body: [{ type: 'paragraph', children: [{ text: body }] }] } });
 const IBAN = 'RO49AAAA1B31007593840000';
@@ -39,7 +39,7 @@ async function admin(store: Store, sent: Mail[] = []) {
   const editor = await startEditor(store, { listen: false, log: () => {}, mailer: async (mail) => void sent.push({ ...mail, subject: mail.subject.replace(/\u00a0/g, ' '), text: mail.text.replace(/\u00a0/g, ' ') }), from: 'site@example.com' });
   const call = async (method: string, path: string, body?: unknown): Promise<{ status: number; body: Record<string, unknown>; text: string }> => {
     const response = await editor.fetch(
-      new Request(`http://127.0.0.1:4321${path}`, { method, headers: { host: '127.0.0.1:4321', 'x-thecms-token': editor.token, 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) }),
+      new Request(`http://127.0.0.1:4321${path}`, { method, headers: { host: '127.0.0.1:4321', 'x-uhlaka-token': editor.token, 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) }),
     );
     const text = (await response.text()).replace(/\u00a0/g, ' ');
     let parsed: Record<string, unknown> = {};
@@ -229,7 +229,7 @@ describe('the cart and checkout', () => {
       // From the Buy part: the cart is a cookie of its own, SameSite=Lax, kept 30 days.
       answer = await tab.go('POST', '/_/cart', { product: 'products/mug', quantity: '3' });
       expect(answer.status).toBe(303);
-      expect(answer.headers.get('set-cookie')).toMatch(/^thecms_cart=[A-Za-z0-9_-]{43}; Path=\/; HttpOnly; SameSite=Lax; Max-Age=2592000; Secure$/);
+      expect(answer.headers.get('set-cookie')).toMatch(/^uhlaka_cart=[A-Za-z0-9_-]{43}; Path=\/; HttpOnly; SameSite=Lax; Max-Age=2592000; Secure$/);
       await tab.go('POST', '/_/cart', { product: 'products/mug', quantity: '5' });
       await tab.go('POST', '/_/cart', { product: 'products/tee', variant: 'M', quantity: '1' });
       await tab.go('POST', '/_/cart', { product: 'products/card', quantity: '2' });
@@ -288,7 +288,7 @@ describe('the cart and checkout', () => {
       const location = answer.headers.get('location') as string;
       expect(location).toMatch(/^\/_\/order\/[A-Za-z0-9_-]{43}\?said=placed$/);
       // The cart is gone with its cookie.
-      expect(tab.cookies().has('thecms_cart')).toBe(false);
+      expect(tab.cookies().has('uhlaka_cart')).toBe(false);
       expect(await tab.read('GET', '/_/cart')).toContain('data-cart-empty');
 
       page = await tab.read('GET', location);

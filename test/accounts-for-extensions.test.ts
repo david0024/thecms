@@ -19,7 +19,7 @@ import { Store, type User } from '../src/site/store.ts';
 import { VISITOR_TABLES } from '../src/site/visitor-schema.ts';
 import plain from '../themes/plain.json';
 
-const dir = await mkdtemp(join(tmpdir(), 'thecms-accounts-ext-'));
+const dir = await mkdtemp(join(tmpdir(), 'uhlaka-accounts-ext-'));
 afterAll(() => rm(dir, { recursive: true, force: true }));
 
 const LEVELS = [
@@ -136,7 +136,7 @@ describe('while visitor accounts are off', () => {
     try {
       await expect(host.run('club', 'look', { id: 'x', email: 'a@example.com' })).rejects.toThrow('visitor accounts are off');
       await expect(host.run('club', 'mail', { id: 'x', message: 'receipt' })).rejects.toThrow('visitor accounts are off');
-      const answered = await runtime.fetch(new Request('https://example.com/_/x/club/who', { headers: { cookie: 'thecms_visitor=made-up' } }));
+      const answered = await runtime.fetch(new Request('https://example.com/_/x/club/who', { headers: { cookie: 'uhlaka_visitor=made-up' } }));
       expect(await answered.json()).toEqual({ visitor: null, cookie: null });
       expect(runtime.visitors.loaded()).toBe(false);
       for (const table of VISITOR_TABLES) expect(await store.hasTable(table)).toBe(false);
@@ -290,7 +290,7 @@ describe('while visitor accounts are on', () => {
     const runtime = startRuntime(store, { listen: false, log: () => {}, extensions: host, mailer: async (mail) => void sent.push(mail as never), from: 'site@example.com' });
     const editor = await startEditor(store, { listen: false, log: () => {} });
     const ask = async (method: string, path: string, body?: unknown) =>
-      editor.fetch(new Request(`http://127.0.0.1:4321${path}`, { method, headers: { host: '127.0.0.1:4321', 'x-thecms-token': editor.token, 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) }));
+      editor.fetch(new Request(`http://127.0.0.1:4321${path}`, { method, headers: { host: '127.0.0.1:4321', 'x-uhlaka-token': editor.token, 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) }));
     type Words = { names: string[]; labels: Record<string, string>; defaults: Record<string, Record<string, { subject: string; text: string }>>; saved: Record<string, Record<string, unknown>> };
     const tab = browser((r) => runtime.fetch(r));
     try {

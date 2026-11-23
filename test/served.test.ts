@@ -15,7 +15,7 @@ import { startEditor } from '../src/site/server.ts';
 import { Store } from '../src/site/store.ts';
 import plain from '../themes/plain.json';
 
-const dir = await mkdtemp(join(tmpdir(), 'thecms-served-'));
+const dir = await mkdtemp(join(tmpdir(), 'uhlaka-served-'));
 afterAll(() => rm(dir, { recursive: true, force: true }));
 
 async function site(name: string): Promise<Store> {

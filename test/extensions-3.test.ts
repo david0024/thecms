@@ -14,7 +14,7 @@ import { localShared } from '../src/site/shared.ts';
 import { Store, type SiteEvent } from '../src/site/store.ts';
 import plain from '../themes/plain.json';
 
-const dir = await mkdtemp(join(tmpdir(), 'thecms-ext3-'));
+const dir = await mkdtemp(join(tmpdir(), 'uhlaka-ext3-'));
 afterAll(() => rm(dir, { recursive: true, force: true }));
 
 const CHROME = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36';

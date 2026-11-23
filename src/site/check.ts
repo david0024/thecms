@@ -45,8 +45,8 @@ export function serverOnly(files: Map<string, string | Uint8Array>, options: { f
   if (!options.formsElsewhere && uses('action="/_/send"')) found.push('forms');
   if (!options.formsElsewhere && uses('action="/_/comment"')) found.push('comments');
   if (uses('action="/_/search"')) found.push('search');
-  if (uses('<meta name="thecms-locked"')) found.push('locked');
-  if (uses('<meta name="thecms-members"')) found.push('members');
+  if (uses('<meta name="uhlaka-locked"')) found.push('locked');
+  if (uses('<meta name="uhlaka-members"')) found.push('members');
   if (options.routes) found.push('extensions');
   // Statistics are counted by the server (ADR 0053 d5): said once the site has some.
   if (options.stats) found.push('stats');
@@ -119,7 +119,7 @@ export function checkSeo(files: Map<string, string | Uint8Array>): SeoProblem[] 
   const titles = new Map<string, string[]>();
   const found: SeoProblem[] = [];
   for (const [file, contents] of files) {
-    if (!file.endsWith('index.html') || typeof contents !== 'string' || contents.includes('http-equiv="refresh"') || contents.includes('<meta name="thecms-locked"') || contents.includes('<meta name="thecms-members"')) continue;
+    if (!file.endsWith('index.html') || typeof contents !== 'string' || contents.includes('http-equiv="refresh"') || contents.includes('<meta name="uhlaka-locked"') || contents.includes('<meta name="uhlaka-members"')) continue;
     const page = addressOf(file);
     if (contents.includes('<meta name="robots" content="noindex">')) {
       if (page === '/') found.push({ problem: 'hidden', pages: [page] });

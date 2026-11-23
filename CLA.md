@@ -1,6 +1,6 @@
 # Contributor licence agreement
 
-Thank you for helping. thecms is licensed under AGPL-3.0-or-later (ADR 0020).
+Thank you for helping. Uhlaka is licensed under AGPL-3.0-or-later (ADR 0020).
 The project may later move to a more permissive licence, and it can do that
 only if it may relicense every contribution. This agreement asks for that, and
 for nothing more.
@@ -10,7 +10,7 @@ repository, you agree to the following:
 
 1. **You keep your copyright.** What you wrote stays yours, and you may use it
    anywhere else, under any terms.
-2. **You grant the project a licence.** You give the thecms project and its
+2. **You grant the project a licence.** You give the Uhlaka project and its
    maintainers a perpetual, worldwide, non-exclusive, royalty-free, irrevocable
    licence to use, copy, change and distribute your contribution, and to
    license it to others under AGPL-3.0-or-later or under any other licence,

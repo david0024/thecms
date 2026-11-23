@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 /**
- * What every front end does the same way when it draws a `thecms.view/1`
+ * What every front end does the same way when it draws a `uhlaka.view/1`
  * screen (ADR 0031), so that a front end only draws: which fields, which rows
  * and in what order, which buttons for a row, what a button sends, and what
  * an action's answer asks of the screen.

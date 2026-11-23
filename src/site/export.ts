@@ -72,7 +72,7 @@ import { BASE_CSS } from './shipped.ts';
 import { shopGate } from './shop-gate.ts';
 import { STATS, type Store } from './store.ts';
 
-const MARKER = '.thecms-export';
+const MARKER = '.uhlaka-export';
 const FEED_ENTRIES = 30;
 
 const xml = (v: string): string => v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -128,10 +128,10 @@ function authorsOf(posts: Post[]): { person: Byline; posts: Post[] }[] {
 }
 
 /** What marks a page behind a password, for the runtime: its content is the page's address in the main language. */
-export const LOCK_META = 'thecms-locked';
+export const LOCK_META = 'uhlaka-locked';
 
 /** What marks a page for visitors signed in or for members (ADR 0064 d4): its content says who sees it. */
-export const MEMBERS_META = 'thecms-members';
+export const MEMBERS_META = 'uhlaka-members';
 
 /** Who sees a built file, when it is not for everyone. */
 export const membersOf = (html: string): Audience | null => {
@@ -401,7 +401,7 @@ export async function buildSite(
   return files;
 }
 
-const DATA_FORMAT = 'thecms.data/1';
+const DATA_FORMAT = 'uhlaka.data/1';
 const jsonOf = (path: string): string => `${path.slice(1)}index.json`;
 
 /** A page, an entry or a type's list, kept as it was drawn to be written as data. */
@@ -517,7 +517,7 @@ export async function exportSite(store: Store, outDir: string, warn: (line: stri
   }
   await rm(outDir, { recursive: true, force: true });
 
-  files.set(MARKER, 'Made by thecms export. This folder is replaced on every export.\n');
+  files.set(MARKER, 'Made by uhlaka export. This folder is replaced on every export.\n');
   for (const [path, contents] of files) {
     const target = join(outDir, path);
     await mkdir(dirname(target), { recursive: true });

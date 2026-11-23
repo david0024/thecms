@@ -121,7 +121,7 @@ describe('the sitemap says when a page changed and what it shows (ADR 0058 d3)',
   let dir: string;
   let store: Store;
   beforeEach(async () => {
-    dir = await mkdtemp(join(tmpdir(), 'thecms-'));
+    dir = await mkdtemp(join(tmpdir(), 'uhlaka-'));
     store = await Store.open(join(dir, 'site.db'));
   });
   afterEach(async () => {

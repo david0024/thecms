@@ -21,7 +21,7 @@ const assert = (condition, message) => {
 const PORT = 4397;
 
 (async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'thecms-e2e-extensions-'));
+  const dir = mkdtempSync(join(tmpdir(), 'uhlaka-e2e-extensions-'));
   const db = join(dir, 'site.db');
   const shots = process.argv[2];
   cli('init', db);
@@ -178,11 +178,11 @@ const PORT = 4397;
     assert(true, 'run there, it changes that translation as a change to look at');
 
     // A block an extension adds to the site's pages (ADR 0062 d6): offered in the list by its own name, drawn on the page.
-    const news = join(dir, 'news.thecms-extension');
+    const news = join(dir, 'news.uhlaka-extension');
     writeFileSync(
       news,
       JSON.stringify({
-        format: 'thecms.extension/3',
+        format: 'uhlaka.extension/3',
         manifest: {
           name: 'news',
           displayName: 'Newsletter',
@@ -191,8 +191,8 @@ const PORT = 4397;
           actions: [{ name: 'signup', label: 'Sign up' }, { name: 'numbers', label: 'Numbers' }],
           routes: [{ path: 'signup', action: 'signup', methods: ['POST'] }],
           views: [
-            { spec: 'thecms.view/1', id: 'news.report', title: 'Report', type: 'report', action: 'numbers' },
-            { spec: 'thecms.view/1', id: 'news.calendar', title: 'Calendar', type: 'calendar', collection: 'events', date: 'starts', name: 'title' },
+            { spec: 'uhlaka.view/1', id: 'news.report', title: 'Report', type: 'report', action: 'numbers' },
+            { spec: 'uhlaka.view/1', id: 'news.calendar', title: 'Calendar', type: 'calendar', collection: 'events', date: 'starts', name: 'title' },
           ],
           blocks: [{ name: 'signup', label: 'Newsletter sign-up', fields: [{ key: 'email', label: 'E-mail', kind: 'email', required: true }, { key: 'agree', label: 'I want it', kind: 'consent' }], submit: 'Sign up', route: 'signup' }],
         },

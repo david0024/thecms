@@ -207,7 +207,7 @@ export const en = {
 };
 
 /** Where a page's other languages reach the header (ADR 0024): set by whatever draws the page. */
-export const ALTERNATES = 'thecms-alternates';
+export const ALTERNATES = 'uhlaka-alternates';
 
 export type Words = typeof en;
 

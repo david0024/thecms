@@ -37,7 +37,7 @@ import { buildSite } from '../src/site/export.ts';
 import { Store } from '../src/site/store.ts';
 import plain from '../themes/plain.json';
 
-const dir = await mkdtemp(join(tmpdir(), 'thecms-archives-'));
+const dir = await mkdtemp(join(tmpdir(), 'uhlaka-archives-'));
 afterAll(() => rm(dir, { recursive: true, force: true }));
 
 const theme = parseTheme(plain).theme as Theme;
@@ -222,8 +222,8 @@ describe('the archive block', () => {
 });
 
 const databases: [string, string][] = [['SQLite', join(dir, 'store.db')]];
-if (process.env.THECMS_TEST_POSTGRES) databases.push(['Postgres', process.env.THECMS_TEST_POSTGRES]);
-if (process.env.THECMS_TEST_MYSQL) databases.push(['MySQL', process.env.THECMS_TEST_MYSQL]);
+if (process.env.UHLAKA_TEST_POSTGRES) databases.push(['Postgres', process.env.UHLAKA_TEST_POSTGRES]);
+if (process.env.UHLAKA_TEST_MYSQL) databases.push(['MySQL', process.env.UHLAKA_TEST_MYSQL]);
 const PNG = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='), (c) => c.charCodeAt(0));
 
 for (const [name, address] of databases) {

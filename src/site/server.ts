@@ -1,5 +1,5 @@
 /**
- * The editing server: `thecms edit site.db`. It serves the admin, the canvas
+ * The editing server: `uhlaka edit site.db`. It serves the admin, the canvas
  * the admin edits on, and a small JSON API over the store.
  *
  * It is a tool for one person on their own computer, so it listens on
@@ -9,7 +9,7 @@
  * page that points its own domain at 127.0.0.1 does not), and must not come
  * from another origin.
  *
- * Given a public address (`thecms serve`), it is a server others reach, and
+ * Given a public address (`uhlaka serve`), it is a server others reach, and
  * it has accounts instead (ADR 0022, src/site/accounts.ts): a session cookie,
  * a header no other site's page can send, and calls only the owner may make.
  */
@@ -31,7 +31,7 @@ import { prefixOf, typeIn, SECTION_KIND, type Block, cleanSeo, type Form, fillSe
 import type { EntryLists } from '../blocks/editing.ts';
 import { type FetchImage, fetchImage as fetchOverNetwork, IMPORT_MAX_BYTES, type ImportReport, runImport } from '../import/run.ts';
 import { type ImportPlan, planImport } from '../import/wxr.ts';
-import { contentPreview, isContentFile, readContentFile, runContentImport } from '../import/thecms.ts';
+import { contentPreview, isContentFile, readContentFile, runContentImport } from '../import/uhlaka.ts';
 import { contentFileName, contentParts, exportContent } from './transfer.ts';
 import { zipFiles } from './zip.ts';
 import { type MenuItem, menuOf, pageSetting, renderParts, renderPostParts } from './document.ts';
@@ -52,11 +52,11 @@ const ADMIN = new URL('../admin/', import.meta.url);
 /**
  * The admin and the canvas script, built for a browser from their sources.
  *
- * With THECMS_COVERAGE set to a folder, the build also writes its source maps
+ * With UHLAKA_COVERAGE set to a folder, the build also writes its source maps
  * there, and the Svelte compiler's own, so that what the browser ran in the
  * end-to-end tests can be counted against the source lines (tools/coverage.ts).
  */
-export async function buildAdmin(coverage = process.env.THECMS_COVERAGE): Promise<Map<string, string>> {
+export async function buildAdmin(coverage = process.env.UHLAKA_COVERAGE): Promise<Map<string, string>> {
   const svelteMaps: Record<string, unknown> = {};
   const result = await Bun.build({
     entrypoints: [new URL('main.ts', ADMIN).pathname, new URL('frame.ts', ADMIN).pathname],
@@ -160,12 +160,12 @@ export interface EditorServer {
 
 /** What an export file would bring, counted, for the owner to look at before anything is written. */
 export interface ImportPreview {
-  /** Where it came from: a WordPress export, or a thecms content export (ADR 0057). */
-  kind?: 'thecms';
+  /** Where it came from: a WordPress export, or a Uhlaka content export (ADR 0057). */
+  kind?: 'uhlaka';
   site: { name: string; url: string };
   pages: number;
   posts: number;
-  /** A thecms content export's sections and forms. */
+  /** A Uhlaka content export's sections and forms. */
   sections?: number;
   forms?: number;
   /** The kinds of entry asked for, as content types. */
@@ -218,7 +218,7 @@ export async function startEditor(
     to?: string;
     from?: string;
     log?: (line: string) => void;
-    /** Valkey's address from THECMS_VALKEY_URL (ADR 0044 d4): it comes before the one saved in Settings → Performance, which cannot change it. */
+    /** Valkey's address from UHLAKA_VALKEY_URL (ADR 0044 d4): it comes before the one saved in Settings → Performance, which cannot change it. */
     valkey?: string;
     /** Where what is kept without Valkey is also written to disk. */
     cacheDir?: string;
@@ -409,7 +409,7 @@ export async function startEditor(
     // The body is the export file itself. It is read and understood before anything is written.
     const listed = (name: string): string[] => (url.searchParams.get(name) ?? '').split(',').map((value) => value.trim()).filter(Boolean);
     const text = await request.text();
-    // A thecms content export comes back in by the same screen (ADR 0057 d2).
+    // A Uhlaka content export comes back in by the same screen (ADR 0057 d2).
     if (isContentFile(text)) {
       const file = readContentFile(text);
       if (url.pathname === '/api/import/plan') return json(contentPreview(file));
@@ -701,8 +701,8 @@ export async function startEditor(
 
   /**
    * Settings → E-mail (ADR 0064 d5): the site's mail server, the sender, a test
-   * message, and the words of each message to visitors. THECMS_SMTP and
-   * THECMS_MAIL_FROM are stronger, and the screen says so.
+   * message, and the words of each message to visitors. UHLAKA_SMTP and
+   * UHLAKA_MAIL_FROM are stronger, and the screen says so.
    */
   async function mailApi(request: Request, url: URL, me: User, body: Record<string, unknown>): Promise<Response> {
     const environment = { mailer: options.mailer ?? null, from: options.from };
@@ -865,7 +865,7 @@ export async function startEditor(
         return json({ test: await testValkey(asked && !asked.includes('***') ? asked : fromEnvironment || saved) });
       }
       if (request.method === 'PUT') {
-        if (fromEnvironment) return json({ error: 'Valkey is set by THECMS_VALKEY_URL on the server; change it there' }, 409);
+        if (fromEnvironment) return json({ error: 'Valkey is set by UHLAKA_VALKEY_URL on the server; change it there' }, 409);
         const address = String(body.address ?? '').trim();
         if (address.includes('***') && shownAddress(saved) === address) return json(described());
         if (address && !isValkeyAddress(address)) return json({ error: 'an address starts with redis:// or valkey://' }, 400);
@@ -1159,13 +1159,13 @@ export async function startEditor(
       try {
         if (people) {
           // A page of another site cannot send this header without asking first, and nothing here answers that question.
-          if (request.headers.get('x-thecms-request') !== '1') return json({ error: 'not a call from the admin' }, 403);
+          if (request.headers.get('x-uhlaka-request') !== '1') return json({ error: 'not a call from the admin' }, 403);
           const open = await people.open(request, url);
           if (open) return open;
           const user = await people.user(request);
           if (!user) return json({ error: 'sign in first', signIn: true }, 401);
           me = user;
-        } else if (!sameToken(request.headers.get('x-thecms-token'), token)) return json({ error: 'no token' }, 401);
+        } else if (!sameToken(request.headers.get('x-uhlaka-token'), token)) return json({ error: 'no token' }, 401);
         if (ownerOnly(request.method, url.pathname) && me.role !== 'owner') return json({ error: 'only the owner may do this' }, 403);
         if (url.pathname.startsWith('/api/users')) return people ? await people.people(request, url, me) : json({ error: 'accounts are for a served admin' }, 404);
         return await api(request, url, me);

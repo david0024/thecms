@@ -13,7 +13,7 @@ import { startEditor } from '../src/site/server.ts';
 import { Store } from '../src/site/store.ts';
 import { packExtension } from '../tools/pack-extension.ts';
 
-const dir = await mkdtemp(join(tmpdir(), 'thecms-each-language-'));
+const dir = await mkdtemp(join(tmpdir(), 'uhlaka-each-language-'));
 afterAll(() => rm(dir, { recursive: true, force: true }));
 
 const blocks = [
@@ -72,7 +72,7 @@ describe('an action for each language, in the editor', () => {
       const response = await editor.fetch(
         new Request(`http://127.0.0.1:4321${path}`, {
           method,
-          headers: { host: '127.0.0.1:4321', 'x-thecms-token': editor.token, 'content-type': 'application/json' },
+          headers: { host: '127.0.0.1:4321', 'x-uhlaka-token': editor.token, 'content-type': 'application/json' },
           body: body === undefined ? undefined : JSON.stringify(body),
         }),
       );

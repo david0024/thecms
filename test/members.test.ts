@@ -19,7 +19,7 @@ import { exportContent } from '../src/site/transfer.ts';
 import { VISITOR_TABLES } from '../src/site/visitor-schema.ts';
 import plain from '../themes/plain.json';
 
-const dir = await mkdtemp(join(tmpdir(), 'thecms-members-'));
+const dir = await mkdtemp(join(tmpdir(), 'uhlaka-members-'));
 afterAll(() => rm(dir, { recursive: true, force: true }));
 const text = (body: string) => ({ id: `b_${Math.random().toString(36).slice(2, 10)}`, type: 'text', content: { body: [{ type: 'paragraph', children: [{ text: body }] }] } });
 const LEVELS = [
@@ -94,7 +94,7 @@ describe('levels and audiences, as data', () => {
     expect(mayView({ who: 'members', levels: ['gold', 'silver'] }, ['silver'])).toBe(true);
     for (const audience of [{ who: 'signed' as const }, { who: 'members' as const, levels: ['a', 'b-c'] }]) expect(audienceFromWord(audienceWord(audience))).toEqual(audience);
     expect(audienceFromWord('anyone')).toBeNull();
-    expect(membersOf('<meta name="thecms-members" content="members:gold">')).toEqual({ who: 'members', levels: ['gold'] });
+    expect(membersOf('<meta name="uhlaka-members" content="members:gold">')).toEqual({ who: 'members', levels: ['gold'] });
     expect(membersOf('<p>no</p>')).toBeNull();
   });
 
@@ -142,10 +142,10 @@ describe('a page, an entry and a type for members, as built', () => {
       await store.setAudience('entry', 'posts/inside', { who: 'signed' });
       const files = await publishedSite(store);
       const club = String(files.get('club/index.html'));
-      expect(club).toContain('<meta name="thecms-members" content="members:premium">');
+      expect(club).toContain('<meta name="uhlaka-members" content="members:premium">');
       expect(club).toContain('<meta name="robots" content="noindex">');
-      expect(String(files.get('blog/inside/index.html'))).toContain('<meta name="thecms-members" content="signed">');
-      expect(String(files.get('blog/open/index.html'))).not.toContain('thecms-members');
+      expect(String(files.get('blog/inside/index.html'))).toContain('<meta name="uhlaka-members" content="signed">');
+      expect(String(files.get('blog/open/index.html'))).not.toContain('uhlaka-members');
       const sitemap = String(files.get('sitemap.xml'));
       expect(sitemap).not.toContain('/club/');
       expect(sitemap).not.toContain('/blog/inside/');
@@ -174,8 +174,8 @@ describe('a page, an entry and a type for members, as built', () => {
       // A whole type: each of its lists is for members too, and it has no feed.
       await store.setAudience('type', POSTS_TYPE, { who: 'members', levels: ['member'] });
       const typed = await publishedSite(store);
-      expect(String(typed.get('blog/index.html'))).toContain('<meta name="thecms-members" content="members:member">');
-      expect(String(typed.get('blog/open/index.html'))).toContain('<meta name="thecms-members" content="members:member">');
+      expect(String(typed.get('blog/index.html'))).toContain('<meta name="uhlaka-members" content="members:member">');
+      expect(String(typed.get('blog/open/index.html'))).toContain('<meta name="uhlaka-members" content="members:member">');
       expect(typed.has('blog/feed.xml')).toBe(false);
       expect(typed.has('blog/index.json')).toBe(false);
       expect(String(typed.get('sitemap.xml'))).not.toContain('/blog/');
@@ -248,7 +248,7 @@ describe('on the runtime', () => {
       const [row] = await store.database().rows<{ id: string }>('SELECT id FROM visitors');
       const editor = await startEditor(store, { listen: false, log: () => {} });
       const call = async (method: string, path: string, body?: unknown) =>
-        (await editor.fetch(new Request(`http://127.0.0.1:4321${path}`, { method, headers: { host: '127.0.0.1:4321', 'x-thecms-token': editor.token, 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) }))).json() as Promise<Record<string, unknown>>;
+        (await editor.fetch(new Request(`http://127.0.0.1:4321${path}`, { method, headers: { host: '127.0.0.1:4321', 'x-uhlaka-token': editor.token, 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) }))).json() as Promise<Record<string, unknown>>;
       try {
         const given = (await call('PUT', `/api/visitors/levels?id=${row?.id}`, { levels: ['premium', 'nonsense'] })) as { visitors: { levels: string[] }[] };
         expect(given.visitors[0]?.levels).toEqual(['premium']);
@@ -299,7 +299,7 @@ describe('in the admin', () => {
     const store = await site('admin');
     const editor = await startEditor(store, { listen: false, log: () => {} });
     const call = async (method: string, path: string, body?: unknown) =>
-      editor.fetch(new Request(`http://127.0.0.1:4321${path}`, { method, headers: { host: '127.0.0.1:4321', 'x-thecms-token': editor.token, 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) }));
+      editor.fetch(new Request(`http://127.0.0.1:4321${path}`, { method, headers: { host: '127.0.0.1:4321', 'x-uhlaka-token': editor.token, 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) }));
     try {
       expect(await (await call('GET', '/api/audiences')).json()).toEqual({ on: false });
       expect((await call('PUT', '/api/audiences', { kind: 'page', key: 'club', audience: null })).status).toBe(404);
@@ -317,7 +317,7 @@ describe('in the admin', () => {
       expect(String((await publishedSite(store)).get('index.html'))).not.toContain('href="/_/account"');
       expect(await (await call('GET', '/api/audiences')).json()).toEqual({ on: false });
       // What was chosen stays: the page is still for members.
-      expect(String((await publishedSite(store)).get('club/index.html'))).toContain('thecms-members');
+      expect(String((await publishedSite(store)).get('club/index.html'))).toContain('uhlaka-members');
     } finally {
       editor.stop();
       await store.close();

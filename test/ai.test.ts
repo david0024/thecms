@@ -305,7 +305,7 @@ describe('search engines and pictures (ADR 0059)', () => {
   });
 });
 
-const dir = await mkdtemp(join(tmpdir(), 'thecms-ai-'));
+const dir = await mkdtemp(join(tmpdir(), 'uhlaka-ai-'));
 afterAll(() => rm(dir, { recursive: true, force: true }));
 
 describe('the package', () => {

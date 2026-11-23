@@ -16,9 +16,10 @@ import {
   TOKEN_GROUPS,
   type TokenGroup,
 } from './style.ts';
+import { fromOldName } from './name.ts';
 import { type Issue, isObject, str } from './util.ts';
 
-export const THEME_SPEC = 'thecms.theme/1';
+export const THEME_SPEC = 'uhlaka.theme/1';
 
 export type Tokens = Record<TokenGroup, Record<string, string>>;
 
@@ -94,7 +95,7 @@ function checkStyleTokens(theme: Theme, style: BlockStyle, path: string, issues:
 export function parseTheme(input: unknown): { theme: Theme | null; issues: Issue[] } {
   const issues: Issue[] = [];
   if (!isObject(input)) return { theme: null, issues: [{ path: '', message: 'a theme is an object' }] };
-  if (input.spec !== THEME_SPEC) issues.push({ path: 'spec', message: `expected "${THEME_SPEC}"` });
+  if (fromOldName(input.spec) !== THEME_SPEC) issues.push({ path: 'spec', message: `expected "${THEME_SPEC}"` });
 
   const name = str(input.name, 80).trim();
   if (!name) issues.push({ path: 'name', message: 'a theme has a name' });

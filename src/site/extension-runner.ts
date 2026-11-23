@@ -133,7 +133,7 @@ export function runner(send: (message: FromRunner) => void, receive: (handler: (
     }
     if (message.t === 'load') {
       try {
-        folder ||= await mkdtemp(join(tmpdir(), 'thecms-ext-'));
+        folder ||= await mkdtemp(join(tmpdir(), 'uhlaka-ext-'));
         const file = join(folder, `extension-${Date.now()}.mjs`);
         await writeFile(file, message.code);
         const module = (await import(file)) as { actions?: Record<string, (input: unknown, host: ExtensionHost) => unknown> };

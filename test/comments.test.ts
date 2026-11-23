@@ -17,7 +17,7 @@ import { startEditor } from '../src/site/server.ts';
 import { Store } from '../src/site/store.ts';
 import plain from '../themes/plain.json';
 
-const dir = await mkdtemp(join(tmpdir(), 'thecms-comments-'));
+const dir = await mkdtemp(join(tmpdir(), 'uhlaka-comments-'));
 afterAll(() => rm(dir, { recursive: true, force: true }));
 const SITE = 'https://example.com';
 
@@ -213,7 +213,7 @@ describe('the editor', () => {
     const store = await site('editor');
     const editor = await startEditor(store, { listen: false });
     const call = async (method: string, path: string) => {
-      const response = await editor.fetch(new Request(`http://127.0.0.1:4321${path}`, { method, headers: { host: '127.0.0.1:4321', 'x-thecms-token': editor.token } }));
+      const response = await editor.fetch(new Request(`http://127.0.0.1:4321${path}`, { method, headers: { host: '127.0.0.1:4321', 'x-uhlaka-token': editor.token } }));
       return (await response.json()) as Record<string, any>;
     };
     try {

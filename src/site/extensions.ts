@@ -30,7 +30,7 @@ const ROW_ID = /^[A-Za-z0-9._:-]{1,40}$/;
 /** What a visitor may send to an extension's route: a provider's notice, not a file. */
 export const ROUTE_MAX_BYTES = 64 * 1024;
 /** Headers a route's action is not given: the editor's session and key are not the extension's. */
-const UNSAID = new Set(['cookie', 'x-thecms-token']);
+const UNSAID = new Set(['cookie', 'x-uhlaka-token']);
 /** Headers a route's answer may set. */
 const SAID = ['content-type', 'location', 'cache-control'];
 
@@ -81,7 +81,7 @@ export const spawnRunner: Spawn = () => {
 /**
  * On a server, a runner is started by systemd for each connection to its
  * socket, under a user of its own with no network and no way into the site's
- * files (install.sh --server). `THECMS_EXTENSION_RUNNER` names the socket.
+ * files (install.sh --server). `UHLAKA_EXTENSION_RUNNER` names the socket.
  */
 export const socketRunner = (path: string): Spawn => () => {
   let handler: (message: FromRunner) => void = () => {};
@@ -135,7 +135,7 @@ interface Running {
 
 export function extensionHost(store: Store, options: { spawn?: Spawn; fetch?: (url: string, init: RequestInit) => Promise<Response>; log?: (line: string) => void } = {}) {
   const log = options.log ?? ((line: string) => console.error(line));
-  const spawn = options.spawn ?? (process.env.THECMS_EXTENSION_RUNNER ? socketRunner(process.env.THECMS_EXTENSION_RUNNER) : spawnRunner);
+  const spawn = options.spawn ?? (process.env.UHLAKA_EXTENSION_RUNNER ? socketRunner(process.env.UHLAKA_EXTENSION_RUNNER) : spawnRunner);
   const outbound = options.fetch ?? ((url, init) => fetch(url, init));
   const running = new Map<string, Running>();
   let runs = 0;
@@ -157,7 +157,7 @@ export function extensionHost(store: Store, options: { spawn?: Spawn; fetch?: (u
     }
     const { pkg, problems } = parseExtension(raw);
     if (!pkg) throw new Error(problems.join('; '));
-    if (newer(pkg.manifest.thecmsMinVersion, VERSION.split('-')[0] as string)) throw new Error(`${pkg.manifest.displayName} needs version ${pkg.manifest.thecmsMinVersion} of this program; this is ${VERSION} (update it first)`);
+    if (newer(pkg.manifest.uhlakaMinVersion, VERSION.split('-')[0] as string)) throw new Error(`${pkg.manifest.displayName} needs version ${pkg.manifest.uhlakaMinVersion} of this program; this is ${VERSION} (update it first)`);
     const before = await store.extension(pkg.manifest.name);
     const asks = extensionAsks(pkg.manifest);
     const accountsOff = asks.accounts && (await store.visitorSettings().then((v) => (v as { on?: unknown } | null)?.on !== true));

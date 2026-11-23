@@ -1,27 +1,27 @@
-# thecms with its database and Valkey (ADR 0048). install.sh --host=docker writes
+# uhlaka with its database and Valkey (ADR 0048). install.sh --host=docker writes
 # .env beside it with the answers; COMPOSE_PROFILES there starts the database
 # chosen (postgres, mysql or mariadb) and Valkey. With SQLite, the site is a file
 # in the volume "site", and no database runs.
 #
 #   docker compose up -d --build
-#   docker compose logs thecms        the link for the first page
+#   docker compose logs uhlaka        the link for the first page
 #
 # Every service listens only inside this compose, and the site on this machine
 # (127.0.0.1): a web server with the certificate (Caddy, nginx) is put in front.
 services:
-  thecms:
+  uhlaka:
     build:
       context: .
       args:
-        VERSION: ${THECMS_VERSION:-latest}
-    image: thecms:${THECMS_VERSION:-latest}
+        VERSION: ${UHLAKA_VERSION:-latest}
+    image: uhlaka:${UHLAKA_VERSION:-latest}
     restart: unless-stopped
     ports:
-      - 127.0.0.1:${THECMS_PORT:-4321}:4321
+      - 127.0.0.1:${UHLAKA_PORT:-4321}:4321
     environment:
-      THECMS_SITE: ${THECMS_SITE:-/site/site.db}
-      THECMS_PUBLIC: ${THECMS_PUBLIC:-http://localhost:4321}
-      THECMS_VALKEY_URL: ${THECMS_VALKEY_URL:-}
+      UHLAKA_SITE: ${UHLAKA_SITE:-/site/site.db}
+      UHLAKA_PUBLIC: ${UHLAKA_PUBLIC:-http://localhost:4321}
+      UHLAKA_VALKEY_URL: ${UHLAKA_VALKEY_URL:-}
     volumes:
       - site:/site
 
@@ -30,8 +30,8 @@ services:
     profiles: [postgres]
     restart: unless-stopped
     environment:
-      POSTGRES_DB: thecms
-      POSTGRES_USER: thecms
+      POSTGRES_DB: uhlaka
+      POSTGRES_USER: uhlaka
       POSTGRES_PASSWORD: ${DATABASE_PASSWORD:?run install.sh --host=docker, or set DATABASE_PASSWORD in .env}
     volumes:
       - postgres:/var/lib/postgresql/data
@@ -41,8 +41,8 @@ services:
     profiles: [mysql]
     restart: unless-stopped
     environment:
-      MYSQL_DATABASE: thecms
-      MYSQL_USER: thecms
+      MYSQL_DATABASE: uhlaka
+      MYSQL_USER: uhlaka
       MYSQL_PASSWORD: ${DATABASE_PASSWORD:?run install.sh --host=docker, or set DATABASE_PASSWORD in .env}
       MYSQL_RANDOM_ROOT_PASSWORD: 'yes'
     volumes:
@@ -53,8 +53,8 @@ services:
     profiles: [mariadb]
     restart: unless-stopped
     environment:
-      MARIADB_DATABASE: thecms
-      MARIADB_USER: thecms
+      MARIADB_DATABASE: uhlaka
+      MARIADB_USER: uhlaka
       MARIADB_PASSWORD: ${DATABASE_PASSWORD:?run install.sh --host=docker, or set DATABASE_PASSWORD in .env}
       MARIADB_RANDOM_ROOT_PASSWORD: 'yes'
     volumes:

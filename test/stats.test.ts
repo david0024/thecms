@@ -23,7 +23,7 @@ import { STATS, Store } from '../src/site/store.ts';
 import plain from '../themes/plain.json';
 import { packExtension } from '../tools/pack-extension.ts';
 
-const dir = await mkdtemp(join(tmpdir(), 'thecms-stats-'));
+const dir = await mkdtemp(join(tmpdir(), 'uhlaka-stats-'));
 afterAll(() => rm(dir, { recursive: true, force: true }));
 
 const CHROME = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36';
@@ -77,8 +77,8 @@ describe('who is counted', () => {
     expect(counted(visit('/', { 'user-agent': 'curl/8.5.0' }))).toBe(false);
     expect(counted(visit('/', { 'user-agent': '' }))).toBe(false);
     expect(counted(visit('/', { 'user-agent': 'Mozilla/5.0 (compatible; facebookexternalhit/1.1)' }))).toBe(false);
-    expect(counted(visit('/', { cookie: 'a=b; thecms_session=xyz' }))).toBe(false);
-    expect(counted(visit('/', { cookie: 'thecms_page_x=1' }))).toBe(true);
+    expect(counted(visit('/', { cookie: 'a=b; uhlaka_session=xyz' }))).toBe(false);
+    expect(counted(visit('/', { cookie: 'uhlaka_page_x=1' }))).toBe(true);
     expect(counted(visit('/', { 'sec-purpose': 'prefetch;prerender' }))).toBe(false);
     expect(counted(visit('/', { purpose: 'prefetch' }))).toBe(false);
     expect(counted(visit('/', {}, 'HEAD'))).toBe(false);
@@ -252,7 +252,7 @@ describe('counted as the site is served', () => {
       expect((await get('/', { 'user-agent': IPHONE }, '10.0.0.3')).status).toBe(200);
       // Not counted.
       await get('/', { 'user-agent': GOOGLEBOT }, '10.0.0.9');
-      await get('/', { cookie: 'thecms_session=abc' }, '10.0.0.9');
+      await get('/', { cookie: 'uhlaka_session=abc' }, '10.0.0.9');
       await get('/nowhere/', {}, '10.0.0.9');
       await get('/assets/site.css', {}, '10.0.0.9');
       await get('/secret/', {}, '10.0.0.9');
@@ -346,8 +346,8 @@ describe('counted as the site is served', () => {
 describe('moved from before', () => {
   const day = (ago: number) => new Date(Date.now() - ago * 86_400_000).toISOString().slice(0, 10);
   const databases: [string, string][] = [['SQLite', join(dir, 'moved.db')]];
-  if (process.env.THECMS_TEST_POSTGRES) databases.push(['Postgres', process.env.THECMS_TEST_POSTGRES]);
-  if (process.env.THECMS_TEST_MYSQL) databases.push(['MySQL', process.env.THECMS_TEST_MYSQL]);
+  if (process.env.UHLAKA_TEST_POSTGRES) databases.push(['Postgres', process.env.UHLAKA_TEST_POSTGRES]);
+  if (process.env.UHLAKA_TEST_MYSQL) databases.push(['MySQL', process.env.UHLAKA_TEST_MYSQL]);
   for (const [name, address] of databases) {
     test(`the totals kept before go to the extension's rows, and their table goes, in ${name}`, async () => {
       const before = await Store.open(address);
@@ -421,13 +421,13 @@ describe('what the admin is shown', () => {
     const ion = await store.addUser({ email: 'ion@example.com', role: 'editor', password: 'a long password' });
     const ana = await store.addUser({ email: 'ana@example.com', role: 'author', password: 'a long password' });
     const owner = await store.addUser({ email: 'owner@example.com', role: 'owner', password: 'a long password' });
-    const as = async (id: string) => `thecms_session=${await store.startSession(id)}`;
+    const as = async (id: string) => `uhlaka_session=${await store.startSession(id)}`;
     const cookies = { owner: await as(owner.id), editor: await as(ion.id), author: await as(ana.id) };
     const call = async (who: keyof typeof cookies, method: string, path: string, body?: unknown) => {
       const response = await editor.fetch(
         new Request(`https://cms.example.com${path}`, {
           method,
-          headers: { host: 'cms.example.com', origin: 'https://cms.example.com', 'x-thecms-request': '1', cookie: cookies[who], 'content-type': 'application/json' },
+          headers: { host: 'cms.example.com', origin: 'https://cms.example.com', 'x-uhlaka-request': '1', cookie: cookies[who], 'content-type': 'application/json' },
           body: body === undefined ? undefined : JSON.stringify(body),
         }),
       );

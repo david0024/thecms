@@ -84,7 +84,7 @@ export function startForms(
 
   async function handle(request: Request, ip = ''): Promise<Response> {
     const url = new URL(request.url);
-    if (request.method === 'GET' && url.pathname === '/') return new Response('thecms forms\n', { headers: { 'content-type': 'text/plain' } });
+    if (request.method === 'GET' && url.pathname === '/') return new Response('uhlaka forms\n', { headers: { 'content-type': 'text/plain' } });
     if (url.pathname !== '/send' && url.pathname !== '/comment') return new Response('not found\n', { status: 404 });
     if (request.method !== 'POST') return new Response('a form is sent with POST\n', { status: 405, headers: { allow: 'POST' } });
     if (Number(request.headers.get('content-length') ?? 0) > MAX_BYTES) return new Response('too large\n', { status: 413 });

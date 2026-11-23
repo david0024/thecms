@@ -93,10 +93,10 @@ describe('images stored with the site', () => {
   let editor: EditorServer;
   const HOST = '127.0.0.1:4321';
   const call = (path: string, init: { method?: string; body?: Uint8Array; token?: string } = {}): Promise<Response> =>
-    editor.fetch(new Request(`http://${HOST}${path}`, { method: init.method ?? 'GET', headers: { host: HOST, 'x-thecms-token': init.token ?? editor.token }, body: init.body as BodyInit | undefined }));
+    editor.fetch(new Request(`http://${HOST}${path}`, { method: init.method ?? 'GET', headers: { host: HOST, 'x-uhlaka-token': init.token ?? editor.token }, body: init.body as BodyInit | undefined }));
 
   beforeEach(async () => {
-    dir = await mkdtemp(join(tmpdir(), 'thecms-'));
+    dir = await mkdtemp(join(tmpdir(), 'uhlaka-'));
     store = await Store.open(join(dir, 'site.db'));
     await store.setSite(DEMO_SITE);
     await store.setTheme(plain);

@@ -2,8 +2,8 @@
  * The store on every database it supports (ADR 0013). SQLite always runs; a
  * server runs when its address is given:
  *
- *   THECMS_TEST_POSTGRES=postgres://user:pw@127.0.0.1:5432/thecms
- *   THECMS_TEST_MYSQL=mysql://user:pw@127.0.0.1:3306/thecms
+ *   UHLAKA_TEST_POSTGRES=postgres://user:pw@127.0.0.1:5432/uhlaka
+ *   UHLAKA_TEST_MYSQL=mysql://user:pw@127.0.0.1:3306/uhlaka
  *
  * CI gives both. Each run empties the tables it uses, so give it a database
  * of its own.
@@ -24,12 +24,12 @@ import plain from '../themes/plain.json';
 const PNG = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='), (c) => c.charCodeAt(0));
 const WXR = await Bun.file(new URL('./fixtures/wordpress.xml', import.meta.url)).text();
 
-const dir = await mkdtemp(join(tmpdir(), 'thecms-db-'));
+const dir = await mkdtemp(join(tmpdir(), 'uhlaka-db-'));
 afterAll(() => rm(dir, { recursive: true, force: true }));
 
 const databases: [string, string][] = [['SQLite', join(dir, 'site.db')]];
-if (process.env.THECMS_TEST_POSTGRES) databases.push(['Postgres', process.env.THECMS_TEST_POSTGRES]);
-if (process.env.THECMS_TEST_MYSQL) databases.push(['MySQL', process.env.THECMS_TEST_MYSQL]);
+if (process.env.UHLAKA_TEST_POSTGRES) databases.push(['Postgres', process.env.UHLAKA_TEST_POSTGRES]);
+if (process.env.UHLAKA_TEST_MYSQL) databases.push(['MySQL', process.env.UHLAKA_TEST_MYSQL]);
 
 test('an address says which database it is, and its password is never shown', () => {
   expect(databaseKind('site.db')).toBe('sqlite');

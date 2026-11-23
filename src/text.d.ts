@@ -3,7 +3,7 @@ declare module '*.css' {
   const text: string;
   export default text;
 }
-declare module '*.thecms-extension' {
+declare module '*.uhlaka-extension' {
   const text: string;
   export default text;
 }
