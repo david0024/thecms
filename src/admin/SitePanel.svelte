@@ -4,7 +4,7 @@
  * in the header, the footer's words and links. How these are laid out is the
  * theme's (ADR 0006), so nothing here is a colour or a position.
  */
-import { type Business, BUSINESS_KINDS, cleanBusiness, WEEKDAYS, cleanRobots, type LinkValue, languageName, MAX_LANGUAGES, type MenuList, prefixOf, type Site, type SiteText, verificationCode } from '../core/index.ts';
+import { type Business, BUSINESS_KINDS, cleanBusiness, WEEKDAYS, cleanRobots, type LinkValue, languageName, MAX_LANGUAGES, type MenuList, prefixOf, type ShopSettings, type Site, type SiteText, verificationCode } from '../core/index.ts';
 import type { LanguageInfo, PageInfo } from './api.ts';
 import ImageField from './ImageField.svelte';
 import MenuBuilder from './MenuBuilder.svelte';
@@ -17,6 +17,8 @@ let {
   languages = [],
   onchange,
   onadminlanguage,
+  shop,
+  onshop,
 }: {
   site: Site;
   pages: PageInfo[];
@@ -25,6 +27,9 @@ let {
   onchange: (site: Site) => void;
   /** The admin's words are read when it starts, so choosing its language saves and opens it again. */
   onadminlanguage?: (language: string) => void;
+  /** The shop's settings (ADR 0065), and what to do once they are saved: the site is read again. */
+  shop?: ShopSettings;
+  onshop?: () => void;
 } = $props();
 const named = (l: LanguageInfo): string => (l.coverage < 1 ? `${l.name} (${say(t.site.partial, { count: Math.floor(l.coverage * 100) })})` : l.name);
 
@@ -47,6 +52,7 @@ const addLanguage = (): void => {
   adding = '';
 };
 import Performance from './Performance.svelte';
+import ShopSettingsPanel from './ShopSettings.svelte';
 import Visitors from './Visitors.svelte';
 import EmailSettings from './EmailSettings.svelte';
 import Redirects from './Redirects.svelte';
@@ -222,6 +228,8 @@ import Redirects from './Redirects.svelte';
 {/each}
 
 <Visitors languages={[site.language, ...site.languages]} onswitch={(on) => (accounts = on)} />
+
+{#if shop}<ShopSettingsPanel settings={shop} onchange={() => onshop?.()} />{/if}
 
 <EmailSettings />
 

@@ -3,7 +3,7 @@
  * the key from the address the command printed; on a served admin, the
  * session cookie and a header only the admin's own page sends (ADR 0022).
  */
-import type { Audience, Audiences, Block, Level, ExtensionAction, Form, Redirect, RedirectProblem, ExtensionCollection, Page, Post, Site, Theme } from '../core/index.ts';
+import type { Audience, Audiences, Block, Level, ExtensionAction, Form, Redirect, RedirectProblem, ExtensionCollection, Page, Post, ShopSettings, Site, Theme } from '../core/index.ts';
 import type { ViewDocument } from '../view/index.ts';
 import type { ExtensionOffer } from '../site/extensions.ts';
 import type { ImportPreview, ImportProgress } from '../site/server.ts';
@@ -212,6 +212,8 @@ export interface State {
   /** The last backup failed (ADR 0051 d6); told to the owner only. */
   backupFailed: boolean;
   extensions: ExtensionInfo[];
+  /** The shop's settings (ADR 0065 d10): while off, no "sells" on a type and no product fields. */
+  shop: ShopSettings;
   templates: Record<string, TemplateInfo>;
   pages: PageInfo[];
   sections: SectionInfo[];
@@ -338,6 +340,10 @@ export const api = {
   messagesFrom: (email: string) => call<{ messages: Message[]; comments: Comment[]; keep: number }>('GET', `/api/messages?email=${encodeURIComponent(email.trim())}`),
   removeMessage: (id: string) => call<{ messages: Message[]; keep: number }>('DELETE', `/api/messages?id=${encodeURIComponent(id)}`),
   eraseMessagesFrom: (email: string) => call<{ messages: Message[]; keep: number }>('DELETE', `/api/messages?email=${encodeURIComponent(email.trim())}`),
+  shop: () => call<{ settings: ShopSettings }>('GET', '/api/shop'),
+  setShop: (settings: Partial<ShopSettings>) => call<{ settings: ShopSettings }>('PUT', '/api/shop', settings),
+  stock: (kind: string, slug: string) => call<{ stock: Record<string, number> }>('GET', `/api/shop/stock?kind=${encodeURIComponent(kind)}&slug=${encodeURIComponent(slug)}`),
+  setStock: (kind: string, slug: string, stock: Record<string, number | null>) => call<{ stock: Record<string, number> }>('PUT', '/api/shop/stock', { kind, slug, stock }),
   visitors: () => call<VisitorsShown>('GET', '/api/visitors'),
   setVisitors: (settings: Partial<VisitorSettings>) => call<VisitorsShown>('PUT', '/api/visitors', settings),
   inviteVisitor: (email: string, name: string, language: string) => call<VisitorsShown>('POST', '/api/visitors', { email, name, language }),

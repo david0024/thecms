@@ -10,6 +10,7 @@ import { listPath, pictureIn, placesRelated, postsType, typeAuthorPath } from '.
 import EntryFields from './EntryFields.svelte';
 import { type EntryLists, setEntry } from './editing.ts';
 import BlockView from './BlockView.svelte';
+import Buy from './Buy.svelte';
 import Breadcrumbs from './Breadcrumbs.svelte';
 import Comments from './Comments.svelte';
 import Frozen from './Frozen.svelte';
@@ -66,6 +67,7 @@ setEntry({ post, type: type ?? postsType(), language: site.language, editing: ed
           <h1>{post.title}</h1>
           {#if post.cover}{@const pa = pictureIn(site, kind.layout, post.cover.src, 'full')}<img class="post-cover" src={post.cover.src} srcset={pa.srcset} sizes={pa.sizes} width={pa.width} height={pa.height} alt={post.cover.alt} />{/if}
           <EntryFields type={kind} {post} language={site.language} />
+          {#if site.shop && kind.sells}<Buy shop={site.shop} {post} typeId={kind.id} language={site.language} />{/if}
         </div>
       </header>
       {#each post.blocks as block (block.id)}<BlockView {block} />{/each}

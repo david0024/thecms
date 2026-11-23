@@ -16,8 +16,11 @@ let {
   terms = {},
   onsave,
   ondesign,
+  shop = false,
 }: {
   site: Site;
+  /** The shop is on (ADR 0065 d10): a type may sell. */
+  shop?: boolean;
   counts: Record<string, number>;
   /** Which types have a page of their own (ADR 0015). */
   templates?: Record<string, { custom: boolean }>;
@@ -131,6 +134,11 @@ async function remove(): Promise<void> {
         </select>
       </label>
 
+      {#if shop || draft.sells}
+        <label class="check"><input type="checkbox" checked={draft.sells === true} onchange={(e) => patch(e.currentTarget.checked ? { sells: true, schema: 'product' } : { sells: undefined })} data-type-sells /><span>{t.shop.sells}</span></label>
+        <small>{t.shop.sellsHint}</small>
+      {/if}
+      {#if !draft.sells}
       <label class="field">
         <span>{t.ctypes.schema}</span>
         <select value={draft.schema ?? ''} onchange={(e) => patch({ schema: (e.currentTarget.value || undefined) as EntrySchema | undefined })} data-type-schema>
@@ -139,6 +147,7 @@ async function remove(): Promise<void> {
         </select>
         <small>{t.ctypes.schemaHint}</small>
       </label>
+      {/if}
 
       <h2>{t.ctypes.fields}</h2>
       <p class="hint">{t.ctypes.fieldsHint}</p>

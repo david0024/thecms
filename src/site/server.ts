@@ -37,6 +37,7 @@ import { zipFiles } from './zip.ts';
 import { type MenuItem, menuOf, pageSetting, renderParts, renderPostParts } from './document.ts';
 import { languages, packFor } from './languages.ts';
 import { accounts, cleanPublicAddress, ownerOnly, shown } from './accounts.ts';
+import { shopGate } from './shop-gate.ts';
 import { extensionHost, type Spawn } from './extensions.ts';
 import { BUILT_ADMIN } from './built-admin.ts';
 import { BASE_CSS, SHIPPED_STATS, SHIPPED_THEMES } from './shipped.ts';
@@ -314,7 +315,9 @@ export async function startEditor(
   /** Blocks as the canvas draws them: each section block with its section's drafts, in the language (ADR 0033). */
   /** The site with what its layouts' sections hold (ADR 0035), from the drafts, in its language. */
   const framed = async (site?: Site): Promise<Site> => {
-    const drawn = { ...(site ?? (await store.site())), formDefs: await store.formsByName(), extensionBlocks: await store.extensionBlocks() };
+    // A product's Buy part is drawn on the canvas as the site will show it, while the shop is on (ADR 0065 d3).
+    const selling = await shop.shown();
+    const drawn = { ...(site ?? (await store.site())), formDefs: await store.formsByName(), extensionBlocks: await store.extensionBlocks(), ...(selling ? { shop: selling } : {}) };
     return withAreas(drawn, await store.draftSections(), drawn.language);
   };
   const filled = async (blocks: Block[], language?: string): Promise<Block[]> => fillSections(blocks, await store.draftSections(), language ?? (await store.site()).language);
@@ -341,6 +344,7 @@ export async function startEditor(
   const extensions = extensionHost(store, { spawn: options.spawnExtension, log: options.log });
   const backed = options.backups ? backups(store, { dir: options.backups, remote: options.backupRemote, claim: (key, ms) => shared.claim(key, ms), log: options.log }) : null;
   // The site itself, at the same address as its admin, as WordPress serves both (ADR 0044).
+  const shop = shopGate(store);
   const site = startRuntime(store, { listen: false, extensions, shared, mailer: options.mailer, to: options.to, from: options.from, log: options.log });
   /**
    * The extensions as the admin shows them. The owner sees each one, with what
@@ -385,6 +389,8 @@ export async function startEditor(
     shared: shared.status(),
     // A backup that failed is said at the top of the admin until one succeeds (ADR 0051 d6).
     backupFailed: me.role === 'owner' && backed !== null && (await backed.last())?.ok === false,
+    // The shop's settings (ADR 0065 d10): whether to show "sells" on a type and a product's fields.
+    shop: await shop.settings(),
     ...(await lists()),
   });
 
@@ -826,6 +832,8 @@ export async function startEditor(
     // Settings → Visitor accounts (ADR 0064): nothing of them is loaded until the owner turns them on.
     if (url.pathname === '/api/visitors' || url.pathname.startsWith('/api/visitors/')) return site.visitors.admin(request, url, me, body);
     if (url.pathname === '/api/mail' || url.pathname.startsWith('/api/mail/')) return mailApi(request, url, me, body);
+    // The shop (ADR 0065): nothing of it is loaded until the owner turns it on.
+    if (url.pathname === '/api/shop' || url.pathname.startsWith('/api/shop/')) return shop.admin(request, url, me, body);
     if (url.pathname === '/api/me' && request.method === 'PUT') {
       // Their own name, the few words about them (ADR 0055 d3) and their picture (ADR 0056 d2).
       if (!people) return json({ error: 'accounts are for a served admin' }, 404);

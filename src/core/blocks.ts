@@ -268,10 +268,11 @@ export type BlockType = keyof typeof BLOCKS;
  * The parts of an entry a page can show: everything above its own blocks as
  * the default page draws it (`header`), each piece of that alone, the
  * entry's own blocks (`body`), the entries linked to it (`related`, ADR 0052
- * d3), or one field of its type (`field:client`).
+ * d3), a product's price and "Add to cart" (`buy`, ADR 0065 d3), or one field
+ * of its type (`field:client`).
  */
-export const ENTRY_PARTS = ['header', 'title', 'meta', 'cover', 'fields', 'body', 'related'] as const;
-export const ENTRY_PART = /^(header|title|meta|cover|fields|body|related|field:[a-z0-9_]{1,40})$/;
+export const ENTRY_PARTS = ['header', 'title', 'meta', 'cover', 'fields', 'body', 'related', 'buy'] as const;
+export const ENTRY_PART = /^(header|title|meta|cover|fields|body|related|buy|field:[a-z0-9_]{1,40})$/;
 
 /** What a type's page starts as when the owner first opens it: the default page, as blocks to change. */
 export const defaultTemplate = (): Block[] => [

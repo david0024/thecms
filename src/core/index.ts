@@ -27,6 +27,7 @@ export * from './relations.ts';
 export * from './richtext.ts';
 export * from './section.ts';
 export * from './seo.ts';
+export * from './shop.ts';
 export * from './style.ts';
 export * from './theme.ts';
 export * from './translation.ts';

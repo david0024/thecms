@@ -2387,6 +2387,15 @@ export class Store {
     await this.setMeta(VISITOR_SETTINGS, value);
   }
 
+  /** The shop's settings as saved (ADR 0065 d10); the shop reads them whole. */
+  async shopSettings(): Promise<unknown> {
+    return this.getMeta(SHOP_SETTINGS);
+  }
+
+  async setShopSettings(value: unknown): Promise<void> {
+    await this.setMeta(SHOP_SETTINGS, value);
+  }
+
   /** The mail server set in Settings → E-mail (ADR 0064 d5), and the owner's words for each message to visitors. */
   async mailSettings(): Promise<unknown> {
     return this.getMeta(MAIL_SETTINGS);
@@ -2573,6 +2582,8 @@ const AUDIENCES = 'audiences';
 const VISITOR_SETTINGS = 'visitors';
 const MAIL_SETTINGS = 'mail';
 const MAIL_TEMPLATES = 'mail:templates';
+/** Where the shop's settings are kept (ADR 0065). */
+const SHOP_SETTINGS = 'shop';
 
 /** Plain queries, for a part of the program with tables of its own (ADR 0060 d3). Written with `?`. */
 export interface Database {
@@ -2649,6 +2660,8 @@ const TOUCHING = [
   'setAudience',
   // Turning visitor accounts on or off shows or hides "My account" in the menu (ADR 0064 d8).
   'setVisitorSettings',
+  // Turning the shop on or off shows or hides each product's Buy part (ADR 0065 d10).
+  'setShopSettings',
   'publishSection',
   'deleteSection',
   'publishEntry',
