@@ -5,6 +5,11 @@
 import { mkdir, readdir, rm } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import {
+  type Audience,
+  type Audiences,
+  audienceFromWord,
+  audienceWord,
+  NO_AUDIENCES,
   authorPath,
   type Byline,
   datePath,
@@ -60,7 +65,7 @@ import {
   prefixOf,
 } from '../core/index.ts';
 import { wordsFor } from '../blocks/words.ts';
-import { lockedPage } from './locks.ts';
+import { lockedPage, membersPage } from './locks.ts';
 import { menuOf, pageSetting, renderBlogList, renderPage, renderPost, STYLESHEET } from './document.ts';
 import { checkRedirects, checkSeo, checkSite, describeCheck, type SiteCheck, serverOnly } from './check.ts';
 import { BASE_CSS } from './shipped.ts';
@@ -124,6 +129,15 @@ function authorsOf(posts: Post[]): { person: Byline; posts: Post[] }[] {
 /** What marks a page behind a password, for the runtime: its content is the page's address in the main language. */
 export const LOCK_META = 'thecms-locked';
 
+/** What marks a page for visitors signed in or for members (ADR 0064 d4): its content says who sees it. */
+export const MEMBERS_META = 'thecms-members';
+
+/** Who sees a built file, when it is not for everyone. */
+export const membersOf = (html: string): Audience | null => {
+  const found = new RegExp(`<meta name="${MEMBERS_META}" content="([^"]*)">`).exec(html);
+  return found ? audienceFromWord(found[1] as string) : null;
+};
+
 /** The page behind a password a built file is, or null. */
 export const lockOf = (html: string): string | null => {
   const found = new RegExp(`<meta name="${LOCK_META}" content="([^"]*)">`).exec(html);
@@ -156,8 +170,14 @@ export async function buildSite(
   bylines: Record<string, Byline> = {},
   /** When each page (by its main address) and each entry (by `type/entry`) was last published: the sitemap's dates (ADR 0058 d3). */
   times: PublishedTimes = {},
+  /** Who sees each page, entry and type that is not for everyone (ADR 0064 d4). */
+  audiences: Audiences = NO_AUDIENCES,
 ): Promise<Map<string, string | Uint8Array>> {
   const files = new Map<string, string | Uint8Array>();
+  /** Each address for visitors signed in or for members, with who sees it: marked for the runtime at the end. */
+  const members = new Map<string, Audience>();
+  /** Who sees an entry: its type's audience first, then its own. */
+  const audienceOf = (typeId: string, post: Post): Audience | undefined => audiences.types[typeId] ?? audiences.entries[`${typeId}/${post.of ?? post.slug}`];
   site = { ...site, pictures: { sizes: images, widths: theme.tokens.width } };
   // Each section block holds its section's blocks from here on, so the pages, their pictures and their links include them.
   pages = pages.map((p) => ({ ...p, blocks: fillSections(p.blocks, sections, languageOf(site, p.slug)) }));
@@ -221,6 +241,8 @@ export async function buildSite(
       imageSources(p.blocks),
     );
     data.push({ path: pagePath(p.slug), language: setting.site.language, page: p });
+    const audience = audiences.pages[(p as Partial<PlacedPage>).of ?? p.slug];
+    if (audience) members.set(pagePath(p.slug), audience);
   }
   // A page behind a password says so to the runtime, which asks for it; search engines are asked to keep none of it.
   for (const [path, slug] of Object.entries(locked)) {
@@ -251,8 +273,13 @@ export async function buildSite(
           [...(post.cover ? [post.cover.src] : []), ...imageSources(post.blocks)],
         );
         data.push({ path: entryPath(type, post.slug), language, post, type });
+        const audience = audienceOf(original.id, from);
+        if (audience) members.set(entryPath(type, post.slug), audience);
       }
-      data.push({ path: listPath(type), language, type, list });
+      // What only members see is in no list of data and in no feed; a list still names it, and its page asks who opens it.
+      const open = list.filter((post) => !audienceOf(original.id, byMain.get(post.of ?? post.slug) as Post));
+      const whole = audiences.types[original.id];
+      if (!whole) data.push({ path: listPath(type), language, type, list: open });
       const listed = site.languages.length ? listAlternates(site, original, has(type.id), here, language) : [];
       type List = { heading: string; path: (n: number) => string; posts: Post[]; alternates: typeof here; person?: Byline; noindex?: boolean };
       const pagesOf: List[] = [
@@ -278,10 +305,12 @@ export async function buildSite(
             noindex: one.noindex,
           });
           page(path, html, one.noindex);
+          // A whole type for members is so in each of its lists (ADR 0064 d4).
+          if (whole) members.set(path, whole);
         });
       }
       // A feed names every entry by its full address, so it needs the site's own.
-      if (site.url && type.feed) files.set(feedPath(type).slice(1), feed(local, type, list));
+      if (site.url && type.feed && !whole) files.set(feedPath(type).slice(1), feed(local, type, open));
     }
     // Each person's page across every dated type of this language (ADR 0056 d3), newest first.
     const all = types.filter((t) => t.type.dated).flatMap(({ type, posts: own }) => own.map((post) => ({ type, post })));
@@ -356,11 +385,18 @@ export async function buildSite(
     const local = siteIn(site, language, pages);
     files.set(`${prefixOf(language)}/404.html`, renderPage(withAreas(local, sections, language), theme, { slug: '404', title: wordsFor(language).notFound, description: '', inMenu: false, blocks: [] }, menuOf(local, pagesIn(site, language, pages), own)));
   }
+  // A page for members says so to the runtime, which asks who opens it; search engines are asked to keep none of it (ADR 0064 d4).
+  for (const [path, audience] of members) {
+    const html = files.get(fileOf(path));
+    if (typeof html !== 'string') continue;
+    files.set(fileOf(path), html.replace('<head>', `<head>\n${html.includes('<meta name="robots" content="noindex">') ? '' : '<meta name="robots" content="noindex">\n'}<meta name="${MEMBERS_META}" content="${xml(audienceWord(audience))}">`));
+    if (paths.includes(path)) paths.splice(paths.indexOf(path), 1);
+  }
   if (site.url) {
     files.set('sitemap.xml', sitemapFile(site, paths, about));
   }
   files.set('robots.txt', robotsFile(site));
-  if (site.data !== false) writeData(files, site, data.filter((d) => !(d.path in locked)));
+  if (site.data !== false) writeData(files, site, data.filter((d) => !(d.path in locked) && !members.has(d.path)));
   return files;
 }
 
@@ -503,6 +539,8 @@ export async function exportedFiles(store: Store, warn: (line: string) => void =
   // A page behind a password is not written out: a static host cannot ask for it (ADR 0043).
   const frame = String(files.get('404.html'));
   for (const [path, contents] of files) if (typeof contents === 'string' && lockOf(contents) !== null) files.set(path, lockedPage(frame, null));
+  // Nor one for members: a static host knows nobody (ADR 0064 d4).
+  for (const [path, contents] of files) if (typeof contents === 'string' && membersOf(contents) !== null) files.set(path, membersPage(frame));
   return files;
 }
 
@@ -531,7 +569,9 @@ export async function publishedSite(store: Store, served = false): Promise<Map<s
   if (pages.length === 0) throw new Error('nothing is published yet');
   if (!pages.some((p) => p.slug === '')) throw new Error('the home page is not published');
   // Each form block is drawn with the form it names (ADR 0049), each extension's block with what it asks (ADR 0062 d6).
-  const site = { ...(await store.site()), formDefs: await store.formsByName(), extensionBlocks: await store.extensionBlocks() };
+  // "My account" is in the menu only while visitor accounts are on (ADR 0064 d8).
+  const accounts = ((await store.visitorSettings()) as { on?: unknown } | null)?.on === true;
+  const site = { ...(await store.site()), formDefs: await store.formsByName(), extensionBlocks: await store.extensionBlocks(), accounts };
   const entries: Record<string, Post[]> = {};
   const templates: Record<string, Block[] | null> = {};
   for (const type of contentTypes(site)) {
@@ -542,5 +582,5 @@ export async function publishedSite(store: Store, served = false): Promise<Map<s
   const locked = Object.fromEntries(pages.filter((p) => locks.has(p.of)).map((p) => [pagePath(p.slug), p.of]));
   const media: MediaSource = async (name) =>
     served && mediaKindOf(name) !== 'image' ? ((await store.hasMedia(name)) ? new Uint8Array(0) : null) : ((await store.mediaFile(name))?.bytes ?? null);
-  return buildSite(site, theme, pages, media, entries, await store.redirects(), templates, await store.publishedSections(), await store.mediaSizes(), await store.shownComments(), locked, await store.bylines(), await store.publishedTimes());
+  return buildSite(site, theme, pages, media, entries, await store.redirects(), templates, await store.publishedSections(), await store.mediaSizes(), await store.shownComments(), locked, await store.bylines(), await store.publishedTimes(), await store.audiences());
 }

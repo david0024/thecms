@@ -9,7 +9,7 @@
  * site's clock sends, so no request waits for a mail server.
  */
 import { createHash } from 'node:crypto';
-import { languageName, NAME, type Site } from '../core/index.ts';
+import { type Audience, languageName, mayView, NAME, type Site } from '../core/index.ts';
 import { normalizeTemplates, renderTemplate, siteMailer, type TemplateName } from './site-mail.ts';
 import { cleanEmail, PASSWORD_MIN, type Database, type Store, type User } from './store.ts';
 import { type Notice, escape, framed, parts } from './visitor-pages.ts';
@@ -54,6 +54,8 @@ export interface Visitor {
   lastAt: string | null;
   /** Invited by the owner, and not yet taken up. */
   invited: boolean;
+  /** The member levels held, by id (ADR 0064 d3). */
+  levels: string[];
 }
 
 /** A message that could not be sent at its last try (ADR 0064 d5). */
@@ -76,6 +78,7 @@ const asVisitor = (row: Row): Visitor => ({
   confirmedAt: row.confirmed_at ? String(row.confirmed_at) : null,
   lastAt: row.last_at ? String(row.last_at) : null,
   invited: !row.confirmed_at && !String(row.password),
+  levels: [],
 });
 
 export async function openVisitors(store: Store, deps: VisitorDeps): Promise<Visitors> {
@@ -85,15 +88,29 @@ export async function openVisitors(store: Store, deps: VisitorDeps): Promise<Vis
   const one = async (query: string, params: unknown[]): Promise<Row | null> => (await db.rows<Row>(query, params))[0] ?? null;
 
   // The accounts' rows.
+  const levelsOf = async (id: string): Promise<string[]> => (await db.rows<Row>('SELECT level FROM visitor_levels WHERE visitor_id = ? ORDER BY level', [id])).map((r) => String(r.level));
+  const withLevels = async (row: Row): Promise<Visitor & { password: string }> => ({ ...asVisitor(row), password: String(row.password), levels: await levelsOf(String(row.id)) });
   const byEmail = async (email: string): Promise<(Visitor & { password: string }) | null> => {
     const row = await one('SELECT * FROM visitors WHERE email = ?', [email]);
-    return row ? { ...asVisitor(row), password: String(row.password) } : null;
+    return row ? withLevels(row) : null;
   };
   const byId = async (id: string): Promise<(Visitor & { password: string }) | null> => {
     const row = id ? await one('SELECT * FROM visitors WHERE id = ?', [id]) : null;
-    return row ? { ...asVisitor(row), password: String(row.password) } : null;
+    return row ? withLevels(row) : null;
+  };
+  /** The levels a visitor holds, given and taken at once (ADR 0064 d3): only levels the owner named. */
+  const setLevels = async (id: string, levels: string[]): Promise<void> => {
+    const known = new Set(normalizeVisitorSettings(await store.visitorSettings()).levels.map((l) => l.id));
+    await db.run('DELETE FROM visitor_levels WHERE visitor_id = ?', [id]);
+    for (const level of new Set(levels)) if (known.has(level)) await db.run('INSERT INTO visitor_levels (visitor_id, level) VALUES (?, ?)', [id, level]);
+  };
+  /** A new account receives the level the owner chose for new accounts, if any. */
+  const welcomed = async (id: string): Promise<void> => {
+    const { welcome } = normalizeVisitorSettings(await store.visitorSettings());
+    if (welcome) await setLevels(id, [...(await levelsOf(id)), welcome]);
   };
   const remove = async (id: string): Promise<void> => {
+    await db.run('DELETE FROM visitor_levels WHERE visitor_id = ?', [id]);
     await db.run('DELETE FROM visitor_sessions WHERE visitor_id = ?', [id]);
     await db.run('DELETE FROM visitor_links WHERE visitor_id = ?', [id]);
     await db.run('DELETE FROM visitors WHERE id = ?', [id]);
@@ -299,6 +316,7 @@ export async function openVisitors(store: Store, deps: VisitorDeps): Promise<Vis
         said.account,
         `<p class="lead">${escape(said.accountHello.replace('{name}', visitor.name || visitor.email))}</p>` +
           form('/profile', name(visitor.name) + email(visitor.email), said.accountSave) +
+          levelsPart(visitor) +
           `<h2>${escape(said.accountChangePassword)}</h2>` +
           form('/password', password(said.accountCurrentPassword, 'current-password') + password(said.accountNewPassword, 'new-password'), said.accountChangePassword) +
           `<h2>${escape(said.accountDownload)}</h2><p><a class="button" href="/_/account/data" download>${escape(said.accountDownload)}</a></p>` +
@@ -308,6 +326,13 @@ export async function openVisitors(store: Store, deps: VisitorDeps): Promise<Vis
         notice,
         status,
       );
+    /** The levels held, by the names the owner gave them; nothing while the site has none. */
+    const levelsPart = (visitor: Visitor): string => {
+      if (!settings.levels.length) return '';
+      const held = settings.levels.filter((l) => visitor.levels.includes(l.id));
+      const list = held.length ? `<ul data-account-levels>${held.map((l) => `<li>${escape(l.name)}</li>`).join('')}</ul>` : `<p data-account-levels>${escape(said.accountNoLevels)}</p>`;
+      return `<h2>${escape(said.accountLevels)}</h2>${list}`;
+    };
     const passwordProblem = (value: string): string => (value.length < PASSWORD_MIN || value.length > PASSWORD_MAX ? said.accountShortPassword : '');
 
     switch (route) {
@@ -397,6 +422,7 @@ export async function openVisitors(store: Store, deps: VisitorDeps): Promise<Vis
           const kept = { name: String(data.name ?? visitor.name).slice(0, 120), language: String(data.language ?? visitor.language).slice(0, 20) };
           await db.run('UPDATE visitors SET password = ?, name = ?, language = ?, confirmed_at = ? WHERE id = ?', [String(data.password ?? ''), kept.name, kept.language, new Date().toISOString(), visitor.id]);
           await db.run("DELETE FROM visitor_links WHERE visitor_id = ? AND kind = 'confirm'", [visitor.id]);
+          await welcomed(visitor.id);
           await enqueue(visitor.email, 'welcome', kept.language, { name: kept.name, link: `${base}/_/account` });
           return signIn(visitor, '', 'confirmed');
         }
@@ -422,6 +448,7 @@ export async function openVisitors(store: Store, deps: VisitorDeps): Promise<Vis
         await db.run('DELETE FROM visitor_sessions WHERE visitor_id = ?', [spent.visitor.id]);
         if (isInvite) {
           await db.run('UPDATE visitors SET password = ?, name = ?, language = ?, confirmed_at = ? WHERE id = ?', [hash, named, language, new Date().toISOString(), spent.visitor.id]);
+          await welcomed(spent.visitor.id);
           await enqueue(spent.visitor.email, 'welcome', language, { name: named, link: `${base}/_/account` });
         } else await db.run('UPDATE visitors SET password = ? WHERE id = ?', [hash, spent.visitor.id]);
         await shared.del(`visitor-tries:${hashed(spent.visitor.email)}`);
@@ -489,7 +516,11 @@ export async function openVisitors(store: Store, deps: VisitorDeps): Promise<Vis
   const listed = async (settings?: VisitorSettings) => ({
     settings: settings ?? normalizeVisitorSettings(await store.visitorSettings()),
     mail: (await siteMailer(store, deps.mail)) !== null,
-    visitors: (await db.rows<Row>('SELECT * FROM visitors ORDER BY created_at DESC, email')).map(asVisitor),
+    visitors: await (async () => {
+      const held = new Map<string, string[]>();
+      for (const r of await db.rows<Row>('SELECT visitor_id, level FROM visitor_levels ORDER BY level')) held.set(String(r.visitor_id), [...(held.get(String(r.visitor_id)) ?? []), String(r.level)]);
+      return (await db.rows<Row>('SELECT * FROM visitors ORDER BY created_at DESC, email')).map((r) => ({ ...asVisitor(r), levels: held.get(String(r.id)) ?? [] }));
+    })(),
     waiting: Number((await db.rows<{ n: number | string }>('SELECT COUNT(*) AS n FROM mail_queue WHERE failed_at IS NULL'))[0]?.n ?? 0),
     failed: (await db.rows<Row>('SELECT id, to_address, what, error, failed_at FROM mail_queue WHERE failed_at IS NOT NULL ORDER BY failed_at DESC')).map(
       (r): FailedMail => ({ id: String(r.id), to: String(r.to_address), what: String(r.what), error: String(r.error), failedAt: String(r.failed_at) }),
@@ -501,8 +532,21 @@ export async function openVisitors(store: Store, deps: VisitorDeps): Promise<Vis
     const id = url.searchParams.get('id') ?? String(body.id ?? '');
     switch (route) {
       case 'GET /api/visitors':
-      case 'PUT /api/visitors':
         return json(await listed());
+      case 'PUT /api/visitors': {
+        // A level the owner took away is taken from everyone who held it.
+        const known = normalizeVisitorSettings(await store.visitorSettings()).levels.map((l) => l.id);
+        if (known.length) await db.run(`DELETE FROM visitor_levels WHERE level NOT IN (${known.map(() => '?').join(', ')})`, known);
+        else await db.run('DELETE FROM visitor_levels');
+        return json(await listed());
+      }
+      case 'PUT /api/visitors/levels': {
+        // The owner gives and takes a visitor's levels (ADR 0064 d3).
+        const visitor = await byId(id);
+        if (!visitor) return json({ error: 'nobody has that account' }, 404);
+        await setLevels(visitor.id, Array.isArray(body.levels) ? body.levels.map(String) : []);
+        return json(await listed());
+      }
       case 'POST /api/visitors': {
         // An invitation (ADR 0064 d2): the owner gives the address, the visitor chooses the rest from the link.
         const address = cleanEmail(String(body.email ?? ''));
@@ -543,5 +587,29 @@ export async function openVisitors(store: Store, deps: VisitorDeps): Promise<Vis
     }
   }
 
-  return { fetch, chores, admin };
+  /** A page for visitors signed in, or for members (ADR 0064 d4): null when this visitor may see it. */
+  async function guard(request: Request, url: URL, audience: Audience, asked: string): Promise<Response | null> {
+    const me = await sessionVisitor(cookieOf(request));
+    if (me && mayView(audience, me.levels)) return null;
+    const site = await siteOf();
+    const settings = normalizeVisitorSettings(await store.visitorSettings());
+    const language = languageOf(site, asked, null);
+    const query = language === site.language ? '' : `?l=${encodeURIComponent(language)}`;
+    const { said, form, email, password, link: linkTo } = parts(language, query);
+    const frame = await deps.frame(language);
+    if (frame === null) return plain('nothing is published yet', 404);
+    let inside: string;
+    if (me) inside = `<p class="lead" data-members-level>${escape(said.membersLevel)}</p><p>${linkTo('', said.myAccount)}</p>`;
+    else {
+      const back = backOf(url.pathname) || '/';
+      const signupLink = settings.signup === 'open' ? `<p>${escape(said.accountNoAccount)} ${linkTo('/signup', said.accountSignUp)}</p>` : '';
+      inside =
+        `<p class="lead" data-members-sign-in>${escape(audience.who === 'signed' ? said.membersSigned : said.membersSignIn)}</p>` +
+        form('/signin', email('', 'username') + password(said.accountPassword, 'current-password'), said.accountSignIn, { back }) +
+        `<p>${linkTo('/forgot', said.accountForgot)}</p>${signupLink}`;
+    }
+    return page(framed(frame, said.members, inside), 403);
+  }
+
+  return { fetch, chores, admin, guard };
 }

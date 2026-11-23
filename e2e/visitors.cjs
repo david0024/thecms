@@ -2,7 +2,8 @@
  * Visitor accounts in a real browser (ADR 0064, PR a): the mail server set in
  * Settings → E-mail and tested, the accounts turned on, a visitor signing up
  * from the site's own page, confirming the address from the message the
- * site's clock sent, and the owner seeing the account and inviting another.
+ * site's clock sent, and the owner seeing the account and inviting another;
+ * member levels named and given, and a page kept for members (PR b).
  *
  *   node e2e/visitors.cjs [folder for screenshots]
  */
@@ -167,6 +168,62 @@ function mailServer(mails) {
     // A visitor's data, downloaded for them.
     const [download] = await Promise.all([page.waitForEvent('download'), page.locator('[data-visitor="ana@example.com"] button').first().click()]);
     assert(download.suggestedFilename() === 'ana@example.com.json', "the owner downloads a visitor's data");
+
+    // Member levels (ADR 0064 d3): named, chosen for new accounts, and given to Ana.
+    await page.locator('[data-level-name]').fill('Premium');
+    await page.locator('[data-level-add]').click();
+    await page.locator('[data-level="premium"]').waitFor();
+    await page.locator('[data-visitors-welcome]').selectOption('premium');
+    await page.waitForResponse((r) => r.url().endsWith('/api/visitors') && r.request().method() === 'PUT');
+    await page.locator('[data-visitor="ana@example.com"] [data-visitor-level="premium"]').check();
+    await page.waitForResponse((r) => r.url().includes('/api/visitors/levels'));
+    assert(await page.locator('[data-visitor="ana@example.com"] [data-visitor-level="premium"]').isChecked(), 'a level is named and given to a visitor');
+
+    // "My account" in the menu, while the accounts are on.
+    await page.locator('[data-menu-customise]').click();
+    await page.locator('[data-menu-add="1"]').click();
+    await page.locator('[data-menu-level="1"] > li').last().locator('[data-menu-target]').first().selectOption('account');
+    assert(true, 'the menu may lead to "My account"');
+
+    // Who sees it (ADR 0064 d4): the page "About" for members of Premium; Ana opens it, another visitor is asked to sign in.
+    await page.reload();
+    await page.locator('button[data-open="about"]').click();
+    await page.locator('[data-audience="page"]').waitFor();
+    await page.locator('[data-audience-who="members"]').check();
+    await page.locator('[data-audience-closed]').waitFor();
+    assert(await page.locator('[data-audience-level="premium"]').isChecked(), 'a page is kept for members of a level');
+    // The runtime builds again within a second of a change.
+    await page.waitForTimeout(1200);
+    const opened = await visitor.goto(site('/about/'));
+    assert(opened.status() === 200, 'a member of the level sees it');
+    const stranger = await browser.newPage();
+    const asked = await stranger.goto(site('/about/'));
+    assert(asked.status() === 403 && (await stranger.locator('[data-members-sign-in]').count()) === 1, 'anyone else is asked to sign in');
+    if (shots) await stranger.screenshot({ path: join(shots, 'members-sign-in.png') });
+    await stranger.close();
+    await page.locator('[data-audience-level="premium"]').uncheck();
+    await page.locator('[data-audience-who="signed"]:checked').waitFor();
+    await page.locator('[data-audience-who="everyone"]').check();
+    await page.locator('[data-audience-closed]').waitFor({ state: 'detached' });
+    assert(true, 'and opened to everyone again');
+
+    // A whole type, from its settings.
+    await page.reload();
+    await page.locator('[data-nav="types"]').click();
+    await page.locator('[data-type] button.open').first().click();
+    await page.locator('[data-audience="type"]').waitFor();
+    await page.locator('[data-audience-who="signed"]').check();
+    await page.locator('[data-audience-closed]').waitFor();
+    await page.locator('[data-audience-who="everyone"]').check();
+    await page.locator('[data-audience-closed]').waitFor({ state: 'detached' });
+    assert(true, 'a whole type is kept for those signed in, and opened again');
+
+    // A level taken away.
+    await page.reload();
+    await page.locator('[data-nav="settings"]').click();
+    await page.locator('[data-level="premium"] [data-level-remove]').click();
+    await page.locator('[data-level="premium"]').waitFor({ state: 'detached' });
+    assert(true, 'a level is taken away');
 
     // Messages that could not be sent at their last try: listed, tried again, or forgotten.
     const failed = (id) =>

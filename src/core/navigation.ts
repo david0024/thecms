@@ -54,7 +54,11 @@ export function automaticMenu(site: Site, pages: MenuPage[], lists: MenuLists): 
   return items;
 }
 
-export function resolveMenu(site: Site, pages: MenuPage[], lists: MenuLists): MenuLink[] {
+/** Where "My account" leads: the account's pages, in the language of the page it is on (ADR 0064 d4). */
+export const accountPath = (site: Site): string => (site.languages.includes(site.language) ? `/_/account?l=${encodeURIComponent(site.language)}` : '/_/account');
+
+/** `account`: what "My account" says in the site's language when its item has no label of its own. */
+export function resolveMenu(site: Site, pages: MenuPage[], lists: MenuLists, account = 'My account'): MenuLink[] {
   const bySlug = new Map(pages.map((p) => [p.slug, p]));
   const byId = new Map(listsOf(site, lists).map((l) => [l.id, l]));
   const walk = (nodes: MenuNode[], depth: number): MenuLink[] =>
@@ -75,6 +79,11 @@ export function resolveMenu(site: Site, pages: MenuPage[], lists: MenuLists): Me
         fallback = list.title;
       } else if (node.target.kind === 'url') {
         href = node.target.href;
+      } else if (node.target.kind === 'account') {
+        // Visitor accounts that are off have no account to lead to (ADR 0064 d8).
+        if (!site.accounts) return [];
+        href = accountPath(site);
+        fallback = account;
       }
       const title = node.label || fallback;
       // Nothing to say, or nowhere to go and nothing to open: not an item.

@@ -857,6 +857,19 @@ export async function startEditor(
       if (request.method === 'DELETE') return json({ locked: await store.lockPage(url.searchParams.get('slug') ?? '', null) });
       return json({ locked: await store.lockedPages() });
     }
+    if (url.pathname === '/api/audiences') {
+      // Who sees a page, an entry or a whole type (ADR 0064 d4), with the levels to choose from. Nothing of it while the accounts are off (d8).
+      const settings = await site.visitors.settings();
+      if (!settings.on) return json({ error: 'visitor accounts are off' }, 404);
+      if (request.method === 'PUT') {
+        const kind = String(body.kind ?? '');
+        if (kind !== 'page' && kind !== 'entry' && kind !== 'type') return json({ error: 'say whether it is a page, an entry or a type' }, 400);
+        // A whole type is the site's settings, which are the owner's.
+        if (kind === 'type' && me.role !== 'owner') return json({ error: 'only the owner may do this' }, 403);
+        await store.setAudience(kind, String(body.key ?? ''), body.audience ?? null);
+      }
+      return json({ audiences: await store.audiences(), levels: settings.levels });
+    }
     if (url.pathname === '/api/schedule') {
       // A page or an entry published at a set time (ADR 0039).
       if (request.method === 'POST') return json({ scheduled: await store.schedule(String(body.kind ?? 'page'), String(body.slug ?? ''), String(body.at ?? '')) });

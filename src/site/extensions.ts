@@ -565,19 +565,23 @@ export type Batches = ReturnType<typeof batches>;
 /**
  * The published pages and entries, newest first (ADR 0062 d4): each with its
  * address, title, description, language, type and date. A page behind a
- * password is not one of them; nor is anything in draft.
+ * password or for members is not one of them; nor is anything in draft.
  */
 export async function publishedFor(store: Store): Promise<{ address: string; title: string; description: string; language: string; type: string; date: string }[]> {
   const site = await store.site();
   const locked = new Set(await store.lockedPages());
+  // Nor is what is only for members (ADR 0064 d4).
+  const audiences = await store.audiences();
   const times = await store.publishedTimes();
   const out: { address: string; title: string; description: string; language: string; type: string; date: string }[] = [];
   for (const page of await store.published()) {
-    if (locked.has(page.of) || locked.has(page.slug)) continue;
+    if (locked.has(page.of) || locked.has(page.slug) || audiences.pages[page.of]) continue;
     out.push({ address: pagePath(page.slug), title: page.title, description: page.description, language: page.language, type: 'page', date: (times.pages[page.of] ?? '').slice(0, 10) });
   }
   for (const type of contentTypes(site)) {
+    if (audiences.types[type.id]) continue;
     for (const entry of await store.publishedEntries(type.id)) {
+      if (audiences.entries[`${type.id}/${entry.slug}`]) continue;
       for (const language of [site.language, ...site.languages.filter((l) => l !== site.language)]) {
         const shown = language === site.language ? entry : entryIn(site, type, entry, language);
         if (!shown) continue;

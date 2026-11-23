@@ -28,10 +28,21 @@ export function lockedPage(frame: string, back: string | null): string {
         `<form class="form" method="post" action="/_/unlock" accept-charset="utf-8"><input type="hidden" name="back" value="${escape(back)}">` +
         `<p class="form-field"><label for="locked-password">${escape(said.lockedPassword)}</label><input id="locked-password" name="password" type="password" maxlength="200" autocomplete="current-password" required></p>` +
         `<p><button class="button" type="submit">${escape(said.lockedOpen)}</button></p></form>`;
-  const main = `<section class="b b-form"><div class="b-in"><h1>${escape(said.locked)}</h1>${form}</div></section>`;
+  return closedPage(frame, said.locked, form);
+}
+
+/** In an export, the page in place of one for members (ADR 0064 d4): a static host knows nobody, so it says it cannot be opened. */
+export function membersPage(frame: string): string {
+  const said = wordsFor(/<html lang="([^"]+)"/.exec(frame)?.[1] ?? 'en');
+  return closedPage(frame, said.members, `<p class="lead">${escape(said.membersStatic)}</p>`);
+}
+
+/** The site's frame with a title and what is said in place of a page that is not open to this visitor. */
+function closedPage(frame: string, title: string, inside: string): string {
+  const main = `<section class="b b-form"><div class="b-in"><h1>${escape(title)}</h1>${inside}</div></section>`;
   return frame
-    .replace(/<title>[^<]*?(( · [^<]*)?)<\/title>/, (_whole, rest: string) => `<title>${escape(said.locked)}${rest}</title>`)
-    .replace(/<meta property="og:title" content="[^"]*">/, `<meta property="og:title" content="${escape(said.locked)}">`)
+    .replace(/<title>[^<]*?(( · [^<]*)?)<\/title>/, (_whole, rest: string) => `<title>${escape(title)}${rest}</title>`)
+    .replace(/<meta property="og:title" content="[^"]*">/, `<meta property="og:title" content="${escape(title)}">`)
     .replace('</head>', '<meta name="robots" content="noindex">\n</head>')
     .replace(/<main([^>]*)>[\s\S]*?<\/main>/, (_whole, attrs: string) => `<main${attrs}>${main}</main>`);
 }

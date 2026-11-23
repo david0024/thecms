@@ -15,6 +15,8 @@ export type MenuTarget =
   /** The list of a content type the owner added. */
   | { kind: 'type'; id: string }
   | { kind: 'url'; href: string }
+  /** The visitor's account (ADR 0064 d4): signing in, or the account; drawn only while accounts are on. */
+  | { kind: 'account' }
   /** A heading that only opens what is under it. */
   | { kind: 'none' };
 
@@ -38,6 +40,7 @@ function cleanTarget(raw: unknown): MenuTarget {
   if (raw.kind === 'type' && slugify(raw.id)) return { kind: 'type', id: slugify(raw.id) };
   // Kept while the address is still being typed; an item with no address is not drawn.
   if (raw.kind === 'url') return { kind: 'url', href: safeHref(raw.href) };
+  if (raw.kind === 'account') return { kind: 'account' };
   return { kind: 'none' };
 }
 

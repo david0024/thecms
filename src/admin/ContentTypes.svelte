@@ -5,6 +5,7 @@
  * about it is code.
  */
 import { type ContentType, contentTypes, ENTRY_SCHEMAS, type EntrySchema, type FieldMeaning, meaningsFor, languageName, prefixOf, READY_LAYOUTS, type TypeTranslation, STANDARD, type Site, slugify, TYPE_FIELD_KINDS, type TypeField, type TypeFieldKind } from '../core/index.ts';
+import Audience from './Audience.svelte';
 import { layoutName } from './layouts.ts';
 import { say, t } from './messages.ts';
 
@@ -121,6 +122,7 @@ async function remove(): Promise<void> {
       <label class="check"><input type="checkbox" checked={draft.categories} onchange={(e) => patch({ categories: e.currentTarget.checked })} data-type-categories /><span>{t.ctypes.categories}</span></label>
       <label class="check" class:off={!draft.dated}><input type="checkbox" disabled={!draft.dated} checked={draft.feed} onchange={(e) => patch({ feed: e.currentTarget.checked })} /><span>{t.ctypes.feed}</span></label>
       <label class="check"><input type="checkbox" checked={draft.comments === true} onchange={(e) => patch({ comments: e.currentTarget.checked ? true : undefined })} data-type-comments /><span>{t.ctypes.comments}</span></label>
+      {#if editing}{#key editing}<Audience kind="type" key={editing} />{/key}{/if}
 
       <label class="field">
         <span>{t.layouts.ofType}</span>

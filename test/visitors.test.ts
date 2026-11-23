@@ -78,7 +78,7 @@ describe('visitor accounts, off', () => {
       editor.fetch(new Request(`http://127.0.0.1:4321${path}`, { method, headers: { host: '127.0.0.1:4321', 'x-thecms-token': editor.token, 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) }));
     try {
       const off = (await (await call('GET', '/api/visitors')).json()) as Record<string, unknown>;
-      expect(off).toEqual({ settings: { on: false, signup: 'closed', privacy: '' }, mail: false });
+      expect(off).toEqual({ settings: { on: false, signup: 'closed', privacy: '', levels: [], welcome: '' }, mail: false });
       expect((await call('POST', '/api/visitors', { email: 'a@example.com' })).status).toBe(404);
       for (const table of VISITOR_TABLES) expect(await store.hasTable(table)).toBe(false);
       const refused = await call('PUT', '/api/visitors', { on: true, signup: 'open' });
@@ -162,7 +162,7 @@ describe('visitor accounts, on', () => {
       const data = await tab.go('GET', '/_/account/data');
       expect(data.headers.get('content-disposition')).toContain('attachment');
       const kept = (await data.json()) as Record<string, unknown>;
-      expect(Object.keys(kept).sort()).toEqual(['confirmedAt', 'createdAt', 'email', 'id', 'language', 'lastAt', 'name']);
+      expect(Object.keys(kept).sort()).toEqual(['confirmedAt', 'createdAt', 'email', 'id', 'language', 'lastAt', 'levels', 'name']);
       expect(JSON.stringify(kept)).not.toContain('argon');
 
       expect((await tab.go('POST', '/_/account/signout', {})).status).toBe(303);

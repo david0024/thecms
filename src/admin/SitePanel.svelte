@@ -38,6 +38,8 @@ const setFooterLink = (i: number, patch: Partial<LinkValue>): void => set({ foot
 const own = (language: string): SiteText => site.translations[language] ?? { footer: '', action: null, footerLinks: [] };
 const setOwn = (language: string, patch: Partial<SiteText>): void => set({ translations: { ...site.translations, [language]: { ...own(language), ...patch } } });
 let adding = $state('');
+/** Whether visitor accounts are on: the menu may then lead to "My account" (ADR 0064 d4, d8). */
+let accounts = $state(false);
 const addLanguage = (): void => {
   const language = adding.trim();
   if (!language) return;
@@ -165,7 +167,7 @@ import Redirects from './Redirects.svelte';
 
 <h3>{t.menu.title}</h3>
 <div class="field" data-menu-builder>
-  <MenuBuilder {site} {pages} {lists} nodes={site.menu} onchange={(menu) => set({ menu })} />
+  <MenuBuilder {site} {pages} {lists} {accounts} nodes={site.menu} onchange={(menu) => set({ menu })} />
 </div>
 
 <h3>{t.site.footer}</h3>
@@ -219,7 +221,7 @@ import Redirects from './Redirects.svelte';
   <small>{t.site.inLanguageHint}</small>
 {/each}
 
-<Visitors languages={[site.language, ...site.languages]} />
+<Visitors languages={[site.language, ...site.languages]} onswitch={(on) => (accounts = on)} />
 
 <EmailSettings />
 

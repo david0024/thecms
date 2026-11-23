@@ -3,7 +3,7 @@
  * the key from the address the command printed; on a served admin, the
  * session cookie and a header only the admin's own page sends (ADR 0022).
  */
-import type { Block, ExtensionAction, Form, Redirect, RedirectProblem, ExtensionCollection, Page, Post, Site, Theme } from '../core/index.ts';
+import type { Audience, Audiences, Block, Level, ExtensionAction, Form, Redirect, RedirectProblem, ExtensionCollection, Page, Post, Site, Theme } from '../core/index.ts';
 import type { ViewDocument } from '../view/index.ts';
 import type { ExtensionOffer } from '../site/extensions.ts';
 import type { ImportPreview, ImportProgress } from '../site/server.ts';
@@ -35,6 +35,9 @@ export interface VisitorSettings {
   on: boolean;
   signup: 'open' | 'invite' | 'closed';
   privacy: string;
+  /** The member levels the owner named (ADR 0064 d3), and the one each new account receives ('' for none). */
+  levels: Level[];
+  welcome: string;
 }
 export interface VisitorInfo {
   id: string;
@@ -45,6 +48,7 @@ export interface VisitorInfo {
   confirmedAt: string | null;
   lastAt: string | null;
   invited: boolean;
+  levels: string[];
 }
 export interface VisitorsShown {
   settings: VisitorSettings;
@@ -338,6 +342,10 @@ export const api = {
   removeVisitor: (id: string) => call<VisitorsShown>('DELETE', `/api/visitors?id=${encodeURIComponent(id)}`),
   visitorData: (id: string) => call<{ visitor: Omit<VisitorInfo, 'invited'> }>('GET', `/api/visitors/data?id=${encodeURIComponent(id)}`),
   retryMail: (id: string) => call<VisitorsShown>('POST', `/api/visitors/retry?id=${encodeURIComponent(id)}`, {}),
+  setVisitorLevels: (id: string, levels: string[]) => call<VisitorsShown>('PUT', `/api/visitors/levels?id=${encodeURIComponent(id)}`, { levels }),
+  /** Who sees a page, an entry or a type (ADR 0064 d4): refused while visitor accounts are off. */
+  audiences: () => call<{ audiences: Audiences; levels: Level[] }>('GET', '/api/audiences'),
+  setAudience: (kind: 'page' | 'entry' | 'type', key: string, audience: Audience | null) => call<{ audiences: Audiences; levels: Level[] }>('PUT', '/api/audiences', { kind, key, audience }),
   forgetMail: (id: string) => call<VisitorsShown>('DELETE', `/api/visitors/failed?id=${encodeURIComponent(id)}`),
   mail: () => call<MailShown>('GET', '/api/mail'),
   setMail: (settings: { host: string; port: number; security: 'tls' | 'plain'; user: string; password: string; from: string }) => call<MailShown>('PUT', '/api/mail', settings),

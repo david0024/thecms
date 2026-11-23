@@ -51,7 +51,7 @@ const esc = (v: string): string =>
 export type MenuItem = MenuLink;
 
 /** The menu these pages get: the one the owner arranged, or the pages in order and then the blog. */
-export const menuOf = (site: Site, pages: MenuPage[], lists: MenuLists): MenuItem[] => resolveMenu(site, pages, lists);
+export const menuOf = (site: Site, pages: MenuPage[], lists: MenuLists): MenuItem[] => resolveMenu(site, pages, lists, wordsFor(site.language).myAccount);
 
 export const STYLESHEET = '/assets/site.css';
 

@@ -18,6 +18,7 @@ let {
   lists,
   nodes,
   depth = 1,
+  accounts = false,
   onchange,
 }: {
   site: Site;
@@ -27,6 +28,8 @@ let {
   /** The items at this level; null at the top means the site still makes its own menu. */
   nodes: MenuNode[] | null;
   depth?: number;
+  /** Visitor accounts are on: an item may lead to "My account" (ADR 0064 d4). */
+  accounts?: boolean;
   onchange: (nodes: MenuNode[] | null) => void;
 } = $props();
 
@@ -46,6 +49,7 @@ function choose(i: number, value: string): void {
   if (value.startsWith('page:')) patch(i, { target: { kind: 'page', slug: value.slice(5) } });
   else if (value.startsWith('type:')) patch(i, { target: { kind: 'type', id: value.slice(5) } });
   else if (value === 'url') patch(i, { target: { kind: 'url', href: '' } });
+  else if (value === 'account') patch(i, { target: { kind: 'account' } });
   else patch(i, { target: { kind: 'none' } });
 }
 /** What the item says when its own label is left empty. */
@@ -88,6 +92,7 @@ const missing = (target: MenuTarget): boolean => target.kind === 'page' && !page
           {#if node.target.kind === 'page' && missing(node.target)}<option value={`page:${node.target.slug}`}>{t.menu.gone}</option>{/if}
           {#each types as type}<option value={`type:${type.id}`}>{type.name}</option>{/each}
           <option value="url">{t.menu.url}</option>
+          {#if accounts || node.target.kind === 'account'}<option value="account">{t.menu.account}</option>{/if}
         </select>
         {#if node.target.kind === 'url'}
           <input type="text" value={node.target.href} placeholder="https://… /contact/" aria-label={t.inspector.linkHref} oninput={(e) => patch(i, { target: { kind: 'url', href: e.currentTarget.value.trim() } })} data-menu-href />
@@ -96,7 +101,7 @@ const missing = (target: MenuTarget): boolean => target.kind === 'page' && !page
         {#if empty(node.target)}<small>{t.menu.noPosts}</small>{/if}
         {#if depth < MENU_DEPTH}
           {#if node.children.length}
-            <Self {site} {pages} {lists} nodes={node.children} depth={depth + 1} onchange={(children) => patch(i, { children: children ?? [] })} />
+            <Self {site} {pages} {lists} {accounts} nodes={node.children} depth={depth + 1} onchange={(children) => patch(i, { children: children ?? [] })} />
           {:else}
             <button type="button" class="quiet" onclick={() => patch(i, { children: [fresh()] })} data-menu-sub>+ {depth === 1 ? t.menu.addSub : t.menu.addLink}</button>
           {/if}

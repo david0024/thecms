@@ -129,6 +129,8 @@ function menuIn(site: Site, language: string, nodes: MenuNode[], pages: Placed[]
     if (node.target.kind === 'url') return [{ ...node, children }];
     // A list of entries is there in its type's name in that language, when it has entries there (ADR 0054).
     if (node.target.kind === 'type') return [{ ...node, label: '', children }];
+    // "My account" says so in each language's words.
+    if (node.target.kind === 'account') return [{ ...node, label: '', children }];
     if (node.target.kind === 'none') return [{ ...node, children }];
     return children;
   });
