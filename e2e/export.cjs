@@ -94,6 +94,24 @@ function edit(db, port) {
     await download.saveAs(join(dir, 'site.zip'));
     assert(readFileSync(join(dir, 'site.zip')).subarray(0, 2).toString() === 'PK', 'the site as files is downloaded as a ZIP');
 
+    // With visitor accounts on, the visitors are offered apart: never with the whole site, only when ticked (ADR 0064 d6).
+    assert((await screen.locator('[data-export-apart]').count()) === 0, 'a site that never had accounts offers no visitors');
+    const on = await page.request.put('http://127.0.0.1:4431/api/visitors', { headers: { 'x-thecms-token': token }, data: { on: true, signup: 'invite' } });
+    assert(on.ok(), 'visitor accounts are turned on');
+    await page.locator('[data-nav="pages"]').click();
+    await page.locator('[data-nav="export"]').click();
+    const apart = screen.locator('[data-export-apart="visitors"]');
+    await apart.waitFor();
+    assert((await apart.isChecked()) === false && (await screen.locator('[data-export-all]').isChecked()), 'the visitors are offered unticked, apart from the whole site');
+    assert((await screen.locator('[data-export-part]').count()) === 5, 'and are not one of its parts');
+    if (shots) await page.screenshot({ path: join(shots, 'export-visitors.png'), fullPage: true });
+    await apart.check();
+    [download] = await Promise.all([page.waitForEvent('download'), screen.locator('[data-export-content]').click()]);
+    await download.saveAs(join(dir, 'visitors.thecms.json'));
+    const withVisitors = JSON.parse(readFileSync(join(dir, 'visitors.thecms.json'), 'utf8'));
+    assert(withVisitors.parts.length === 6 && withVisitors.parts.includes('visitors') && Array.isArray(withVisitors.visitors), 'ticked, the whole site comes with the visitors');
+    await apart.uncheck();
+
     // Turned off in the settings, the data is not there, and the screen says where to turn it on.
     await page.locator('[data-nav="settings"]').click();
     await page.locator('[data-site-data]').uncheck();

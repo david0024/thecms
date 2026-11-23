@@ -486,6 +486,8 @@ export const en = {
     sections: 'Sections',
     forms: 'Forms',
     design: 'Theme, settings, menu and old addresses',
+    visitors: 'Visitor accounts and their levels',
+    visitorsHint: 'Not part of the whole site: choose it only to move the visitors to another site. It holds each confirmed visitor\'s e-mail, name, language and levels, never a password: there they choose a new one with "Forgot your password?". The file then holds personal data, so keep it safe and delete it once it is used.',
     downloadContent: 'Download the content',
     filesHeading: 'The site as files, for a static host',
     filesIntro: 'The published site as plain files in a ZIP, for a host that only serves files (Netlify, Cloudflare Pages, GitHub Pages, any web server). Usually the site is served by thecms itself, with everything working; choose this only for a simple site.',

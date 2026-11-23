@@ -34,7 +34,9 @@ the accounts and their passwords, the password of a page, the messages
 visitors sent, a comment waiting for approval, the address any comment was
 sent from, the statistics, the installed extensions and their data. Putting a
 whole site back as it was is the backup's work (ADR 0051), and the screen says
-so.
+so. (Amended by ADR 0064: the visitors, without their passwords, are a part
+of their own, chosen apart from the whole site; who sees a page or an entry
+always goes with it.)
 
 The owner chooses **the whole site**, or some parts: the pages, each content
 type, the sections, the forms, and "theme, settings, menu and old addresses".

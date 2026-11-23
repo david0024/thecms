@@ -162,7 +162,7 @@ describe('a page, an entry and a type for members, as built', () => {
       expect((await publishedFor(store)).map((p) => p.address)).not.toContain('/club/');
       expect((await publishedFor(store)).map((p) => p.address)).not.toContain('/blog/inside/');
       const content = await exportContent(store, ['pages']);
-      expect(content.pages?.find((p) => p.slug === 'club')?.members).toBe(true);
+      expect(content.pages?.find((p) => p.slug === 'club')?.audience).toEqual({ who: 'members', levels: ['premium'] });
 
       const out = join(dir, 'out');
       await exportSite(store, out);

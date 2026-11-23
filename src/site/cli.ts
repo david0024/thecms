@@ -64,7 +64,7 @@ Usage:
   ${NAME} reset-link <site.db> <email> --public=https://cms.example.com
   ${NAME} theme <site.db> <theme.json>
   ${NAME} export <site.db> <folder | site.zip>
-  ${NAME} export <site.db> <content.thecms.json> [--parts=pages,sections,forms,design,type:posts]
+  ${NAME} export <site.db> <content.thecms.json> [--parts=pages,sections,forms,design,type:posts,visitors]
   ${NAME} forms <site.db> [port]
   ${NAME} run <site.db> [--port=4323] [--host=127.0.0.1]
   ${NAME} import <site.db> <export.xml> [--no-images] [--types=portfolio,team] [--categories=projects]

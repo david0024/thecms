@@ -174,3 +174,35 @@ Proposed in the project thread on 2026-11-23 and built as below.
   answer that the accounts are off, and a route is given no visitor; nothing
   of the accounts is loaded for it. An extension that works with them may be
   installed then, and the owner is told it does that part once they are on.
+
+### The visitors in the complete export (ADR 0057), as built
+
+Proposed in the project thread on 2026-11-23; Liviu chose "Cum am propus"
+(as proposed, without the passwords' hashes) the same day. Built as below.
+
+- **A part apart.** The Export screen offers "Visitor accounts and their
+  levels" below the parts, unticked, once the site has had accounts (on now,
+  or their tables are there). "The whole site" never includes it, nor does
+  an export that names no parts; `--parts=…,visitors` from the command line.
+  The screen says the file then holds personal data, to be kept safe and
+  deleted once used.
+- **What a visitor is in the file.** Only an account whose address was
+  confirmed: its e-mail, name, language, the day of sign-up and of
+  confirmation, and its levels. Never the password's hash, a session, a link
+  sent by e-mail, what waits to be sent, nor the day of the last sign-in;
+  no address (IP) is kept to begin with. Moving the accounts with their
+  passwords is the backup's work (ADR 0051).
+- **Who sees it goes with the content, always.** Each page and entry carries
+  its own audience, each type its own, and the file names the levels they
+  use; none of it is personal. A file of before this said only `members:
+  true`, which is read as "visitors signed in".
+- **Brought back.** The levels the site lacks are added (up to twenty), and
+  who sees each page, entry and new type is set before it is published, so
+  an import never opens to everyone what was for members; while the accounts
+  are off here such pages stay closed to all but the admin (d8). The visitors
+  come only into a site whose accounts are on; otherwise the report says to
+  turn them on and import again. Each comes confirmed and without a password,
+  and chooses one with "Forgot your password?"; one whose address is already
+  here is left as it was. No message is sent; extensions are told
+  `account.made` for each (d7). The accounts' own code is not loaded for it
+  (`visitor-transfer.ts` works on the tables, d8).
