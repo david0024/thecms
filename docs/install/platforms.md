@@ -11,7 +11,7 @@ language and make your account.
 ## Docker
 
 ```sh
-curl -fsSL https://github.com/david0024/thecms/releases/download/v0.1.0-alpha.2/install.sh | sh -s -- --host=docker
+curl -fsSL https://github.com/uhlaka-devs/uhlaka/releases/download/v0.1.0-alpha.3/install.sh | sh -s -- --host=docker
 ```
 
 It asks which database (SQLite, PostgreSQL, MySQL, MariaDB, or one of yours)
@@ -33,12 +33,12 @@ To update, run the installer again in the same folder: the files are replaced,
 
 ## A ready platform
 
-Each release publishes an image: `ghcr.io/david0024/thecms:<version>` (and
+Each release publishes an image: `ghcr.io/uhlaka-devs/uhlaka:<version>` (and
 `:latest`, the newest, pre-releases too). What every platform needs:
 
 | What | Value |
 | --- | --- |
-| Image | `ghcr.io/david0024/thecms:latest` |
+| Image | `ghcr.io/uhlaka-devs/uhlaka:latest` |
 | Port | `4321` |
 | A volume (a disk) | mounted at `/site`; the site lives there as a file |
 | `THECMS_PUBLIC` | the site's address, `https://...` |
@@ -49,7 +49,7 @@ The link for the first page is in the service's logs.
 
 ### Railway
 
-1. New project → **Deploy a Docker image** → `ghcr.io/david0024/thecms:latest`.
+1. New project → **Deploy a Docker image** → `ghcr.io/uhlaka-devs/uhlaka:latest`.
 2. On the service: **Settings → Networking → Generate domain**, port `4321`.
 3. **Variables**: `THECMS_PUBLIC` = the domain it generated, with `https://`.
 4. Right-click the service → **Attach volume**, mounted at `/site`.
@@ -58,7 +58,7 @@ The link for the first page is in the service's logs.
 
 ### Render
 
-1. **New → Web Service → Existing image** → `ghcr.io/david0024/thecms:latest`.
+1. **New → Web Service → Existing image** → `ghcr.io/uhlaka-devs/uhlaka:latest`.
 2. **Environment**: `THECMS_PUBLIC` = `https://<name>.onrender.com` (or your domain).
 3. **Disk**: mounted at `/site` (it needs a paid instance; without a disk, use
    Render's PostgreSQL and set `THECMS_SITE` to its *Internal Database URL*).
@@ -72,7 +72,7 @@ A `fly.toml` in an empty folder:
 app = "my-site"
 
 [build]
-  image = "ghcr.io/david0024/thecms:latest"
+  image = "ghcr.io/uhlaka-devs/uhlaka:latest"
 
 [env]
   THECMS_PUBLIC = "https://my-site.fly.dev"

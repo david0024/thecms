@@ -3,7 +3,7 @@
 # checksums before anything is put in place (ADR 0023). It asks, one step at a
 # time, where the site will live and what it needs there (ADR 0048):
 #
-#   curl -fsSL https://github.com/david0024/thecms/releases/download/v0.1.0-alpha.2/install.sh | sh
+#   curl -fsSL https://github.com/uhlaka-devs/uhlaka/releases/download/v0.1.0-alpha.3/install.sh | sh
 #
 # - This computer, to try it: the program in ~/.local/bin, the site in a file.
 # - A server of yours (Linux with systemd), as root: the program in /usr/local/bin,
@@ -34,7 +34,7 @@ set -eu
 
 # The product's name, as in src/core/name.ts (a test keeps them the same).
 NAME=thecms
-REPOSITORY=david0024/thecms
+REPOSITORY=uhlaka-devs/uhlaka
 
 host=
 public=
