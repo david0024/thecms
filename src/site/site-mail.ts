@@ -76,8 +76,16 @@ export interface Template {
   subject: string;
   text: string;
 }
-/** The owner's words, by language, then by message; what is not there is the program's. */
-export type Templates = Record<string, Partial<Record<TemplateName, Template>>>;
+/**
+ * The owner's words, by language, then by message; what is not there is the
+ * program's, or the extension's. A message an extension declares is kept as
+ * `extension:message` (ADR 0064, "The extensions' messages").
+ */
+export type Templates = Record<string, Record<string, Template>>;
+
+/** The key an extension's message is kept under: `club:receipt`. */
+export const EXTENSION_MAIL = /^[a-z][a-z0-9-]{1,39}:[a-z][a-z0-9-]{1,39}$/;
+export const extensionMailKey = (extension: string, message: string): string => `${extension}:${message}`;
 
 const KEYS: Record<TemplateName, ['mailConfirmSubject' | 'mailResetSubject' | 'mailWelcomeSubject' | 'mailInviteSubject' | 'mailDeletedSubject', 'mailConfirmText' | 'mailResetText' | 'mailWelcomeText' | 'mailInviteText' | 'mailDeletedText']> = {
   confirm: ['mailConfirmSubject', 'mailConfirmText'],
@@ -99,8 +107,9 @@ export function normalizeTemplates(input: unknown): Templates {
   if (!input || typeof input !== 'object') return out;
   for (const [language, kept] of Object.entries(input as Record<string, unknown>)) {
     if (!/^[a-z]{2,3}(-[a-z0-9]{2,8})*$/i.test(language) || !kept || typeof kept !== 'object') continue;
-    for (const name of TEMPLATES) {
-      const one = (kept as Record<string, unknown>)[name] as Record<string, unknown> | undefined;
+    for (const [name, value] of Object.entries(kept as Record<string, unknown>)) {
+      if (!TEMPLATES.includes(name as TemplateName) && !EXTENSION_MAIL.test(name)) continue;
+      const one = value as Record<string, unknown> | undefined;
       if (!one || typeof one !== 'object') continue;
       const subject = text(one.subject, 200).replace(/[\r\n]+/g, ' ');
       const body = typeof one.text === 'string' ? one.text.slice(0, 5000) : '';
@@ -115,4 +124,14 @@ export function renderTemplate(templates: Templates, name: TemplateName, languag
   const chosen = templates[language]?.[name] ?? defaultTemplate(name, language);
   const fill = (words: string): string => words.replace(/\{(name|link|site)\}/g, (_whole, key: 'name' | 'link' | 'site') => values[key]);
   return { subject: fill(chosen.subject).replace(/[\r\n]+/g, ' '), text: fill(chosen.text) };
+}
+
+/** The owner's words for an extension's messages, forgotten with the extension (ADR 0064). */
+export function withoutExtension(templates: Templates, extension: string): Templates {
+  const out: Templates = {};
+  for (const [language, kept] of Object.entries(templates)) {
+    const left = Object.fromEntries(Object.entries(kept).filter(([name]) => !name.startsWith(`${extension}:`)));
+    if (Object.keys(left).length) out[language] = left;
+  }
+  return out;
 }

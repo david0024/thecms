@@ -13,6 +13,7 @@ import { ANSWER_SECONDS, extensionWord, cleanBlockPost, cleanRow, contentTypes, 
 import { type FromRunner, lines, type ToRunner } from './extension-runner.ts';
 import type { InstalledExtension, SiteEvent, Store } from './store.ts';
 import type { AccountsLent } from './visitor-gate.ts';
+import { extensionMailKey, normalizeTemplates, withoutExtension } from './site-mail.ts';
 import { isCompiled, newer } from './update.ts';
 import { VERSION } from './version.ts';
 
@@ -264,9 +265,13 @@ export function extensionHost(store: Store, options: { spawn?: Spawn; fetch?: (u
         const values = (args[2] && typeof args[2] === 'object' ? args[2] : {}) as { link?: unknown };
         const link = await linkFor(extension, typeof values.link === 'string' ? values.link : asked === 'welcome' ? '/_/account' : '');
         const manifest = extension.manifest;
+        if (!own) return lent().send(String(args[0] ?? ''), 'welcome', link);
+        // The owner's words where they changed them in Settings → E-mail, else the extension's, translated.
+        const key = extensionMailKey(name, own.name);
+        const saved = normalizeTemplates(await store.mailTemplates());
         return lent().send(
           String(args[0] ?? ''),
-          own ? { what: `${name}:${own.name}`, words: (language) => ({ subject: extensionWord(manifest, language, own.subject), text: extensionWord(manifest, language, own.text) }) } : 'welcome',
+          { what: key, words: (language) => saved[language]?.[key] ?? { subject: extensionWord(manifest, language, own.subject), text: extensionWord(manifest, language, own.text) } },
           link,
         );
       }
@@ -575,6 +580,10 @@ export function extensionHost(store: Store, options: { spawn?: Spawn; fetch?: (u
       stop(name);
       listening = null;
       await store.uninstallExtension(name);
+      // The owner's words for its messages go with it, as what it kept does.
+      const templates = normalizeTemplates(await store.mailTemplates());
+      const left = withoutExtension(templates, name);
+      if (JSON.stringify(left) !== JSON.stringify(templates)) await store.setMailTemplates(left);
     },
     /** Stops every extension's process. */
     close(): void {

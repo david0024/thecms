@@ -71,6 +71,8 @@ export interface MailTemplate {
 export interface MailTemplates {
   languages: string[];
   names: string[];
+  /** The messages extensions declare, by `extension:message`: the extension's name and the message's subject. */
+  labels: Record<string, string>;
   defaults: Record<string, Record<string, MailTemplate>>;
   saved: Record<string, Record<string, MailTemplate>>;
 }

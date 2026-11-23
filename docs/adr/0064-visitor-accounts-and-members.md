@@ -164,8 +164,8 @@ Proposed in the project thread on 2026-11-23 and built as below.
   the program makes. A link is an address of the site, made whole with the
   site's own address, or over https on a host the extension declared. An
   extension may send one visitor at most ten messages an hour. The owner sees
-  the messages before installing; changing their words in Settings → E-mail
-  is left for later.
+  the messages before installing, and changes their words in Settings →
+  E-mail (below).
 - **The visitor on a route.** The action is given `visitor: { id, levels }`,
   or null. A route that changes something for the visitor should take POST:
   the cookie is `SameSite=Lax`, so a link from another site still brings it
@@ -206,3 +206,21 @@ Proposed in the project thread on 2026-11-23; Liviu chose "Cum am propus"
   here is left as it was. No message is sent; extensions are told
   `account.made` for each (d7). The accounts' own code is not loaded for it
   (`visitor-transfer.ts` works on the tables, d8).
+
+### The extensions' messages in Settings → E-mail, as built
+
+The last part of d7, left for later by PR (c); built on 2026-11-23.
+
+- **Listed with the site's.** Settings → E-mail lists, after the site's own
+  messages, each message an installed extension declares in `mails`, on or
+  off, named by the extension and the message's subject. The owner changes
+  its subject and text in each of the site's languages, as for the site's,
+  with the same `{name}`, `{site}` and `{link}`.
+- **The extension's words, until changed.** What the owner has not changed is
+  the extension's words, translated by its `messages`; a change left empty, or
+  the same as the extension's words, is no change. The owner's words are kept
+  with the site's, under `extension:message` (`club:receipt`), and
+  `host.mail.send` uses them in the visitor's language.
+- **Gone with the extension.** Uninstalled, its messages leave the list and
+  the owner's words for them are forgotten, as what it kept is. A new version
+  that no longer declares a message keeps the owner's words until then.

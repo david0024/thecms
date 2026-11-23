@@ -17,7 +17,7 @@ import { mediaResponse } from './serve-media.ts';
 import { startClock } from './clock.ts';
 import { backups, type Remote, type S3Settings } from './backup.ts';
 import { isEmail, type Mailer, smtpMailer } from './mail.ts';
-import { defaultTemplate as defaultMail, mailAddress, normalizeMailSettings, normalizeTemplates, siteMailer, TEMPLATES, type TemplateName } from './site-mail.ts';
+import { defaultTemplate as defaultMail, extensionMailKey, mailAddress, normalizeMailSettings, normalizeTemplates, siteMailer, type Template, TEMPLATES } from './site-mail.ts';
 import { startRuntime } from './runtime.ts';
 import { zoneFor } from './stats.ts';
 import { isValkeyAddress, openShared, type Shared, shownAddress, switchable, testValkey } from './shared.ts';
@@ -27,7 +27,7 @@ const ADMIN_PATHS = new Set(['/admin', '/preview']);
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { compile } from 'svelte/compiler';
-import { prefixOf, typeIn, SECTION_KIND, type Block, cleanSeo, type Form, fillSections, takeWords, withAreas, type Site, siteIn, type PlacedPage, translatedPage, cleanRow, EXTENSION_MAX_BYTES, type ExtensionManifest, extensionAsks, isObject, languageOf, normalizeBlocks, shownRow, str, type ContentType, DISPLAY_NAME, type LanguagePack, defaultTemplate, MEDIA_MAX_BYTES, MEDIA_PREFIX, UPLOAD_MAX_BYTES, EMBED_ORIGINS, normalizePage, type Page, type Post, contentTypes, listPath, type MenuList, normalizePost, parseTheme, pagesIn, POSTS_TYPE, reservedSlugs, slugProblem, type Theme, themeCss } from '../core/index.ts';
+import { prefixOf, typeIn, SECTION_KIND, type Block, cleanSeo, type Form, fillSections, takeWords, withAreas, type Site, siteIn, type PlacedPage, translatedPage, cleanRow, EXTENSION_MAX_BYTES, type ExtensionManifest, extensionAsks, extensionWord, isObject, languageOf, normalizeBlocks, shownRow, str, type ContentType, DISPLAY_NAME, type LanguagePack, defaultTemplate, MEDIA_MAX_BYTES, MEDIA_PREFIX, UPLOAD_MAX_BYTES, EMBED_ORIGINS, normalizePage, type Page, type Post, contentTypes, listPath, type MenuList, normalizePost, parseTheme, pagesIn, POSTS_TYPE, reservedSlugs, slugProblem, type Theme, themeCss } from '../core/index.ts';
 import type { EntryLists } from '../blocks/editing.ts';
 import { type FetchImage, fetchImage as fetchOverNetwork, IMPORT_MAX_BYTES, type ImportReport, runImport } from '../import/run.ts';
 import { type ImportPlan, planImport } from '../import/wxr.ts';
@@ -737,23 +737,37 @@ export async function startEditor(
       const site = await store.site();
       const all = [site.language, ...site.languages];
       const saved = normalizeTemplates(await store.mailTemplates());
+      // The site's messages, then those the installed extensions declare (ADR 0064), each with the words it has by itself.
+      const program = new Map<string, { label: string; words: (language: string) => Template }>(TEMPLATES.map((n) => [n, { label: '', words: (l: string) => defaultMail(n, l) }]));
+      for (const extension of await store.extensions()) {
+        const manifest = extension.manifest;
+        for (const mail of manifest.mails) {
+          program.set(extensionMailKey(manifest.name, mail.name), {
+            label: `${manifest.displayName}: ${extensionWord(manifest, site.language, mail.subject)}`,
+            words: (l) => ({ subject: extensionWord(manifest, l, mail.subject), text: extensionWord(manifest, l, mail.text) }),
+          });
+        }
+      }
       if (request.method === 'PUT') {
         const language = String(body.language ?? '');
-        const name = String(body.name ?? '') as TemplateName;
-        if (!all.includes(language) || !TEMPLATES.includes(name)) return json({ error: 'no such message' }, 400);
+        const name = String(body.name ?? '');
+        const known = program.get(name);
+        if (!all.includes(language) || !known) return json({ error: 'no such message' }, 400);
         const subject = String(body.subject ?? '').trim();
         const text = String(body.text ?? '');
         const own = { ...(saved[language] ?? {}) };
-        // Left empty, or the same as the program's, it is the program's again.
-        const program = defaultMail(name, language);
-        if (!subject || !text.trim() || (subject === program.subject && text === program.text)) delete own[name];
+        // Left empty, or the same as the program's (or the extension's), it is theirs again.
+        const theirs = known.words(language);
+        if (!subject || !text.trim() || (subject === theirs.subject && text === theirs.text)) delete own[name];
         else own[name] = { subject, text };
         await store.setMailTemplates(normalizeTemplates({ ...saved, [language]: own }));
       } else if (request.method !== 'GET') return json({ error: 'not found' }, 404);
+      const names = [...program.keys()];
       return json({
         languages: all,
-        names: TEMPLATES,
-        defaults: Object.fromEntries(all.map((l) => [l, Object.fromEntries(TEMPLATES.map((n) => [n, defaultMail(n, l)]))])),
+        names,
+        labels: Object.fromEntries([...program].filter(([, p]) => p.label).map(([n, p]) => [n, p.label])),
+        defaults: Object.fromEntries(all.map((l) => [l, Object.fromEntries(names.map((n) => [n, (program.get(n) as { words: (l: string) => Template }).words(l)]))])),
         saved: normalizeTemplates(await store.mailTemplates()),
       });
     }
