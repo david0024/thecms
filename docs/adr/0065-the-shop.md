@@ -170,3 +170,56 @@ complete export.
   differently) in place of the fields of ADR 0061 d3.
 - Left for later: the option names in another language (a product's options
   are written in the site's language for now).
+
+### What PR (b) settled in building it
+
+- **The cart** is a secret in its own cookie (`thecms_cart`, `HttpOnly`,
+  `SameSite=Lax`, 30 days), its hash a row of `shop_carts`; a cart not
+  changed in 30 days is forgotten by the site's clock. A line names a product
+  (`type/slug`) and a combination; at most 50 lines, 999 of one. The cart
+  reads each product as it is *published*, so a draft or a product taken off
+  sale is said as "no longer for sale" and not counted; a quantity above what
+  is left is lowered to it, and said.
+- **The cart's forms** need no script: quantities are changed in one form, a
+  line is removed by a button of a second form (`form="cart-remove"`), so
+  Enter in a quantity never removes a line. A quantity of 0 removes it too.
+- **Delivery** is chosen in the cart or at checkout. Its VAT is counted at
+  the site's first rate. A method with an address is "picked up": no delivery
+  address is asked.
+- **Checkout** asks the name, e-mail and phone; the street, town and county
+  unless picked up (the postcode is optional); a company's name and tax code
+  when buying as one (the registration number is optional); the way to pay;
+  a note; and the terms, required. The total the buyer saw goes with the
+  form: when prices or delivery changed since, checkout is shown again
+  before anything is taken.
+- **Stock is taken all or nothing**, each product only while enough is left
+  (`quantity >= wanted` in the same statement), so two buyers never both take
+  the last one; the second is told. A product that runs out has its page
+  built again.
+- **Paying by transfer** needs a valid IBAN (its check digits are checked);
+  the order and its e-mail say the account, the bank, the holder and "Order
+  N" as the payment's details. Such an order starts **waiting for payment**;
+  one paid **on delivery** starts **being prepared**.
+- **The order's number** follows the last, kept unique by the database; two
+  orders placed at once take the next free one. The buyer's link is
+  `/_/order/<secret>` (43 characters), not the number, and its page tells the
+  browser to send no referrer.
+- **States**: the owner (and editors, when Settings → Shop allows it) moves
+  an order to any state; **cancelled** gives the stock back (to products
+  still counted) and, like **refunded**, is final. The buyer is told when an
+  order becomes paid, sent (with its tracking number) or cancelled; the owner
+  (or the address set in Settings → Shop) of each new order.
+- **E-mail**: the five order messages are templates of Settings → E-mail,
+  offered only while the shop is on, with `{number}`, `{total}`, `{order}`
+  (the order as text) and `{tracking}` besides `{name}`, `{link}` and
+  `{site}`. The mail queue is the site's (`mail-queue.ts`): made when the
+  accounts or the shop are turned on, sent by the site's clock.
+- **"My account"** lists a signed-in visitor's orders while the shop is on.
+  "Only visitors with an account buy" counts only while visitor accounts are
+  on.
+- **The CSV** of orders has one row an order, its products in one cell, sums
+  in the currency's units, and cells a spreadsheet would read as a formula
+  are quoted.
+- Left for later: failed order e-mails are shown, as today, in Settings →
+  Visitor accounts only; a product's name in the order is its main
+  language's.

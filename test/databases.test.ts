@@ -210,7 +210,7 @@ for (const [name, address] of databases) {
         await store.setVisitorSettings({ on: true, signup: 'open' });
         expect((await go('POST', '/_/account/signup', { name: 'Ana ăîș', email: 'ana@example.com', password: 'long enough pass', consent: 'yes' })).status).toBe(200);
         expect(await store.hasTable('visitors')).toBe(true);
-        await runtime.visitors.chores(new Date());
+        await runtime.chores(new Date());
         const k = new URL(/https:\S+/.exec(sent[0]?.text ?? '')?.[0] ?? 'https://x').searchParams.get('k') ?? '';
         const done = await go('POST', '/_/account/link', { k });
         expect(done.status).toBe(303);

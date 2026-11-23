@@ -54,6 +54,8 @@ export interface VisitorDeps {
   frame: (language: string) => Promise<string | null>;
   /** What every page of the site says to the browser. */
   headers: Record<string, string>;
+  /** A visitor's orders, shown in "My account" while the shop is on (ADR 0065 d4); '' otherwise. */
+  orders?: (visitorId: string, language: string) => Promise<string>;
 }
 
 /** A message an extension sends a visitor (ADR 0064 d7): its words in the visitor's language, or the site's welcome. */

@@ -6,27 +6,9 @@
 import { type Words, wordsFor } from '../blocks/words.ts';
 import './languages.ts';
 
-export const escape = (text: string): string => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+import { escape } from './framed.ts';
 
-/** A short message above a page's forms: what was done, or what went wrong. */
-export interface Notice {
-  text: string;
-  failed?: boolean;
-}
-
-/** One page: the site's frame with its title and what it holds in place of the frame's own main part. */
-export function framed(frame: string, title: string, inside: string, notice?: Notice): string {
-  const said = notice
-    ? `<p class="form-note shown${notice.failed ? ' form-failed' : ''}" role="${notice.failed ? 'alert' : 'status'}" data-account-notice>${escape(notice.text)}</p>`
-    : '';
-  const main = `<section class="b b-form b-account"><div class="b-in"><h1>${escape(title)}</h1>${said}${inside}</div></section>`;
-  return frame
-    .replace(/<title>[^<]*?(( · [^<]*)?)<\/title>/, (_whole, rest: string) => `<title>${escape(title)}${rest}</title>`)
-    .replace(/<meta property="og:title" content="[^"]*">/, `<meta property="og:title" content="${escape(title)}">`)
-    .replace(/<link rel="canonical"[^>]*>\n?/, '')
-    .replace('</head>', '<meta name="robots" content="noindex">\n</head>')
-    .replace(/<main([^>]*)>[\s\S]*?<\/main>/, (_whole, attrs: string) => `<main${attrs}>${main}</main>`);
-}
+export { escape, framed, type Notice } from './framed.ts';
 
 /** The pieces a page's forms are made of. */
 export function parts(language: string, query: string) {

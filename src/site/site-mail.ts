@@ -69,8 +69,10 @@ export async function siteMailer(store: Store, environment: MailEnvironment = {}
   return mailer && from ? { mailer, from } : null;
 }
 
-/** The messages the site sends a visitor (ADR 0064 d5). */
-export const TEMPLATES = ['confirm', 'reset', 'welcome', 'invite', 'deleted'] as const;
+/** The messages the site sends a visitor (ADR 0064 d5), then those of the shop's orders (ADR 0065 d7). */
+export const TEMPLATES = ['confirm', 'reset', 'welcome', 'invite', 'deleted', 'orderReceived', 'orderPaid', 'orderSent', 'orderCancelled', 'orderNew'] as const;
+/** The shop's: offered in Settings → E-mail only while the shop is on (ADR 0065 d10). */
+export const ORDER_TEMPLATES: readonly TemplateName[] = ['orderReceived', 'orderPaid', 'orderSent', 'orderCancelled', 'orderNew'];
 export type TemplateName = (typeof TEMPLATES)[number];
 export interface Template {
   subject: string;
@@ -87,12 +89,18 @@ export type Templates = Record<string, Record<string, Template>>;
 export const EXTENSION_MAIL = /^[a-z][a-z0-9-]{1,39}:[a-z][a-z0-9-]{1,39}$/;
 export const extensionMailKey = (extension: string, message: string): string => `${extension}:${message}`;
 
-const KEYS: Record<TemplateName, ['mailConfirmSubject' | 'mailResetSubject' | 'mailWelcomeSubject' | 'mailInviteSubject' | 'mailDeletedSubject', 'mailConfirmText' | 'mailResetText' | 'mailWelcomeText' | 'mailInviteText' | 'mailDeletedText']> = {
+type WordKey = keyof ReturnType<typeof wordsFor>;
+const KEYS: Record<TemplateName, [WordKey, WordKey]> = {
   confirm: ['mailConfirmSubject', 'mailConfirmText'],
   reset: ['mailResetSubject', 'mailResetText'],
   welcome: ['mailWelcomeSubject', 'mailWelcomeText'],
   invite: ['mailInviteSubject', 'mailInviteText'],
   deleted: ['mailDeletedSubject', 'mailDeletedText'],
+  orderReceived: ['mailOrderReceivedSubject', 'mailOrderReceivedText'],
+  orderPaid: ['mailOrderPaidSubject', 'mailOrderPaidText'],
+  orderSent: ['mailOrderSentSubject', 'mailOrderSentText'],
+  orderCancelled: ['mailOrderCancelledSubject', 'mailOrderCancelledText'],
+  orderNew: ['mailOrderNewSubject', 'mailOrderNewText'],
 };
 
 /** The program's words for a message, in a language (English where the language has no pack). */
@@ -119,10 +127,13 @@ export function normalizeTemplates(input: unknown): Templates {
   return out;
 }
 
-/** A message in a language: the owner's words where they gave them, with `{name}`, `{link}` and `{site}` filled in. */
-export function renderTemplate(templates: Templates, name: TemplateName, language: string, values: { name: string; link: string; site: string }): Template {
+/** What a message says of an order (ADR 0065 d7): its number, its total, the order itself as text, and its tracking number. */
+export type OrderValues = Partial<Record<'number' | 'total' | 'order' | 'tracking', string>>;
+
+/** A message in a language: the owner's words where they gave them, with `{name}`, `{link}` and `{site}` filled in (and an order's words, for the shop's). */
+export function renderTemplate(templates: Templates, name: TemplateName, language: string, values: { name: string; link: string; site: string } & OrderValues): Template {
   const chosen = templates[language]?.[name] ?? defaultTemplate(name, language);
-  const fill = (words: string): string => words.replace(/\{(name|link|site)\}/g, (_whole, key: 'name' | 'link' | 'site') => values[key]);
+  const fill = (words: string): string => words.replace(/\{(name|link|site|number|total|order|tracking)\}/g, (_whole, key: keyof typeof values) => values[key] ?? '');
   return { subject: fill(chosen.subject).replace(/[\r\n]+/g, ' '), text: fill(chosen.text) };
 }
 

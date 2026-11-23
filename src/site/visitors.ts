@@ -10,6 +10,7 @@
  */
 import { createHash } from 'node:crypto';
 import { type Audience, languageName, mayView, NAME, type Site } from '../core/index.ts';
+import { openMailQueue } from './mail-queue.ts';
 import { normalizeTemplates, renderTemplate, siteMailer, type TemplateName } from './site-mail.ts';
 import { cleanEmail, PASSWORD_MIN, type Database, type Store, type User } from './store.ts';
 import { type Notice, escape, framed, parts } from './visitor-pages.ts';
@@ -30,12 +31,8 @@ const TRIES_MS = 15 * 60_000;
 const MAILS_PER_ADDRESS = 3;
 const MAILS_PER_VISITOR = 10;
 const HOUR = 3_600_000;
-/** After a failed try, a message is tried again after these minutes; after the last one it is given up (ADR 0064 d5). */
-const RETRY_MINUTES = [1, 5, 30, 120];
 /** Messages extensions may send one visitor in an hour (ADR 0064 d7). */
 const LENT_MAILS_PER_VISITOR = 10;
-/** At most this many messages are sent at one tick of the clock. */
-const SENT_AT_ONCE = 20;
 
 const hashed = (value: string): string => createHash('sha256').update(value).digest('hex');
 const newSecret = (): string => Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64url');
@@ -58,15 +55,6 @@ export interface Visitor {
   invited: boolean;
   /** The member levels held, by id (ADR 0064 d3). */
   levels: string[];
-}
-
-/** A message that could not be sent at its last try (ADR 0064 d5). */
-export interface FailedMail {
-  id: string;
-  to: string;
-  what: string;
-  error: string;
-  failedAt: string;
 }
 
 type Row = Record<string, unknown>;
@@ -176,48 +164,17 @@ export async function openVisitors(store: Store, deps: VisitorDeps): Promise<Vis
     return { kind: String(row.kind) as LinkKind, visitor, data: JSON.parse(String(row.data)) as Record<string, unknown> };
   };
 
-  // The queue (ADR 0064 d5).
+  // The site's queue (ADR 0064 d5), shared with the shop (ADR 0065 d7).
   const siteOf = (): Promise<Site> => store.site();
-  const queue = async (to: string, what: string, message: { subject: string; text: string }): Promise<void> => {
-    const now = new Date().toISOString();
-    await db.run('INSERT INTO mail_queue (id, to_address, subject, body, what, tries, next_at, failed_at, error, created_at) VALUES (?, ?, ?, ?, ?, 0, ?, NULL, ?, ?)', [crypto.randomUUID(), to, message.subject, message.text, what.slice(0, 100), now, '', now]);
-  };
+  const mails = await openMailQueue(store, deps.mail, log);
+  const queue = mails.queue;
   const enqueue = async (to: string, what: TemplateName, language: string, values: { name: string; link: string }): Promise<void> => {
     const site = await siteOf();
     await queue(to, what, renderTemplate(normalizeTemplates(await store.mailTemplates()), what, language, { ...values, site: site.name }));
   };
-  const sendDue = async (now: Date): Promise<void> => {
-    const due = await db.rows<Row>('SELECT * FROM mail_queue WHERE failed_at IS NULL AND next_at <= ? ORDER BY next_at, id LIMIT ' + SENT_AT_ONCE, [now.toISOString()]);
-    if (!due.length) return;
-    // No mail server yet: the messages wait, and none is counted as failed.
-    const sending = await siteMailer(store, deps.mail);
-    if (!sending) return;
-    for (const row of due) {
-      const id = String(row.id);
-      // Taken by this process before it is sent: two processes never send one message twice.
-      const later = new Date(now.getTime() + 15 * 60_000).toISOString();
-      if ((await db.changed('UPDATE mail_queue SET next_at = ? WHERE id = ? AND next_at = ? AND failed_at IS NULL', [later, id, String(row.next_at)])) !== 1) continue;
-      try {
-        await sending.mailer({ from: sending.from, to: String(row.to_address), subject: String(row.subject), text: String(row.body) });
-        // Sent: nothing of it is kept (ADR 0064 d6).
-        await db.run('DELETE FROM mail_queue WHERE id = ?', [id]);
-      } catch (error) {
-        const tries = Number(row.tries) + 1;
-        const said = (error instanceof Error ? error.message : String(error)).slice(0, 500);
-        if (tries > RETRY_MINUTES.length) {
-          await db.run('UPDATE mail_queue SET tries = ?, failed_at = ?, error = ? WHERE id = ?', [tries, now.toISOString(), said, id]);
-          log(`A message to a visitor could not be sent (${String(row.what)}, after ${tries} tries): ${said}`);
-        } else {
-          const next = new Date(now.getTime() + (RETRY_MINUTES[tries - 1] as number) * 60_000).toISOString();
-          await db.run('UPDATE mail_queue SET tries = ?, next_at = ?, error = ? WHERE id = ?', [tries, next, said, id]);
-        }
-      }
-    }
-  };
 
-  /** What the clock does: send what waits, forget what has run out, delete accounts never confirmed (ADR 0064 d6). */
+  /** What the clock does: forget what has run out, delete accounts never confirmed (ADR 0064 d6). The queue is sent by the runtime. */
   const chores = async (now: Date): Promise<void> => {
-    await sendDue(now);
     const at = now.toISOString();
     await db.run('DELETE FROM visitor_sessions WHERE expires_at <= ?', [at]);
     await db.run('DELETE FROM visitor_links WHERE expires_at <= ?', [at]);
@@ -338,12 +295,15 @@ export async function openVisitors(store: Store, deps: VisitorDeps): Promise<Vis
         status,
       );
     };
+    // The visitor's orders (ADR 0065 d4), while the shop is on.
+    const orders = me && deps.orders ? await deps.orders(me.id, language) : '';
     const accountPage = (visitor: Visitor, notice?: Notice, status = 200): Response =>
       draw(
         said.account,
         `<p class="lead">${escape(said.accountHello.replace('{name}', visitor.name || visitor.email))}</p>` +
           form('/profile', name(visitor.name) + email(visitor.email), said.accountSave) +
           levelsPart(visitor) +
+          orders +
           `<h2>${escape(said.accountChangePassword)}</h2>` +
           form('/password', password(said.accountCurrentPassword, 'current-password') + password(said.accountNewPassword, 'new-password'), said.accountChangePassword) +
           `<h2>${escape(said.accountDownload)}</h2><p><a class="button" href="/_/account/data" download>${escape(said.accountDownload)}</a></p>` +
@@ -548,10 +508,8 @@ export async function openVisitors(store: Store, deps: VisitorDeps): Promise<Vis
       for (const r of await db.rows<Row>('SELECT visitor_id, level FROM visitor_levels ORDER BY level')) held.set(String(r.visitor_id), [...(held.get(String(r.visitor_id)) ?? []), String(r.level)]);
       return (await db.rows<Row>('SELECT * FROM visitors ORDER BY created_at DESC, email')).map((r) => ({ ...asVisitor(r), levels: held.get(String(r.id)) ?? [] }));
     })(),
-    waiting: Number((await db.rows<{ n: number | string }>('SELECT COUNT(*) AS n FROM mail_queue WHERE failed_at IS NULL'))[0]?.n ?? 0),
-    failed: (await db.rows<Row>('SELECT id, to_address, what, error, failed_at FROM mail_queue WHERE failed_at IS NOT NULL ORDER BY failed_at DESC')).map(
-      (r): FailedMail => ({ id: String(r.id), to: String(r.to_address), what: String(r.what), error: String(r.error), failedAt: String(r.failed_at) }),
-    ),
+    waiting: await mails.waiting(),
+    failed: await mails.failed(),
   });
 
   async function admin(request: Request, url: URL, _me: User, body: Record<string, unknown>): Promise<Response> {
@@ -609,10 +567,10 @@ export async function openVisitors(store: Store, deps: VisitorDeps): Promise<Vis
         return json({ visitor: data, language: languageName(visitor.language) });
       }
       case 'POST /api/visitors/retry':
-        await db.run('UPDATE mail_queue SET failed_at = NULL, tries = 0, next_at = ? WHERE id = ?', [new Date().toISOString(), id]);
+        await mails.retry(id);
         return json(await listed());
       case 'DELETE /api/visitors/failed':
-        await db.run('DELETE FROM mail_queue WHERE id = ? AND failed_at IS NOT NULL', [id]);
+        await mails.drop(id);
         return json(await listed());
       default:
         return json({ error: 'not found' }, 404);

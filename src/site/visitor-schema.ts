@@ -18,9 +18,6 @@ const SQLITE: Record<string, string> = {
   visitor_sessions: 'CREATE TABLE IF NOT EXISTS visitor_sessions (id TEXT PRIMARY KEY, visitor_id TEXT NOT NULL, expires_at TEXT NOT NULL)',
   // A one-time link sent by e-mail: to confirm an address, choose a new password, take up an invitation or a new address (`data`).
   visitor_links: 'CREATE TABLE IF NOT EXISTS visitor_links (id TEXT PRIMARY KEY, kind TEXT NOT NULL, visitor_id TEXT NOT NULL, data TEXT NOT NULL, expires_at TEXT NOT NULL)',
-  // What waits to be sent (ADR 0064 d5), and what could not be, at its last try.
-  mail_queue:
-    'CREATE TABLE IF NOT EXISTS mail_queue (id TEXT PRIMARY KEY, to_address TEXT NOT NULL, subject TEXT NOT NULL, body TEXT NOT NULL, what TEXT NOT NULL, tries INTEGER NOT NULL, next_at TEXT NOT NULL, failed_at TEXT, error TEXT NOT NULL, created_at TEXT NOT NULL)',
 };
 
 /** Longer texts on MySQL; on Postgres and MySQL a key is never TEXT. */

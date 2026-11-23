@@ -6,7 +6,7 @@
  */
 import { type ContentType, normalizeShopSettings, type ShopSettings, type ShopShown, slugify } from '../core/index.ts';
 import { wordsFor } from '../blocks/words.ts';
-import type { Shop } from './shop.ts';
+import type { Shop, ShopDeps } from './shop.ts';
 import type { Store, User } from './store.ts';
 
 const json = (data: unknown, status = 200): Response =>
@@ -14,10 +14,16 @@ const json = (data: unknown, status = 200): Response =>
 
 export interface ShopGate {
   settings: () => Promise<ShopSettings>;
-  /** The admin's calls under `/api/shop`: the settings (the owner's), and a product's stock. */
+  /** The admin's calls under `/api/shop`: the settings (the owner's), a product's stock, and the orders. */
   admin: (request: Request, url: URL, me: User, body: Record<string, unknown>) => Promise<Response>;
   /** What a page is drawn with (ADR 0065 d3): null while the shop is off. */
   shown: () => Promise<ShopShown | null>;
+  /** `/_/cart`, `/_/checkout` and `/_/order/…` (ADR 0065 d4): not found while the shop is off. */
+  fetch: (request: Request, url: URL, deps: ShopDeps) => Promise<Response>;
+  /** What the site's clock does for the shop: nothing while it is off. */
+  chores: (now: Date) => Promise<void>;
+  /** A visitor's orders for "My account": nothing while the shop is off. */
+  ordersOf: (visitorId: string, language: string) => Promise<string>;
   /** Whether the shop's code was loaded in this process: never, while it stays off (the tests ask). */
   loaded: () => boolean;
 }
@@ -64,6 +70,9 @@ export function shopGate(store: Store): ShopGate {
         if (request.method !== 'PUT') return json({ error: 'not found' }, 404);
         if (me.role !== 'owner') return json({ error: 'only the owner may do this' }, 403);
         const asked = normalizeShopSettings({ ...now, ...body });
+        // Paying by transfer needs an account to pay into (ADR 0065 d6): an IBAN that is not one is said, not dropped.
+        const transfer = body.transfer && typeof body.transfer === 'object' ? (body.transfer as Record<string, unknown>) : null;
+        if (transfer?.on === true && !asked.transfer.on) return json({ error: 'that is not an IBAN: check it and try again' }, 400);
         if (asked.on) {
           // The tables are made, and the type of products, before the shop says it is on.
           await open();
@@ -81,6 +90,16 @@ export function shopGate(store: Store): ShopGate {
       if (!now.on) return null;
       const site = await store.site();
       return { currency: site.business?.currency || 'RON', vat: now.vat, stock: await (await open()).stock() };
+    },
+    async fetch(request, url, deps) {
+      if (!(await settings()).on) return new Response('not found\n', { status: 404, headers: { 'content-type': 'text/plain; charset=utf-8' } });
+      return (await open()).fetch(request, url, deps);
+    },
+    async chores(now) {
+      if ((await settings()).on) await (await open()).chores(now);
+    },
+    async ordersOf(visitorId, language) {
+      return (await settings()).on ? (await open()).ordersOf(visitorId, language) : '';
     },
     loaded: () => loading !== null,
   };

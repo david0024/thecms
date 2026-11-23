@@ -12,12 +12,22 @@ const SQLITE: Record<string, string> = {
   // What is left of each product, and of each combination of one, whose stock is counted (ADR 0065 d2).
   // `id` is the hash of the stock's key, which may be longer than a key MySQL allows; `product` is `type/slug`.
   shop_stock: 'CREATE TABLE IF NOT EXISTS shop_stock (id TEXT PRIMARY KEY, product TEXT NOT NULL, variant TEXT NOT NULL, quantity INTEGER NOT NULL)',
+  // A cart (ADR 0065 d4): the hash of the secret in the visitor's cookie, what is in it, and when it was last changed (kept 30 days).
+  shop_carts: 'CREATE TABLE IF NOT EXISTS shop_carts (id TEXT PRIMARY KEY, items TEXT NOT NULL, shipping TEXT NOT NULL, updated_at TEXT NOT NULL)',
+  // An order (ADR 0065 d7): its number follows the last; `secret` is in the buyer's link to it; the rest, as bought, in `data`.
+  shop_orders:
+    'CREATE TABLE IF NOT EXISTS shop_orders (id TEXT PRIMARY KEY, number INTEGER NOT NULL UNIQUE, secret TEXT NOT NULL, state TEXT NOT NULL, email TEXT NOT NULL, visitor_id TEXT NOT NULL, language TEXT NOT NULL, total INTEGER NOT NULL, data TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)',
 };
 
 const translate = (statement: string, kind: DatabaseKind): string => {
   if (kind === 'sqlite') return statement;
-  const out = statement.replace(/\bid TEXT\b/g, 'id VARCHAR(64)').replace(/\bproduct TEXT\b/g, 'product VARCHAR(255)').replace(/\bvariant TEXT\b/g, 'variant VARCHAR(255)');
-  return kind === 'mysql' ? `${out} ${MYSQL}` : out;
+  const out = statement
+    .replace(/\b(id|secret|visitor_id) TEXT\b/g, '$1 VARCHAR(64)')
+    .replace(/\b(product|variant|email) TEXT\b/g, '$1 VARCHAR(255)')
+    .replace(/\b(state|language) TEXT\b/g, '$1 VARCHAR(20)')
+    .replace(/\b(\w+_at) TEXT\b/g, '$1 VARCHAR(40)')
+    .replace(/\btotal INTEGER\b/g, 'total BIGINT');
+  return kind === 'mysql' ? `${out.replace(/\b(items|data) TEXT\b/g, '$1 LONGTEXT')} ${MYSQL}` : out;
 };
 
 export const SHOP_TABLES = Object.keys(SQLITE);
