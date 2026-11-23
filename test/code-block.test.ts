@@ -70,3 +70,26 @@ describe('preformatted text, imported', () => {
     expect(normalizeBlocks(out).issues).toEqual([]);
   });
 });
+
+describe('a table, imported (ADR 0067 d5)', () => {
+  test('becomes a table block, its headings from <thead> or <th>', () => {
+    lost.length = 0;
+    const out = htmlToBlocks('<table><thead><tr><th>Day</th><th>Hours</th></tr></thead><tbody><tr><td>Monday</td><td>9 – <b>18</b></td></tr></tbody></table>', ctx);
+    expect(out[0]).toMatchObject({ type: 'table', content: { table: { header: true, rows: [['Day', 'Hours'], ['Monday', '9 – 18']] } } });
+    expect(lost).toEqual([]);
+    expect(normalizeBlocks(out).issues).toEqual([]);
+  });
+
+  test('a Markdown table with empty headings has none', () => {
+    const out = htmlToBlocks('<table><thead><tr><th></th><th></th></tr></thead><tbody><tr><td>a</td><td>b</td></tr><tr><td>c</td><td>d</td></tr></tbody></table>', ctx);
+    expect(out[0]?.content).toMatchObject({ table: { header: false, rows: [['a', 'b'], ['c', 'd']] } });
+  });
+
+  test('one too wide for a block keeps its text, a line a row, and says so', () => {
+    lost.length = 0;
+    const wide = `<tr>${'<td>x</td>'.repeat(9)}</tr>`;
+    const out = htmlToBlocks(`<table>${wide}${wide}</table>`, ctx);
+    expect(out.map((b) => b.type)).toEqual(['text']);
+    expect(lost.length).toBe(1);
+  });
+});

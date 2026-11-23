@@ -1,4 +1,4 @@
-# ADR 0067 — A block of code
+# ADR 0067 — A block of code, and tables imported as tables
 
 - **Status:** Accepted (the plan for uhlaka.org, approved by Liviu and David on 2026-11-23, named the code block as one of the things the program lacked for its own documentation)
 - **Date:** 2026-11-23
@@ -45,3 +45,12 @@ made HTML first) makes each `<pre>` a code block, its language read from a
 `language-…` or `lang-…` class on the `<pre>` or the `<code>` inside it. A
 `<br>` is a line. An empty `<pre>` is left out. The import no longer reports
 preformatted text as something that did not come over.
+
+### d5. A table is imported as a table block
+
+The same import made a table one paragraph a row, although the table block
+exists (ADR 0047). Now each `<table>` is a table block: the text of each cell,
+and the first row as headings when it is in `<thead>` or made of `<th>`. A
+Markdown table written with empty headings has none. Only a table larger than
+the block holds (60 rows, 8 columns) keeps its text one line a row, and is
+reported.

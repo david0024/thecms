@@ -7,7 +7,7 @@
  * has no block to become (a form, a script, an embedded player) is left out
  * and named through `lost`, so the owner is told instead of finding out.
  */
-import { type Block, CODE_MAX, codeLanguage, type Mark, newId, type RichNode, type Span } from '../core/index.ts';
+import { type Block, CODE_MAX, codeLanguage, TABLE_MAX_COLUMNS, TABLE_MAX_ROWS, type Mark, newId, type RichNode, type Span } from '../core/index.ts';
 import { find, type HtmlElement, type HtmlNode, isElement, parseHtml, plainText } from './html.ts';
 
 export interface ContentContext {
@@ -25,7 +25,8 @@ type Piece = Span | 'break';
 type Item =
   | { kind: 'rich'; node: RichNode }
   | { kind: 'image'; src: string; alt: string; caption: string }
-  | { kind: 'code'; code: string; language: string };
+  | { kind: 'code'; code: string; language: string }
+  | { kind: 'table'; header: boolean; rows: string[][] };
 
 const INLINE = new Set([
   'a', 'abbr', 'b', 'big', 'br', 'cite', 'code', 'del', 'em', 'font', 'i', 'img', 'ins', 'kbd', 'label', 'mark', 'q', 's',
@@ -40,7 +41,7 @@ const LOST = {
   embed: 'embedded media (video, maps, audio): a link was kept where the address was known',
   form: 'forms',
   script: 'scripts',
-  table: 'tables: their text was kept, one line for each row',
+  table: 'tables too large for a table block, or one inside another: their text was kept, one line for each row',
   columns: 'column layouts: their content was kept, one part under another',
   nested: 'lists inside lists: the items were kept in one list',
   dynamic: 'blocks WordPress fills in by itself',
@@ -93,7 +94,8 @@ class Converter {
         continue;
       }
       flush();
-      if (item.kind === 'code') out.push({ id: newId(), type: 'code', content: { title: '', code: item.code, language: item.language, caption: '' } });
+      if (item.kind === 'table') out.push({ id: newId(), type: 'table', content: { title: '', table: { header: item.header, rows: item.rows }, caption: '' } });
+      else if (item.kind === 'code') out.push({ id: newId(), type: 'code', content: { title: '', code: item.code, language: item.language, caption: '' } });
       else out.push({ id: newId(), type: 'image', content: { image: { src: item.src, alt: item.alt }, caption: item.caption } });
     }
     flush();
@@ -219,20 +221,37 @@ class Converter {
     collect(el.children);
   }
 
+  /**
+   * A table as a table block (ADR 0067 d5): the text of each cell, the first
+   * row its headings when it is in `<thead>` or made of `<th>`. A table larger
+   * than a block holds, or one inside another, keeps its text one line a row.
+   */
   private table(el: HtmlElement, into: Item[]): void {
-    this.ctx.lost(LOST.table);
-    const rows = (nodes: HtmlNode[]): void => {
+    const found: { cells: string[]; head: boolean }[] = [];
+    let nested = false;
+    const rows = (nodes: HtmlNode[], inHead: boolean): void => {
       for (const node of nodes) {
         if (!isElement(node)) continue;
+        if (node.tag === 'table') nested = true;
         if (node.tag !== 'tr') {
-          rows(node.children);
+          rows(node.children, inHead || node.tag === 'thead');
           continue;
         }
-        const cells = node.children.filter(isElement).map((cell) => plainText(cell.children)).filter(Boolean);
-        if (cells.length) into.push({ kind: 'rich', node: { type: 'paragraph', children: [{ text: cells.join(' · ') }] } });
+        const cells = node.children.filter(isElement).filter((cell) => cell.tag === 'td' || cell.tag === 'th');
+        found.push({ cells: cells.map((cell) => plainText(cell.children).replace(/\s+/g, ' ').trim()), head: inHead || (cells.length > 0 && cells.every((cell) => cell.tag === 'th')) });
       }
     };
-    rows(el.children);
+    rows(el.children, false);
+    // A Markdown table with no headings has a row of empty ones.
+    if (found[0]?.head && found[0].cells.every((cell) => !cell)) found.shift();
+    const kept = found.filter((row) => row.cells.some(Boolean));
+    if (!kept.length) return;
+    if (nested || kept.length > TABLE_MAX_ROWS || kept.some((row) => row.cells.length > TABLE_MAX_COLUMNS)) {
+      this.ctx.lost(LOST.table);
+      for (const row of kept) into.push({ kind: 'rich', node: { type: 'paragraph', children: [{ text: row.cells.filter(Boolean).join(' · ') }] } });
+      return;
+    }
+    into.push({ kind: 'table', header: (kept[0] as { head: boolean }).head && kept.length > 1, rows: kept.map((row) => row.cells.map((cell) => cell.slice(0, 500))) });
   }
 
   private block(el: HtmlElement, into: Item[]): void {
