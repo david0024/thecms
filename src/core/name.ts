@@ -6,4 +6,4 @@ export const NAME = 'thecms';
 /** As people read it. */
 export const DISPLAY_NAME = 'thecms';
 /** Where releases are published (GitHub Releases), as `owner/repository`. */
-export const REPOSITORY = 'david0024/thecms';
+export const REPOSITORY = 'uhlaka-devs/uhlaka';
