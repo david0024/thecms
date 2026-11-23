@@ -1,6 +1,6 @@
 # Decisions
 
-Every decision that shapes thecms is written down, with its reason, before the
+Every decision that shapes Uhlaka is written down, with its reason, before the
 work it decides. A new one that changes an old one says so at its top.
 
 - [ADR 0001 — Foundations](0001-foundations.md)
