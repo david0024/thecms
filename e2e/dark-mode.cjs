@@ -47,8 +47,11 @@ const DARK = 'rgb(17, 19, 24)';
   const browser = await coverage.launch(chromium, 'dark-mode');
   const errors = [];
   const visit = async (options = {}) => {
-    const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: shots ? 2 : 1, ...options });
-    const page = await context.newPage();
+    // A page of its own context, opened through the browser so the coverage of the admin is counted;
+    // a page without scripts cannot be followed, so it gets a plain context.
+    const settings = { viewport: { width: 1280, height: 800 }, deviceScaleFactor: shots ? 2 : 1, ...options };
+    const page = options.javaScriptEnabled === false ? await (await browser.newContext(settings)).newPage() : await browser.newPage(settings);
+    const context = page.context();
     page.on('pageerror', (e) => errors.push(String(e)));
     page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
     return { context, page };
@@ -132,6 +135,27 @@ const DARK = 'rgb(17, 19, 24)';
     assert((await section.locator('[data-contrast] li').first().innerText()).startsWith('muted on background, Dark: 1.'), 'a dark colour too close to its background is named, with its contrast');
     await muted.fill('#a2a9b6');
     await section.locator('[data-contrast="ok"]').waitFor();
+    // A value that is not a colour is not taken, and the field says so.
+    await muted.fill('grey;}');
+    assert(await section.locator('[data-other-token="muted"][aria-invalid="true"]').isVisible(), 'a dark colour that is not a colour is refused where it is typed');
+    await muted.fill('#a2a9b6');
+
+    // Dark only, then back to the visitor.
+    await page.locator('[data-theme-shows="dark"]').check();
+    await page.locator('[data-preview-scheme="dark"][aria-pressed="false"]').waitFor();
+    await page.locator('[data-theme-shows="dark"]:checked').waitFor();
+    assert(true, '"Dark only" can be chosen once the theme has dark colours');
+    await page.locator('[data-theme-shows="visitor"]').check();
+
+    // A colour of the owner's own gets a dark value too, and leaves both when it is removed.
+    await page.locator('[data-new-token-name="color"]').fill('accent');
+    await page.locator('[data-new-token-value="color"]').fill('#cc3300');
+    await page.locator('[data-add-token="color"]').click();
+    await section.locator('[data-other-token="accent"]').fill('#ff8866');
+    assert((await section.locator('[data-other-token="accent"]').inputValue()) === '#ff8866', 'a colour of the owner\'s own has its dark value');
+    await page.getByRole('button', { name: 'Remove accent' }).click();
+    await section.locator('[data-other-token="accent"]').waitFor({ state: 'detached' });
+    assert(true, 'removed, it leaves the dark colours too');
 
     // Without a second palette, only the theme's own scheme; then one made for the owner.
     await section.locator('[data-theme-remove-other]').click();
