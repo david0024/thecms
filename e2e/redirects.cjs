@@ -121,6 +121,7 @@ const PORT = 4395;
     await page.locator('[data-valkey-save]').click();
     await page.locator('[data-valkey-state="down"]').waitFor();
     assert(true, 'a Valkey address is tested, and one that does not answer is shown as such');
+    await page.evaluate(() => history.replaceState(null, "", location.href.replace(/[#&]at=[^&#]*/, ""))); // opened again at its first screen, not the one it was on
     await page.reload();
     await page.locator('[data-valkey-down]').waitFor();
     assert(true, 'the admin warns while Valkey does not answer');

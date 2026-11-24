@@ -475,7 +475,7 @@ const assert = (condition, message) => {
     await page.locator('[data-list="media"] [data-media-item]').first().waitFor();
     await page.waitForFunction(() => [...document.querySelectorAll('[data-list="media"] img')].every((img) => img.naturalWidth > 0));
     assert((await page.locator('[data-list="media"] [data-media-item]').count()) === 2, 'the media section shows every image the site holds');
-    await page.locator('[data-list="media"] [data-media-item]', { hasText: 'logo.png' }).getByRole('button').click();
+    await page.locator('[data-list="media"] [data-media-item]', { hasText: 'logo.png' }).getByRole('button', { name: /^Delete this/ }).click();
     assert((await page.locator('[data-list="media"] [role="alert"]').innerText()).includes('used on'), 'an image still in use is not deleted from there either');
     assert(errors.length === 1, `the refusal is the only error in the console (${errors.join(' | ')})`);
     errors.length = 0;

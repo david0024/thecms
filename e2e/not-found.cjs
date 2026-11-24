@@ -79,6 +79,7 @@ const PORT = 4399;
     // Forgotten one by one, or all at once.
     await page.request.get(site('/a/'));
     await page.request.get(site('/b/'));
+    await page.evaluate(() => history.replaceState(null, "", location.href.replace(/[#&]at=[^&#]*/, ""))); // opened again at its first screen, not the one it was on
     await page.reload();
     await page.locator('[data-nav="settings"]').click();
     await page.locator('[data-not-found-path="/b/"]').waitFor();
@@ -91,6 +92,7 @@ const PORT = 4399;
     // IndexNow, when the owner asks for it: kept, as the settings show it again.
     await page.locator('[data-site-indexnow]').check();
     await page.waitForTimeout(500);
+    await page.evaluate(() => history.replaceState(null, "", location.href.replace(/[#&]at=[^&#]*/, ""))); // opened again at its first screen, not the one it was on
     await page.reload();
     await page.locator('[data-nav="settings"]').click();
     assert(await page.locator('[data-site-indexnow]').isChecked(), 'the owner asks for IndexNow, and it is kept');

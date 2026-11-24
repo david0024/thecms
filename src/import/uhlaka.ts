@@ -88,7 +88,7 @@ export function readContentFile(text: string): ContentFile {
     media: list<unknown>(raw.media)
       .filter(isObject)
       .filter((m) => typeof m.data === 'string')
-      .map((m) => ({ name: String(m.name ?? ''), label: String(m.label ?? ''), data: m.data as string, variants: list<unknown>(m.variants).filter((v): v is string => typeof v === 'string') })),
+      .map((m) => ({ name: String(m.name ?? ''), label: String(m.label ?? ''), ...(typeof m.alt === 'string' && m.alt ? { alt: m.alt } : {}), data: m.data as string, variants: list<unknown>(m.variants).filter((v): v is string => typeof v === 'string') })),
   };
 }
 
@@ -140,6 +140,7 @@ export async function runContentImport(store: Store, file: ContentFile, options:
   for (const [i, item] of file.media.entries()) {
     try {
       const stored = await store.addMedia(new Uint8Array(Buffer.from(item.data, 'base64')), item.label);
+      if (item.alt) await store.setMediaTexts(stored.name, { alt: item.alt }).catch(() => undefined);
       images++;
       for (const variant of item.variants) await store.addVariant(stored.name, new Uint8Array(Buffer.from(variant, 'base64'))).catch(() => undefined);
     } catch (error) {

@@ -2,7 +2,9 @@
 /**
  * Every file the site holds, in one place: images (ADR 0005), documents, sound
  * and video (ADR 0046). Upload, look, delete. A file a page still shows or
- * links to is not deleted; the server says where it is used.
+ * links to is not deleted; the server says where it is used. A file chosen
+ * opens its details beside the list (ADR 0072): its name, the words a picture
+ * is offered with, what it is, its address, and where it is used.
  */
 import { onMount } from 'svelte';
 import { api, type MediaItem, signedIn } from './api.ts';
@@ -22,6 +24,16 @@ const shown = $derived((items ?? []).filter((item) => !only || item.kind === onl
 /** What a file is, in a few letters: PDF, DOCX, MP3. */
 const badge = (name: string): string => (name.split('.').pop() ?? '').toUpperCase();
 
+/** The file whose details are open, and what is being written in them. */
+let open = $state<string | null>(null);
+const chosen = $derived(items?.find((item) => item.name === open) ?? null);
+let label = $state('');
+let alt = $state('');
+let usedBy = $state<string[] | null>(null);
+let note = $state('');
+let copied = $state(false);
+const changed = $derived(!!chosen && (label.trim() !== chosen.label || alt.trim() !== chosen.alt));
+
 const attempt = async (work: () => Promise<{ media: MediaItem[] }>): Promise<void> => {
   problem = '';
   try {
@@ -40,12 +52,52 @@ async function upload(event: Event): Promise<void> {
 }
 
 const size = (bytes: number): string => (bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`);
+const day = (iso: string): string => {
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString(document.documentElement.lang || undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+};
 
 /** Pictures uploaded before they were made get their smaller copies here, once (ADR 0005 d8). */
 async function prepare(): Promise<void> {
   if (!items || sizing) return;
   items = await prepareAll(items, (done, count) => (sizing = { done, count }));
   sizing = null;
+}
+
+async function show(item: MediaItem): Promise<void> {
+  open = item.name;
+  label = item.label || item.name;
+  alt = item.alt;
+  note = '';
+  copied = false;
+  usedBy = null;
+  try {
+    const { usedBy: where } = await api.mediaUsedBy(item.name);
+    if (open === item.name) usedBy = where;
+  } catch {
+    usedBy = null;
+  }
+}
+
+async function save(): Promise<void> {
+  if (!chosen) return;
+  note = '';
+  await attempt(() => api.setMedia(chosen.name, { label: label.trim(), ...(chosen.kind === 'image' ? { alt: alt.trim() } : {}) }));
+  if (!problem) note = t.media.saved;
+}
+
+async function remove(item: MediaItem): Promise<void> {
+  await attempt(() => api.removeMedia(item.name));
+  if (!problem && open === item.name) open = null;
+}
+
+async function copy(path: string): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(new URL(path, location.origin).href);
+    copied = true;
+  } catch {
+    copied = false;
+  }
 }
 
 onMount(async () => {
@@ -76,36 +128,126 @@ onMount(async () => {
   {#if items && items.length === 0}
     <p class="hint">{t.media.empty}</p>
   {:else if items}
-    <ul>
-      {#each shown as item (item.name)}
-        <li data-media-item={item.name}>
-          {#if item.kind === 'image'}
-            <img src={item.path} alt="" loading="lazy" />
-          {:else if item.kind === 'video'}
+    <div class="split" class:open={chosen}>
+      <ul>
+        {#each shown as item (item.name)}
+          <li data-media-item={item.name} class:current={item.name === open}>
+            {#if item.kind === 'image'}
+              <button type="button" class="thumb" onclick={() => show(item)} aria-label={say(t.media.open, { name: item.label || item.name })} data-media-open={item.name}><img src={item.path} alt="" loading="lazy" /></button>
+            {:else if item.kind === 'video'}
+              <!-- svelte-ignore a11y_media_has_caption -->
+              <video src={item.path} preload="metadata" controls></video>
+            {:else}
+              <button type="button" class="thumb file" onclick={() => show(item)} aria-label={say(t.media.open, { name: item.label || item.name })} data-media-open={item.name} data-kind={item.kind}>{badge(item.name)}</button>
+            {/if}
+            {#if item.kind === 'audio'}<audio src={item.path} preload="none" controls></audio>{/if}
+            <button type="button" class="label" title={item.label} onclick={() => show(item)} data-media-name={item.name}>{item.label || item.name}</button>
+            <small>{size(item.size)}</small>
+            {#if signedIn.staff}<button type="button" class="quiet" onclick={() => remove(item)}>{item.kind === 'image' ? t.media.remove : t.media.removeFile}</button>{/if}
+          </li>
+        {/each}
+      </ul>
+      {#if chosen}
+        <aside class="details" aria-label={t.media.details} data-media-details={chosen.name}>
+          <header>
+            <h2>{t.media.details}</h2>
+            <button type="button" class="quiet" onclick={() => (open = null)} aria-label={t.media.close}>✕</button>
+          </header>
+          {#if chosen.kind === 'image'}
+            <img class="big" src={chosen.path} alt={chosen.alt} />
+          {:else if chosen.kind === 'video'}
             <!-- svelte-ignore a11y_media_has_caption -->
-            <video src={item.path} preload="metadata" controls></video>
-          {:else}
-            <a class="file" href={item.path} target="_blank" rel="noopener" data-kind={item.kind}>{badge(item.name)}</a>
+            <video class="big" src={chosen.path} preload="metadata" controls></video>
+          {:else if chosen.kind === 'audio'}
+            <audio src={chosen.path} preload="none" controls></audio>
           {/if}
-          {#if item.kind === 'audio'}<audio src={item.path} preload="none" controls></audio>{/if}
-          <span class="label" title={item.label}>{item.label || item.name}</span>
-          <small>{size(item.size)}</small>
-          {#if signedIn.staff}<button type="button" class="quiet" onclick={() => attempt(() => api.removeMedia(item.name))}>{item.kind === 'image' ? t.media.remove : t.media.removeFile}</button>{/if}
-        </li>
-      {/each}
-    </ul>
+          {#if signedIn.staff}
+            <form onsubmit={(e) => (e.preventDefault(), save())}>
+              <label class="field">
+                <span>{t.media.name}</span>
+                <input type="text" maxlength="200" bind:value={label} required data-media-label />
+                <small>{t.media.nameHint}</small>
+              </label>
+              {#if chosen.kind === 'image'}
+                <label class="field">
+                  <span>{t.media.alt}</span>
+                  <textarea rows="3" maxlength="300" bind:value={alt} data-media-alt></textarea>
+                  <small>{t.media.altHint}</small>
+                </label>
+              {/if}
+              <p class="row">
+                <button type="submit" class="primary" disabled={!changed || !label.trim()} data-media-save>{t.media.save}</button>
+                {#if note}<span class="hint" role="status">{note}</span>{/if}
+              </p>
+            </form>
+          {:else}
+            <p class="title">{chosen.label || chosen.name}</p>
+            {#if chosen.alt}<p class="hint">{chosen.alt}</p>{/if}
+          {/if}
+          <dl>
+            <dt>{t.media.kind}</dt>
+            <dd>{badge(chosen.name)}</dd>
+            <dt>{t.media.fileSize}</dt>
+            <dd>{size(chosen.size)}</dd>
+            {#if chosen.width && chosen.height}
+              <dt>{t.media.dimensions}</dt>
+              <dd>{chosen.width} × {chosen.height} px</dd>
+            {/if}
+            {#if day(chosen.uploadedAt)}
+              <dt>{t.media.uploaded}</dt>
+              <dd>{day(chosen.uploadedAt)}</dd>
+            {/if}
+            <dt>{t.media.address}</dt>
+            <dd class="address">
+              <a href={chosen.path} target="_blank" rel="noopener" data-media-path>{chosen.path}</a>
+              <button type="button" class="quiet" onclick={() => chosen && copy(chosen.path)} data-media-copy>{copied ? t.media.copied : t.media.copy}</button>
+            </dd>
+            <dt>{t.media.usedOn}</dt>
+            <dd data-media-used>
+              {#if usedBy === null}…{:else if usedBy.length === 0}<span class="hint">{t.media.unused}</span>{:else}<ul class="used">{#each usedBy as title, i (i)}<li>{title}</li>{/each}</ul>{/if}
+            </dd>
+          </dl>
+          {#if signedIn.staff}<button type="button" class="danger" onclick={() => chosen && remove(chosen)}>{chosen.kind === 'image' ? t.media.remove : t.media.removeFile}</button>{/if}
+        </aside>
+      {/if}
+    </div>
   {/if}
 </section>
 
 <style>
   header { display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem; }
   h1 { margin: 0; font-size: 1.4rem; flex: 1; }
+  .split { display: grid; gap: 1rem; align-items: start; }
+  .split.open { grid-template-columns: minmax(0, 1fr) 22rem; }
   ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); gap: 0.8rem; }
   li { display: grid; gap: 0.25rem; padding: 0.6rem; background: #fff; border: 1px solid #dddbe6; border-radius: 8px; }
+  li.current { border-color: #6d5dfc; box-shadow: 0 0 0 1px #6d5dfc; }
+  .thumb { display: block; width: 100%; padding: 0; border: 0; background: none; cursor: pointer; }
   img, video, .file { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 4px; background: #f3f2f7; }
-  .file { display: grid; place-items: center; font-weight: 700; font-size: 1.3rem; color: #4b4867; text-decoration: none; }
+  .file { display: grid; place-items: center; font-weight: 700; font-size: 1.3rem; color: #4b4867; }
+  .thumb:focus-visible, .label:focus-visible { outline: 2px solid #6d5dfc; outline-offset: 2px; }
   audio { width: 100%; }
   .kinds { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 1rem; }
   .kinds [aria-pressed='true'] { font-weight: 700; text-decoration: underline; }
-  .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+  .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; padding: 0; border: 0; background: none; text-align: start; cursor: pointer; }
+  .label:hover { color: #4b3fd6; text-decoration: underline; }
+  .details { position: sticky; top: 0; display: grid; gap: 0.7rem; padding: 1rem; background: #fff; border: 1px solid #dddbe6; border-radius: 8px; }
+  .details header { margin: 0; }
+  .details h2 { flex: 1; margin: 0; font-size: 1rem; }
+  .details .big { aspect-ratio: auto; max-height: 16rem; object-fit: contain; }
+  .details form { display: grid; }
+  .details .title { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+  .row { display: flex; align-items: center; gap: 0.6rem; margin: 0; }
+  dl { display: grid; grid-template-columns: auto 1fr; gap: 0.35rem 0.8rem; margin: 0; font-size: 13px; }
+  dt { color: #6a6880; }
+  dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+  .address { display: grid; justify-items: start; gap: 0.2rem; }
+  .address a { max-width: 100%; color: #4b3fd6; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .address button { padding: 0.1rem 0; }
+  .used { display: block; padding: 0; }
+  .used li { display: list-item; padding: 0; border: 0; background: none; list-style: disc inside; }
+  @media (max-width: 900px) {
+    .split.open { grid-template-columns: 1fr; }
+    .details { position: static; order: -1; }
+  }
 </style>

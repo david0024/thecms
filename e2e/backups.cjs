@@ -105,6 +105,7 @@ function fakeS3() {
     await page.locator('[data-backup-tested].good').waitFor();
     await page.locator('[data-backup-save]').click();
     await page.locator('[data-backup-note]').waitFor();
+    await page.evaluate(() => history.replaceState(null, "", location.href.replace(/[#&]at=[^&#]*/, ""))); // opened again at its first screen, not the one it was on
     await page.reload();
     await page.locator('[data-nav="backups"]').click();
     await page.locator('[data-backup-keep]').waitFor();
@@ -179,6 +180,7 @@ function fakeS3() {
     await page.locator('[data-nav="backups"]').click();
     await page.locator('[data-backup-now]').click();
     await page.locator('[data-backup-last="failed"]').waitFor();
+    await page.evaluate(() => history.replaceState(null, "", location.href.replace(/[#&]at=[^&#]*/, ""))); // opened again at its first screen, not the one it was on
     await page.reload();
     await page.locator('[data-backup-failed]').waitFor();
     assert(true, 'a backup that failed is said on its screen and at the top of the admin');

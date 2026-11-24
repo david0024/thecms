@@ -163,6 +163,16 @@ let returnNote = $state('');
 /** How many entries wait to be read (ADR 0055 d4). */
 const waiting = $derived(site ? Object.values(site.entries).flat().filter((e) => e.review?.state === 'waiting').length : 0);
 const freeOnPage = $derived(page ? countFreeValues(page.blocks) : 0);
+/** Where visitors find what is open: none for a section or a content type's own page, which have no address. */
+const publicPath = $derived(
+  !page || !site || designing || sectioning
+    ? ''
+    : type
+      ? translation
+        ? entryPath(typeIn(site.site, type, translation.language), page.slug.slice(prefixOf(translation.language).length + 1))
+        : entryPath(type, page.slug)
+      : pagePath(page.slug),
+);
 
 /** The site's languages, as a question of an extension offers them. */
 const siteLanguages = $derived(site ? [site.site.language, ...site.site.languages].map((language) => ({ language, name: languageName(language) })) : []);
@@ -415,6 +425,60 @@ async function panel(which: 'site' | 'theme'): Promise<void> {
   view = 'edit';
   if (which === 'site' && !siteMode) await toggleSite();
   if (which === 'theme' && !themeMode) await toggleTheme();
+}
+
+/**
+ * Each screen has an address of its own, after the key in the address's end:
+ * `#at=media`, `#at=edit/page/about`. Reloading keeps the screen, Back goes to
+ * the one before, and a screen opens in a new tab. The key stays where it is.
+ */
+const AT = 'at';
+const SCREENS = new Set(['pages', 'sections', 'forms', 'layouts', 'media', 'messages', 'orders', 'backups', 'stats', 'comments', 'people', 'me', 'review', 'types', 'import', 'export', 'extensions']);
+/** Set while an address is being followed, so following it does not write a new one. */
+let following = false;
+/** Addresses are written once the one the admin was opened at has been followed. */
+let routed = $state(false);
+const here = $derived(view !== 'edit' ? view : siteMode ? 'settings' : themeMode ? 'theme' : page ? `edit/${kind}/${page.slug}` : 'pages');
+
+$effect(() => {
+  const at = here;
+  if (!routed || following) return;
+  const params = new URLSearchParams(location.hash.slice(1));
+  if (params.get(AT) === at) return;
+  const first = !params.has(AT);
+  params.delete(AT);
+  // Written by hand so the address reads as it is: `at=edit/page/about`, not `at=edit%2Fpage%2Fabout`.
+  const rest = params.toString();
+  const next = `${location.pathname}${location.search}#${rest ? `${rest}&` : ''}${AT}=${encodeURIComponent(at).replaceAll('%2F', '/').replaceAll('%3A', ':')}`;
+  if (first) history.replaceState(history.state, '', next);
+  else history.pushState(history.state, '', next);
+});
+
+/** Opens the screen an address names; one it does not know, or that is not this person's, leaves things as they are. */
+async function follow(): Promise<void> {
+  const at = new URLSearchParams(location.hash.slice(1)).get(AT);
+  if (!at || at === here || !site) return;
+  following = true;
+  try {
+    if (at === 'settings' || at === 'theme') {
+      if (owner) await panel(at === 'settings' ? 'site' : 'theme');
+    } else if (at.startsWith('edit/')) {
+      const rest = at.slice('edit/'.length);
+      const cut = rest.indexOf('/');
+      const next = (cut < 0 ? rest : rest.slice(0, cut)) as Kind;
+      const slug = cut < 0 ? '' : rest.slice(cut + 1);
+      if (siteMode) await toggleSite();
+      themeMode = false;
+      if (!page || next !== kind || slug !== page.slug) await open(slug, next);
+      view = 'edit';
+    } else if (SCREENS.has(at) || (at.startsWith('list:') && types.some((ty) => `list:${ty.id}` === at)) || (at.startsWith('ext:') && site.extensions.some((e) => at.startsWith(`ext:${e.name}/`)))) {
+      if (siteMode) await toggleSite();
+      themeMode = false;
+      view = at as typeof view;
+    }
+  } finally {
+    following = false;
+  }
 }
 
 async function createPage(title: string, newKind: Kind, layout = ''): Promise<void> {
@@ -694,6 +758,7 @@ function onKey(event: KeyboardEvent): void {
 
 onMount(() => {
   window.addEventListener('message', onFrameMessage);
+  window.addEventListener('popstate', follow);
   (async () => {
     try {
       site = await api.state();
@@ -701,11 +766,16 @@ onMount(() => {
       // An author and a contributor start at their own entries: the pages are not theirs (ADR 0055 d1).
       signedIn.staff = staff;
       if (!staff) view = `list:${types.find((ty) => ty.id === POSTS_TYPE)?.id ?? types[0]?.id ?? ''}`;
+      await follow();
+      routed = true;
     } catch (error) {
       fail(error);
     }
   })();
-  return () => window.removeEventListener('message', onFrameMessage);
+  return () => {
+    window.removeEventListener('message', onFrameMessage);
+    window.removeEventListener('popstate', follow);
+  };
 });
 </script>
 
@@ -717,7 +787,8 @@ onMount(() => {
   <div class="editor admin" class:building={view === 'edit'}>
     <!-- Like a page builder elsewhere, the builder takes the whole window: the page needs the width. -->
     <nav class="rail" aria-label={t.nav.label} hidden={view === 'edit'}>
-      <strong>{site.site.name}</strong>
+      <!-- The way out to the site, as visitors see it, in a tab of its own (like the admin bar elsewhere). -->
+      <a class="site" href="/" target="_blank" rel="noopener" data-view-site><strong>{site.site.name}</strong><small>{t.nav.viewSite} ↗</small></a>
       {#if staff}
       <button type="button" aria-current={view === 'pages' ? 'page' : undefined} onclick={() => (view = 'pages')} data-nav="pages">{t.nav.pages}</button>
       {/if}
@@ -841,6 +912,7 @@ onMount(() => {
       <button type="button" onclick={toggleTheme} aria-pressed={themeMode} data-theme-mode>{themeMode ? t.theme.done : t.theme.edit}</button>
       {#if site.themeChanged}<button type="button" onclick={publishTheme} title={t.theme.changed} data-publish-theme>{t.theme.publish}</button>{/if}
       {/if}
+      {#if publicPath && info?.published}<a class="out" href={publicPath} target="_blank" rel="noopener" title={t.bar.viewPageHint} data-view-page>{t.bar.viewPage} ↗</a>{/if}
       <span class="sep"></span>
       <span class="state" data-review-state={review?.state ?? ''}>{review ? (review.state === 'waiting' ? t.review.waiting : t.review.returned) : !info?.published ? t.bar.draft : info.changed || saving !== 'saved' ? t.bar.changed : t.bar.published}</span>
       {#if contributor}
@@ -1149,9 +1221,14 @@ onMount(() => {
   .rail[hidden] { display: none; }
   .rail { display: flex; flex-direction: column; gap: 0.25rem; padding: 0.9rem 0.6rem; background: #1c1b22; color: #fff; }
   .rail .me { padding: 0 0.5rem; color: #a9a6bd; overflow-wrap: anywhere; }
-  .rail strong { padding: 0 0.5rem 0.8rem; overflow-wrap: anywhere; }
+  .rail .site { display: grid; gap: 0.1rem; padding: 0.3rem 0.5rem 0.5rem; margin-bottom: 0.4rem; border-radius: 6px; color: #fff; text-decoration: none; overflow-wrap: anywhere; }
+  .rail .site small { color: #a9a6bd; }
+  .rail .site:hover { background: #2e2c3a; }
+  .rail .site:hover small { color: #fff; text-decoration: underline; }
+  .out { padding: 0.4rem 0.7rem; border: 1px solid #cfccdc; border-radius: 6px; color: inherit; text-decoration: none; white-space: nowrap; }
+  .out:hover { border-color: #6d5dfc; }
   :global(.editor .rail button) { border-color: transparent; background: none; color: #d9d7e6; text-align: start; }
-  :global(.editor .rail button:hover:not(:disabled)) { border-color: transparent; background: #2e2c3a; }
+  :global(.editor .rail button:hover:not(:disabled):not([aria-current='page'])) { border-color: transparent; background: #2e2c3a; }
   :global(.editor .rail button[aria-current='page']) { background: #6d5dfc; color: #fff; font-weight: 600; }
   :global(.editor .screen) { overflow-y: auto; padding: 1.5rem 2rem; }
   .stack { min-width: 0; overflow-y: auto; }

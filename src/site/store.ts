@@ -149,8 +149,12 @@ export interface MediaItem {
   path: string;
   type: string;
   size: number;
-  /** The file name it was uploaded under: only a label for the author. */
+  /** The file's name in the library: the name it was uploaded under, until someone renames it (ADR 0072 d2). */
   label: string;
+  /** The words for people who cannot see the picture, offered when it is put on a page (ADR 0072 d3); '' for none. */
+  alt: string;
+  /** When it was uploaded. */
+  uploadedAt: string;
   /** How wide and high it is, when its bytes say (ADR 0005 d8); 0 when they do not. */
   width: number;
   height: number;
@@ -193,6 +197,7 @@ const SQLITE: Dialect = {
     'CREATE TABLE IF NOT EXISTS extension_rows (extension TEXT NOT NULL, collection TEXT NOT NULL, id TEXT NOT NULL, data TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY (extension, collection, id))',
     'CREATE TABLE IF NOT EXISTS versions (kind TEXT NOT NULL, slug TEXT NOT NULL, at TEXT NOT NULL, doc TEXT NOT NULL, PRIMARY KEY (kind, slug, at))',
     'CREATE TABLE IF NOT EXISTS media_sizes (name TEXT PRIMARY KEY, width INTEGER NOT NULL, height INTEGER NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS media_texts (name TEXT PRIMARY KEY, alt TEXT NOT NULL)',
     'CREATE TABLE IF NOT EXISTS schedule (kind TEXT NOT NULL, slug TEXT NOT NULL, at TEXT NOT NULL, PRIMARY KEY (kind, slug))',
     'CREATE TABLE IF NOT EXISTS media_variants (name TEXT PRIMARY KEY, original TEXT NOT NULL, width INTEGER NOT NULL, bytes BLOB NOT NULL)',
     'CREATE TABLE IF NOT EXISTS page_locks (slug TEXT PRIMARY KEY, hash TEXT NOT NULL)',
@@ -231,6 +236,7 @@ const POSTGRES: Dialect = {
     'CREATE TABLE IF NOT EXISTS extension_rows (extension VARCHAR(64) NOT NULL, collection VARCHAR(64) NOT NULL, id VARCHAR(40) NOT NULL, data TEXT NOT NULL, updated_at VARCHAR(40) NOT NULL, PRIMARY KEY (extension, collection, id))',
     'CREATE TABLE IF NOT EXISTS versions (kind VARCHAR(64) NOT NULL, slug VARCHAR(255) NOT NULL, at VARCHAR(40) NOT NULL, doc TEXT NOT NULL, PRIMARY KEY (kind, slug, at))',
     'CREATE TABLE IF NOT EXISTS media_sizes (name VARCHAR(255) PRIMARY KEY, width INTEGER NOT NULL, height INTEGER NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS media_texts (name VARCHAR(255) PRIMARY KEY, alt TEXT NOT NULL)',
     'CREATE TABLE IF NOT EXISTS schedule (kind VARCHAR(64) NOT NULL, slug VARCHAR(255) NOT NULL, at VARCHAR(40) NOT NULL, PRIMARY KEY (kind, slug))',
     'CREATE TABLE IF NOT EXISTS media_variants (name VARCHAR(255) PRIMARY KEY, original VARCHAR(255) NOT NULL, width INTEGER NOT NULL, bytes BYTEA NOT NULL)',
     'CREATE TABLE IF NOT EXISTS page_locks (slug VARCHAR(255) PRIMARY KEY, hash TEXT NOT NULL)',
@@ -268,6 +274,7 @@ const MYSQL: Dialect = {
     `CREATE TABLE IF NOT EXISTS extension_rows (extension VARCHAR(64) NOT NULL, collection VARCHAR(64) NOT NULL, id VARCHAR(40) NOT NULL, data LONGTEXT NOT NULL, updated_at VARCHAR(40) NOT NULL, PRIMARY KEY (extension, collection, id)) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS versions (kind VARCHAR(64) NOT NULL, slug VARCHAR(255) NOT NULL, at VARCHAR(40) NOT NULL, doc LONGTEXT NOT NULL, PRIMARY KEY (kind, slug, at)) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS media_sizes (name VARCHAR(255) PRIMARY KEY, width INTEGER NOT NULL, height INTEGER NOT NULL) ${MYSQL_TABLE}`,
+    `CREATE TABLE IF NOT EXISTS media_texts (name VARCHAR(255) PRIMARY KEY, alt TEXT NOT NULL) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS schedule (kind VARCHAR(64) NOT NULL, slug VARCHAR(255) NOT NULL, at VARCHAR(40) NOT NULL, PRIMARY KEY (kind, slug)) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS media_variants (name VARCHAR(255) PRIMARY KEY, original VARCHAR(255) NOT NULL, width INTEGER NOT NULL, bytes LONGBLOB NOT NULL) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS page_locks (slug VARCHAR(255) PRIMARY KEY, hash TEXT NOT NULL) ${MYSQL_TABLE}`,
@@ -1746,10 +1753,13 @@ export class Store {
   async media(): Promise<MediaItem[]> {
     const sizes = await this.sizes();
     const variants = await this.variantWidths();
-    return (await this.rows<{ name: string; label: string; size: number | string }>('SELECT name, label, size FROM media ORDER BY created_at DESC, name')).map((row) => ({
+    const texts = new Map((await this.rows<{ name: string; alt: string }>('SELECT name, alt FROM media_texts')).map((r) => [r.name, r.alt]));
+    return (await this.rows<{ name: string; label: string; size: number | string; created_at: string }>('SELECT name, label, size, created_at FROM media ORDER BY created_at DESC, name')).map((row) => ({
       name: row.name,
       kind: mediaKindOf(row.name),
       label: row.label,
+      alt: texts.get(row.name) ?? '',
+      uploadedAt: String(row.created_at),
       size: Number(row.size),
       path: mediaPath(row.name),
       type: MEDIA_TYPES[row.name.split('.').pop() as MediaExt],
@@ -1826,12 +1836,34 @@ export class Store {
     return titles;
   }
 
+  /**
+   * Renames a file in the library and sets the words a picture is offered with
+   * (ADR 0072). Neither changes a page that already shows it: a page keeps the
+   * words it was given, and the file's address stays the same.
+   */
+  async setMediaTexts(name: string, texts: { label?: unknown; alt?: unknown }): Promise<MediaItem> {
+    if (!(await this.hasMedia(name))) throw new Error('no such file');
+    if (texts.label !== undefined) {
+      const label = str(texts.label, 200).trim();
+      if (!label) throw new Error('a file in the library has a name');
+      await this.run('UPDATE media SET label = ? WHERE name = ?', [label, name]);
+    }
+    if (texts.alt !== undefined) {
+      const alt = str(texts.alt, 300).trim();
+      if (alt && mediaKindOf(name) !== 'image') throw new Error('only a picture has words for people who cannot see it');
+      if (alt) await this.run(this.dialect.upsert('media_texts', ['name', 'alt'], ['name'], ['alt']), [name, alt]);
+      else await this.run('DELETE FROM media_texts WHERE name = ?', [name]);
+    }
+    return (await this.media()).find((m) => m.name === name) as MediaItem;
+  }
+
   /** Deletes a file nothing shows or links to. One that a page still uses is refused, with the page named. */
   async deleteMedia(name: string): Promise<void> {
     const used = await this.mediaUsedBy(name);
     if (used.length) throw new Error(`this ${mediaKindOf(name) === 'image' ? 'image' : 'file'} is used on: ${used.join(', ')}`);
     await this.run('DELETE FROM media WHERE name = ?', [name]);
     await this.run('DELETE FROM media_sizes WHERE name = ?', [name]);
+    await this.run('DELETE FROM media_texts WHERE name = ?', [name]);
     await this.run('DELETE FROM media_variants WHERE original = ?', [name]);
   }
 
@@ -2626,6 +2658,7 @@ export const BACKUP_TABLES = [
   'media',
   'media_sizes',
   'media_variants',
+  'media_texts',
   'messages',
   'message_answers',
   'comments',

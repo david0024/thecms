@@ -667,7 +667,8 @@ export async function startEditor(
     const method = request.method;
     const reading = method === 'GET';
     if (path === '/api/me' || path === '/api/state' || path === '/api/check' || path === '/api/render' || path === '/api/versions' || path === '/api/version' || path === '/api/forms') return reading || path === '/api/me' || path === '/api/render' ? null : no();
-    if (path === '/api/media' || path === '/api/media/variant') return method === 'DELETE' ? no('only the owner and the editors delete from the library') : null;
+    if (path === '/api/media/used') return null;
+    if (path === '/api/media' || path === '/api/media/variant') return method === 'DELETE' ? no('only the owner and the editors delete from the library') : method === 'PUT' ? no('only the owner and the editors rename files and describe pictures') : null;
     if (path.startsWith('/api/extensions')) return path.split('/')[4] === 'each' ? no() : null;
     if (path === '/api/locks') return reading ? null : no();
     const body = reading || method === 'DELETE' ? {} : ((await request.clone().json().catch(() => ({}))) as Record<string, unknown>);
@@ -820,6 +821,10 @@ export async function startEditor(
       const item = await store.addVariant(url.searchParams.get('name') ?? '', new Uint8Array(await request.arrayBuffer()));
       return json({ item });
     }
+    if (url.pathname === '/api/media/used' && request.method === 'GET') {
+      // Where a file is shown or linked to, as its details say (ADR 0072 d4).
+      return json({ usedBy: await store.mediaUsedBy(url.searchParams.get('name') ?? '') });
+    }
     if (url.pathname === '/api/media') {
       if (request.method === 'GET') return json({ media: await store.media() });
       if (request.method === 'DELETE') {
@@ -834,6 +839,11 @@ export async function startEditor(
       }
     }
     const body = request.method === 'GET' || request.method === 'DELETE' ? {} : ((await request.json()) as Record<string, unknown>);
+    if (url.pathname === '/api/media' && request.method === 'PUT') {
+      // A file renamed, a picture described (ADR 0072 d2, d3).
+      const item = await store.setMediaTexts(url.searchParams.get('name') ?? '', { label: body.label, alt: body.alt });
+      return json({ item, media: await store.media() });
+    }
     // Settings → Visitor accounts (ADR 0064): nothing of them is loaded until the owner turns them on.
     if (url.pathname === '/api/visitors' || url.pathname.startsWith('/api/visitors/')) return site.visitors.admin(request, url, me, body);
     if (url.pathname === '/api/mail' || url.pathname.startsWith('/api/mail/')) return mailApi(request, url, me, body);

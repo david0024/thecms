@@ -126,6 +126,7 @@ const PASSWORD = 'a long enough password';
     assert(true, 'the owner sends it back with a note');
 
     // The contributor reads the note, changes it, and sends it again.
+    await mihai.evaluate(() => history.replaceState(null, "", location.href.replace(/[#&]at=[^&#]*/, ""))); // opened again at its first screen, not the one it was on
     await mihai.reload();
     await mihai.locator('[data-list="post"] [data-status-of="bean-soup"]', { hasText: 'Sent back' }).waitFor();
     await mihai.locator('[data-open="bean-soup"]').click();
@@ -135,6 +136,7 @@ const PASSWORD = 'a long enough password';
     await mihai.locator('[data-review-state="waiting"]').waitFor();
 
     // The owner publishes it; then it is no longer the contributor's to change.
+    await olga.evaluate(() => history.replaceState(null, "", location.href.replace(/[#&]at=[^&#]*/, ""))); // opened again at its first screen, not the one it was on
     await olga.reload();
     await olga.locator('[data-nav="review"]').click();
     await olga.locator('[data-review="bean-soup"] button').click();
@@ -145,6 +147,7 @@ const PASSWORD = 'a long enough password';
     await olga.locator('[data-nav="review"]').click();
     await olga.locator('[data-review-none]').waitFor();
     assert(true, 'published, nothing waits for review');
+    await mihai.evaluate(() => history.replaceState(null, "", location.href.replace(/[#&]at=[^&#]*/, ""))); // opened again at its first screen, not the one it was on
     await mihai.reload();
     await mihai.locator('[data-open="bean-soup"]').click();
     await mihai.locator('[data-review-published]').waitFor();
@@ -175,6 +178,7 @@ const PASSWORD = 'a long enough password';
     if (shots) await olga.screenshot({ path: join(shots, 'people-roles.png') });
     await row.locator('[data-remove-sure]').click();
     await row.waitFor({ state: 'detached' });
+    await olga.evaluate(() => history.replaceState(null, "", location.href.replace(/[#&]at=[^&#]*/, ""))); // opened again at its first screen, not the one it was on
     await olga.reload();
     await olga.locator('[data-nav="posts"]').click();
     await olga.locator('[data-author-of="oak-door"]', { hasText: 'Mihai' }).waitFor();

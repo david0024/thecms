@@ -33,7 +33,7 @@ let fileInput: HTMLInputElement | undefined = $state();
 
 const src = $derived(value?.src ?? '');
 const alt = $derived(value?.alt ?? '');
-/** The words a picture keeps, or else those its file's name gives; a library-only field keeps none. */
+/** The words a picture keeps, or else those its file's name gives; a library-only field keeps none. A picture described in the library brings its own words (ADR 0072 d3). */
 const offered = (name: string): string => (only || !named ? alt : alt || altFromName(name));
 
 async function upload(event: Event): Promise<void> {
@@ -92,7 +92,7 @@ async function remove(name: string): Promise<void> {
       <ul class="grid">
         {#each library as item (item.name)}
           <li>
-            <button type="button" class="pick" class:current={item.path === src} onclick={() => onchange({ src: item.path, alt: offered(item.label) })} title={item.label} data-media={item.name}>
+            <button type="button" class="pick" class:current={item.path === src} onclick={() => onchange({ src: item.path, alt: !only && named && item.alt ? item.alt : offered(item.label) })} title={item.label} data-media={item.name}>
               <img src={item.path} alt={item.label} loading="lazy" />
             </button>
             {#if signedIn.staff}<button type="button" class="quiet drop" onclick={() => remove(item.name)} title={t.media.remove} aria-label={`${t.media.remove}: ${item.label}`}>✕</button>{/if}

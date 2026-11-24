@@ -147,6 +147,7 @@ function mailServer(mails) {
     assert(welcome.head.includes('Subject: Hi Ana, welcome to'), "in the owner's words");
 
     // The owner sees the account, and invites another.
+    await page.evaluate(() => history.replaceState(null, "", location.href.replace(/[#&]at=[^&#]*/, ""))); // opened again at its first screen, not the one it was on
     await page.reload();
     await page.locator('[data-nav="settings"]').click();
     await page.locator('[data-visitor="ana@example.com"]').waitFor();
@@ -186,6 +187,7 @@ function mailServer(mails) {
     assert(true, 'the menu may lead to "My account"');
 
     // Who sees it (ADR 0064 d4): the page "About" for members of Premium; Ana opens it, another visitor is asked to sign in.
+    await page.evaluate(() => history.replaceState(null, "", location.href.replace(/[#&]at=[^&#]*/, ""))); // opened again at its first screen, not the one it was on
     await page.reload();
     await page.locator('button[data-open="about"]').click();
     await page.locator('[data-audience="page"]').waitFor();
@@ -208,6 +210,7 @@ function mailServer(mails) {
     assert(true, 'and opened to everyone again');
 
     // A whole type, from its settings.
+    await page.evaluate(() => history.replaceState(null, "", location.href.replace(/[#&]at=[^&#]*/, ""))); // opened again at its first screen, not the one it was on
     await page.reload();
     await page.locator('[data-nav="types"]').click();
     await page.locator('[data-type] button.open').first().click();
@@ -219,6 +222,7 @@ function mailServer(mails) {
     assert(true, 'a whole type is kept for those signed in, and opened again');
 
     // A level taken away.
+    await page.evaluate(() => history.replaceState(null, "", location.href.replace(/[#&]at=[^&#]*/, ""))); // opened again at its first screen, not the one it was on
     await page.reload();
     await page.locator('[data-nav="settings"]').click();
     await page.locator('[data-level="premium"] [data-level-remove]').click();
@@ -229,6 +233,7 @@ function mailServer(mails) {
     const failed = (id) =>
       `INSERT INTO mail_queue (id, to_address, subject, body, what, tries, next_at, failed_at, error, created_at) VALUES ('${id}', '${id}@example.com', 's', 'b', 'invite', 5, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', 'refused', '2026-01-01T00:00:00.000Z')`;
     execFileSync('bun', ['-e', `const { Database } = require('bun:sqlite'); const db = new Database(process.argv[1]); db.run(process.argv[2]); db.run(process.argv[3]);`, db, failed('lost'), failed('again')]);
+    await page.evaluate(() => history.replaceState(null, "", location.href.replace(/[#&]at=[^&#]*/, ""))); // opened again at its first screen, not the one it was on
     await page.reload();
     await page.locator('[data-nav="settings"]').click();
     const rows = page.locator('[data-visitors-failed] li');
