@@ -2,6 +2,7 @@
 
 - **Status:** Accepted (owner, 2026-11-22: "facem cum propui", on the proposal below, after asking whether a shop in the program costs the sites that do not sell, and how Zveltio's first-party model would compare)
 - **Date:** 2026-11-22
+- **Changed by:** ADR 0076 (subscriptions are an extension; the format gains more before Stripe; parts)
 - **Builds on:** ADR 0037 (direction; d4 stage 3, d5), ADR 0026 (extensions), ADR 0041 (extensions on the server), ADR 0043 (pages behind a password), ADR 0044 (the site is served), ADR 0053 (statistics)
 
 Stage 3 of ADR 0037 d4 is commerce and members: visitor accounts, the shop,
