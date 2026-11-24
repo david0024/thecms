@@ -93,6 +93,13 @@ export function resolveMenu(site: Site, pages: MenuPage[], lists: MenuLists, acc
   return walk(site.menu ?? automaticMenu(site, pages, lists), 1);
 }
 
+/**
+ * Whether a menu is worth drawing: it leads somewhere besides the home page,
+ * where the site's name already leads. A menu of one other page is a menu: a
+ * language whose only translated list is its documentation still shows it.
+ */
+export const menuLeadsAway = (menu: MenuLink[], home: string): boolean => menu.some((link) => link.href !== home || link.children.length > 0);
+
 /** Whether an item opens a wide panel of columns: it does when what is under it has items of its own. */
 export const isMega = (link: MenuLink): boolean => link.children.some((child) => child.children.length > 0);
 
