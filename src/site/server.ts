@@ -1146,7 +1146,18 @@ export async function startEditor(
     }
   }
 
+  /**
+   * The admin's own addresses are never for search engines: whatever they answer, a page to
+   * sign in or an error, carries noindex. The site's pages and its media are left as they are.
+   */
   async function handle(request: Request, ip = ''): Promise<Response> {
+    const response = await answer(request, ip);
+    const path = new URL(request.url).pathname;
+    if (ADMIN_PATHS.has(path) || path.startsWith('/admin/') || path.startsWith('/api/')) response.headers.set('x-robots-tag', 'noindex, nofollow');
+    return response;
+  }
+
+  async function answer(request: Request, ip: string): Promise<Response> {
     const url = new URL(request.url);
     // A page that points its own domain at 127.0.0.1 arrives with its own host name.
     const host = request.headers.get('host') ?? url.host;

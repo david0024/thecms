@@ -160,3 +160,19 @@ describe('the check before publishing', () => {
     await store.publish('');
   });
 });
+
+describe('the admin and search engines', () => {
+  test('the admin, the preview and the API say noindex, whatever they answer', async () => {
+    for (const path of ['/admin', '/admin/', '/admin/app.js', '/admin/nothing', '/preview', '/api/state']) {
+      expect((await call(path)).headers.get('x-robots-tag')).toBe('noindex, nofollow');
+    }
+    // Refused calls too: a page that only says "sign in first" is not for an index either.
+    expect((await call('/api/state', { headers: { 'x-uhlaka-token': 'x' } })).headers.get('x-robots-tag')).toBe('noindex, nofollow');
+  });
+
+  test("the site's own pages are left open", async () => {
+    const response = await call('/');
+    expect(response.status).toBe(200);
+    expect(response.headers.get('x-robots-tag')).toBeNull();
+  });
+});
