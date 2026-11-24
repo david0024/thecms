@@ -49,7 +49,9 @@ const input = (e: Event): string => (e.currentTarget as HTMLInputElement | HTMLT
     {#if field.kind === 'text'}
       <label>
         <span>{t.fields[name] ?? name}</span>
-        {#if field.multiline}
+        {#if field.code}
+          <textarea class="code-input" rows="10" spellcheck="false" autocapitalize="off" maxlength={field.max} value={text(name)} oninput={(e) => onchange(at(name), input(e))} data-field-code></textarea>
+        {:else if field.multiline}
           <textarea rows="3" maxlength={field.max} value={text(name)} oninput={(e) => onchange(at(name), input(e))}></textarea>
         {:else}
           <input type="text" maxlength={field.max} value={text(name)} oninput={(e) => onchange(at(name), input(e))} />
@@ -149,4 +151,5 @@ const input = (e: Event): string => (e.currentTarget as HTMLInputElement | HTMLT
 <style>
   .check { display: flex; align-items: center; gap: 0.5rem; }
   .check span { margin: 0; }
+  .code-input { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.85rem; white-space: pre; overflow-x: auto; tab-size: 2; }
 </style>

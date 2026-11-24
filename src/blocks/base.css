@@ -79,6 +79,10 @@ img{max-width:100%;height:auto;display:block}
 .table caption{caption-side:bottom;text-align:start;padding-top:var(--t-space-xs);color:var(--t-color-muted)}
 .table th,.table td{padding:.5em .75em;border-bottom:1px solid var(--t-color-border);text-align:start;vertical-align:top}
 .table thead th{border-bottom-width:2px}
+.b-code{--b-width:var(--t-width-narrow)}
+/* ADR 0067: code keeps its lines and scrolls sideways inside itself. */
+.code{margin:var(--t-space-sm) 0 0;padding:var(--t-space-sm) var(--t-space-md);overflow-x:auto;background:var(--t-color-surface);border:1px solid var(--t-color-border);border-radius:var(--t-radius-md);font-family:ui-monospace,Menlo,Consolas,monospace;font-size:var(--t-size-sm);line-height:1.6;tab-size:2;white-space:pre}
+.code code{font:inherit;white-space:inherit}
 .embed iframe,.video{display:block;width:100%;border:0;border-radius:var(--t-radius-md);background:var(--t-color-surface)}
 .embed-video iframe,.video{aspect-ratio:16/9}
 .embed-map iframe{aspect-ratio:4/3}

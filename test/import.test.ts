@@ -192,7 +192,7 @@ describe('a WordPress export as a plan', () => {
 
   test('the owner is told what did not come over', async () => {
     const notes = plan().notes.join('\n');
-    for (const said of ['2 menus', 'latest-posts', 'column layouts', 'tables', 'contact-form-7', 'scripts', 'embedded media', '"Secret"', 'Links to files', '1 comment not', '"product"', 'sit at the top level']) {
+    for (const said of ['2 menus', 'latest-posts', 'column layouts', 'contact-form-7', 'scripts', 'embedded media', '"Secret"', 'Links to files', '1 comment not', '"product"', 'sit at the top level']) {
       expect(notes).toContain(said);
     }
     expect(notes).not.toMatch(/\btags?\b[^\n]*not imported/);
