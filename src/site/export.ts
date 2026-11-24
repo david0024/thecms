@@ -563,7 +563,7 @@ export async function fullCheck(store: Store, files: Map<string, string | Uint8A
     ...checkSite(files),
     untranslated: await store.untranslated(),
     redirects: checkRedirects(files, await store.redirects()),
-    server: serverOnly(files, { formsElsewhere: (await store.site()).forms !== '', routes, stats: (await store.extension(STATS))?.enabled === true }),
+    server: serverOnly(files, { formsElsewhere: (await store.site()).forms !== '', routes, stats: (await store.extension(STATS))?.enabled === true, visitorLanguage: following(await store.site()) }),
     seo: checkSeo(files),
   };
 }
@@ -574,6 +574,9 @@ export async function fullCheck(store: Store, files: Map<string, string | Uint8A
  * sound and video from the library as they are asked for, so they are only
  * checked to be there and stand in the map empty (ADR 0046).
  */
+/** Whether the home page follows the visitor's browser (ADR 0071 d3): on as soon as there is a second language, unless the owner turned it off. */
+const following = (site: Site): boolean => site.languages.length > 0 && site.visitorLanguage !== false;
+
 export async function publishedSite(store: Store, served = false): Promise<Map<string, string | Uint8Array>> {
   const theme = await store.publishedTheme();
   if (!theme) throw new Error('the theme is not published yet');
@@ -585,7 +588,7 @@ export async function publishedSite(store: Store, served = false): Promise<Map<s
   const accounts = ((await store.visitorSettings()) as { on?: unknown } | null)?.on === true;
   // A product's Buy part, only on a served site while the shop is on (ADR 0065 d3, d10): a static host has no cart.
   const shop = served ? await shopGate(store).shown() : null;
-  const site = { ...(await store.site()), formDefs: await store.formsByName(), extensionBlocks: await store.extensionBlocks(), accounts, ...(shop ? { shop } : {}) };
+  const site = { ...(await store.site()), formDefs: await store.formsByName(), extensionBlocks: await store.extensionBlocks(), accounts, ...(shop ? { shop } : {}), ...(served ? { served: true } : {}) };
   const entries: Record<string, Post[]> = {};
   const templates: Record<string, Block[] | null> = {};
   for (const type of contentTypes(site)) {

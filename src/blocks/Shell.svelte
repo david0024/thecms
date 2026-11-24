@@ -14,7 +14,7 @@
  */
 import { getContext, type Snippet } from 'svelte';
 import type { Alternate, MenuLink, Site } from '../core/index.ts';
-import { areaBlock, holdsCurrent, isLink, isMega, layoutOf, measureFor, menuLeadsAway } from '../core/index.ts';
+import { areaBlock, choicePath, holdsCurrent, isLink, isMega, layoutOf, measureFor, menuLeadsAway } from '../core/index.ts';
 import BlockView from './BlockView.svelte';
 import { type EntryLists, marker, setEditing, setLists, setMeasure, setSite } from './editing.ts';
 import { ALTERNATES, wordsFor } from './words.ts';
@@ -109,7 +109,7 @@ const bottom = $derived(area(frame.bottom));
     {/if}
     {#if others.length > 1}
       <nav class="site-languages" aria-label={words.languages}>
-        {#each others as other}<a href={other.href} hreflang={other.language} lang={other.language} aria-current={other.current ? 'true' : undefined}>{other.name}</a>{/each}
+        {#each others as other}<a href={site.served && !editing ? choicePath(other.language, other.href) : other.href} hreflang={other.language} lang={other.language} aria-current={other.current ? 'true' : undefined}><span class="lang-long">{other.name}</span><span class="lang-short" aria-hidden="true">{other.language.toUpperCase()}</span></a>{/each}
       </nav>
     {/if}
   </div>

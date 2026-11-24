@@ -8,7 +8,7 @@ import { timingSafeEqual } from 'node:crypto';
 import type { Mailer } from './mail.ts';
 import { lockOf, membersOf, publishedSite } from './export.ts';
 import { mediaResponse } from './serve-media.ts';
-import { EMBED_ORIGINS, mediaKindOf } from '../core/index.ts';
+import { EMBED_ORIGINS, LANGUAGE_COOKIE, mediaKindOf, preferredLanguage, prefixOf } from '../core/index.ts';
 import { lockCookie, lockedPage } from './locks.ts';
 import { startClock } from './clock.ts';
 import { type Batches, batches, type DrawPage, type ExtensionHostApi, extensionHost, type Spawn } from './extensions.ts';
@@ -215,6 +215,22 @@ export function startRuntime(
     return '';
   };
 
+  /**
+   * Where the home page sends a visitor (ADR 0071 d3): null when the site
+   * does not follow the browser; otherwise the home page of the language the
+   * browser prefers, when that is not the main one, it is published, and the
+   * visitor never chose a language with the switcher.
+   */
+  const homeFor = async (request: Request): Promise<{ location: string | null } | null> => {
+    const current = await store.site();
+    if (current.languages.length === 0 || current.visitorLanguage === false) return null;
+    if (cookieOf(request, LANGUAGE_COOKIE)) return { location: null };
+    const wanted = preferredLanguage(request.headers.get('accept-language') ?? '', [current.language, ...current.languages]);
+    if (wanted === null || wanted === current.language) return { location: null };
+    const home = `${prefixOf(wanted)}/index.html`;
+    return { location: (await site()).has(home) ? `/${prefixOf(wanted)}/` : null };
+  };
+
   /** What search reads, made once for each build of the site. */
   const indexes = new WeakMap<Map<string, string | Uint8Array>, SearchDoc[]>();
 
@@ -283,6 +299,19 @@ export function startRuntime(
     if (url.pathname === '/_/cart' || url.pathname === '/_/checkout' || url.pathname.startsWith('/_/order/')) return shop.fetch(request, url, shopDeps);
     // A visitor's account (ADR 0064 d1): not found while the accounts are off (d8).
     if (url.pathname === '/_/account' || url.pathname.startsWith('/_/account/')) return visitors.fetch(request, url, ip);
+    if (url.pathname === '/_/language' && (request.method === 'GET' || request.method === 'HEAD')) {
+      // A language chosen with the switcher (ADR 0071 d2): kept, so the home page no longer follows the browser, then the page.
+      const chosen = url.searchParams.get('l') ?? '';
+      const to = url.searchParams.get('to') ?? '/';
+      const next = /^\/(?!\/)[^\s\\#]*$/.test(to) ? to : '/';
+      const current = await store.site();
+      if (![current.language, ...current.languages].includes(chosen)) return new Response(null, { status: 303, headers: { location: next } });
+      const secure = url.protocol === 'https:' || request.headers.get('x-forwarded-proto') === 'https';
+      return new Response(null, {
+        status: 303,
+        headers: { location: next, 'cache-control': 'no-store', 'set-cookie': `${LANGUAGE_COOKIE}=${encodeURIComponent(chosen)}; Path=/; SameSite=Lax; Max-Age=31536000${secure ? '; Secure' : ''}` },
+      });
+    }
     if (url.pathname === '/_' || url.pathname === '/_/') return new Response('uhlaka runtime\n', { headers: { 'content-type': 'text/plain; charset=utf-8' } });
     if (url.pathname.startsWith('/_/')) return new Response('not found\n', { status: 404, headers: { 'content-type': 'text/plain; charset=utf-8' } });
     if (request.method !== 'GET' && request.method !== 'HEAD') return new Response('a page is read with GET\n', { status: 405, headers: { allow: 'GET, HEAD' } });
@@ -295,6 +324,9 @@ export function startRuntime(
     }
     if (path.split('/').some((part) => part === '..' || part.startsWith('.')) || HIDDEN.has(path)) path = '\0';
     const own = path === '' || path.endsWith('/') ? `${path}index.html` : path;
+    // The home page, asked for by a browser that prefers another of the site's languages and by a visitor who chose none (ADR 0071 d3).
+    const greeting = path === '' ? await homeFor(request) : null;
+    if (greeting?.location) return new Response(null, { status: 302, headers: { location: greeting.location, vary: 'Accept-Language, Cookie', 'cache-control': 'private, no-store' } });
     const body = await fileOf(own);
     // An old address the export keeps answers here with a real 301, as Cloudflare and Apache do with its lists (ADR 0036).
     const moved = typeof body === 'string' ? /<meta http-equiv="refresh" content="0; url=([^"]+)">/.exec(body)?.[1] : undefined;
@@ -326,6 +358,8 @@ export function startRuntime(
       if (own.endsWith('.html')) void visits.seen(request, ip, url.pathname).catch(() => {});
       const shown = file(own, body);
       if (members !== null) shown.headers.set('cache-control', 'private, no-store');
+      // The same address answers by the browser's language and the visitor's choice: a cache in between must keep them apart.
+      if (greeting) shown.headers.set('vary', 'Accept-Language, Cookie');
       return shown;
     }
     const files = await site();
