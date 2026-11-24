@@ -4,7 +4,7 @@
  */
 import type { Block } from './blocks.ts';
 import { type BlockStyle, freeValueCss, isFree, isFreeValue, STYLE_PROPS, type StyleProp, TOKEN_GROUPS, type TokenGroup, tokenVar } from './style.ts';
-import { type FooterArrangement, hasToken, type HeaderArrangement, type Theme } from './theme.ts';
+import { colorsFor, type FooterArrangement, hasToken, type HeaderArrangement, otherPalette, otherScheme, ownScheme, type Scheme, shownBy, type Theme } from './theme.ts';
 import { isId } from './util.ts';
 
 /**
@@ -25,10 +25,28 @@ export function declarations(style: BlockStyle | undefined, theme: Theme): strin
       out.push(`${css}:var(${tokenVar(kind as TokenGroup, value.token)})`);
     }
   }
+  // A band with its own background and text colour (a hero, a header) has its links and accents in that text colour:
+  // the page's link colour is made for the page's background, not the band's (ADR 0074 d1).
+  const text = out.find((d) => d.startsWith('color:'));
+  if (text && out.some((d) => d.startsWith('background-color:'))) out.push(`--t-color-link:${text.slice('color:'.length)}`);
   return out.join(';');
 }
 
 const rule = (selector: string, body: string): string => (body ? `${selector}{${body}}\n` : '');
+
+/** Colour tokens as custom properties; a value that is not plainly a colour writes nothing. */
+const colorVars = (colors: Record<string, string>): string[] =>
+  Object.entries(colors)
+    .filter(([, value]) => isFreeValue('color', value))
+    .map(([name, value]) => `${tokenVar('color', name)}:${freeValueCss('color', value)}`);
+
+/** The switch in the header offers the scheme the page is not in (ADR 0074 d4). */
+const switchRule = (selector: string, scheme: Scheme): string =>
+  `${selector} .scheme-to-${scheme}{display:none}${selector} .scheme-to-${scheme === 'light' ? 'dark' : 'light'}{display:inline-flex}\n`;
+
+/** One scheme's colours, under a selector. */
+const schemeRule = (selector: string, theme: Theme, scheme: Scheme): string =>
+  rule(selector, [...colorVars(colorsFor(theme, scheme)), `color-scheme:${scheme}`].join(';')) + switchRule(selector, scheme);
 
 /**
  * What each arrangement means. The header and footer are the same HTML under
@@ -50,14 +68,31 @@ const STICKY = 'position:sticky;top:0;z-index:5';
 const join = (...parts: string[]): string => parts.filter(Boolean).join(';');
 
 /** The theme as a stylesheet: its tokens, each block type's default and variants, then the header and footer. */
-export function themeCss(theme: Theme): string {
+export function themeCss(theme: Theme, options: { preview?: boolean } = {}): string {
+  const shows = shownBy(theme);
+  // The colours of the scheme the page starts in: the theme's own, or the other's when the owner chose only that one.
+  const first: Scheme = shows === 'visitor' ? ownScheme(theme) : shows;
   const vars: string[] = [];
   for (const group of TOKEN_GROUPS) {
+    if (group === 'color') continue;
     for (const [name, value] of Object.entries(theme.tokens[group])) {
       if (isFreeValue(group, value)) vars.push(`${tokenVar(group, name)}:${freeValueCss(group, value)}`);
     }
   }
-  let css = rule(':root', vars.join(';'));
+  let css = rule(':root', [...colorVars(colorsFor(theme, first)), ...vars, ...(otherPalette(theme) || first === 'dark' ? [`color-scheme:${first}`] : [])].join(';'));
+  if (otherPalette(theme)) {
+    css += switchRule(':root', first);
+    const other = otherScheme(theme);
+    if (shows === 'visitor') {
+      // The device's choice, unless the visitor turned the switch the other way (ADR 0074 d3, d4).
+      const unless = `:root:not([data-scheme=${ownScheme(theme)}])`;
+      css += `@media (prefers-color-scheme: ${other}){\n${schemeRule(unless, theme, other)}}\n`;
+    }
+    // What the switch chose, or the editor's preview of either scheme.
+    if (shows === 'visitor' || options.preview) {
+      for (const scheme of options.preview ? ([ownScheme(theme), other] as Scheme[]) : [other]) css += schemeRule(`:root[data-scheme=${scheme}]`, theme, scheme);
+    }
+  }
   for (const [type, entry] of Object.entries(theme.blocks)) {
     css += rule(`.b-${type}`, declarations(entry?.style, theme));
     for (const [variant, style] of Object.entries(entry?.variants ?? {})) {
@@ -94,6 +129,16 @@ export function countFreeValues(blocks: Block[]): number {
   for (const b of blocks) {
     n += Object.values(b.style ?? {}).filter((v) => v && isFree(v)).length;
     if (b.children) n += countFreeValues(b.children);
+  }
+  return n;
+}
+
+/** How many colours on a page were chosen by hand: they stay the same in either scheme (ADR 0074 d5). */
+export function countFreeColors(blocks: Block[]): number {
+  let n = 0;
+  for (const b of blocks) {
+    n += Object.entries(b.style ?? {}).filter(([prop, v]) => v && isFree(v) && STYLE_PROPS[prop as StyleProp]?.kind === 'color').length;
+    if (b.children) n += countFreeColors(b.children);
   }
   return n;
 }

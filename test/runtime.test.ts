@@ -52,6 +52,10 @@ describe('the runtime', () => {
       const moved = await get('/old/');
       expect([moved.status, moved.headers.get('location')]).toEqual([301, '/about/']);
       expect((await get('/assets/site.css')).headers.get('content-type')).toBe('text/css; charset=utf-8');
+      // The switch of colours (ADR 0074 d4): its script, from the site itself, and nothing else may run.
+      expect(home.headers.get('content-security-policy')).toContain("script-src 'self';");
+      expect(html).toContain('<script src="/assets/scheme.js"></script>');
+      expect((await get('/assets/scheme.js')).headers.get('content-type')).toBe('text/javascript; charset=utf-8');
       expect((await get(image.path)).headers.get('cache-control')).toContain('immutable');
       for (const hidden of ['/_redirects', '/.htaccess', '/x/%2e%2e%2fabout/', '/%E0%A4%A']) expect((await get(hidden)).status).toBe(404);
       const missing = await get('/nowhere/');

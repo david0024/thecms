@@ -1222,7 +1222,7 @@ export async function startEditor(
         return html(previewPage((await store.site()).language));
       case '/admin/site.css':
         // The canvas's: the theme as it is being built. The structure first, the theme after it: where both set the same thing, the theme wins.
-        return text(`${fontFacesCss()}${baseCss}${themeCss(await theme())}`, 'text/css');
+        return text(`${fontFacesCss()}${baseCss}${themeCss(await theme(), { preview: true })}`, 'text/css');
       default:
         return json({ error: 'not found' }, 404);
     }

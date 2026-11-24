@@ -112,6 +112,13 @@ const bottom = $derived(area(frame.bottom));
         {#each others as other}<a href={site.served && !editing ? choicePath(other.language, other.href) : other.href} hreflang={other.language} lang={other.language} aria-current={other.current ? 'true' : undefined}><span class="lang-long">{other.name}</span><span class="lang-short" aria-hidden="true">{other.language.toUpperCase()}</span></a>{/each}
       </nav>
     {/if}
+    {#if site.schemeSwitch}
+      <!-- Shown by the site's one script, which turns the colours (ADR 0074 d4); without it, the device decides. -->
+      <button class="scheme-switch" type="button" hidden={!editing}>
+        <span class="scheme-to-dark"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z" /></svg><span class="scheme-label">{words.schemeDark}</span></span>
+        <span class="scheme-to-light"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.5" /><path d="M12 1.5v3M12 19.5v3M1.5 12h3M19.5 12h3M4.6 4.6l2.1 2.1M17.3 17.3l2.1 2.1M4.6 19.4l2.1-2.1M17.3 6.7l2.1-2.1" /></svg><span class="scheme-label">{words.schemeLight}</span></span>
+      </button>
+    {/if}
   </div>
 </header>
 {/if}

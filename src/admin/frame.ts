@@ -26,6 +26,8 @@ interface Render {
   selected: string | null;
   /** Bumped when the theme changed, so the stylesheet is fetched again. */
   themeVersion: number;
+  /** The scheme to show the page in (ADR 0074 d5); null: what the theme starts in. */
+  scheme: 'light' | 'dark' | null;
   labels: { types: Record<string, string>; fields: Record<string, string>; empty: Record<string, string>; actions: Record<string, string>; format: Record<string, string> };
 }
 
@@ -157,6 +159,8 @@ window.addEventListener('message', (event) => {
     themeVersion = message.themeVersion;
     themeLink.href = `/admin/site.css?v=${themeVersion}`;
   }
+  if (message.scheme) document.documentElement.dataset.scheme = message.scheme;
+  else delete document.documentElement.dataset.scheme;
   prepare();
   showSelection();
   if (rich && !rich.isConnected) leaveRich();

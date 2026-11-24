@@ -1,6 +1,7 @@
 {
   "spec": "uhlaka.theme/1",
   "name": "Studio",
+  "scheme": "dark",
   "tokens": {
     "color": {
       "background": "#12110f",
@@ -9,24 +10,79 @@
       "muted": "#a8a196",
       "border": "#34302a",
       "primary": "#f2b84b",
-      "on-primary": "#1a1509"
+      "on-primary": "#1a1509",
+      "link": "#f2b84b"
     },
-    "space": { "xs": "0.5rem", "sm": "1rem", "md": "2rem", "lg": "4rem", "xl": "7rem" },
-    "radius": { "none": "0", "sm": "0", "md": "2px", "lg": "2px" },
-    "font": { "body": "humanist", "heading": "oldstyle" },
-    "size": { "sm": "0.875rem", "base": "1.125rem", "lg": "1.375rem", "xl": "1.75rem", "2xl": "2.5rem", "3xl": "4rem" },
-    "width": { "narrow": "40rem", "content": "60rem", "wide": "80rem" }
+    "space": {
+      "xs": "0.5rem",
+      "sm": "1rem",
+      "md": "2rem",
+      "lg": "4rem",
+      "xl": "7rem"
+    },
+    "radius": {
+      "none": "0",
+      "sm": "0",
+      "md": "2px",
+      "lg": "2px"
+    },
+    "font": {
+      "body": "humanist",
+      "heading": "oldstyle"
+    },
+    "size": {
+      "sm": "0.875rem",
+      "base": "1.125rem",
+      "lg": "1.375rem",
+      "xl": "1.75rem",
+      "2xl": "2.5rem",
+      "3xl": "4rem"
+    },
+    "width": {
+      "narrow": "40rem",
+      "content": "60rem",
+      "wide": "80rem"
+    }
   },
   "blocks": {
     "hero": {
       "variants": {
-        "bold": { "background": { "token": "primary" }, "color": { "token": "on-primary" } }
+        "bold": {
+          "background": {
+            "token": "primary"
+          },
+          "color": {
+            "token": "on-primary"
+          }
+        }
       }
     },
-    "services": { "style": { "background": { "token": "surface" } } }
+    "services": {
+      "style": {
+        "background": {
+          "token": "surface"
+        }
+      }
+    }
   },
   "layout": {
-    "header": { "arrangement": "inline", "sticky": true },
-    "footer": { "arrangement": "centered" }
-  }
+    "header": {
+      "arrangement": "inline",
+      "sticky": true
+    },
+    "footer": {
+      "arrangement": "centered"
+    }
+  },
+  "light": {
+    "color": {
+      "background": "#faf7f1",
+      "surface": "#f1ece2",
+      "text": "#1d1a15",
+      "muted": "#615a4f",
+      "border": "#e2dbcd",
+      "link": "#8a5a00"
+    }
+  },
+  "shows": "visitor"
 }

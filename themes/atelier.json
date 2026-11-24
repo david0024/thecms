@@ -9,41 +9,99 @@
       "muted": "#545a74",
       "border": "#e3e6f0",
       "primary": "#2337a8",
+      "link": "#2337a8",
       "on-primary": "#ffffff",
       "deep": "#18267a",
       "sun": "#ffd24d",
+      "on-sun": "#151a33",
       "tint-1": "#dfe7ff",
       "tint-2": "#ffd24d",
       "tint-3": "#c9efd9",
       "tint-4": "#ffe0cc"
     },
-    "space": { "xs": "0.5rem", "sm": "1rem", "md": "2rem", "lg": "5rem", "xl": "6rem" },
-    "radius": { "none": "0", "sm": "8px", "md": "18px", "lg": "24px", "button": "999px" },
-    "font": { "body": "figtree", "heading": "bricolage" },
-    "size": { "sm": "0.9375rem", "base": "1.0625rem", "lg": "1.3125rem", "xl": "1.625rem", "2xl": "3.25rem", "3xl": "5.25rem" },
-    "width": { "narrow": "44rem", "content": "64rem", "wide": "76rem" }
+    "space": {
+      "xs": "0.5rem",
+      "sm": "1rem",
+      "md": "2rem",
+      "lg": "5rem",
+      "xl": "6rem"
+    },
+    "radius": {
+      "none": "0",
+      "sm": "8px",
+      "md": "18px",
+      "lg": "24px",
+      "button": "999px"
+    },
+    "font": {
+      "body": "figtree",
+      "heading": "bricolage"
+    },
+    "size": {
+      "sm": "0.9375rem",
+      "base": "1.0625rem",
+      "lg": "1.3125rem",
+      "xl": "1.625rem",
+      "2xl": "3.25rem",
+      "3xl": "5.25rem"
+    },
+    "width": {
+      "narrow": "44rem",
+      "content": "64rem",
+      "wide": "76rem"
+    }
   },
   "blocks": {
     "hero": {
       "style": {
-        "background": { "token": "primary" },
-        "color": { "token": "on-primary" },
-        "buttonBackground": { "token": "sun" },
-        "buttonColor": { "token": "text" }
+        "background": {
+          "token": "primary"
+        },
+        "color": {
+          "token": "on-primary"
+        },
+        "buttonBackground": {
+          "token": "sun"
+        },
+        "buttonColor": {
+          "token": "on-sun"
+        }
       },
       "variants": {
-        "centered": { "textAlign": { "value": "center" }, "maxWidth": { "token": "narrow" } },
+        "centered": {
+          "textAlign": {
+            "value": "center"
+          },
+          "maxWidth": {
+            "token": "narrow"
+          }
+        },
         "light": {
-          "background": { "token": "background" },
-          "color": { "token": "text" },
-          "buttonBackground": { "token": "primary" },
-          "buttonColor": { "token": "on-primary" }
+          "background": {
+            "token": "background"
+          },
+          "color": {
+            "token": "text"
+          },
+          "buttonBackground": {
+            "token": "primary"
+          },
+          "buttonColor": {
+            "token": "on-primary"
+          }
         }
       }
     },
     "image": {
       "variants": {
-        "on-primary": { "background": { "token": "primary" }, "maxWidth": { "token": "content" } }
+        "on-primary": {
+          "background": {
+            "token": "primary"
+          },
+          "maxWidth": {
+            "token": "content"
+          }
+        }
       }
     }
   },
@@ -52,15 +110,47 @@
       "arrangement": "inline",
       "sticky": false,
       "style": {
-        "background": { "token": "primary" },
-        "color": { "token": "on-primary" },
-        "buttonBackground": { "token": "sun" },
-        "buttonColor": { "token": "text" }
+        "background": {
+          "token": "primary"
+        },
+        "color": {
+          "token": "on-primary"
+        },
+        "buttonBackground": {
+          "token": "sun"
+        },
+        "buttonColor": {
+          "token": "on-sun"
+        }
       }
     },
     "footer": {
       "arrangement": "inline",
-      "style": { "background": { "token": "deep" }, "color": { "token": "on-primary" } }
+      "style": {
+        "background": {
+          "token": "deep"
+        },
+        "color": {
+          "token": "on-primary"
+        }
+      }
     }
-  }
+  },
+  "dark": {
+    "color": {
+      "background": "#0e1330",
+      "surface": "#161c42",
+      "text": "#eef0fa",
+      "muted": "#aab1cf",
+      "border": "#2b3466",
+      "primary": "#3149c4",
+      "link": "#9aabff",
+      "deep": "#080b20",
+      "tint-1": "#1d2858",
+      "tint-2": "#3a3216",
+      "tint-3": "#16392a",
+      "tint-4": "#3c291c"
+    }
+  },
+  "shows": "visitor"
 }

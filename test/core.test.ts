@@ -113,7 +113,7 @@ describe('themes', () => {
     expect(css).toContain('--t-color-primary:#2563eb');
     expect(css).toContain('--t-font-body:system-ui');
     expect(css).toContain('.b-hero{background-color:var(--t-color-surface)}');
-    expect(css).toContain('.b-hero.v-bold{background-color:var(--t-color-primary);color:var(--t-color-on-primary)}');
+    expect(css).toContain('.b-hero.v-bold{background-color:var(--t-color-primary);color:var(--t-color-on-primary);--t-color-link:var(--t-color-on-primary)}');
     expect(css).not.toMatch(/url\(|@import|expression|<\//i);
   });
 });

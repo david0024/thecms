@@ -70,7 +70,8 @@ import {
 } from '../core/index.ts';
 import { wordsFor } from '../blocks/words.ts';
 import { lockedPage, membersPage } from './locks.ts';
-import { menuOf, pageSetting, renderBlogList, renderPage, renderPost, STYLESHEET } from './document.ts';
+import { menuOf, pageSetting, renderBlogList, renderPage, renderPost, STYLESHEET, withScheme } from './document.ts';
+import { SCHEME_SCRIPT, SCHEME_SCRIPT_PATH } from './scheme.ts';
 import { checkRedirects, checkSeo, checkSite, describeCheck, type SiteCheck, serverOnly } from './check.ts';
 import { BASE_CSS, shippedFonts } from './shipped.ts';
 import { shopGate } from './shop-gate.ts';
@@ -183,7 +184,7 @@ export async function buildSite(
   const members = new Map<string, Audience>();
   /** Who sees an entry: its type's audience first, then its own. */
   const audienceOf = (typeId: string, post: Post): Audience | undefined => audiences.types[typeId] ?? audiences.entries[`${typeId}/${post.of ?? post.slug}`];
-  site = { ...site, pictures: { sizes: images, widths: theme.tokens.width } };
+  site = { ...withScheme(site, theme), pictures: { sizes: images, widths: theme.tokens.width } };
   // Each section block holds its section's blocks from here on, so the pages, their pictures and their links include them.
   pages = pages.map((p) => ({ ...p, blocks: fillSections(p.blocks, sections, languageOf(site, p.slug)) }));
   const published = Array.isArray(entries) ? { [POSTS_TYPE]: entries } : entries;
@@ -234,6 +235,8 @@ export async function buildSite(
 
   // The structure first, the theme after it: where both set the same thing, the theme wins.
   files.set(STYLESHEET.slice(1), `${BASE_CSS}${themeCss(theme)}`);
+  // The switch's script, only while the theme follows the visitor (ADR 0074 d4).
+  if (site.schemeSwitch) files.set(SCHEME_SCRIPT_PATH.slice(1), SCHEME_SCRIPT);
   // What each page and entry is as data, written beside it at the end (ADR 0057 d3).
   const data: Data[] = [];
   for (const p of pages) {

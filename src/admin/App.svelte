@@ -22,6 +22,9 @@ import {
   type BlockStyle,
   type BlockType,
   countFreeValues,
+  countFreeColors,
+  otherPalette,
+  shownBy,
   createBlock,
   duplicate,
   findById,
@@ -114,6 +117,14 @@ let future = $state.raw<Block[][]>([]);
 let frame: HTMLIFrameElement | undefined = $state();
 let frameReady = false;
 let themeVersion = 0;
+/** The scheme the canvas shows the page in (ADR 0074 d5): null, what the theme starts in. */
+let previewScheme = $state<'light' | 'dark' | null>(null);
+/** What the canvas shows: the scheme chosen above it, or what the site shows on this computer. */
+const canvasScheme = $derived.by(() => {
+  if (previewScheme) return previewScheme;
+  const shows = site ? shownBy(site.theme) : 'light';
+  return shows !== 'visitor' ? shows : matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+});
 /** The canvas as a phone or a tablet shows the page: the same page, narrower. */
 const DEVICES = ['wide', 'tablet', 'phone'] as const;
 const WIDTHS: Record<(typeof DEVICES)[number], string | undefined> = { wide: undefined, tablet: '820px', phone: '390px' };
@@ -230,7 +241,7 @@ async function draw(): Promise<void> {
   try {
     const { body, css } = await api.render(page, kind);
     frame.contentWindow.postMessage(
-      { type: 'render', body, css, selected, themeVersion, labels: { types: t.types, fields: t.fields, empty: t.empty, actions: t.actions, format: t.format } },
+      { type: 'render', body, css, selected, themeVersion, scheme: previewScheme, labels: { types: t.types, fields: t.fields, empty: t.empty, actions: t.actions, format: t.format } },
       location.origin,
     );
   } catch (error) {
@@ -916,6 +927,11 @@ onMount(() => {
       <span class="devices" role="group" aria-label={t.bar.device}>
         {#each DEVICES as d (d)}<button type="button" aria-pressed={device === d} onclick={() => (device = d)} data-device={d}>{t.bar[d]}</button>{/each}
       </span>
+      {#if otherPalette(site.theme)}
+        <span class="devices" role="group" aria-label={t.theme.schemes.preview}>
+          {#each ['light', 'dark'] as const as scheme (scheme)}<button type="button" aria-pressed={canvasScheme === scheme} onclick={() => { previewScheme = scheme; draw(); }} data-preview-scheme={scheme}>{scheme === 'light' ? t.theme.schemes.previewLight : t.theme.schemes.previewDark}</button>{/each}
+        </span>
+      {/if}
       <span class="status" data-state={saving} role="status">{failure && saving === 'error' ? `${t.bar.error}: ${failure}` : t.bar[saving]}</span>
       <span class="grow"></span>
       {#if owner}
@@ -993,7 +1009,7 @@ onMount(() => {
         <SitePanel site={site.site} pages={pagesIn(site.site, site.site.language, site.pages)} lists={menuLists} languages={site.languages} onchange={editSite} onadminlanguage={setAdminLanguage} shop={site.shop} onshop={reload} />
       {:else if themeMode}
         <h2>{t.theme.heading}</h2>
-        <ThemeBuilder theme={site.theme} onchange={editTheme} />
+        <ThemeBuilder theme={site.theme} onchange={editTheme} handPicked={page ? countFreeColors(page.blocks) : 0} />
       {:else if block && def}
         <h2>{t.types[block.type] ?? block.type}</h2>
         <div class="tabs" role="tablist">

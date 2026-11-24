@@ -42,7 +42,8 @@ const assert = (condition, message) => {
 
   const browser = await coverage.launch(chromium, 'editor');
   try {
-    const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: shots ? 2 : 1 });
+    const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: shots ? 2 : 1, colorScheme: 'dark' });
+    // A dark computer: Studio, which follows the visitor (ADR 0074), is drawn in its own dark colours.
     const errors = [];
     page.on('pageerror', (e) => errors.push(String(e)));
     page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
@@ -520,7 +521,8 @@ const assert = (condition, message) => {
   const out = join(dir, 'out');
   cli('export', db, out);
   const home = readFileSync(join(out, 'index.html'), 'utf8');
-  const withoutData = (html) => html.replace(/<script type="application\/ld\+json">[^<]*<\/script>/g, '');
+  // Data for search engines, and the switch of colours from the site itself (ADR 0074 d4): the scripts a page may carry.
+  const withoutData = (html) => html.replace(/<script type="application\/ld\+json">[^<]*<\/script>/g, '').replace('<script src="/assets/scheme.js"></script>', '');
   assert(home.includes('<h1>Furniture that lasts &lt;b>longer&lt;/b></h1>'), 'the typed title is in the export, as text');
   assert(home.includes('<p>Every piece is drawn first.</p><p>Then it is built.</p>'), 'the typed paragraphs are in the export');
   assert(/\{background-color:var\(--t-color-surface\);padding-block:7rem\}/.test(home), 'the block carries its token and its free value, and nothing else');
