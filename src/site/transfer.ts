@@ -54,6 +54,8 @@ export interface ContentComment {
 export interface ContentMedia {
   name: string;
   label: string;
+  /** The words a picture is offered with (ADR 0072 d3); left out when it has none. */
+  alt?: string;
   /** The file's bytes, in base64. */
   data: string;
   /** The picture's smaller copies (ADR 0005 d8), in base64. */
@@ -225,7 +227,7 @@ export async function exportContent(store: Store, asked: string[] = [], now = ne
       const copy = await store.mediaFile(name);
       if (copy) variants.push(base64(copy.bytes));
     }
-    file.media.push({ name: item.name, label: item.label, data: base64(kept.bytes), variants });
+    file.media.push({ name: item.name, label: item.label, ...(item.alt ? { alt: item.alt } : {}), data: base64(kept.bytes), variants });
   }
   return file;
 }

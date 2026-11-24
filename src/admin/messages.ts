@@ -9,7 +9,7 @@ import { applyPack, type Catalog, format, isPlural, type LanguagePack, type Mess
 
 export const en = {
   app: { pages: 'Pages', blocks: 'Add a block', blocksHint: 'Click to add, or drag onto the page.', tooDeep: 'Groups nest at most four deep; it cannot go there.', newPage: 'New page', pageTitle: 'Page title', create: 'Create', cancel: 'Cancel', home: 'Home page' },
-  nav: { pages: 'Pages', posts: 'Posts', media: 'Media', messages: 'Messages', comments: 'Comments', settings: 'Menu and settings', theme: 'Theme', label: 'Sections', back: 'All', forms: 'Forms', import: 'Import', export: 'Export', people: 'People', sections: 'Sections', layouts: 'Layouts', backups: 'Backups', stats: 'Statistics', me: 'Me', review: 'To review', orders: 'Orders' },
+  nav: { pages: 'Pages', posts: 'Posts', media: 'Media', messages: 'Messages', comments: 'Comments', settings: 'Menu and settings', theme: 'Theme', label: 'Sections', back: 'All', forms: 'Forms', import: 'Import', export: 'Export', people: 'People', sections: 'Sections', layouts: 'Layouts', backups: 'Backups', stats: 'Statistics', me: 'Me', review: 'To review', orders: 'Orders', viewSite: 'View site' },
   door: {
     key: 'Open the address that the editor printed when it started; it carries the key to this editor.',
     signIn: 'Sign in',
@@ -764,6 +764,8 @@ export const en = {
     no: 'No',
   },
   bar: {
+    viewPage: 'View on the site',
+    viewPageHint: 'Opens the published page in a new tab',
     device: 'Show the page as on',
     wide: 'Wide',
     tablet: 'Tablet',
@@ -918,6 +920,24 @@ export const en = {
     all: 'All',
     kinds: { image: 'Images', document: 'Documents', audio: 'Sound', video: 'Video' } as Record<string, string>,
     accepts: 'Images, PDF and office documents (up to 25 MB), sound (up to 50 MB) and video (up to 100 MB). A longer film goes on YouTube or Vimeo, and a page shows it from there.',
+    details: 'Details of the file',
+    open: 'Show the details of {name}',
+    close: 'Close',
+    name: 'Name',
+    nameHint: 'Its name in the library. The address of the file stays the same.',
+    alt: 'Describe the image (for people who cannot see it)',
+    altHint: 'Offered each time the image is put on a page; each page can change it. Pages that already show it keep their own words.',
+    save: 'Save',
+    saved: 'Saved.',
+    kind: 'Kind',
+    fileSize: 'Size',
+    dimensions: 'Dimensions',
+    uploaded: 'Uploaded',
+    address: 'Address',
+    copy: 'Copy',
+    copied: 'Copied',
+    usedOn: 'Used on',
+    unused: 'Not used on any page yet.',
   },
   files: {
     upload: { document: 'Upload a document', audio: 'Upload a sound file', video: 'Upload a video' } as Record<string, string>,

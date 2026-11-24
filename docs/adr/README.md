@@ -72,3 +72,4 @@ work it decides. A new one that changes an old one says so at its top.
 - [ADR 0068 — Typefaces that ship with Uhlaka, button colours, and the Atelier theme](0068-faces-buttons-and-atelier.md)
 - [ADR 0069 — A contract for AI: AGENTS.md and the schema of a content file](0069-a-contract-for-ai.md)
 - [ADR 0070 — One structure, made for AI to write; screens over it, made for people](0070-structure-for-ai-screens-for-people.md)
+- [ADR 0072 — The details of a file in the media library, and a way out to the site](0072-details-of-a-file.md)

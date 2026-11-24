@@ -206,6 +206,18 @@ function png(width, height) {
     await page.locator('[data-library-file]').setInputFiles({ name: 'sample.png', mimeType: 'image/png', buffer: png(64, 48) });
     await page.locator('[data-media-item]').first().waitFor();
     assert((await page.locator('[data-media-item]').count()) >= 1, 'an image can be uploaded to the media library');
+    // Its details (ADR 0072): a new name, words for people who cannot see it, what it is and where it is used.
+    await page.locator('[data-media-item]', { hasText: 'sample.png' }).locator('[data-media-open]').click();
+    const details = page.locator('[data-media-details]');
+    await details.locator('[data-media-used]', { hasText: 'Not used on any page yet.' }).waitFor();
+    assert((await details.innerText()).includes('64 × 48 px'), "a file's details say what it is and that nothing uses it");
+    await details.locator('[data-media-label]').fill('Workshop sample');
+    await details.locator('[data-media-alt]').fill('A grey sample of the workshop');
+    await details.locator('[data-media-save]').click();
+    await details.getByText('Saved.').waitFor();
+    await page.locator('[data-media-item]', { hasText: 'Workshop sample' }).waitFor();
+    assert(true, 'a file is renamed and a picture described from its details');
+    if (shots) await page.screenshot({ path: join(shots, 'media-details.png') });
     await page.locator('[data-nav="pages"]').click();
     // Before publishing: the site is read for links that lead nowhere and pictures with no words.
     await page.locator('[data-check-run]').click();
@@ -303,13 +315,38 @@ function png(width, height) {
     // The admin in another language: a pack like any other, chosen in the settings.
     await page.locator('[data-site-mode]').click();
     await page.locator('[data-admin-language]').selectOption('ro');
-    await page.locator('[data-nav="pages"]', { hasText: 'Pagini' }).waitFor();
+    // The admin opens again in its new language, on the settings it was changed in.
+    await page.locator('[data-site-mode]', { hasText: 'Înapoi la pagină' }).waitFor();
     assert((await page.locator('html').getAttribute('lang')) === 'ro', 'the admin can be in Romanian, from its language pack');
     if (shots) await page.screenshot({ path: join(shots, 'admin-romanian.png') });
-    await page.locator('[data-nav="settings"]').click();
     await page.locator('[data-admin-language]').selectOption('');
-    await page.locator('[data-nav="pages"]', { hasText: 'Pages' }).waitFor();
+    await page.locator('[data-site-mode]', { hasText: 'Back to the page' }).waitFor();
     assert(true, 'and back in English');
+    // The way out to the site, and an address for each screen: reload keeps it, Back goes to the one before.
+    if (await page.locator('[data-site-mode][aria-pressed="true"]').count()) await page.locator('[data-site-mode]').click();
+    await page.locator('[data-back]').click();
+    await page.locator('[data-nav="pages"]').click();
+    assert((await page.locator('[data-view-site]').getAttribute('href')) === '/' && (await page.locator('[data-view-site]').getAttribute('target')) === '_blank', 'the admin leads to the site, in a tab of its own');
+    assert((await page.locator('[data-view="about"]').getAttribute('href')) === '/about/', "a published page's address in the list opens it on the site");
+    await page.locator('[data-nav="media"]').click();
+    assert(page.url().includes('at=media'), 'a screen writes its address');
+    await page.reload();
+    await page.locator('[data-nav="media"][aria-current="page"]').waitFor();
+    assert(true, 'reloading keeps the screen');
+    await page.locator('[data-nav="forms"]').click();
+    await page.goBack();
+    await page.locator('[data-nav="media"][aria-current="page"]').waitFor();
+    assert(true, 'Back goes to the screen before');
+    await page.locator('[data-nav="pages"]').click();
+    await page.locator('[data-open="about"]').click();
+    await page.locator('[data-view-page]').waitFor();
+    assert(page.url().includes('at=edit/page/about') && (await page.locator('[data-view-page]').getAttribute('href')) === '/about/', 'the page open in the builder has its address, and a way to see it on the site');
+    await page.reload();
+    await page.locator('.doc', { hasText: 'About' }).waitFor();
+    assert(true, 'reloading the builder opens the same page');
+    await page.goBack();
+    await page.locator('[data-nav="pages"][aria-current="page"]').waitFor();
+    assert(true, 'Back from the builder goes to the list');
     assert(errors.length === 0, `no errors in the browser ${errors.join(' | ')}`);
   } catch (error) {
     if (shots) await browser.contexts()[0]?.pages()[0]?.screenshot({ path: join(shots, 'failure.png') }).catch(() => {});
