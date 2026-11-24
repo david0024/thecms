@@ -1,6 +1,6 @@
 # ADR 0076 — What stays in the program, and what an extension needs to take the rest
 
-- **Status:** Proposed (for the owner; asked by Liviu, 2026-11-24: "toate acestea ar trebui să stea în extensii astfel încât core-ul să rămână slim")
+- **Status:** Accepted (owner, 2026-11-24, by Liviu: "da, este de acord", on the four points: the shop's base stays a part, subscriptions become an extension, the format gains d4 before Stripe, courses and a forum are extensions; asked by Liviu: "toate acestea ar trebui să stea în extensii astfel încât core-ul să rămână slim")
 - **Date:** 2026-11-24
 - **Builds on:** ADR 0026 (extensions), ADR 0041 (extensions on the server), ADR 0060 (stage 3: core and extensions), ADR 0062 (extensions 3), ADR 0064 (visitor accounts), ADR 0065 (the shop)
 - **Changes, if accepted:** ADR 0060 d1 (subscriptions leave the program), d5 and d6 (the format gains what is below before Stripe)
