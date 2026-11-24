@@ -1,6 +1,6 @@
 # ADR 0074 — Dark mode: a second palette in each theme, and a switch on the site
 
-- **Status:** Proposed (Liviu asked for it on 2026-11-24: dark mode in the themes, "si butonul de comutare cu implicit pe valoarea din calculatorul userului"; waits for David)
+- **Status:** Proposed (Liviu asked for it on 2026-11-24: dark mode in the themes, "si butonul de comutare cu implicit pe valoarea din calculatorul userului"; the script of d4 and its place in the documentation, "da fa-o, dar trece si in documentatie", Liviu, the same day; waits for David)
 - **Date:** 2026-11-24
 - **Builds on:** ADR 0002 d2 (tokens; dark mode left for later), ADR 0004 (the theme builder; a check of contrast left for later), ADR 0044 (the site is served, with a cache), ADR 0053 (nothing stored in the visitor's browser without a reason; no banner), ADR 0068 (Atelier), ADR 0071 (the language switcher and its cookie)
 
@@ -54,7 +54,7 @@ scheme is dark, so "Dark only" is what it is today).
 - A theme with only one palette offers only its own scheme; the screen says
   why, and offers to make the other palette (d5).
 
-### d3. Following the visitor needs no script
+### d3. Following the device needs no script
 
 The stylesheet carries both palettes. The theme's own sits on `:root`; the
 other is written under `@media (prefers-color-scheme: dark)` (or `light`), so
@@ -65,34 +65,48 @@ no flash and no script. `color-scheme` is set too, so the browser's own parts
 The pages are the same bytes for every visitor, so the HTML cache (ADR 0044)
 and a cache in front (Cloudflare) keep working unchanged.
 
-### d4. The switch in the header, and the visitor's choice
+### d4. The switch in the header: the site's first script, and only this one
 
 When the owner picked **Follow the visitor**, the header carries a switch
 beside the language switcher (outside the folded menu, so it is there on a
-phone too, as ADR 0071 d2): a sun or a moon, read out as "Dark theme" or
-"Light theme". It starts on what the visitor's device says, and a click turns
-the site the other way.
+phone too, as ADR 0071 d2): a sun or a moon, read out as "Light theme" or
+"Dark theme". It starts on what the visitor's device says, and a click turns
+the site the other way at once, with no new page.
 
-It works the way the language switcher does, with no script:
+It takes a script, and this is the first one on a public page. Every way
+without one was weighed (Liviu and the thread, 2026-11-24): a switch made of
+CSS alone turns at once but forgets the choice on the next page; a link to
+the server remembers but costs a new page on each click, needs one more
+request on every page, and cannot work on an exported site; pages made in a
+light and a dark copy break the cache. Tailwind and the like do it with a
+script too. The rule "no script on the site" (ADR 0002, kept since by forms,
+statistics and the language switcher) gets one exception, written here, and
+only this one:
 
-- The switch is a link, `/_/scheme?s=dark&to=/the/page/`. The server keeps
-  the choice in a cookie, `uhlaka-scheme` (`light` or `dark`), for a year, and
-  goes back to the page. The cookie is set only when the visitor asks, holds
-  only that, and is read for nothing else: it needs no consent and no banner,
-  like `uhlaka-lang` (ADR 0071 d2, ADR 0053).
-- Every page links one more small stylesheet, `/_/scheme.css`. Without the
-  cookie it is empty; with it, it holds the chosen palette and shows the
-  matching icon. It is answered `Cache-Control: private, no-cache` with an
-  ETag, so a cache in front never shares it and a browser asks again with a
-  304 that costs almost nothing. The page itself stays shared and cached.
-- A visitor who chose stays on that choice on every page and every visit, as
-  with the language.
+- **One file, from the site itself**: `/assets/scheme.js`, under 1 KB, linked
+  in the page's head only when the switch is on. No inline script, so the CSP
+  stays as it is (`script-src` is `'self'` through `default-src`); nothing
+  from another host.
+- **What it does, and nothing else**: on load, before the page is painted, it
+  reads the visitor's choice and sets `data-scheme="light"` or `"dark"` on
+  `<html>` (so there is no flash of the other colours); on a click it turns
+  the attribute and keeps the choice. The stylesheet does the rest:
+  `:root[data-scheme=dark]` carries the dark palette, and the media query of
+  d3 skips a visitor who chose light.
+- **Where the choice is kept**: in the visitor's own browser
+  (`localStorage`, key `uhlaka-scheme`, `light` or `dark`), never sent to the
+  server. It is kept only when the visitor clicks and holds only that, so it
+  needs no consent and no banner (ADR 0053, as `uhlaka-lang` in ADR 0071 d2).
+  A visitor who turns the site back to what their device says loses the
+  choice, and the site follows the device again.
+- **The same page for everyone**: the HTML does not change with the choice,
+  so the HTML cache and a cache in front (Cloudflare) work as they do.
+- **On an exported site too**, since nothing of it needs the server.
+- **Without scripts** (blocked, or a reader that has none) the switch is not
+  shown, and the colours follow the device, as d3. Nothing breaks.
 
-Why not a script: the public site has none (forms, statistics and the
-language switcher were each built without one), and every exported page is
-tested for it. A script would show the switch faster (no page load on a
-click), but would be the first script on every site, and would need its own
-place in the CSP. The link is one page load, once, for the few who click.
+The test that held "an exported page has no script" now holds that the only
+script a page may have is `/assets/scheme.js`, and only with the switch on.
 
 ### d5. The builder makes, previews and checks the second palette
 
@@ -127,11 +141,16 @@ deep (`#1d2858`, `#3a3216`, `#16392a`, `#3c291c`, light text on each above
 11 : 1). The exact values may move while the screens are looked at; the test
 holds the floor.
 
-### d7. What is not covered
+### d7. Written in the documentation
 
-- **An exported site** follows the device (d3), but has no switch: there is no
-  server to keep a choice. The admin lists it among what an exported site
-  does not do (ADR 0044 d3).
+The documentation on uhlaka.org gets a page for it, with the code: the three
+choices and the switch, the second palette and how the builder makes it, the
+check of contrast, and that the switch is the one small script a site carries,
+what it keeps and where. The README's list of what a site sends a visitor
+says so too.
+
+### d8. What is not covered
+
 - **Pictures** stay as they are. A logo drawn for a light background may need
   a second file for the dark; that is a later addition to site settings.
 - **Things from other sites** (a map, a video) keep their own colours.
@@ -145,10 +164,10 @@ holds the floor.
   "Dark only"; a page's HTML is the same bytes under all three choices.
 - Unit: the three shipped themes pass the contrast pairs of d5 in both
   palettes.
-- Server: `/_/scheme` keeps only `light` or `dark` and goes back only to a path
-  on the site; `/_/scheme.css` is empty without the cookie, private and
-  revalidated with it.
+- Unit: a page carries `/assets/scheme.js` only with "Follow the visitor",
+  and no other script; the exported site too.
 - Browser (`e2e`): a page under `prefers-color-scheme: dark` paints dark; the
-  switch turns it light, the choice holds on the next page and after a
-  reload; with "Light only" there is no switch and the page is light on a dark
-  device.
+  switch turns it light at once, the choice holds on the next page and after
+  a reload, with no flash of the dark colours; with scripts off there is no
+  switch and the page follows the device; with "Light only" there is no
+  switch, no script, and the page is light on a dark device.
