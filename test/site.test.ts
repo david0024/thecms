@@ -9,6 +9,7 @@ import { buildSite, exportSite } from '../src/site/export.ts';
 import { Store } from '../src/site/store.ts';
 import plain from '../themes/plain.json';
 import studio from '../themes/studio.json';
+import atelier from '../themes/atelier.json';
 
 const themeOf = (input: unknown): Theme => parseTheme(input).theme as Theme;
 const site = normalizeSite({ ...DEMO_SITE, url: 'https://example.com/' });
@@ -30,6 +31,28 @@ afterEach(async () => {
 });
 
 describe('changing the theme (ADR 0001 d7, d8)', () => {
+  test('faces Uhlaka carries: served by the site itself, and only those the theme names (ADR 0068 d1)', async () => {
+    const pages = await store.published();
+    const files = await buildSite(site, themeOf(atelier), pages);
+    const css = files.get('assets/site.css') as string;
+    expect(css).toStartWith('@font-face{font-family:"Bricolage Grotesque"');
+    expect(css).toContain('src:url(/assets/fonts/figtree-latin.woff2) format("woff2")');
+    // Every url() in the stylesheet is one of the site's own files.
+    for (const [, url] of css.matchAll(/url\(([^)]*)\)/g)) expect(files.has((url as string).slice(1))).toBe(true);
+    expect((files.get('assets/fonts/figtree-latin.woff2') as Uint8Array).byteLength).toBeGreaterThan(1000);
+    // A theme of the device's own typefaces carries none.
+    const plainFiles = await buildSite(site, themeOf(plain), pages);
+    expect([...plainFiles.keys()].some((path) => path.startsWith('assets/fonts/'))).toBe(false);
+    expect(plainFiles.get('assets/site.css')).not.toContain('@font-face');
+  });
+
+  test("a block sets its buttons' colours; a theme's tints colour the services cards (ADR 0068 d2, d3)", async () => {
+    const css = (await buildSite(site, themeOf(atelier), await store.published())).get('assets/site.css') as string;
+    expect(css).toContain('.b-hero{background-color:var(--t-color-primary);color:var(--t-color-on-primary);--b-button-bg:var(--t-color-sun);--b-button-fg:var(--t-color-text)}');
+    expect(css).toContain('--t-color-tint-1:#dfe7ff');
+    expect(css).toContain('--t-radius-button:999px');
+  });
+
   test('the page body is byte for byte the same; only the stylesheet changes', async () => {
     const pages = await store.published();
     const a = await buildSite(site, themeOf(plain), pages);

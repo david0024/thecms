@@ -69,3 +69,4 @@ work it decides. A new one that changes an old one says so at its top.
 - [ADR 0065 — The shop](0065-the-shop.md)
 - [ADR 0066 — The name: Uhlaka](0066-the-name-uhlaka.md)
 - [ADR 0067 — A block of code, and tables imported as tables](0067-a-block-of-code.md)
+- [ADR 0068 — Typefaces that ship with Uhlaka, button colours, and the Atelier theme](0068-faces-buttons-and-atelier.md)

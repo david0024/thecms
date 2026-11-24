@@ -1,0 +1,66 @@
+{
+  "spec": "uhlaka.theme/1",
+  "name": "Atelier",
+  "tokens": {
+    "color": {
+      "background": "#f7f8fc",
+      "surface": "#ffffff",
+      "text": "#151a33",
+      "muted": "#545a74",
+      "border": "#e3e6f0",
+      "primary": "#2337a8",
+      "on-primary": "#ffffff",
+      "deep": "#18267a",
+      "sun": "#ffd24d",
+      "tint-1": "#dfe7ff",
+      "tint-2": "#ffd24d",
+      "tint-3": "#c9efd9",
+      "tint-4": "#ffe0cc"
+    },
+    "space": { "xs": "0.5rem", "sm": "1rem", "md": "2rem", "lg": "5rem", "xl": "6rem" },
+    "radius": { "none": "0", "sm": "8px", "md": "18px", "lg": "24px", "button": "999px" },
+    "font": { "body": "figtree", "heading": "bricolage" },
+    "size": { "sm": "0.9375rem", "base": "1.0625rem", "lg": "1.3125rem", "xl": "1.625rem", "2xl": "3.25rem", "3xl": "5.25rem" },
+    "width": { "narrow": "44rem", "content": "64rem", "wide": "76rem" }
+  },
+  "blocks": {
+    "hero": {
+      "style": {
+        "background": { "token": "primary" },
+        "color": { "token": "on-primary" },
+        "buttonBackground": { "token": "sun" },
+        "buttonColor": { "token": "text" }
+      },
+      "variants": {
+        "centered": { "textAlign": { "value": "center" }, "maxWidth": { "token": "narrow" } },
+        "light": {
+          "background": { "token": "background" },
+          "color": { "token": "text" },
+          "buttonBackground": { "token": "primary" },
+          "buttonColor": { "token": "on-primary" }
+        }
+      }
+    },
+    "image": {
+      "variants": {
+        "on-primary": { "background": { "token": "primary" }, "maxWidth": { "token": "content" } }
+      }
+    }
+  },
+  "layout": {
+    "header": {
+      "arrangement": "inline",
+      "sticky": false,
+      "style": {
+        "background": { "token": "primary" },
+        "color": { "token": "on-primary" },
+        "buttonBackground": { "token": "sun" },
+        "buttonColor": { "token": "text" }
+      }
+    },
+    "footer": {
+      "arrangement": "inline",
+      "style": { "background": { "token": "deep" }, "color": { "token": "on-primary" } }
+    }
+  }
+}

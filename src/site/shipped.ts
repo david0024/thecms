@@ -6,16 +6,39 @@
  */
 import plain from '../../themes/plain.json';
 import studio from '../../themes/studio.json';
+import atelier from '../../themes/atelier.json';
 import ro from '../../languages/ro.json';
 import baseCss from '../blocks/base.css' with { type: 'text' };
+import bricolageLatin from '../../fonts/bricolage-grotesque-latin.woff2' with { type: 'file' };
+import bricolageLatinExt from '../../fonts/bricolage-grotesque-latin-ext.woff2' with { type: 'file' };
+import figtreeLatin from '../../fonts/figtree-latin.woff2' with { type: 'file' };
+import figtreeLatinExt from '../../fonts/figtree-latin-ext.woff2' with { type: 'file' };
+import figtreeItalicLatin from '../../fonts/figtree-italic-latin.woff2' with { type: 'file' };
+import figtreeItalicLatinExt from '../../fonts/figtree-italic-latin-ext.woff2' with { type: 'file' };
 import statsPackage from '../../extensions/stats/stats.uhlaka-extension' with { type: 'text' };
 
 /** The themes in `themes/`, by file name. */
-export const SHIPPED_THEMES: Record<string, unknown> = { 'plain.json': plain, 'studio.json': studio };
+export const SHIPPED_THEMES: Record<string, unknown> = { 'atelier.json': atelier, 'plain.json': plain, 'studio.json': studio };
 /** The language packs in `languages/`, by file name. */
 export const SHIPPED_LANGUAGES: Record<string, unknown> = { 'ro.json': ro };
 /** The structure every page's CSS starts with; the theme's comes after it. */
 export const BASE_CSS: string = baseCss;
+/**
+ * The files of the faces in `fonts/`, by file name (ADR 0068 d1). Imported as
+ * files, so the single executable carries them; read when the site is built.
+ */
+const FONT_FILES: Record<string, string> = {
+  'bricolage-grotesque-latin.woff2': bricolageLatin,
+  'bricolage-grotesque-latin-ext.woff2': bricolageLatinExt,
+  'figtree-latin.woff2': figtreeLatin,
+  'figtree-latin-ext.woff2': figtreeLatinExt,
+  'figtree-italic-latin.woff2': figtreeItalicLatin,
+  'figtree-italic-latin-ext.woff2': figtreeItalicLatinExt,
+};
+let fonts: Promise<Map<string, Uint8Array>> | undefined;
+/** The faces' bytes, by file name, read once. */
+export const shippedFonts = (): Promise<Map<string, Uint8Array>> =>
+  (fonts ??= Promise.all(Object.entries(FONT_FILES).map(async ([name, path]) => [name, await Bun.file(path).bytes()] as const)).then((all) => new Map(all)));
 /** The theme a new site starts with. */
 export const DEFAULT_THEME: unknown = plain;
 /**

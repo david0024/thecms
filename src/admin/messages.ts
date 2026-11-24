@@ -969,6 +969,8 @@ export const en = {
       fontSize: 'Text size',
       maxWidth: 'Width',
       textAlign: 'Alignment',
+      buttonBackground: 'Button colour',
+      buttonColor: 'Button text colour',
     } as Record<string, string>,
     align: { start: 'Start', center: 'Centre', end: 'End' } as Record<string, string>,
   },
