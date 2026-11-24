@@ -149,8 +149,10 @@ const DARK = 'rgb(17, 19, 24)';
     }
 
     // "Light only", published: no switch and no script, light on a dark device.
+    // The builder sends the theme a moment after the change: publish only once the server has it.
+    const stored = page.waitForResponse((r) => r.url().endsWith('/api/theme') && r.request().method() === 'PUT' && r.request().postData().includes('"name":"Plain"') && !r.request().postData().includes('"shows"'));
     await page.locator('[data-theme-shows="light"]').check();
-    await page.locator('.status[data-state="saved"]').waitFor();
+    await stored;
     await page.locator('[data-publish-theme]').click();
     await page.locator('[data-publish-theme]').waitFor({ state: 'detached' });
     await context.close();
