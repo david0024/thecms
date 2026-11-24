@@ -148,7 +148,7 @@ export function contentSchema(): Schema {
       media: {
         type: 'array',
         description: 'Files carried in the file. A new site may leave it empty and use https addresses for pictures.',
-        items: { type: 'object', required: ['label', 'data'], properties: { name: { type: 'string' }, label: { type: 'string' }, data: { type: 'string', contentEncoding: 'base64' }, variants: { type: 'array', items: { type: 'string', contentEncoding: 'base64' } } } },
+        items: { type: 'object', required: ['label', 'data'], properties: { name: { type: 'string' }, label: { type: 'string' }, alt: { type: 'string', description: 'For a picture: the words offered for people who cannot see it (ADR 0070).' }, data: { type: 'string', contentEncoding: 'base64' }, variants: { type: 'array', items: { type: 'string', contentEncoding: 'base64' } } } },
       },
     },
     $defs: {

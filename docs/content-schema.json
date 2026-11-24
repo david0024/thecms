@@ -257,6 +257,10 @@
           "label": {
             "type": "string"
           },
+          "alt": {
+            "type": "string",
+            "description": "For a picture: the words offered for people who cannot see it (ADR 0070)."
+          },
           "data": {
             "type": "string",
             "contentEncoding": "base64"

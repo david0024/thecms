@@ -278,7 +278,11 @@ export interface MediaItem {
   path: string;
   type: string;
   size: number;
+  /** Its name in the library (ADR 0070 d2). */
   label: string;
+  /** The words a picture is offered with when put on a page (ADR 0070 d3). */
+  alt: string;
+  uploadedAt: string;
   width: number;
   height: number;
   /** The widths of its smaller copies (ADR 0005 d8). */
@@ -418,6 +422,8 @@ export const api = {
   comments: () => call<{ comments: Comment[] }>('GET', '/api/comments'),
   approveComment: (id: string) => call<{ comments: Comment[] }>('POST', `/api/comments?id=${encodeURIComponent(id)}`),
   removeComment: (id: string) => call<{ comments: Comment[] }>('DELETE', `/api/comments?id=${encodeURIComponent(id)}`),
+  setMedia: (name: string, texts: { label?: string; alt?: string }) => call<{ item: MediaItem; media: MediaItem[] }>('PUT', `/api/media?name=${encodeURIComponent(name)}`, texts),
+  mediaUsedBy: (name: string) => call<{ usedBy: string[] }>('GET', `/api/media/used?name=${encodeURIComponent(name)}`),
   removeMedia: (name: string) => call<{ media: MediaItem[] }>('DELETE', `/api/media?name=${encodeURIComponent(name)}`),
   importPlan: (file: Blob, types: string[], categories: string[]) =>
     send<ImportPreview>(`/api/import/plan?types=${encodeURIComponent(types.join(','))}&categories=${encodeURIComponent(categories.join(','))}`, file),

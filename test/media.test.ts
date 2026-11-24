@@ -114,6 +114,35 @@ describe('images stored with the site', () => {
     await store.savePage({ ...home, blocks: [...home.blocks, { type: 'image', content: { image: { src, alt: 'A pixel' } } }] });
   };
 
+  test('a file is renamed and a picture described in the library; deleting it forgets both (ADR 0070)', async () => {
+    const item = await store.addMedia(PNG, 'IMG_2041.png');
+    expect(item.alt).toBe('');
+    expect(item.uploadedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    const named = await store.setMediaTexts(item.name, { label: '  Workshop door  ', alt: 'The oak door of the workshop' });
+    expect(named.label).toBe('Workshop door');
+    expect(named.alt).toBe('The oak door of the workshop');
+    expect(named.path).toBe(item.path);
+    expect((await store.setMediaTexts(item.name, { alt: '' })).alt).toBe('');
+    await expect(store.setMediaTexts(item.name, { label: ' ' })).rejects.toThrow('has a name');
+    await expect(store.setMediaTexts('0123456789abcdef0123456789abcdef.png', { label: 'x' })).rejects.toThrow('no such file');
+    await store.setMediaTexts(item.name, { alt: 'A door' });
+    await store.deleteMedia(item.name);
+    await store.addMedia(PNG, 'again.png');
+    expect((await store.media())[0]?.alt).toBe('');
+  });
+
+  test('the admin renames and describes a file, and says where it is used', async () => {
+    const item = await store.addMedia(PNG, 'pixel.png');
+    const put = await editor.fetch(
+      new Request(`http://${HOST}/api/media?name=${item.name}`, { method: 'PUT', headers: { host: HOST, 'x-uhlaka-token': editor.token, 'content-type': 'application/json' }, body: JSON.stringify({ label: 'Pixel', alt: 'One pixel' }) }),
+    );
+    expect(put.status).toBe(200);
+    expect(((await put.json()) as { item: { label: string; alt: string } }).item).toMatchObject({ label: 'Pixel', alt: 'One pixel' });
+    expect(((await (await call(`/api/media/used?name=${item.name}`)).json()) as { usedBy: string[] }).usedBy).toEqual([]);
+    await show(item.path);
+    expect(((await (await call(`/api/media/used?name=${item.name}`)).json()) as { usedBy: string[] }).usedBy).toEqual(['Home']);
+  });
+
   test('the same picture twice is stored once, under a name made from its bytes', async () => {
     const first = await store.addMedia(PNG, 'pixel.png');
     const again = await store.addMedia(PNG, 'copy.png');
