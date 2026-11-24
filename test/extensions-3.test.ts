@@ -236,11 +236,11 @@ describe('a question the program waits for', () => {
     expect(parseExtension({ format: EXTENSION_FORMAT_2, manifest: checker, code: CHECKER }).pkg?.manifest.answers).toEqual([]);
     const wrong = parseExtension({
       format: EXTENSION_FORMAT,
-      manifest: { ...checker, uses: ['orders'], answers: [{ question: 'order.pay', action: 'check' }, { question: 'comment.check', action: 'nothing' }] },
+      manifest: { ...checker, uses: ['payments'], answers: [{ question: 'order.pay', action: 'check' }, { question: 'comment.check', action: 'nothing' }] },
       code: CHECKER,
     });
     expect(wrong.problems).toEqual([
-      'an extension reads published, members, mail of the program\'s data ("orders")',
+      'an extension reads published, members, mail, orders of the program\'s data ("payments")',
       'list: it reads "published", which the extension does not declare in "uses"',
       'an extension answers one of comment.check ("order.pay")',
       'answering comment.check runs "nothing", which is not one of its actions',

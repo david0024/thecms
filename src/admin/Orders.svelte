@@ -8,7 +8,7 @@
 import { onMount } from 'svelte';
 import { moneyText, ORDER_STATES, type OrderState } from '../core/index.ts';
 import { api, type Order, type OrderListed } from './api.ts';
-import { adminLanguage, t } from './messages.ts';
+import { adminLanguage, say, t } from './messages.ts';
 
 let orders = $state.raw<OrderListed[] | null>(null);
 let filter = $state('');
@@ -79,6 +79,7 @@ onMount(() => void list());
         {#each o.data.lines as l, i (i)}
           <tr><td>{l.quantity} ×</td><td>{l.name}{l.variant ? ` (${l.variant})` : ''}{l.sku ? ` · ${l.sku}` : ''}</td><td class="n">{money(l.price * l.quantity, o.data.currency)}</td></tr>
         {/each}
+        {#if o.data.totals.discount}<tr><td></td><td>{say(t.orders.coupon, { code: o.data.totals.coupon ?? '' })}</td><td class="n" data-order-discount>−{money(o.data.totals.discount, o.data.currency)}</td></tr>{/if}
         <tr><td></td><td>{t.orders.delivery}: {o.data.shipping.name}</td><td class="n">{money(o.data.totals.shipping, o.data.currency)}</td></tr>
         <tr class="total"><td></td><td>{t.orders.total}</td><td class="n" data-order-total>{money(o.data.totals.total, o.data.currency)}</td></tr>
       </tbody>

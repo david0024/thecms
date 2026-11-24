@@ -52,6 +52,8 @@ export interface ExtensionOffer {
   replaces: string | null;
   /** It works with visitor accounts, and they are off (ADR 0064 d7): the owner is told before installing. */
   accountsOff: boolean;
+  /** It works with the shop, and it is off (ADR 0065 d9): the owner is told before installing. */
+  shopOff: boolean;
 }
 
 /** How a process for an extension is started: the program again, as the runner. */
@@ -161,7 +163,8 @@ export function extensionHost(store: Store, options: { spawn?: Spawn; fetch?: (u
     const before = await store.extension(pkg.manifest.name);
     const asks = extensionAsks(pkg.manifest);
     const accountsOff = asks.accounts && (await store.visitorSettings().then((v) => (v as { on?: unknown } | null)?.on !== true));
-    return { manifest: pkg.manifest, sha256: sha256(text), asks, replaces: before?.manifest.version ?? null, accountsOff };
+    const shopOff = asks.shop && (await store.shopSettings().then((v) => (v as { on?: unknown } | null)?.on !== true));
+    return { manifest: pkg.manifest, sha256: sha256(text), asks, replaces: before?.manifest.version ?? null, accountsOff, shopOff };
   }
 
   /** Installs the file the owner accepted: the same bytes, or nothing. */
@@ -255,6 +258,18 @@ export function extensionHost(store: Store, options: { spawn?: Spawn; fetch?: (u
         if (what === 'levels') return (await lent().levels()).map((l) => ({ id: l.id, name: l.name }));
         if (what === 'get' || what === 'find') return lent()[what](String(args[0] ?? ''));
         return lent()[what](String(args[0] ?? ''), String(args[1] ?? ''));
+      }
+      case 'orders.get':
+      case 'orders.paid':
+      case 'orders.refunded':
+      case 'orders.tracking': {
+        // The shop's orders, declared (ADR 0065 d9): one by its id, never a list of them all.
+        if (!action.uses.includes('orders')) throw new Error(`the action "${action.name}" did not declare that it uses "orders"`);
+        const { shopGate } = await import('./shop-gate.ts');
+        const lent = shopGate(store).lent;
+        const id = String(args[0] ?? '');
+        if (method === 'orders.tracking') return lent.tracking(id, String(args[1] ?? ''));
+        return lent[method.slice(7) as 'get' | 'paid' | 'refunded'](id);
       }
       case 'mail.send': {
         // E-mail to one visitor, declared (ADR 0064 d7): never to an address the extension gives.

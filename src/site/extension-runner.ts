@@ -69,6 +69,18 @@ export interface ExtensionHost {
   mail: {
     send(id: string, message: string, values?: { link?: string }): Promise<void>;
   };
+  /**
+   * The shop's orders, for an action that declared `orders` (ADR 0065 d9): one
+   * read by its id (the id the `order.*` events carry), marked paid or
+   * refunded, or given a tracking number. Marking an order paid that is not
+   * waiting for payment, or refunded twice, changes nothing.
+   */
+  orders: {
+    get(id: string): Promise<Record<string, unknown> | null>;
+    paid(id: string): Promise<Record<string, unknown>>;
+    refunded(id: string): Promise<Record<string, unknown>>;
+    tracking(id: string, tracking: string): Promise<Record<string, unknown>>;
+  };
 }
 
 /** A visitor as an extension that uses `members` reads them (ADR 0064 d7). */
@@ -117,6 +129,12 @@ export function runner(send: (message: FromRunner) => void, receive: (handler: (
       },
       mail: {
         send: (id, message, values) => ask('mail.send', id, message, values ?? {}),
+      },
+      orders: {
+        get: (id) => ask('orders.get', id),
+        paid: (id) => ask('orders.paid', id),
+        refunded: (id) => ask('orders.refunded', id),
+        tracking: (id, tracking) => ask('orders.tracking', id, tracking),
       },
     };
   };

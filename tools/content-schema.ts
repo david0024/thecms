@@ -9,7 +9,7 @@
  *
  *   bun tools/content-schema.ts      writes docs/content-schema.json
  */
-import { BLOCKS, type BlockDef, ENTRY_PARTS, type Field, FORM_FIELD_KINDS, MARKS, TABLE_MAX_COLUMNS, TABLE_MAX_ROWS, TYPE_FIELD_KINDS } from '../src/core/index.ts';
+import { BLOCKS, type BlockDef, COUPON_CODE_MAX, COUPON_KINDS, ENTRY_PARTS, MAX_COMBINATIONS, MAX_PRODUCT_OPTIONS, MAX_SHIPPING, MAX_VALUES, ORDER_STATES, type Field, FORM_FIELD_KINDS, MARKS, TABLE_MAX_COLUMNS, TABLE_MAX_ROWS, TYPE_FIELD_KINDS } from '../src/core/index.ts';
 import { CONTENT_FORMAT } from '../src/site/transfer.ts';
 
 type Schema = Record<string, unknown>;
@@ -121,7 +121,7 @@ export function contentSchema(): Schema {
       format: { const: CONTENT_FORMAT },
       program: { type: 'string', description: 'What wrote it: `uhlaka 0.1.0`, or the name of the tool or agent.' },
       madeAt: { type: 'string', format: 'date-time' },
-      parts: { type: 'array', items: { type: 'string' }, description: '`pages`, `sections`, `forms`, `design`, `type:<id>`. Shown on the import screen.' },
+      parts: { type: 'array', items: { type: 'string' }, description: '`pages`, `sections`, `forms`, `design`, `type:<id>`, `shop`, `orders`. Shown on the import screen.' },
       from: {
         type: 'object',
         required: ['name', 'language'],
@@ -145,6 +145,8 @@ export function contentSchema(): Schema {
         items: { type: 'object', required: ['key', 'email', 'name'], properties: { key: { type: 'string' }, email: { type: 'string' }, name: { type: 'string' }, bio: { type: 'string' }, picture: { type: 'string' } } },
       },
       comments: { type: 'array', items: { type: 'object' }, description: 'Approved comments. Usually empty in a new site.' },
+      shop: ref('shop'),
+      orders: { type: 'array', items: { type: 'object' }, description: `The shop's orders, as another Uhlaka site exported them (states: ${ORDER_STATES.join(', ')}). They name their buyers: never write them by hand.` },
       media: {
         type: 'array',
         description: 'Files carried in the file. A new site may leave it empty and use https addresses for pictures.',
@@ -190,6 +192,68 @@ export function contentSchema(): Schema {
         },
       },
       section: { type: 'object', required: ['blocks'], properties: { title: { type: 'string' }, blocks: { type: 'array', items: ref('block') } } },
+      money: { anyOf: [{ type: 'integer', minimum: 0, description: 'In the smallest unit: 4999 is 49.99.' }, { type: 'string', pattern: '^\\d{1,9}([.,]\\d{1,2})?$', description: 'As typed: "49.99" or "49,99".' }] },
+      product: {
+        type: 'object',
+        description: 'What an entry of a type that `sells` is sold at (ADR 0065 d2). Prices include VAT.',
+        properties: {
+          price: ref('money'),
+          sale: { ...ref('money'), description: 'The price it is sold at for now; below `price`.' },
+          sku: { type: 'string', maxLength: 60 },
+          vat: { type: 'number', minimum: 0, maximum: 100, description: "One of the shop's rates; left out, the first." },
+          counted: { type: 'boolean', description: "Its stock is counted: give it in `shop.stock`." },
+          options: {
+            type: 'array',
+            maxItems: MAX_PRODUCT_OPTIONS,
+            description: `What it is sold in: \`{ "name": "Size", "values": ["S", "M"] }\`. At most ${MAX_COMBINATIONS} combinations.`,
+            items: { type: 'object', required: ['name', 'values'], properties: { name: { type: 'string', maxLength: 40 }, values: { type: 'array', maxItems: MAX_VALUES, items: { type: 'string', maxLength: 40 } } } },
+          },
+          variants: { type: 'object', description: 'By combination (`M / Red`): its own price, sale and sku, when they differ.' },
+        },
+      },
+      shop: {
+        type: 'object',
+        description: "The shop (ADR 0065): its settings, taken with the old site's settings; what is left of each product counted, and the coupons, brought into a shop that is on.",
+        properties: {
+          settings: {
+            type: 'object',
+            description: 'Settings → Shop.',
+            properties: {
+              on: { type: 'boolean' },
+              vat: { type: 'boolean', description: 'The site charges VAT.' },
+              rates: { type: 'array', items: { type: 'number', minimum: 0, maximum: 100 } },
+              transfer: { type: 'object', description: 'Paying by bank transfer.', properties: { on: { type: 'boolean' }, holder: { type: 'string' }, iban: { type: 'string' }, bank: { type: 'string' } } },
+              cod: { type: 'boolean', description: 'Cash on delivery.' },
+              shipping: {
+                type: 'array',
+                maxItems: MAX_SHIPPING,
+                items: { type: 'object', required: ['name'], properties: { name: { type: 'string', maxLength: 80 }, price: ref('money'), free: { ...ref('money'), description: 'Free from this much.' }, pickup: { type: 'string', description: 'Picked up at this address.' } } },
+              },
+              terms: { type: 'string', description: 'The terms page, as /terms/.' },
+            },
+          },
+          stock: {
+            type: 'array',
+            items: { type: 'object', required: ['product', 'variant', 'quantity'], properties: { product: { type: 'string', description: '`<type>/<slug>`' }, variant: { type: 'string', description: "A combination (`M / Red`), or '' for the product." }, quantity: { type: 'integer', minimum: 0 } } },
+          },
+          coupons: {
+            type: 'array',
+            items: {
+              type: 'object',
+              required: ['code', 'kind', 'value'],
+              description: 'A code a buyer types in the cart (ADR 0065 d8). One coupon an order; it takes off the products, never delivery.',
+              properties: {
+                code: { type: 'string', pattern: '^[A-Za-z0-9_-]+$', maxLength: COUPON_CODE_MAX },
+                kind: { enum: [...COUPON_KINDS], description: '`percent`: `value` from 1 to 100; `amount`: `value` is a sum in the smallest unit.' },
+                value: { type: 'integer', minimum: 1 },
+                ends: { type: 'string', format: 'date', description: 'The last day it is taken; left out, it does not end.' },
+                uses: { anyOf: [{ type: 'integer', minimum: 1 }, { type: 'null' }], description: 'How many orders may use it; null for no limit.' },
+                minimum: { anyOf: [{ type: 'integer', minimum: 1 }, { type: 'null' }], description: 'The smallest sum of products, in the smallest unit.' },
+              },
+            },
+          },
+        },
+      },
       entry: {
         type: 'object',
         required: ['title'],
@@ -202,6 +266,7 @@ export function contentSchema(): Schema {
           categories: { type: 'array', items: { type: 'string' } },
           tags: { type: 'array', items: { type: 'string' } },
           fields: { type: 'object', description: "Values for the type's fields, by key." },
+          product: ref('product'),
           blocks: { type: 'array', items: ref('block') },
           ...seo,
         },
@@ -218,6 +283,7 @@ export function contentSchema(): Schema {
           categories: { type: 'boolean' },
           feed: { type: 'boolean' },
           comments: { const: true },
+          sells: { type: 'boolean', description: 'Its entries are products, each with a `product` (ADR 0065 d1). Only while the shop is on.' },
           fields: {
             type: 'array',
             items: {

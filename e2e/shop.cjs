@@ -3,7 +3,8 @@
  * which makes a type of products; a product written with a price, a sale
  * price, variants and stock, published, and its page offering "Add to cart";
  * the ways to pay and deliver set; a visitor filling a cart and placing an
- * order; the owner handling it in Orders; another type marked as selling.
+ * order with a coupon made in Coupons; the owner handling it in Orders;
+ * another type marked as selling.
  *
  *   node e2e/shop.cjs [folder for screenshots]
  */
@@ -173,6 +174,38 @@ const PORT = 4431;
     await page.locator('[data-shop-editors]').check();
     if (shots) await page.screenshot({ path: join(shots, 'shop-ways.png') });
 
+    // Coupons (ADR 0065 d8): one made, changed, and another made and deleted.
+    await page.evaluate(() => history.replaceState(null, "", location.href.replace(/[#&]at=[^&#]*/, ""))); // opened again at its first screen, not the one it was on
+    await page.reload();
+    await page.locator('[data-nav="coupons"]').click();
+    await page.locator('[data-coupons-none]').waitFor();
+    await page.locator('[data-coupon-add]').click();
+    await page.locator('[data-coupon-code]').fill('welcome');
+    await page.locator('[data-coupon-value]').fill('10');
+    await page.locator('[data-coupon-ends]').fill('2099-12-31');
+    await page.locator('[data-coupon-uses]').fill('5');
+    await page.locator('[data-coupon-save]').click();
+    await page.locator('[data-coupon="WELCOME"]').waitFor();
+    await page.locator('[data-coupon-edit="WELCOME"]').click();
+    await page.locator('[data-coupon-kind="amount"]').check();
+    await page.locator('[data-coupon-value]').fill('5');
+    await page.locator('[data-coupon-minimum]').fill('20');
+    await page.locator('[data-coupon-save]').click();
+    await page.locator('[data-coupon="WELCOME"]', { hasText: '0 of 5' }).waitFor();
+    assert((await page.locator('[data-coupon="WELCOME"]').textContent()).includes('2099-12-31'), 'a coupon is made and changed in Coupons');
+    await page.locator('[data-coupon-add]').click();
+    await page.locator('[data-coupon-code]').fill('BAD');
+    await page.locator('[data-coupon-value]').fill('0');
+    await page.locator('[data-coupon-save]').click();
+    await page.getByRole('alert').waitFor();
+    await page.locator('[data-coupon-value]').fill('50');
+    await page.locator('[data-coupon-save]').click();
+    await page.locator('[data-coupon="BAD"]').waitFor();
+    if (shots) await page.screenshot({ path: join(shots, 'shop-coupons.png') });
+    await page.locator('[data-coupon-remove="BAD"]').click();
+    await page.locator('[data-coupon="BAD"]').waitFor({ state: 'detached' });
+    assert(true, 'a coupon that is not one is refused, and one is deleted');
+
     // A visitor fills a cart and places an order: the pages have no script of their own.
     const buyer = await browser.newPage({ viewport: { width: 1280, height: 900 } });
     await buyer.goto(site('/products/mug/'));
@@ -185,6 +218,10 @@ const PORT = 4431;
     await buyer.locator('form.cart button.button').click();
     await buyer.locator('[data-cart-total]').waitFor();
     assert((await buyer.locator('input[name="q0"]').inputValue()) === '3', 'a quantity is changed in the cart');
+    await buyer.locator('#cart-coupon').fill('welcome');
+    await buyer.locator('[data-cart-coupon]').click();
+    await buyer.locator('[data-cart-discount]').waitFor();
+    assert(true, 'a coupon is applied in the cart');
     if (shots) await buyer.screenshot({ path: join(shots, 'shop-cart.png'), fullPage: true });
     await buyer.locator('[data-cart-checkout]').click();
     await buyer.locator('form.checkout').waitFor();
@@ -218,6 +255,8 @@ const PORT = 4431;
     await page.locator('[data-orders-filter]').selectOption('');
     await page.locator('[data-order-open="1"]').click();
     await page.locator('[data-order-number]').waitFor();
+    await page.locator('[data-order-discount]').waitFor();
+    assert(true, 'the order shows its coupon');
     await page.locator('select[data-order-state]').selectOption('sent');
     await page.locator('[data-order-tracking]').fill('AWB 123');
     await page.locator('[data-order-save]').click();

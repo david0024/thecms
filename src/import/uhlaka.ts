@@ -4,11 +4,12 @@
  * and shown first, then written; nothing already in the site is replaced,
  * and what was left as it was is said.
  */
-import { type Audience, fromOldName, isObject, OLD_NAME, normalizeAudience, normalizeLevels, normalizeTypes, POSTS_TYPE, READY_LAYOUTS, reservedSlugs, type ContentType, type Layout, type Site } from '../core/index.ts';
+import { type Audience, type Coupon, fromOldName, isObject, normalizeShopSettings, OLD_NAME, normalizeAudience, normalizeLevels, normalizeTypes, POSTS_TYPE, READY_LAYOUTS, reservedSlugs, type ContentType, type Layout, type Site } from '../core/index.ts';
 import { CONTENT_FORMAT, type ContentDoc, type ContentFile } from '../site/transfer.ts';
 import { cleanEmail, type Store } from '../site/store.ts';
 import { normalizeVisitorSettings } from '../site/visitor-gate.ts';
 import type { ContentVisitor } from '../site/visitor-transfer.ts';
+import type { ContentOrder, ContentShop } from '../site/shop-transfer.ts';
 import type { ImportReport } from './run.ts';
 
 /** Whether a file's text is a Uhlaka content file rather than a WordPress export. */
@@ -31,6 +32,28 @@ const visitors = (value: unknown): ContentVisitor[] =>
       createdAt: String(v.createdAt ?? ''),
       confirmedAt: String(v.confirmedAt ?? ''),
       levels: list<unknown>(v.levels).filter((l): l is string => typeof l === 'string'),
+    }));
+/** The shop's part as the file gives it: the settings cleaned now, the stock and coupons as they are brought. */
+const shopOf = (value: Record<string, unknown>): ContentShop => ({
+  settings: normalizeShopSettings(value.settings),
+  stock: list<unknown>(value.stock)
+    .filter(isObject)
+    .map((s) => ({ product: String(s.product ?? ''), variant: String(s.variant ?? ''), quantity: Number(s.quantity) })),
+  coupons: list<unknown>(value.coupons).filter(isObject) as unknown as Coupon[],
+});
+const ordersOf = (value: unknown): ContentOrder[] =>
+  list<unknown>(value)
+    .filter(isObject)
+    .filter((o) => isObject(o.data) && Array.isArray(o.data.lines))
+    .map((o) => ({
+      number: Number(o.number),
+      state: String(o.state ?? '') as ContentOrder['state'],
+      email: String(o.email ?? ''),
+      language: String(o.language ?? ''),
+      total: Number(o.total),
+      createdAt: String(o.createdAt ?? ''),
+      updatedAt: String(o.updatedAt ?? ''),
+      data: o.data as unknown as ContentOrder['data'],
     }));
 const docs = (value: unknown): ContentDoc[] =>
   list<unknown>(value)
@@ -72,6 +95,8 @@ export function readContentFile(text: string): ContentFile {
     ...(Array.isArray(raw.forms) ? { forms: raw.forms } : {}),
     ...(Array.isArray(raw.levels) ? { levels: normalizeLevels(raw.levels) } : {}),
     ...(Array.isArray(raw.visitors) ? { visitors: visitors(raw.visitors) } : {}),
+    ...(isObject(raw.shop) ? { shop: shopOf(raw.shop) } : {}),
+    ...(Array.isArray(raw.orders) ? { orders: ordersOf(raw.orders) } : {}),
     types: list<unknown>(raw.types)
       .filter(isObject)
       .flatMap((t) => {
@@ -102,6 +127,14 @@ export function contentPreview(file: ContentFile) {
   if (forMembers) notes.push(`${forMembers === 1 ? 'One page, entry or type is' : `${forMembers} pages, entries or types are`} for visitors signed in or for members, and stay${forMembers === 1 ? 's' : ''} so here: closed to everyone but you while visitor accounts are off.`);
   if (file.visitors?.length)
     notes.push(`${file.visitors.length === 1 ? 'One visitor account' : `${file.visitors.length} visitor accounts`}, without passwords: they come only if visitor accounts are on here, and each visitor chooses a new password with "Forgot your password?". No message is sent.`);
+  if (file.shop) {
+    const { stock, coupons } = file.shop;
+    notes.push(
+      `The shop's settings${stock.length ? `, the stock of ${stock.length === 1 ? 'one product' : `${stock.length} products and variants`}` : ''}${coupons.length ? ` and ${coupons.length === 1 ? 'one coupon' : `${coupons.length} coupons`}` : ''}: the settings come only with the old site's settings; the stock and coupons only if the shop is on here, never in place of what it has.`,
+    );
+  }
+  if (file.orders?.length)
+    notes.push(`${file.orders.length === 1 ? 'One order' : `${file.orders.length} orders`}, with their buyers: they come only if the shop is on here, each with its number. No message is sent and no stock is taken.`);
   return {
     kind: 'uhlaka' as const,
     site: { name: file.from.name, url: file.from.url },
@@ -348,6 +381,26 @@ export async function runContentImport(store: Store, file: ContentFile, options:
     else {
       if (came.added) notes.push(`${came.added === 1 ? 'One visitor account was' : `${came.added} visitor accounts were`} brought, with ${came.added === 1 ? 'its' : 'their'} levels and without a password: each visitor chooses one with "Forgot your password?". No message was sent.`);
       if (came.kept) notes.push(`${came.kept === 1 ? 'One visitor already had' : `${came.kept} visitors already had`} an account here under the same address, left as it was.`);
+    }
+  }
+
+  // The shop, after the products it counts: its settings with the old site's, its stock and coupons into a shop that is on (ADR 0065).
+  if (file.shop) {
+    const { importShop } = await import('../site/shop-transfer.ts');
+    const came = await importShop(store, file.shop, options.fresh);
+    if (came.settings) notes.push("The old site's shop settings were taken.");
+    if (came.off && (file.shop.stock.length || file.shop.coupons.length)) notes.push('The shop is off here, so its stock and coupons were not brought. Turn it on in Settings → Shop and import the file again.');
+    if (came.stock) notes.push(`The stock of ${came.stock === 1 ? 'one product was' : `${came.stock} products and variants was`} brought.`);
+    if (came.coupons) notes.push(`${came.coupons === 1 ? 'One coupon was' : `${came.coupons} coupons were`} brought.`);
+    if (came.kept.length) notes.push(`This shop already has the coupons ${came.kept.join(', ')}: left as they were.`);
+  }
+  if (file.orders?.length) {
+    const { importOrders } = await import('../site/shop-transfer.ts');
+    const came = await importOrders(store, file.orders);
+    if (came.off) notes.push(`The file holds ${file.orders.length === 1 ? 'one order' : `${file.orders.length} orders`}, and the shop is off here, so none was brought. Turn it on in Settings → Shop and import the file again.`);
+    else {
+      if (came.added) notes.push(`${came.added === 1 ? 'One order was' : `${came.added} orders were`} brought, with ${came.added === 1 ? 'its number' : 'their numbers'}; no message was sent and no stock was taken.`);
+      if (came.kept.length) notes.push(`This shop already has orders numbered ${came.kept.slice(0, 10).join(', ')}${came.kept.length > 10 ? ` and ${came.kept.length - 10} more` : ''}: those of the file were left behind.`);
     }
   }
 

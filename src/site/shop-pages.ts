@@ -27,6 +27,9 @@ export interface CartLine {
 /** What an order costs, worked out the same way for the cart, checkout and the order kept. */
 export interface Totals {
   subtotal: number;
+  /** The coupon taken (ADR 0065 d8), and what it took off the products; '' and 0 for none. Absent on orders placed before coupons. */
+  coupon?: string;
+  discount?: number;
   shipping: number;
   total: number;
   /** The VAT in the total, by rate, in the order of the site's rates; empty when VAT is not charged. */
@@ -82,6 +85,7 @@ export function totalsPart(said: Words, totals: Totals, money: (n: number) => st
   return (
     `<table class="cart-totals"><tbody>` +
     row(said.cartSubtotal, money(totals.subtotal)) +
+    (totals.discount ? row(said.cartCouponOff.replace('{code}', totals.coupon ?? ''), `−${money(totals.discount)}`, ' data-cart-discount') : '') +
     (shippingName === null ? '' : row(`${said.cartShipping}${shippingName ? ` (${shippingName})` : ''}`, totals.shipping ? money(totals.shipping) : said.cartShippingFree)) +
     row(said.cartTotal, money(totals.total), ' class="cart-total" data-cart-total') +
     totals.vat.map(([rate, amount]) => row(said.cartVatOf.replace('{rate}', String(rate)), money(amount))).join('') +
@@ -148,6 +152,7 @@ export function orderText(order: Order): string {
   const out = [said.order.replace('{number}', String(order.number)), ''];
   for (const l of data.lines) out.push(`${l.quantity} × ${l.name}${l.variant ? ` (${l.variant})` : ''}: ${money(l.price * l.quantity)}`);
   out.push('', `${said.cartSubtotal}: ${money(data.totals.subtotal)}`);
+  if (data.totals.discount) out.push(`${said.cartCouponOff.replace('{code}', data.totals.coupon ?? '')}: −${money(data.totals.discount)}`);
   out.push(`${said.cartShipping} (${data.shipping.name}): ${data.totals.shipping ? money(data.totals.shipping) : said.cartShippingFree}`);
   out.push(`${said.cartTotal}: ${money(data.totals.total)}`);
   for (const [rate, amount] of data.totals.vat) out.push(`${said.cartVatOf.replace('{rate}', String(rate))}: ${money(amount)}`);

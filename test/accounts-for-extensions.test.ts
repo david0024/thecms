@@ -111,8 +111,8 @@ describe('the format', () => {
     expect(problems).toEqual([]);
     const asks = extensionAsks(pkg!.manifest);
     expect(asks).toMatchObject({ uses: ['members', 'mail'], mails: ['Your receipt from {site}'], accounts: true, events: ['account.made', 'account.removed', 'member.changed'] });
-    expect(describeOffer({ manifest: pkg!.manifest, sha256: 'x', asks, replaces: null, accountsOff: true })).toContain('send visitors these messages: Your receipt from {site}');
-    expect(describeOffer({ manifest: pkg!.manifest, sha256: 'x', asks, replaces: null, accountsOff: true })).toContain('visitor accounts, which are off');
+    expect(describeOffer({ manifest: pkg!.manifest, sha256: 'x', asks, replaces: null, accountsOff: true, shopOff: false })).toContain('send visitors these messages: Your receipt from {site}');
+    expect(describeOffer({ manifest: pkg!.manifest, sha256: 'x', asks, replaces: null, accountsOff: true, shopOff: false })).toContain('visitor accounts, which are off');
 
     const second = parseExtension({ format: EXTENSION_FORMAT_2, manifest: { ...manifest, uses: undefined, mails: undefined }, code: CODE });
     expect(second.problems.join('; ')).toContain('("account.made")');

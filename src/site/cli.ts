@@ -65,7 +65,7 @@ Usage:
   ${NAME} reset-link <site.db> <email> --public=https://cms.example.com
   ${NAME} theme <site.db> <theme.json>
   ${NAME} export <site.db> <folder | site.zip>
-  ${NAME} export <site.db> <content.uhlaka.json> [--parts=pages,sections,forms,design,type:posts,visitors]
+  ${NAME} export <site.db> <content.uhlaka.json> [--parts=pages,sections,forms,design,type:posts,shop,visitors,orders]
   ${NAME} forms <site.db> [port]
   ${NAME} run <site.db> [--port=4323] [--host=127.0.0.1]
   ${NAME} import <site.db> <export.xml> [--no-images] [--types=portfolio,team] [--categories=projects]
@@ -112,6 +112,7 @@ export function describeOffer(offer: ExtensionOffer): string {
   if (asks.uses.length) lines.push(`  read the site's data: ${asks.uses.join(', ')}`);
   if (asks.mails?.length) lines.push(`  send visitors these messages: ${asks.mails.join(', ')}`);
   if (offer.accountsOff) lines.push('It works with visitor accounts, which are off: it does that part once they are turned on.');
+  if (offer.shopOff) lines.push('It works with the shop, which is off: it does that part once the shop is turned on.');
   return lines.join('\n');
 }
 

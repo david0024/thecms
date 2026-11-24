@@ -3,7 +3,7 @@
  * the key from the address the command printed; on a served admin, the
  * session cookie and a header only the admin's own page sends (ADR 0022).
  */
-import type { Audience, Audiences, Block, Level, ExtensionAction, Form, Redirect, RedirectProblem, ExtensionCollection, Page, Post, ShopSettings, Site, Theme, OrderState } from '../core/index.ts';
+import type { Audience, Audiences, Block, Level, ExtensionAction, Form, Redirect, RedirectProblem, ExtensionCollection, Page, Post, ShopSettings, Site, Theme, OrderState, Coupon } from '../core/index.ts';
 import type { Order } from '../site/shop-pages.ts';
 import type { ViewDocument } from '../view/index.ts';
 import type { ExtensionOffer } from '../site/extensions.ts';
@@ -43,7 +43,7 @@ export interface OrderListed {
   currency: string;
   items: number;
 }
-export type { Order, OrderState };
+export type { Coupon, Order, OrderState };
 
 /** Settings → Visitor accounts (ADR 0064): the switch, who may sign up, and, once on, the accounts and what could not be sent. */
 export interface VisitorSettings {
@@ -366,6 +366,9 @@ export const api = {
   orders: (state = '') => call<{ orders: OrderListed[] }>('GET', `/api/shop/orders${state ? `?state=${encodeURIComponent(state)}` : ''}`),
   order: (id: string) => call<{ order: Order }>('GET', `/api/shop/orders?id=${encodeURIComponent(id)}`),
   setOrder: (id: string, change: { state?: OrderState; tracking?: string }) => call<{ order: Order }>('PUT', '/api/shop/orders', { id, ...change }),
+  coupons: () => call<{ coupons: Coupon[] }>('GET', '/api/shop/coupons'),
+  saveCoupon: (coupon: Record<string, unknown>) => call<{ coupon: Coupon; coupons: Coupon[] }>('PUT', '/api/shop/coupons', coupon),
+  deleteCoupon: (code: string) => call<{ coupons: Coupon[] }>('DELETE', `/api/shop/coupons?code=${encodeURIComponent(code)}`),
   /** The orders as a CSV file: fetched, because a link could not carry the key. */
   async ordersFile(): Promise<Blob> {
     const response = await fetch('/api/shop/orders.csv', { headers: who() });
