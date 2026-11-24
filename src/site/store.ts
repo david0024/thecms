@@ -210,6 +210,7 @@ const SQLITE: Dialect = {
     'CREATE TABLE IF NOT EXISTS entry_reviews (type TEXT NOT NULL, slug TEXT NOT NULL, state TEXT NOT NULL, note TEXT NOT NULL, at TEXT NOT NULL, PRIMARY KEY (type, slug))',
     'CREATE TABLE IF NOT EXISTS user_bios (id TEXT PRIMARY KEY, bio TEXT NOT NULL)',
     'CREATE TABLE IF NOT EXISTS user_pictures (id TEXT PRIMARY KEY, src TEXT NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS user_bar (id TEXT PRIMARY KEY, shown INTEGER NOT NULL)',
     'CREATE TABLE IF NOT EXISTS not_found (path TEXT PRIMARY KEY, hits INTEGER NOT NULL, last_at TEXT NOT NULL, referrer TEXT NOT NULL)',
   ],
   params: (query) => query,
@@ -249,6 +250,7 @@ const POSTGRES: Dialect = {
     'CREATE TABLE IF NOT EXISTS entry_reviews (type VARCHAR(255) NOT NULL, slug VARCHAR(255) NOT NULL, state VARCHAR(20) NOT NULL, note TEXT NOT NULL, at VARCHAR(40) NOT NULL, PRIMARY KEY (type, slug))',
     'CREATE TABLE IF NOT EXISTS user_bios (id VARCHAR(40) PRIMARY KEY, bio TEXT NOT NULL)',
     'CREATE TABLE IF NOT EXISTS user_pictures (id VARCHAR(40) PRIMARY KEY, src TEXT NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS user_bar (id VARCHAR(40) PRIMARY KEY, shown INTEGER NOT NULL)',
     'CREATE TABLE IF NOT EXISTS not_found (path VARCHAR(255) PRIMARY KEY, hits INTEGER NOT NULL, last_at VARCHAR(40) NOT NULL, referrer VARCHAR(255) NOT NULL)',
   ],
   params: (query) => {
@@ -287,6 +289,7 @@ const MYSQL: Dialect = {
     `CREATE TABLE IF NOT EXISTS entry_reviews (type VARCHAR(255) NOT NULL, slug VARCHAR(255) NOT NULL, state VARCHAR(20) NOT NULL, note TEXT NOT NULL, at VARCHAR(40) NOT NULL, PRIMARY KEY (type, slug)) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS user_bios (id VARCHAR(40) PRIMARY KEY, bio TEXT NOT NULL) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS user_pictures (id VARCHAR(40) PRIMARY KEY, src TEXT NOT NULL) ${MYSQL_TABLE}`,
+    `CREATE TABLE IF NOT EXISTS user_bar (id VARCHAR(40) PRIMARY KEY, shown INTEGER NOT NULL) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS not_found (path VARCHAR(255) PRIMARY KEY, hits INTEGER NOT NULL, last_at VARCHAR(40) NOT NULL, referrer VARCHAR(255) NOT NULL) ${MYSQL_TABLE}`,
   ],
   params: (query) => query,
@@ -402,6 +405,8 @@ export interface User {
   bio?: string;
   /** Their picture, an image of the media library (ADR 0056 d2); '' for none. */
   picture?: string;
+  /** Whether the admin bar is shown to them over the site (ADR 0075); on unless they turned it off. */
+  bar?: boolean;
 }
 /** What a one-time link is for: the first owner, someone invited, a new password. */
 export type LinkKind = 'setup' | 'invite' | 'reset';
@@ -1422,6 +1427,26 @@ export class Store {
     return (await this.row('SELECT 1 AS found FROM entries WHERE type = ? AND slug = ? AND published IS NOT NULL', [typeId, slug])) !== null;
   }
 
+  /** Whether a page (by its main address) or an entry (by its type and main address) has a draft that is not what visitors see (ADR 0075). */
+  async draftChanged(kind: string, slug: string): Promise<boolean> {
+    const row =
+      kind === 'page'
+        ? await this.row<Row>('SELECT draft, published FROM pages WHERE slug = ?', [slug])
+        : await this.row<Row>('SELECT draft, published FROM entries WHERE type = ? AND slug = ?', [kind, slug]);
+    return row !== null && row.published !== null && row.published !== undefined && row.published !== row.draft;
+  }
+
+  /** What waits for the owner and the editors, as numbers for the admin bar (ADR 0075): comments to approve, entries sent for review, orders to see to. */
+  async waiting(shop: boolean): Promise<{ comments: number; review: number; orders: number }> {
+    const count = async (query: string, params: unknown[] = []): Promise<number> => Number((await this.row<{ n: number | string }>(query, params))?.n ?? 0);
+    return {
+      comments: await count('SELECT COUNT(*) AS n FROM comments WHERE approved = 0'),
+      review: await count("SELECT COUNT(*) AS n FROM entry_reviews WHERE state = 'waiting'"),
+      // The shop's tables are there only once it was turned on (ADR 0065 d10).
+      orders: shop ? await count("SELECT COUNT(*) AS n FROM shop_orders WHERE state IN ('waiting', 'paid')").catch(() => 0) : 0,
+    };
+  }
+
   /** Every entry in review, the oldest sent first. */
   async reviews(): Promise<Review[]> {
     return (await this.rows<Row>('SELECT type, slug, state, note, at FROM entry_reviews ORDER BY at, type, slug')).map((r) => ({
@@ -2075,7 +2100,9 @@ export class Store {
   // Accounts (ADR 0022).
 
   async users(): Promise<User[]> {
-    const rows = await this.rows<Row>('SELECT u.id, u.email, u.name, u.role, u.password, u.created_at, b.bio, p.src FROM users u LEFT JOIN user_bios b ON b.id = u.id LEFT JOIN user_pictures p ON p.id = u.id ORDER BY u.created_at, u.email');
+    const rows = await this.rows<Row>(
+      'SELECT u.id, u.email, u.name, u.role, u.password, u.created_at, b.bio, p.src, ub.shown FROM users u LEFT JOIN user_bios b ON b.id = u.id LEFT JOIN user_pictures p ON p.id = u.id LEFT JOIN user_bar ub ON ub.id = u.id ORDER BY u.created_at, u.email',
+    );
     return rows.map((r) => ({
       id: String(r.id),
       email: String(r.email),
@@ -2085,6 +2112,7 @@ export class Store {
       createdAt: String(r.created_at),
       bio: r.bio ? String(r.bio) : '',
       picture: r.src ? String(r.src) : '',
+      bar: r.shown === null || r.shown === undefined || Number(r.shown) !== 0,
     }));
   }
 
@@ -2140,7 +2168,7 @@ export class Store {
   }
 
   /** Someone's name and the few words about them (ADR 0055 d3), set by themselves. */
-  async setProfile(id: string, name: unknown, bio: unknown, picture?: unknown): Promise<User> {
+  async setProfile(id: string, name: unknown, bio: unknown, picture?: unknown, bar?: unknown): Promise<User> {
     if (!(await this.user(id))) throw new Error('nobody has that account');
     const before = authorSlugs(await this.users());
     await this.run('UPDATE users SET name = ? WHERE id = ?', [str(name, 120).trim(), id]);
@@ -2152,6 +2180,8 @@ export class Store {
       if (name) await this.run(this.dialect.upsert('user_pictures', ['id', 'src'], ['id'], ['src']), [id, mediaPath(name)]);
       else await this.run('DELETE FROM user_pictures WHERE id = ?', [id]);
     }
+    // The admin bar over the site (ADR 0075): left out, it stays as it was.
+    if (typeof bar === 'boolean') await this.run(this.dialect.upsert('user_bar', ['id', 'shown'], ['id'], ['shown']), [id, bar ? 1 : 0]);
     await this.keepAuthorAddresses(before);
     // Shown on every post of theirs at once, without publishing them again (ADR 0055 d3).
     await this.touch();
@@ -2194,6 +2224,7 @@ export class Store {
     else await this.run('DELETE FROM entry_authors WHERE user_id = ?', [id]);
     await this.run('DELETE FROM user_bios WHERE id = ?', [id]);
     await this.run('DELETE FROM user_pictures WHERE id = ?', [id]);
+    await this.run('DELETE FROM user_bar WHERE id = ?', [id]);
     await this.run('DELETE FROM sessions WHERE user_id = ?', [id]);
     await this.run('DELETE FROM links WHERE user_id = ?', [id]);
     await this.run('DELETE FROM users WHERE id = ?', [id]);
@@ -2684,6 +2715,7 @@ export const BACKUP_TABLES = [
   'entry_reviews',
   'user_bios',
   'user_pictures',
+  'user_bar',
 ] as const;
 /** Each table's columns and key, read from the schema, which says them once. */
 const TABLE_COLUMNS: Record<string, string[]> = {};

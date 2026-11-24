@@ -252,7 +252,7 @@ export async function buildSite(
       imageSources(p.blocks),
     );
     data.push({ path: pagePath(p.slug), language: setting.site.language, page: p });
-    targets?.set(pagePath(p.slug), { kind: 'page', slug: p.slug });
+    targets?.set(pagePath(p.slug), { kind: 'page', slug: p.slug, main: (p as Partial<PlacedPage>).of ?? p.slug });
     const audience = audiences.pages[(p as Partial<PlacedPage>).of ?? p.slug];
     if (audience) members.set(pagePath(p.slug), audience);
   }
@@ -286,7 +286,7 @@ export async function buildSite(
         );
         data.push({ path: entryPath(type, post.slug), language, post, type });
         // An entry in another language is opened in the editor at `ro/<address>` (ADR 0054).
-        targets?.set(entryPath(type, post.slug), { kind: original.id, slug: language === site.language ? post.slug : `${prefixOf(language)}/${post.slug}`, entry: from.slug, singular: original.singular });
+        targets?.set(entryPath(type, post.slug), { kind: original.id, slug: language === site.language ? post.slug : `${prefixOf(language)}/${post.slug}`, main: from.slug, singular: original.singular });
         const audience = audienceOf(original.id, from);
         if (audience) members.set(entryPath(type, post.slug), audience);
       }

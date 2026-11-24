@@ -1,6 +1,6 @@
 # ADR 0075 — The admin bar over the site
 
-- **Status:** Accepted (Liviu, 2026-11-24: "construieste-o. David este de acord."). Liviu had asked for it before, "o bara superioara in stilul celei din wordpress"; the review of the admin (2026-11-24) left it for David to decide.
+- **Status:** Accepted (Liviu, 2026-11-24: "construieste-o. David este de acord."). Liviu had asked for it before, "o bara superioara in stilul celei din wordpress"; the review of the admin (2026-11-24) left it for David to decide. Signing out, "Not published", the numbers of what waits and the setting in "Me" (d5) were proposed in the thread the same evening and agreed by Liviu ("da, de acord").
 - **Date:** 2026-11-24
 - **Builds on:** ADR 0022 (accounts and their session), ADR 0044 (the site is served, with a cache of its pages), ADR 0055 (authors and contributors), ADR 0069 d4 (the admin is noindex), ADR 0072 (an address for each screen of the admin), ADR 0074 d4 (one script on a public page, and only that one)
 
@@ -31,8 +31,7 @@ contributor, whose published entry is an editor's. An author or a contributor
 adds a post, not a page. A missing address, a search, a visitor's account page
 get the bar without "Edit". It speaks the admin's language.
 
-There is no switch to hide it, nor a way to sign out from it: those take a
-script or a form, and are a later addition if they are missed.
+Four more parts are in d5.
 
 ### d2. Added by the server, only for a request with a session
 
@@ -71,6 +70,29 @@ is not printed.
   site" (ADR 0072) is the way there.
 - **The admin's own addresses** (ADR 0069 d4) are unchanged.
 
+### d5. Signing out, what is not published, what waits, and a way to turn it off
+
+- **Sign out**, on the right. A plain form (`POST /admin/sign-out`), so no
+  script: the session ends and the person is left on the page they were on, as
+  a visitor sees it. A form from another site is refused (its `Origin`, and the
+  cookie is `SameSite=Strict` anyway); where it leads is an address of this
+  site only.
+- **"Not published"** beside "Edit page" when the page or entry has a draft
+  that is not what visitors see, so the owner who just changed it and does not
+  see the change knows why. A page never changed since it was published says
+  nothing.
+- **What waits**, as a number with an icon, only above zero, for the owner and
+  the editors: comments to approve, entries sent for review (ADR 0055), and,
+  with the shop on, orders waiting for payment or paid and not yet prepared
+  (for whoever may see orders, ADR 0065). Each leads to its screen and says
+  in words what it counts, on hover and to a screen reader. Messages from
+  forms are not counted: a message has no "read" yet.
+- **"Show the admin bar on the site"** in "Me", on by default, for each person
+  alone: turned off, the site is the visitor's page, untouched.
+
+Left out on purpose, from WordPress's bar: updates, "Customize", a search box,
+and menus that open on hover, which would take a script.
+
 ## Verification
 
 - Unit: the links each role gets on a page and on an entry; the words in the
@@ -81,8 +103,12 @@ is not printed.
   page, an entry and a missing address, `private, no-store`, and without the
   bar the page is the visitor's; an author edits their own entry and no one
   else's, nor a page; a page and an entry in another language open where the
-  editor keeps them.
+  editor keeps them; "Not published" only after a change; the numbers for the
+  owner and not for an author; signing out ends the session, refuses another
+  site's form and leads only to this site; the bar turned off in "Me" gives the
+  visitor's page, and on again brings it back.
 - Browser (`e2e/admin-bar.cjs`): the bar runs across the top; "Edit page"
   opens the page in the builder; "New page" opens the pages with the title
-  asked; on a phone in dark the page does not scroll sideways; a visitor has
-  no bar.
+  asked; on a phone in dark the page does not scroll sideways; turned off in
+  "Me" it is gone; a change not published is said; "Sign out" leaves the
+  person on the page as a visitor; a visitor has no bar.

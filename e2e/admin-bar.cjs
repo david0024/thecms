@@ -95,6 +95,40 @@ const PASSWORD = 'a long enough password';
     if (shots) await small.screenshot({ path: join(shots, 'admin-bar-phone-dark.png') });
     await phone.close();
 
+    // Turned off in "Me", the site is seen as a visitor sees it; turned on again, the bar is back.
+    await owner.goto(`${PUBLIC}/admin/#at=me`);
+    await owner.locator('[data-profile-bar]').uncheck();
+    await owner.locator('[data-profile] button[type="submit"]').click();
+    await owner.locator('[data-profile-saved]').waitFor();
+    await owner.goto(`${PUBLIC}/about/`);
+    await owner.locator('main').waitFor();
+    assert((await owner.locator('#uhlaka-bar').count()) === 0, 'turned off in "Me", the bar is gone');
+    await owner.goto(`${PUBLIC}/admin/#at=me`);
+    await owner.locator('[data-profile-bar]').check();
+    await owner.locator('[data-profile] button[type="submit"]').click();
+    await owner.locator('[data-profile-saved]').waitFor();
+
+    // A change not published is said beside "Edit page".
+    await owner.goto(`${PUBLIC}/admin/#at=edit/page/about`);
+    await owner.locator('.doc', { hasText: 'About' }).waitFor();
+    // The page's title, changed in the panel and saved, not published.
+    await owner.getByLabel('Title', { exact: true }).fill('About us');
+    await owner.locator('.status:not([data-state="saved"])').first().waitFor({ timeout: 5000 }).catch(() => {});
+    await owner.locator('.status[data-state="saved"]').waitFor();
+    await owner.goto(`${PUBLIC}/about/`);
+    await bar.waitFor();
+    assert((await owner.locator('#uhlaka-bar [data-bar-changed]').count()) === 1, 'a change not published is said in the bar');
+    if (shots) await owner.screenshot({ path: join(shots, 'admin-bar-changed.png') });
+
+    // Sign out: the same page, as a visitor, and the admin asks to sign in again.
+    await owner.locator('#uhlaka-bar [data-bar="sign-out"] button').click();
+    await owner.waitForURL(`${PUBLIC}/about/`);
+    await owner.locator('main').waitFor();
+    assert((await owner.locator('#uhlaka-bar').count()) === 0, '"Sign out" leaves the person on the page, as a visitor');
+    await owner.goto(`${PUBLIC}/admin/`);
+    await owner.locator('[data-sign-in]').waitFor();
+    assert(true, 'and the admin asks to sign in again');
+
     // A visitor sees the same page without it.
     const visitor = await browser.newPage({ viewport: { width: 1280, height: 800 } });
     await visitor.goto(`${PUBLIC}/about/`);
