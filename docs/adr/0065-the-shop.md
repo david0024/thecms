@@ -223,3 +223,48 @@ complete export.
 - Left for later: failed order e-mails are shown, as today, in Settings →
   Visitor accounts only; a product's name in the order is its main
   language's.
+
+### What PR (c) settled in building it
+
+- **A coupon** is kept in `shop_coupons` by its code, in capitals (letters,
+  digits, `-` and `_`, at most 40): `percent` (1 to 100) or `amount` (a sum),
+  a last day (the site's clock, UTC; none for no end), how many orders may
+  use it (none for no limit) and the smallest sum of products it is taken
+  from. At most 500 a shop. The **Coupons** screen, beside Orders, is for
+  whoever handles the orders; `/api/shop/coupons` is the same for an agent.
+  Saving a code that exists changes that coupon and keeps its uses.
+- **In the cart** a coupon has a form of its own. One that does not exist,
+  ended or was used up is refused and said; one under its smallest order is
+  kept and said ("taken from 60 lei of products") until the cart reaches it.
+  It takes off the products only, never delivery; what it takes is shared
+  between the VAT rates as the products are, and delivery is free above its
+  sum by what is paid after the coupon. The order keeps the code and the sum
+  in its totals, and the cart, the order, its e-mails, the Orders screen and
+  the CSV (`coupon`, `discount`) say them.
+- **A use is taken when the order is placed**, in one statement, only while
+  one is left and the coupon has not ended, so two buyers never both take
+  the last use; it is given back when the stock runs short at that moment,
+  and when the order is cancelled (not when refunded).
+- **Extensions** hear `order.made`, `order.paid`, `order.sent` and
+  `order.refunded` with `{ id, number, total, currency }`. With `uses:
+  ["orders"]`, `host.orders.get(id)` reads the order with its buyer (never the
+  secret of their link), and `paid`, `refunded` and `tracking` change it as
+  the Orders screen does, telling the buyer the same way. Marking paid an
+  order that is not waiting for payment, or refunded twice, changes nothing:
+  a provider's webhook may say it twice. While the shop is off each call
+  says so, and the install screen says the extension works with the shop.
+- **A backup** holds `shop_stock`, `shop_orders` and `shop_coupons`; not the
+  carts, which belong to a browser like a session. A backup of a site whose
+  shop was ever turned on makes the tables when it is put back.
+- **The content file** has two parts. `shop`, with the whole site: the
+  shop's settings, what is left of each product and the coupons. Its
+  settings are taken only with the old site's settings; the stock and the
+  coupons only into a shop that is on, never in place of what it has.
+  `orders`, chosen apart as the visitors are, because orders name their
+  buyers: each with its number, state and what was bought, without the
+  buyer's link; brought only into a shop that is on, an order whose number
+  is taken stays behind and is named, each gets a new link, and no message
+  is sent and no stock taken. The schema (docs/content-schema.json) says a
+  product, a type that `sells`, and the `shop` part, for an agent writing a
+  shop.
+
