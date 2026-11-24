@@ -21,7 +21,7 @@
     "radius": { "none": "0", "sm": "8px", "md": "18px", "lg": "24px", "button": "999px" },
     "font": { "body": "figtree", "heading": "bricolage" },
     "size": { "sm": "0.9375rem", "base": "1.0625rem", "lg": "1.3125rem", "xl": "1.625rem", "2xl": "3.25rem", "3xl": "5.25rem" },
-    "width": { "narrow": "44rem", "content": "72rem", "wide": "76rem" }
+    "width": { "narrow": "44rem", "content": "64rem", "wide": "76rem" }
   },
   "blocks": {
     "hero": {
