@@ -92,6 +92,9 @@ img{max-width:100%;height:auto;display:block}
 .table th,.table td{padding:.5em .75em;border-bottom:1px solid var(--t-color-border);text-align:start;vertical-align:top}
 .table thead th{border-bottom-width:2px}
 .b-code{--b-width:var(--t-width-narrow)}
+/* Text, code and tables one after another read as one text: they sit at a paragraph's distance, not a section's. */
+:is(.b-text,.b-code,.b-table):has(+:is(.b-text,.b-code,.b-table)){padding-bottom:0}
+:is(.b-text,.b-code,.b-table)+:is(.b-text,.b-code,.b-table){padding-top:var(--t-space-sm)}
 /* ADR 0067: code keeps its lines and scrolls sideways inside itself. */
 .code{margin:var(--t-space-sm) 0 0;padding:var(--t-space-sm) var(--t-space-md);overflow-x:auto;background:var(--t-color-surface);border:1px solid var(--t-color-border);border-radius:var(--t-radius-md);font-family:ui-monospace,Menlo,Consolas,monospace;font-size:var(--t-size-sm);line-height:1.6;tab-size:2;white-space:pre}
 .code code{font:inherit;white-space:inherit}
