@@ -155,7 +155,12 @@ const DARK = 'rgb(17, 19, 24)';
     await page.locator('[data-publish-theme]').waitFor({ state: 'detached' });
     await context.close();
     const later = await visit({ colorScheme: 'dark' });
-    await later.page.goto(site);
+    // A publication reaches the site within a second or two: ask again until it has.
+    for (let i = 0; i < 20; i++) {
+      await later.page.goto(site);
+      if ((await background(later.page)) === LIGHT) break;
+      await later.page.waitForTimeout(500);
+    }
     assert((await background(later.page)) === LIGHT, '"Light only": light on a dark device');
     assert((await later.page.locator('script[src]').count()) === 0 && (await later.page.locator('.scheme-switch').count()) === 0, 'with no switch and no script');
     await later.context.close();
