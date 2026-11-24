@@ -68,6 +68,7 @@ const PORT = 4431;
     if (shots) await page.screenshot({ path: join(shots, 'shop-settings.png') });
 
     // A product with a price, a sale price, a code, a rate and two sizes, each counted.
+    await page.evaluate(() => history.replaceState(null, "", location.href.replace(/[#&]at=[^&#]*/, ""))); // opened again at its first screen, not the one it was on
     await page.reload();
     await page.locator('[data-nav="products"]').click();
     await page.locator('[data-new="products"]').click();
@@ -204,6 +205,7 @@ const PORT = 4431;
     await buyer.close();
 
     // The owner handles it in Orders.
+    await page.evaluate(() => history.replaceState(null, "", location.href.replace(/[#&]at=[^&#]*/, ""))); // opened again at its first screen, not the one it was on
     await page.reload();
     await page.locator('[data-nav="orders"]').click();
     await page.locator('[data-order-open="1"]').waitFor();
@@ -236,6 +238,7 @@ const PORT = 4431;
     await page.locator('[data-mail-template]').selectOption('orderSent');
     await page.locator('[data-mail-order-hint]').waitFor();
     assert(true, 'the order messages are in Settings → E-mail');
+    await page.evaluate(() => history.replaceState(null, "", location.href.replace(/[#&]at=[^&#]*/, ""))); // opened again at its first screen, not the one it was on
     await page.reload();
 
     // Another type marked as selling.
@@ -250,6 +253,7 @@ const PORT = 4431;
     assert(true, 'another type sells');
 
     // Off again: the switch alone.
+    await page.evaluate(() => history.replaceState(null, "", location.href.replace(/[#&]at=[^&#]*/, ""))); // opened again at its first screen, not the one it was on
     await page.reload();
     await page.locator('[data-nav="settings"]').click();
     await page.locator('[data-shop-vat]').uncheck();

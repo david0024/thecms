@@ -105,9 +105,11 @@ const nameOf = (item: PageInfo | PostInfo): string => people.find((p) => 'author
       </thead>
       <tbody>
         {#each shown as item (item.slug)}
+          {@const address = type ? entryPath(type, item.slug) : pagePath(item.slug)}
           <tr>
             <td><button type="button" class="open" onclick={() => onopen(item.slug)} data-open={item.slug}>{item.title}</button></td>
-            <td class="quiet">{type ? entryPath(type, item.slug) : pagePath(item.slug)}</td>
+            <!-- A published page's address opens it on the site, in a tab of its own. -->
+            <td class="quiet">{#if item.published}<a class="address" href={address} target="_blank" rel="noopener" title={t.bar.viewPageHint} data-view={item.slug}>{address} ↗</a>{:else}{address}{/if}</td>
             {#if type?.dated}<td class="quiet">{'date' in item ? item.date : ''}</td>{/if}
             {#if authors}<td class="quiet" data-author-of={item.slug}>{nameOf(item)}</td>{/if}
             <td class="quiet" class:live={item.published && !item.changed && !('review' in item && item.review)} data-status-of={item.slug}>{status(item)}</td>
@@ -155,4 +157,6 @@ const nameOf = (item: PageInfo | PostInfo): string => people.find((p) => 'author
   .translations { display: flex; gap: 0.3rem; flex-wrap: wrap; }
   .chip { padding: 0.1rem 0.45rem !important; font-size: 12px; text-transform: uppercase; }
   .chip.partial { border-style: dashed; }
+  .address { color: inherit; text-decoration: none; }
+  .address:hover { color: #4b3fd6; text-decoration: underline; }
 </style>

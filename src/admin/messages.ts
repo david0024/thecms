@@ -9,7 +9,7 @@ import { applyPack, type Catalog, format, isPlural, type LanguagePack, type Mess
 
 export const en = {
   app: { pages: 'Pages', blocks: 'Add a block', blocksHint: 'Click to add, or drag onto the page.', tooDeep: 'Groups nest at most four deep; it cannot go there.', newPage: 'New page', pageTitle: 'Page title', create: 'Create', cancel: 'Cancel', home: 'Home page' },
-  nav: { pages: 'Pages', posts: 'Posts', media: 'Media', messages: 'Messages', comments: 'Comments', settings: 'Menu and settings', theme: 'Theme', label: 'Sections', back: 'All', forms: 'Forms', import: 'Import', export: 'Export', people: 'People', sections: 'Sections', layouts: 'Layouts', backups: 'Backups', stats: 'Statistics', me: 'Me', review: 'To review', orders: 'Orders' },
+  nav: { pages: 'Pages', posts: 'Posts', media: 'Media', messages: 'Messages', comments: 'Comments', settings: 'Menu and settings', theme: 'Theme', label: 'Sections', back: 'All', forms: 'Forms', import: 'Import', export: 'Export', people: 'People', sections: 'Sections', layouts: 'Layouts', backups: 'Backups', stats: 'Statistics', me: 'Me', review: 'To review', orders: 'Orders', viewSite: 'View site' },
   door: {
     key: 'Open the address that the editor printed when it started; it carries the key to this editor.',
     signIn: 'Sign in',
@@ -764,6 +764,8 @@ export const en = {
     no: 'No',
   },
   bar: {
+    viewPage: 'View on the site',
+    viewPageHint: 'Opens the published page in a new tab',
     device: 'Show the page as on',
     wide: 'Wide',
     tablet: 'Tablet',
