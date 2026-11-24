@@ -53,6 +53,15 @@ The last seven are kept; an older one is deleted when a new one is made. The
 owner may keep more or fewer, from 1 to 90. Each one can be downloaded, or
 deleted, from the admin.
 
+*Amended 2026-11-24 (Liviu: "ok. asa facem"):* the number kept counts only
+the backups the site makes by itself, on its schedule. One made by hand
+("Back up now" or `uhlaka backup`, named `manual-…`) or brought from
+elsewhere (`uploaded-…`) is never deleted by it: it stays until the owner
+deletes it, and the admin says so beside it. The site's folder is the one
+place for backups: `uhlaka backup` writes there unless it is given another
+folder, and the steps for a server (updates, imports) use it, so there is no
+second folder where copies quietly disappear. The same holds in the S3 storage.
+
 ### d4. A copy outside the server, in any S3 storage
 
 A backup kept on the same server does not help when the server is lost. The

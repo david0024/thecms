@@ -25,7 +25,10 @@ let useS3 = $state(false);
 
 const size = (bytes: number): string => (bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`);
 const when = (iso: string): string => new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
-const kind = (name: string): string => (name.startsWith('before-restore-') ? t.backups.kindBefore : name.startsWith('uploaded-') ? t.backups.kindUploaded : t.backups.kindSite);
+const kind = (name: string): string =>
+  name.startsWith('before-restore-') ? t.backups.kindBefore : name.startsWith('uploaded-') ? t.backups.kindUploaded : name.startsWith('manual-') ? t.backups.kindManual : t.backups.kindSite;
+/** Made or brought by hand: the number kept never deletes it (ADR 0051). */
+const byHand = (name: string): boolean => name.startsWith('manual-') || name.startsWith('uploaded-');
 
 function show(next: BackupsShown): void {
   shown = next;
@@ -117,7 +120,7 @@ const upload = () =>
       <ul class="files">
         {#each shown.files as file (file.name)}
           <li data-backup={file.name}>
-            <span class="what"><strong>{when(file.at)}</strong> <small>{kind(file.name)} · {size(file.size)}</small></span>
+            <span class="what"><strong>{when(file.at)}</strong> <small data-backup-kind>{kind(file.name)} · {size(file.size)}{#if byHand(file.name)} · {t.backups.keptHint}{/if}</small></span>
             <button type="button" onclick={() => download(file.name)} disabled={busy !== ''} data-backup-download>{t.backups.download}</button>
             <button type="button" onclick={() => (asked = file.name)} disabled={busy !== ''} data-backup-restore>{t.backups.restore}</button>
             <button type="button" onclick={() => remove(file.name)} disabled={busy !== ''} data-backup-remove>{t.backups.remove}</button>
@@ -153,6 +156,7 @@ const upload = () =>
       <label class="field">
         <span>{t.backups.keep}</span>
         <input type="number" min="1" max="90" bind:value={settings.keep} data-backup-keep />
+        <small>{t.backups.keepHint}</small>
       </label>
     </div>
 
