@@ -3,7 +3,7 @@
 # checksums before anything is put in place (ADR 0023). It asks, one step at a
 # time, where the site will live and what it needs there (ADR 0048):
 #
-#   curl -fsSL https://github.com/uhlaka-devs/uhlaka/releases/download/v0.1.0-alpha.9/install.sh | sh
+#   curl -fsSL https://github.com/uhlaka-devs/uhlaka/releases/download/v0.1.0-alpha.10/install.sh | sh
 #
 # - This computer, to try it: the program in ~/.local/bin, the site in a file.
 # - A server of yours (Linux with systemd), as root: the program in /usr/local/bin,
