@@ -177,6 +177,30 @@ in-process code with none of the separation the owner was promised. That is
 what ADR 0060 d4 refused; a part has the same speed and the same
 reach, without those costs.
 
+### d7. Deno where the server's isolation is missing
+
+Zveltio runs its extensions' jobs in Deno (its ADR 0022, 2026-11-05): one
+process a job, **with no permission at all** (no network, files, environment
+or programs), talking to the engine on stdin and stdout; the engine makes
+every call to the outside for it, and on Linux a seccomp filter forbids
+sockets (its ADR 0023). Its routes and actions run on its Bun runner.
+
+Uhlaka's runner (ADR 0026 d4) has the same shape: an empty environment, the
+program makes every call to the outside. On a server, systemd adds a user of
+its own, no network (`PrivateNetwork`, only `AF_UNIX`), a read-only system
+and 512 MB at most: the kernel's boundary, as strong as Zveltio's. On one's
+own computer and in Docker it is a plain Bun process, which can read what
+that person can.
+
+Proposed: the runner starts the extension's process with Deno, with no
+permission, wherever systemd's isolation is not there (Windows, macOS,
+Docker, a platform); on a server systemd stays and Deno runs inside it.
+Deno is fetched the first time an extension is turned on, checked by its
+checksum, never shipped with every install. Before it is built, a
+measurement on a small VPS: the start of a process, the memory of one at
+rest and at work, against today's Bun process (Zveltio measured 31 ms and
+about 60 MB). It does not block d4 or payments.
+
 ## Weighed and not proposed
 
 - **The shop's base as an extension now**: see d2. To revisit if a second
