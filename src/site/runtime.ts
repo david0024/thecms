@@ -22,6 +22,7 @@ import { siteMailer } from './site-mail.ts';
 import { type VisitorGate, visitorGate } from './visitor-gate.ts';
 import { type ShopGate, shopGate } from './shop-gate.ts';
 import { openMailQueue } from './mail-queue.ts';
+import type { EditTarget } from './admin-bar.ts';
 
 export interface Runtime {
   url: string;
@@ -35,6 +36,8 @@ export interface Runtime {
   visitors: VisitorGate;
   /** The shop (ADR 0065), loaded only once the owner turns it on. */
   shop: ShopGate;
+  /** What a page's address is in the editor, for the admin bar (ADR 0075): null for any other address. */
+  editTarget: (pathname: string) => Promise<EditTarget | null>;
   /** What the site's clock does for the parts the owner turned on: their chores, and the mail they wait to send. */
   chores: (now: Date) => Promise<void>;
   stop: () => void;
@@ -118,7 +121,8 @@ export function startRuntime(
   const visits = countVisits(store, shared, { now, told });
   const forms = startForms(store, { listen: false, mailer: options.mailer, to: options.to, from: options.from, log: options.log, shared, ask: extensions.ask });
   type Files = Map<string, string | Uint8Array>;
-  let built: { version: string; files: Promise<Files>; ready: boolean } | null = null;
+  type Built = { version: string; files: Promise<Files>; ready: boolean; targets: Map<string, EditTarget> };
+  let built: Built | null = null;
   let asked: { at: number; version: Promise<string> } | null = null;
 
   /** The site's version, asked at most once in FRESH_MS. */
@@ -131,7 +135,8 @@ export function startRuntime(
   const site = async (): Promise<Files> => {
     const at = await version();
     if (!built || built.version !== at) {
-      const made: { version: string; files: Promise<Files>; ready: boolean } = { version: at, files: publishedSite(store, true).catch(() => new Map() as Files), ready: false };
+      const targets = new Map<string, EditTarget>();
+      const made: Built = { version: at, files: publishedSite(store, true, targets).catch(() => new Map() as Files), ready: false, targets };
       built = made;
       void made.files.then(async (files) => {
         made.ready = true;
@@ -151,6 +156,19 @@ export function startRuntime(
       if (kept !== null) return kept;
     }
     return (await site()).get(path);
+  };
+
+  /** What an address is in the editor: read from this process's own build, which a person signed in waits for. */
+  const editTarget = async (pathname: string): Promise<EditTarget | null> => {
+    let path: string;
+    try {
+      path = decodeURIComponent(pathname);
+    } catch {
+      return null;
+    }
+    if (path.endsWith('/index.html')) path = path.slice(0, -'index.html'.length);
+    await site();
+    return built?.targets.get(path) ?? null;
   };
 
   /** What an extension's route answers as a page (ADR 0062 d6), in the frame of the site's pages in that language. */
@@ -401,6 +419,7 @@ export function startRuntime(
     told,
     visitors,
     shop,
+    editTarget,
     chores,
     stop: () => {
       void visits.flush().then(() => told.stop());

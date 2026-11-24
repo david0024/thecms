@@ -36,7 +36,8 @@ import { contentFileName, contentParts, exportContent } from './transfer.ts';
 import { zipFiles } from './zip.ts';
 import { type MenuItem, menuOf, pageSetting, renderParts, renderPostParts } from './document.ts';
 import { languages, packFor } from './languages.ts';
-import { accounts, cleanPublicAddress, ownerOnly, shown } from './accounts.ts';
+import { accounts, cleanPublicAddress, cookieOf, ownerOnly, shown } from './accounts.ts';
+import { backTo, barHtml, barLinks, barWords, SIGN_OUT_PATH, withBar } from './admin-bar.ts';
 import { shopGate } from './shop-gate.ts';
 import { extensionHost, type Spawn } from './extensions.ts';
 import { BUILT_ADMIN } from './built-admin.ts';
@@ -852,7 +853,7 @@ export async function startEditor(
     if (url.pathname === '/api/me' && request.method === 'PUT') {
       // Their own name, the few words about them (ADR 0055 d3) and their picture (ADR 0056 d2).
       if (!people) return json({ error: 'accounts are for a served admin' }, 404);
-      await store.setProfile(me.id, body.name, body.bio, body.picture ?? '');
+      await store.setProfile(me.id, body.name, body.bio, body.picture ?? '', body.bar);
       await people.changed();
       return json(await state((await store.user(me.id)) as User));
     }
@@ -1157,6 +1158,42 @@ export async function startEditor(
   }
 
   /**
+   * A page of the site, with the admin bar over it for a person signed in
+   * (ADR 0075). Only a request that carries a session is asked about: a
+   * visitor's page is the one the runtime made, untouched, with its headers.
+   * A page with the bar is that person's alone, so no cache keeps it.
+   */
+  async function barred(request: Request, url: URL, answered: Response): Promise<Response> {
+    if (!people || request.method !== 'GET' || !cookieOf(request)) return answered;
+    if (!(answered.headers.get('content-type') ?? '').startsWith('text/html') || ![200, 403, 404].includes(answered.status)) return answered;
+    const user = await people.user(request).catch(() => null);
+    // Someone who turned the bar off sees the site as a visitor does.
+    if (!user || user.bar === false) return answered;
+    const current = await store.site();
+    const language = current.adminLanguage || current.language;
+    const words = barWords(packFor(language));
+    const target = await site.editTarget(url.pathname);
+    const facts = {
+      target,
+      author: target && target.kind !== 'page' ? await store.entryAuthor(target.kind, target.main).catch(() => null) : null,
+      me: user.id,
+      posts: contentTypes(current).find((type) => type.id === POSTS_TYPE) ?? null,
+      changed: target ? await store.draftChanged(target.kind, target.main).catch(() => false) : false,
+    };
+    // What waits is the owner's and the editors' to see to.
+    // The orders are the owner's, and the editors' when the owner lets them (ADR 0065).
+    const shopNow = await site.shop.settings();
+    const orders = shopNow.on && (user.role === 'owner' || (user.role === 'editor' && shopNow.editors === true));
+    const waiting = writesAll(user.role) ? await store.waiting(orders).catch(() => ({ comments: 0, review: 0, orders: 0 })) : { comments: 0, review: 0, orders: 0 };
+    const person = { name: user.name || user.email, role: user.role };
+    const bar = barHtml(person, barLinks(person, facts, words, language), waiting, words, language, `${url.pathname}${url.search}`);
+    const headers = new Headers(answered.headers);
+    headers.delete('content-length');
+    headers.set('cache-control', 'private, no-store');
+    return new Response(withBar(await answered.text(), bar), { status: answered.status, headers });
+  }
+
+  /**
    * The admin's own addresses are never for search engines: whatever they answer, a page to
    * sign in or an error, carries noindex. The site's pages and its media are left as they are.
    */
@@ -1200,7 +1237,15 @@ export async function startEditor(
       const bytes = (await shippedFonts()).get(url.pathname.slice(FONTS_PATH.length));
       return bytes ? new Response(bytes as Uint8Array<ArrayBuffer>, { headers: { 'content-type': 'font/woff2', 'cache-control': 'public, max-age=86400', 'x-content-type-options': 'nosniff' } }) : json({ error: 'not found' }, 404);
     }
-    if (!ADMIN_PATHS.has(url.pathname) && !url.pathname.startsWith('/admin/') && !url.pathname.startsWith(MEDIA_PREFIX)) return site.fetch(request, ip);
+    if (!ADMIN_PATHS.has(url.pathname) && !url.pathname.startsWith('/admin/') && !url.pathname.startsWith(MEDIA_PREFIX)) return barred(request, url, await site.fetch(request, ip));
+    if (url.pathname === SIGN_OUT_PATH && request.method === 'POST' && people) {
+      // The admin bar's form (ADR 0075): the session ends, and the person is left on the page, as a visitor.
+      // A form from another site is refused; the cookie is SameSite=Strict, so it would not come with one either.
+      const origin = request.headers.get('origin');
+      if (origin && origin !== publicAddress) return json({ error: 'wrong origin' }, 403);
+      const fields = new URLSearchParams((await request.text()).slice(0, 4096));
+      return new Response(null, { status: 303, headers: { location: backTo(fields.get('back')), 'set-cookie': await people.signOut(request), 'cache-control': 'no-store' } });
+    }
     if (request.method !== 'GET') return json({ error: 'not found' }, 404);
     if (url.pathname.startsWith(MEDIA_PREFIX)) {
       // An <img> cannot carry the token, so a stored file is read without it. Its name is the hash of its bytes.

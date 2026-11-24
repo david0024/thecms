@@ -58,13 +58,14 @@ export function ownerOnly(method: string, path: string): boolean {
 }
 
 /** What the admin may know about the person signed in. */
-export const shown = (user: User): { id: string; email: string; name: string; role: Role; bio: string; picture: string } => ({
+export const shown = (user: User): { id: string; email: string; name: string; role: Role; bio: string; picture: string; bar: boolean } => ({
   id: user.id,
   email: user.email,
   name: user.name,
   role: user.role,
   bio: user.bio ?? '',
   picture: user.picture ?? '',
+  bar: user.bar !== false,
 });
 
 export function accounts(store: Store, publicAddress: string, shared: Shared = localShared()) {
@@ -103,6 +104,16 @@ export function accounts(store: Store, publicAddress: string, shared: Shared = l
     async setupLink(): Promise<string> {
       if (await hasOwner()) return '';
       return linkUrl(await store.makeLink('setup', '', SETUP_HOURS));
+    },
+
+    /** Ends the request's session, from the admin bar's form (ADR 0075): what to set so the browser forgets it. */
+    async signOut(request: Request): Promise<string> {
+      const secret = cookieOf(request);
+      if (secret) {
+        await store.endSession(secret);
+        await changed();
+      }
+      return cookie('', 0);
     },
 
     /** The person a request's session signs in, or null. */

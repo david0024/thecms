@@ -460,6 +460,8 @@ async function panel(which: 'site' | 'theme'): Promise<void> {
  */
 const AT = 'at';
 const SCREENS = new Set(['pages', 'sections', 'forms', 'layouts', 'media', 'messages', 'orders', 'coupons', 'backups', 'stats', 'comments', 'people', 'me', 'review', 'types', 'import', 'export', 'extensions']);
+/** A list asked to start a new page or entry at once (`#at=new/page`), until it has. */
+let adding = $state('');
 /** Set while an address is being followed, so following it does not write a new one. */
 let following = false;
 /** Addresses are written once the one the admin was opened at has been followed. */
@@ -471,7 +473,8 @@ $effect(() => {
   if (!routed || following) return;
   const params = new URLSearchParams(location.hash.slice(1));
   if (params.get(AT) === at) return;
-  const first = !params.has(AT);
+  // An address that only asks for something new (from the bar over the site) is not one to go back to.
+  const first = !params.has(AT) || (params.get(AT) ?? '').startsWith('new/');
   params.delete(AT);
   // Written by hand so the address reads as it is: `at=edit/page/about`, not `at=edit%2Fpage%2Fabout`.
   const rest = params.toString();
@@ -497,6 +500,16 @@ async function follow(): Promise<void> {
       themeMode = false;
       if (!page || next !== kind || slug !== page.slug) await open(slug, next);
       view = 'edit';
+    } else if (at.startsWith('new/')) {
+      // From the bar over the site (ADR 0075): the list, with the title of a new one asked at once.
+      const wanted = at.slice('new/'.length);
+      const listed = wanted === 'page' ? ((site.me.role === 'owner' || site.me.role === 'editor') ? 'pages' : '') : types.some((ty) => ty.id === wanted) ? `list:${wanted}` : '';
+      if (listed) {
+        if (siteMode) await toggleSite();
+        themeMode = false;
+        adding = wanted;
+        view = listed as typeof view;
+      }
     } else if (SCREENS.has(at) || (at.startsWith('list:') && types.some((ty) => `list:${ty.id}` === at)) || (at.startsWith('ext:') && site.extensions.some((e) => at.startsWith(`ext:${e.name}/`)))) {
       if (siteMode) await toggleSite();
       themeMode = false;
@@ -861,7 +874,7 @@ onMount(() => {
 
     {#if view === 'pages'}
       <div class="stack">
-        <ContentList kind="page" items={site.pages} site={site.site} onopen={(slug) => edit(slug, 'page')} layouts={site.site.layouts ?? READY_LAYOUTS} oncreate={(title, layout) => createPage(title, 'page', layout)} ontranslate={translatePage} />
+        <ContentList kind="page" items={site.pages} site={site.site} adding={adding === 'page'} onadding={() => (adding = '')} onopen={(slug) => edit(slug, 'page')} layouts={site.site.layouts ?? READY_LAYOUTS} oncreate={(title, layout) => createPage(title, 'page', layout)} ontranslate={translatePage} />
         <SiteCheck />
       </div>
     {:else if view === 'sections'}
@@ -874,7 +887,7 @@ onMount(() => {
       {@const listed = types.find((ty) => `list:${ty.id}` === view)}
       {#if listed}
         {#key listed.id}
-          <ContentList kind={listed.id} type={listed} items={listedOf(listed.id)} people={site.people} site={site.site} onopen={(slug) => edit(slug, listed.id)} oncreate={(title) => createPage(title, listed.id)} ontranslate={(slug, language) => translatePage(slug, language, listed.id)} />
+          <ContentList kind={listed.id} type={listed} adding={adding === listed.id} onadding={() => (adding = '')} items={listedOf(listed.id)} people={site.people} site={site.site} onopen={(slug) => edit(slug, listed.id)} oncreate={(title) => createPage(title, listed.id)} ontranslate={(slug, language) => translatePage(slug, language, listed.id)} />
         {/key}
       {/if}
     {:else if view === 'media'}
