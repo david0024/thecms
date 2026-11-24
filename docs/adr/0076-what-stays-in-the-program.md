@@ -110,18 +110,42 @@ program, each provider talks to the program only.
 7. Later: a publisher's signature on packages and a list of extensions on
    uhlaka.org (ADR 0026 "Not decided here").
 
-### d6. The parts made visible in the code
+### d6. Parts: our own code, shipped with the program, turned on like an extension
 
-The shop's and the visitor accounts' code moves under `src/parts/shop/` and
-`src/parts/visitors/`, each reaching the rest of the program by one module.
-What is the program and what is an optional part can then be read from the
-tree, and a part could leave for an extension later without finding its
-edges first.
+Zveltio has two kinds of extension. **First-party** (its 54 official ones)
+runs inside the engine, with the engine's database pool and transactions,
+trusted because the registry signed it; its reach beyond `host` is a named
+list a gate checks. **Third-party** runs on the runner, under a user of its
+own, through `host` only. Its shop and its Stripe billing are first-party.
+
+Uhlaka gets the useful half of that without a second contract: a **part**.
+A part is our own code that ships inside the program (so the program's own
+release is its signature, and no registry or check at load is needed), runs
+in the program's process with its tables and transactions, and is turned on
+and off by the owner. The Extensions screen lists the parts beside the
+extensions, so to the owner the shop is "an extension of Uhlaka" that is
+off until wanted; under the hood it is ADR 0060 d3.
+
+- The parts are the shop's base and visitor accounts with members; nothing
+  else unless the owner decides it.
+- The code moves under `src/parts/shop/` and `src/parts/visitors/`, each
+  reaching the program by one module, so the core can be read from the tree.
+- A part is never written by a third party, and no third-party extension
+  becomes a part: providers (Stripe, Netopia, couriers, e-Factura) stay
+  isolated extensions, since they hold the site's keys and talk to the world.
+
+What a full first-party tier (ours, installed separately, inline) would
+cost beyond this: a signature checked at every load (a name can be faked),
+a second interface into the program that can no longer change freely, a
+release and an update for each package, and the crash and memory of
+in-process code with none of the separation the owner was promised. That is
+what ADR 0060 d4 refused; a part has the same speed and the same
+reach, without those costs.
 
 ## Weighed and not proposed
 
 - **The shop's base as an extension now**: see d2. To revisit if a second
   shop (another model of selling) is ever wanted beside ours.
-- **First-party extensions inline**, as Zveltio's own: refused by ADR 0026
-  d1 and ADR 0060 d4, and nothing here needs them.
+- **A first-party tier installed apart**, as Zveltio's: see d6 for its cost;
+  the parts give its speed and reach without it.
 - **Rules as expressions (CEL)**: nothing in d3 needs them.
