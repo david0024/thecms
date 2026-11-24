@@ -32,6 +32,8 @@ export const en = {
   blockFailed: 'It could not be sent. Check each field and try again.',
   blockMissing: 'The extension that adds this block is not installed or is off. Choose another block in its settings, or turn the extension on.',
   languages: 'Languages',
+  schemeDark: 'Dark colours',
+  schemeLight: 'Light colours',
   comments: 'Comments',
   commentWrite: 'Leave a comment',
   comment: 'Comment',

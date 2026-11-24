@@ -11,7 +11,8 @@ import { Store } from '../src/site/store.ts';
 import plain from '../themes/plain.json';
 
 /** The page without its data for search engines: the one script element, which no browser runs (ADR 0030). */
-const withoutData = (html: string): string => html.replace(/<script type="application\/ld\+json">[^<]*<\/script>/g, '');
+// Data for search engines, and the switch of colours (ADR 0074 d4): the scripts a page may carry.
+const withoutData = (html: string): string => html.replace(/<script type="application\/ld\+json">[^<]*<\/script>/g, '').replace('<script src="/assets/scheme.js"></script>', '');
 
 const theme = parseTheme(plain).theme as Theme;
 const site = normalizeSite({ ...DEMO_SITE, url: 'https://example.com' });

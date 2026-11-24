@@ -11,6 +11,7 @@ import type { EntryLists } from '../blocks/editing.ts';
 import Layout from '../blocks/Layout.svelte';
 import PostLayout from '../blocks/PostLayout.svelte';
 import { ALTERNATES, wordsFor } from '../blocks/words.ts';
+import { SCHEME_SCRIPT_PATH } from './scheme.ts';
 import {
   type Alternate,
   type Byline,
@@ -43,6 +44,7 @@ import {
   organizationData,
   pagesIn,
   siteIn,
+  hasSchemeSwitch,
 } from '../core/index.ts';
 
 const esc = (v: string): string =>
@@ -76,6 +78,12 @@ const withAlternates = (alternates: Alternate[]) => new Map<string, unknown>([[A
  */
 const clean = (html: string): string => html.replace(/<!--(\[-?\d*|\]|)-->/g, '');
 
+/** The site as a page draws it under this theme: with the switch between light and dark when the theme follows the visitor (ADR 0074 d4). */
+export const withScheme = (site: Site, theme: Theme): Site => {
+  const { schemeSwitch: _was, ...rest } = site;
+  return hasSchemeSwitch(theme) ? { ...rest, schemeSwitch: true } : rest;
+};
+
 // Generated only from checked values (`blocksCss`); `</style` cannot occur in it.
 const own = (blocks: Block[], theme: Theme): string => blocksCss(blocks, theme);
 
@@ -84,6 +92,7 @@ const own = (blocks: Block[], theme: Theme): string => blocksCss(blocks, theme);
  * `editing`, text that can be typed on the page is marked for the editor.
  */
 export function renderParts(site: Site, theme: Theme, page: Page, menu: MenuItem[], editing = false, lists: EntryLists = {}, alternates: Alternate[] = []): { body: string; css: string } {
+  site = withScheme(site, theme);
   return { body: clean(render(Layout, { props: { site, page, menu, editing, lists }, context: withAlternates(alternates) }).body), css: own(page.blocks, theme) };
 }
 
@@ -102,6 +111,7 @@ export function renderPostParts(
   designing = false,
   alternates: Alternate[] = [],
 ): { body: string; css: string } {
+  site = withScheme(site, theme);
   return {
     body: clean(render(PostLayout, { props: { site, post, menu, editing, type, lists, template, designing, crumbs: crumbsOf(site, entryTrail(wordsFor(site.language).home, type, post)) }, context: withAlternates(alternates) }).body),
     css: own([...(template ?? []), ...post.blocks], theme),
@@ -171,6 +181,8 @@ function documentHtml(site: Site, head: Head, body: string, css: string): string
     ...(site.url ? (head.alternates ?? []).map((a) => `<link rel="alternate" hreflang="${esc(a.language)}" href="${esc(`${site.url}${a.href}`)}">`) : []),
     // The main home page is also where a visitor with none of these languages lands (ADR 0071 d3).
     site.url && head.path === '/' && (head.alternates ?? []).length ? `<link rel="alternate" hreflang="x-default" href="${esc(`${site.url}/`)}">` : '',
+    // The one script a page may carry, before the stylesheet so the visitor's choice is there at the first paint (ADR 0074 d4).
+    site.schemeSwitch ? `<script src="${SCHEME_SCRIPT_PATH}"></script>` : '',
     `<link rel="stylesheet" href="${STYLESHEET}">`,
     css ? `<style>${css}</style>` : '',
     structured(site, head.data),
@@ -179,6 +191,7 @@ function documentHtml(site: Site, head: Head, body: string, css: string): string
 }
 
 export function renderPage(site: Site, theme: Theme, page: Page, menu: MenuItem[], lists: EntryLists = {}, alternates: Alternate[] = []): string {
+  site = withScheme(site, theme);
   const { body, css } = renderParts(site, theme, page, menu, false, lists, alternates);
   return documentHtml(
     site,
@@ -217,6 +230,7 @@ export function renderPost(
   template: Block[] | null = null,
   alternates: Alternate[] = [],
 ): string {
+  site = withScheme(site, theme);
   const { body, css } = renderPostParts(site, theme, post, menu, false, type, lists, template, false, alternates);
   const trail = breadcrumbData(site.url, entryTrail(wordsFor(site.language).home, type, post));
   // An event or a product, and the questions the entry answers (ADR 0061 d1, d3).

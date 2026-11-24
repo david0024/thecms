@@ -12,7 +12,7 @@ h1{font-size:min(var(--t-size-3xl),11vw)}
 h2{font-size:min(var(--t-size-2xl),9vw)}
 h3{font-size:var(--t-size-lg)}
 p{margin:0 0 var(--t-space-sm)}
-a{color:var(--t-color-primary)}
+a{color:var(--t-color-link,var(--t-color-primary))}
 img{max-width:100%;height:auto;display:block}
 .lead{font-size:var(--t-size-lg);color:var(--t-color-muted)}
 .lines{white-space:pre-line}
@@ -31,6 +31,14 @@ img{max-width:100%;height:auto;display:block}
 .site-languages a:hover{text-decoration:underline}
 .site-languages a[aria-current]{opacity:1;font-weight:700}
 .lang-short{display:none}
+/* The switch between light and dark colours (ADR 0074 d4): it offers the scheme the page is not in; the theme's stylesheet says which. */
+.scheme-switch{display:inline-flex;align-items:center;justify-content:center;width:2.25rem;height:2.25rem;padding:0;border:1px solid color-mix(in srgb,currentColor 35%,transparent);border-radius:999px;background:none;color:inherit;cursor:pointer}
+.scheme-switch[hidden]{display:none}
+.scheme-switch:hover{border-color:currentColor}
+.scheme-switch:focus-visible{outline:2px solid currentColor;outline-offset:2px}
+.scheme-switch svg{width:1.15rem;height:1.15rem;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.scheme-to-light,.scheme-to-dark{display:inline-flex}
+.scheme-label{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 .site-footer p{margin:0}
 
 /* A layout (ADR 0035): how wide the blocks run, and a sidebar beside them. A block's own width still wins. */
@@ -64,12 +72,12 @@ img{max-width:100%;height:auto;display:block}
 .hero-image{border-radius:var(--t-radius-lg);width:100%}
 /* A hero in its theme's colours: its lead follows the hero's text colour, a little softer (ADR 0068 d2). */
 .hero .lead{color:color-mix(in srgb,currentColor 82%,transparent)}
-.eyebrow{font-size:var(--t-size-sm);font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--t-color-primary)}
+.eyebrow{font-size:var(--t-size-sm);font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--t-color-link,var(--t-color-primary))}
 .b-hero{--b-width:var(--t-width-wide);padding-block:var(--t-space-xl)}
 
 .prose>:last-child{margin-bottom:0}
 .prose h2,.prose h3,.prose h4{margin-top:var(--t-space-md)}
-.prose blockquote{margin:var(--t-space-md) 0;padding-inline-start:var(--t-space-md);border-inline-start:3px solid var(--t-color-primary);color:var(--t-color-muted)}
+.prose blockquote{margin:var(--t-space-md) 0;padding-inline-start:var(--t-space-md);border-inline-start:3px solid var(--t-color-link,var(--t-color-primary));color:var(--t-color-muted)}
 .prose code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.9em;background:var(--t-color-surface);padding:.1em .35em;border-radius:var(--t-radius-sm)}
 .b-text{--b-width:var(--t-width-narrow)}
 
@@ -119,16 +127,16 @@ img{max-width:100%;height:auto;display:block}
 .form-field{display:grid;gap:.3em}
 .form-field label{font-weight:600}
 .form input[type=text],.form input[type=password],.form input[type=email],.form input[type=tel],.form input[type=number],.form input[type=date],.form select,.form textarea{font:inherit;color:inherit;background:var(--t-color-background);border:1px solid var(--t-color-border);border-radius:var(--t-radius-sm);padding:.6em .75em;width:100%}
-.form input:focus-visible,.form select:focus-visible,.form textarea:focus-visible{outline:2px solid var(--t-color-primary);outline-offset:1px}
+.form input:focus-visible,.form select:focus-visible,.form textarea:focus-visible{outline:2px solid var(--t-color-link,var(--t-color-primary));outline-offset:1px}
 .form fieldset{border:0;margin:0;padding:0;display:grid;gap:.3em}
 .form legend{font-weight:600;padding:0;margin-bottom:.2em}
 .form-choice{display:flex;gap:.5em;align-items:baseline;font-weight:400}
-.form-required{color:var(--t-color-primary);margin-inline-start:.2em}
+.form-required{color:var(--t-color-link,var(--t-color-primary));margin-inline-start:.2em}
 .form-consent{display:flex;gap:.6em;align-items:flex-start;font-size:var(--t-size-sm)}
 .form-consent input{margin-top:.3em}
 .form button{font:inherit;border:0;cursor:pointer}
 .form-trap{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
-.form-note{display:none;padding:var(--t-space-sm) var(--t-space-md);border-radius:var(--t-radius-md);background:var(--t-color-surface);border-inline-start:3px solid var(--t-color-primary);margin:var(--t-space-sm) 0 0}
+.form-note{display:none;padding:var(--t-space-sm) var(--t-space-md);border-radius:var(--t-radius-md);background:var(--t-color-surface);border-inline-start:3px solid var(--t-color-link,var(--t-color-primary));margin:var(--t-space-sm) 0 0}
 .form-note:target,.form-note.shown{display:block}
 .form-failed{border-color:currentColor}
 .b-form,.b-extension{--b-width:var(--t-width-narrow)}
@@ -224,7 +232,7 @@ summary.faq-question{cursor:pointer}
 .menu li{position:relative}
 .menu li.mega{position:static}
 .menu a,.menu summary{color:inherit;text-decoration:none}
-.menu a[aria-current],.menu summary.current{color:var(--t-color-primary)}
+.menu a[aria-current],.menu summary.current{color:var(--t-color-link,var(--t-color-primary))}
 .menu summary{cursor:pointer;list-style:none}
 .menu summary::-webkit-details-marker{display:none}
 .menu summary::after{content:"";display:inline-block;margin-inline-start:.4em;border:.3em solid transparent;border-top-color:currentColor;border-bottom:0;vertical-align:middle}
@@ -242,13 +250,14 @@ summary.faq-question{cursor:pointer}
 [data-sidebar="left"] .layout-aside{order:0}
 .menu-check{display:block;position:absolute;opacity:0;width:1px;height:1px}
 .menu-button{display:inline-block;cursor:pointer;padding:.4em .9em;border:1px solid var(--t-color-border);border-radius:var(--t-radius-sm)}
-.menu-check:focus-visible+.menu-button{outline:2px solid var(--t-color-primary);outline-offset:2px}
+.menu-check:focus-visible+.menu-button{outline:2px solid var(--t-color-link,var(--t-color-primary));outline-offset:2px}
 .site-in{flex-direction:row;justify-content:space-between;align-items:center}
 .site-nav{display:none;flex-basis:100%;flex-direction:column;align-items:stretch;text-align:start}
 .menu-check:checked~.site-nav{display:flex}
 /* The languages stay in the header's row, as short codes, between the name and the menu button (ADR 0071 d2). */
 .site-name{order:0;margin-inline-end:auto}
 .site-languages{order:1;flex-wrap:nowrap;gap:var(--t-space-sm)}
+.scheme-switch{order:1}
 .menu-check,.menu-button{order:2}
 .site-nav{order:3}
 .site-languages .lang-long{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}

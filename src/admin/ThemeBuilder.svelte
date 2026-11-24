@@ -10,6 +10,14 @@
 import {
   BLOCK_TYPES,
   type BlockStyle,
+  contrastIssues,
+  otherPalette,
+  otherScheme,
+  ownScheme,
+  proposePalette,
+  shownBy,
+  SHOWS,
+  type Shows,
   type BlockType,
   FONT_STACKS,
   FOOTER_ARRANGEMENTS,
@@ -22,10 +30,19 @@ import {
   TOKEN_GROUPS,
   type TokenGroup,
 } from '../core/index.ts';
-import { t } from './messages.ts';
+import { say, t } from './messages.ts';
 import StyleEditor from './StyleEditor.svelte';
 
-let { theme, onchange }: { theme: Theme; onchange: (theme: Theme) => void } = $props();
+let {
+  theme,
+  onchange,
+  handPicked = 0,
+}: {
+  theme: Theme;
+  onchange: (theme: Theme) => void;
+  /** Colours chosen by hand on the page in the canvas: they follow neither scheme (ADR 0074 d5). */
+  handPicked?: number;
+} = $props();
 
 /** What is typed in a field but not valid yet, by field. */
 let drafts = $state<Record<string, string>>({});
@@ -69,7 +86,54 @@ function addToken(group: TokenGroup): void {
   if (apply((d) => { d.tokens[group][name] = value; })) delete adding[group];
 }
 
-const removeToken = (group: TokenGroup, name: string): boolean => apply((d) => { delete d.tokens[group][name]; });
+const removeToken = (group: TokenGroup, name: string): boolean =>
+  apply((d) => {
+    delete d.tokens[group][name];
+    // The second palette names only tokens the theme has.
+    if (group === 'color') delete d[otherScheme(d)]?.color[name];
+  });
+
+/* Light and dark (ADR 0074 d2, d5). */
+const other = $derived(otherScheme(theme));
+const palette = $derived(otherPalette(theme));
+const shows = $derived(shownBy(theme));
+const unreadable = $derived(contrastIssues(theme));
+
+const setShows = (next: Shows): boolean =>
+  apply((d) => {
+    if (next === ownScheme(d)) delete d.shows;
+    else d.shows = next;
+  });
+
+/** "Make the dark colours for me": a palette made from the theme's own; `link` joins the theme's colours when it has none. */
+function propose(): void {
+  const { palette: made, link } = proposePalette(theme);
+  apply((d) => {
+    if (link) d.tokens.color.link = link;
+    d[otherScheme(d)] = { color: made };
+  });
+}
+
+function setOther(name: string, value: string): void {
+  const key = `${other}.${name}`;
+  if (isFreeValue('color', value)) {
+    delete drafts[key];
+    apply((d) => {
+      const scheme = otherScheme(d);
+      d[scheme] = { color: { ...d[scheme]?.color, [name]: value } };
+    });
+  } else {
+    drafts[key] = value;
+  }
+}
+
+const removeOther = (): boolean =>
+  apply((d) => {
+    delete d[otherScheme(d)];
+    delete d.shows;
+  });
+
+const otherShown = (name: string): string => drafts[`${other}.${name}`] ?? palette?.[name] ?? theme.tokens.color[name] ?? '';
 
 const setBlockStyle = (style: BlockStyle): boolean =>
   apply((d) => {
@@ -150,6 +214,54 @@ const hex6 = (value: string): string => (/^#[0-9a-f]{6}$/i.test(value) ? value :
 </label>
 
 {#if problem}<p class="bad problem" role="alert">{problem}</p>{/if}
+
+<details open data-theme-schemes>
+  <summary>{t.theme.schemes.heading}</summary>
+  <fieldset class="shows">
+    <legend>{t.theme.schemes.shows}</legend>
+    {#each SHOWS as option (option)}
+      <label class="check">
+        <input type="radio" name="theme-shows" value={option} checked={shows === option} disabled={option !== ownScheme(theme) && !palette} onchange={() => setShows(option)} data-theme-shows={option} />
+        <span>{t.theme.schemes[option]}</span>
+      </label>
+    {/each}
+  </fieldset>
+  {#if shows === 'visitor'}<p class="hint">{t.theme.schemes.visitorHint}</p>{/if}
+  {#if !palette}
+    <p class="hint">{t.theme.schemes.only[ownScheme(theme)]}</p>
+    <button type="button" onclick={propose} data-theme-propose>{t.theme.schemes.propose[other]}</button>
+  {:else}
+    <h3>{t.theme.schemes.colors[other]}</h3>
+    <p class="hint">{t.theme.schemes.colorsHint}</p>
+    {#each Object.keys(theme.tokens.color) as name (name)}
+      <div class="token">
+        <label>
+          <span>{name}</span>
+          <span class="custom">
+            <input type="color" value={hex6(otherShown(name))} oninput={(e) => setOther(name, e.currentTarget.value)} aria-label={`${t.theme.schemes.colors[other]}: ${name}`} />
+            <input type="text" value={otherShown(name)} oninput={(e) => setOther(name, e.currentTarget.value.trim())} aria-invalid={`${other}.${name}` in drafts} data-other-token={name} />
+          </span>
+        </label>
+        {#if `${other}.${name}` in drafts}<small class="bad">{t.style.invalid}</small>{/if}
+      </div>
+    {/each}
+    <p class="row">
+      <button type="button" class="quiet" onclick={propose} data-theme-propose>{t.theme.schemes.proposeAgain}</button>
+      <button type="button" class="quiet" onclick={removeOther} data-theme-remove-other>{t.theme.schemes.remove}</button>
+    </p>
+  {/if}
+  {#if unreadable.length}
+    <div class="unreadable" role="status" data-contrast>
+      <strong>{t.theme.schemes.unreadable}</strong>
+      <ul>
+        {#each unreadable as issue}<li>{say(t.theme.schemes.pair, { text: issue.text, on: issue.on, scheme: issue.scheme === 'dark' ? t.theme.schemes.previewDark : t.theme.schemes.previewLight, ratio: issue.ratio.toLocaleString() })}</li>{/each}
+      </ul>
+    </div>
+  {:else}
+    <p class="hint good" data-contrast="ok">{t.theme.schemes.readable}</p>
+  {/if}
+  {#if handPicked > 0 && palette}<p class="hint" data-hand-picked>{say(t.theme.schemes.handPicked, { count: handPicked })}</p>{/if}
+</details>
 
 {#each TOKEN_GROUPS as group (group)}
   <details open={group === 'color'}>
@@ -293,5 +405,12 @@ const hex6 = (value: string): string => (/^#[0-9a-f]{6}$/i.test(value) ? value :
   .token.add { padding-top: 0.5rem; border-top: 1px dashed #dddbe6; }
   .check { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.8rem; }
   .check span { margin: 0; }
+  .shows { border: 0; padding: 0; margin: 0 0 0.4rem; }
+  .shows legend { font-weight: 600; font-size: 13px; margin-bottom: 0.4rem; }
+  .shows .check { align-items: flex-start; margin-bottom: 0.4rem; }
+  .row { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+  .unreadable { margin-top: 0.6rem; padding: 0.5rem 0.6rem; border-radius: 6px; background: #fff4e5; }
+  .unreadable ul { margin: 0.3rem 0 0; padding-inline-start: 1.1rem; }
+  .good { color: #1f6b3a; }
   h3 { display: flex; align-items: center; justify-content: space-between; margin: 0.9rem 0 0.5rem; font-size: 13px; }
 </style>

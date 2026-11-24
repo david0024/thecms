@@ -33,7 +33,8 @@ Rules that keep the site editable and good-looking:
   if one fits.
 - **A theme is a document.** To give the site one, copy a file from
   [`themes/`](themes/) into `theme.published` (Atelier, Studio, Plain). Do not
-  invent token names.
+  invent token names. Each has light and dark colours and follows the
+  visitor's device (`"shows": "visitor"`); leave that as it is.
 - **Pictures** are `{ "src": "https://…", "alt": "…" }`, or files carried in
   `media`. Every picture says what it shows in `alt`.
 - **Every page** gets a `description` (one or two sentences, for search

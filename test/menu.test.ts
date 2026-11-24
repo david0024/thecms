@@ -98,7 +98,8 @@ describe('the menu on the page', () => {
 
   test('an item that holds others opens without script, and its own page is the first link inside', async () => {
     expect(html).toContain('<li><details name="site-menu"><summary class="current">More</summary><div class="sub"><ul><li><a href="/about/" aria-current="page">More</a></li><li><a href="https://example.org/">Elsewhere</a></li></ul></div></details></li>');
-    expect(html).not.toContain('<script');
+    // The one script is the switch of colours (ADR 0074 d4); the menu needs none.
+    expect(html.replace('<script src="/assets/scheme.js"></script>', '')).not.toContain('<script');
   });
 
   test('a wide menu has a column for each sub-item; what the owner typed is text', async () => {

@@ -39,6 +39,10 @@ ever breaking it.
 - A header, a footer and menus (with sub-menus and wide menus), from the site's
   settings and the theme.
 - Sections written once and shown on many pages.
+- Light and dark: every theme Uhlaka ships has both, and a site follows what
+  the visitor's phone or computer is set to, with a sun or a moon in the header
+  to turn it. That switch is the one small script a site carries, from the site
+  itself; it keeps the choice only in the visitor's browser.
 
 **Content**
 - Your own kinds of content: a blog, projects, a team, events, each with its

@@ -74,6 +74,8 @@ export interface Site {
   breadcrumbs?: false;
   /** False: the home page always opens in the main language (ADR 0071 d4). Absent: a first visit opens it in the visitor's language. */
   visitorLanguage?: false;
+  /** True while the theme follows the visitor (ADR 0074 d4): the header has the switch, and the page the script that turns it. Filled in to draw a page, never kept. */
+  schemeSwitch?: true;
   /** True on a site its own server serves (ADR 0071 d2): the language switcher remembers the visitor's choice. Filled in to draw a page, never kept. */
   served?: boolean;
   /** The codes Google and Bing give to prove the site is the owner's (ADR 0058 d4): each absent until set. */

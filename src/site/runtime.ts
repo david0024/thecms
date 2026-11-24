@@ -56,6 +56,7 @@ const TYPES: Record<string, string> = {
   xml: 'application/xml; charset=utf-8',
   txt: 'text/plain; charset=utf-8',
   json: 'application/json; charset=utf-8',
+  js: 'text/javascript; charset=utf-8',
   png: 'image/png',
   jpg: 'image/jpeg',
   gif: 'image/gif',
@@ -80,10 +81,10 @@ const refererOf = (request: Request): string => {
 /** The export's files no visitor is served: the lists a host reads, and the export's own marker. */
 const HIDDEN = new Set(['_redirects', '.htaccess']);
 
-/** The published site needs no script and loads nothing from elsewhere: the page says so to the browser. */
+/** The published site loads nothing from elsewhere, and no script but its own switch of colours (ADR 0074 d4): the page says so to the browser. */
 const HEADERS = {
   // Sound and video from the site itself; players only from the services a page may show (ADR 0047).
-  'content-security-policy': `default-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:; font-src 'self'; media-src 'self'; frame-src ${EMBED_ORIGINS.join(' ')}; base-uri 'none'; frame-ancestors 'none'`,
+  'content-security-policy': `default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:; font-src 'self'; media-src 'self'; frame-src ${EMBED_ORIGINS.join(' ')}; base-uri 'none'; frame-ancestors 'none'`,
   'x-content-type-options': 'nosniff',
   'referrer-policy': 'strict-origin-when-cross-origin',
 };

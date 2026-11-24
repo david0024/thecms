@@ -1,6 +1,6 @@
 # ADR 0074 — Dark mode: a second palette in each theme, and a switch on the site
 
-- **Status:** Proposed (Liviu asked for it on 2026-11-24: dark mode in the themes, "si butonul de comutare cu implicit pe valoarea din calculatorul userului"; the script of d4 and its place in the documentation, "da fa-o, dar trece si in documentatie", Liviu, the same day; waits for David)
+- **Status:** Accepted ("Ai acordul lui David", Liviu, 2026-11-24). Liviu asked for it the same day: dark mode in the themes, "si butonul de comutare cu implicit pe valoarea din calculatorul userului"; the script of d4 and its place in the documentation, "da fa-o, dar trece si in documentatie".
 - **Date:** 2026-11-24
 - **Builds on:** ADR 0002 d2 (tokens; dark mode left for later), ADR 0004 (the theme builder; a check of contrast left for later), ADR 0044 (the site is served, with a cache), ADR 0053 (nothing stored in the visitor's browser without a reason; no banner), ADR 0068 (Atelier), ADR 0071 (the language switcher and its cookie)
 
@@ -42,6 +42,11 @@ on the page's background (`a`, the eyebrow, the current menu item). Where a
 theme has no `link`, `primary` is used, as today. It exists because a dark
 palette needs a light blue for text and a deep blue behind white text, and
 `primary` cannot be both.
+
+A band with its own background and text colour (a hero, Atelier's header)
+has its links and accents in that text colour: `link` is made for the page's
+background, not the band's. (Before this, Atelier's eyebrow and current menu
+item were drawn in its blue on its blue.)
 
 ### d2. The owner picks one of three, on the Theme screen
 
@@ -122,8 +127,9 @@ script a page may have is `/assets/scheme.js`, and only with the switch on.
   own pair a theme sets) are measured. A pair under 4.5 : 1 (WCAG AA) is
   marked, with the two colours named. It warns; it does not refuse.
 - **Colours picked by hand.** A free colour on a block does not follow a
-  theme, so it stays the same in dark. The Theme screen says how many there
-  are, beside "reset to theme", as it does now for a theme change.
+  theme, so it stays the same in dark. The theme builder says how many the
+  page in the canvas has, and that "Reset to theme" on a block makes them
+  follow.
 
 ### d6. Atelier, Plain and Studio ship with both palettes
 
