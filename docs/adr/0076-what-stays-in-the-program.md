@@ -126,8 +126,19 @@ and off by the owner. The Extensions screen lists the parts beside the
 extensions, so to the owner the shop is "an extension of Uhlaka" that is
 off until wanted; under the hood it is ADR 0060 d3.
 
-- The parts are the shop's base and visitor accounts with members; nothing
-  else unless the owner decides it.
+- **The list of parts is closed and small**: the shop's base and visitor
+  accounts with members. A part is added only by a new record the owner
+  accepts, and only for what several extensions hang on. **Every new
+  feature is an installable extension**: the site's owner adds it from a
+  file, without updating Uhlaka (unless it needs a newer extension format),
+  and a site that does not install it carries none of it.
+- A part that is off runs nothing: its module is not imported, its tables
+  do not exist, its addresses answer 404 (ADR 0060 d3; guarded by "the
+  shop, off" and "visitor accounts, off" in the tests). Only its tables'
+  definitions, a few lines of text, are read at start.
+- Many extensions installed do not weigh on the server either: each one's
+  process starts when one of its actions runs and stops after five minutes
+  unused (ADR 0026 d4).
 - The code moves under `src/parts/shop/` and `src/parts/visitors/`, each
   reaching the program by one module, so the core can be read from the tree.
 - A part is never written by a third party, and no third-party extension
