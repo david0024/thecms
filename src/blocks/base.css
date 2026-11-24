@@ -30,6 +30,7 @@ img{max-width:100%;height:auto;display:block}
 .site-languages a{color:inherit;text-decoration:none;opacity:.75}
 .site-languages a:hover{text-decoration:underline}
 .site-languages a[aria-current]{opacity:1;font-weight:700}
+.lang-short{display:none}
 .site-footer p{margin:0}
 
 /* A layout (ADR 0035): how wide the blocks run, and a sidebar beside them. A block's own width still wins. */
@@ -245,6 +246,13 @@ summary.faq-question{cursor:pointer}
 .site-in{flex-direction:row;justify-content:space-between;align-items:center}
 .site-nav{display:none;flex-basis:100%;flex-direction:column;align-items:stretch;text-align:start}
 .menu-check:checked~.site-nav{display:flex}
+/* The languages stay in the header's row, as short codes, between the name and the menu button (ADR 0071 d2). */
+.site-name{order:0;margin-inline-end:auto}
+.site-languages{order:1;flex-wrap:nowrap;gap:var(--t-space-sm)}
+.menu-check,.menu-button{order:2}
+.site-nav{order:3}
+.site-languages .lang-long{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.site-languages .lang-short{display:inline;letter-spacing:.04em}
 .menu{flex-direction:column;align-items:stretch}
 .sub,.mega .sub{position:static;margin-top:var(--t-space-xs)}
 .menu details[open]>summary::before{content:none}

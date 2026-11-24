@@ -84,6 +84,13 @@ import Redirects from './Redirects.svelte';
   {/if}
   <small>{t.site.otherLanguagesHint}</small>
 </fieldset>
+{#if site.languages.length}
+  <label class="check">
+    <input type="checkbox" checked={site.visitorLanguage !== false} onchange={(e) => set({ visitorLanguage: e.currentTarget.checked ? undefined : false })} data-site-visitor-language />
+    <span>{t.site.visitorLanguage}</span>
+  </label>
+  <small>{t.site.visitorLanguageHint}</small>
+{/if}
 <label class="field">
   <span>{t.site.adminLanguage}</span>
   <select

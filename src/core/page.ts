@@ -72,6 +72,10 @@ export interface Site {
   shareImage?: ImageValue;
   /** False: the breadcrumbs are said to search engines and not shown (ADR 0050 d4). Absent: shown. */
   breadcrumbs?: false;
+  /** False: the home page always opens in the main language (ADR 0071 d4). Absent: a first visit opens it in the visitor's language. */
+  visitorLanguage?: false;
+  /** True on a site its own server serves (ADR 0071 d2): the language switcher remembers the visitor's choice. Filled in to draw a page, never kept. */
+  served?: boolean;
   /** The codes Google and Bing give to prove the site is the owner's (ADR 0058 d4): each absent until set. */
   verify?: { google?: string; bing?: string };
   /** The owner's own lines for `robots.txt`, after the program's (ADR 0058 d5). Absent: none. */
@@ -163,6 +167,7 @@ export function normalizeSite(input: unknown): Site {
     ...(Array.isArray(raw.layouts) ? { layouts: normalizeLayouts(raw.layouts) } : {}),
     ...(cleanImage(raw.shareImage) ? { shareImage: cleanImage(raw.shareImage) as ImageValue } : {}),
     ...(raw.breadcrumbs === false ? { breadcrumbs: false as const } : {}),
+    ...(raw.visitorLanguage === false ? { visitorLanguage: false as const } : {}),
     ...cleanVerify(raw.verify),
     ...(cleanRobots(raw.robots) ? { robots: cleanRobots(raw.robots) } : {}),
     ...(cleanBusiness(raw.business) ? { business: cleanBusiness(raw.business) } : {}),

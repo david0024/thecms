@@ -169,6 +169,8 @@ function documentHtml(site: Site, head: Head, body: string, css: string): string
     head.feed ? `<link rel="alternate" type="application/atom+xml" title="${esc(site.name)}" href="${head.feed}">` : '',
     // Search engines are told where each language's page is; only with the site's address, as they want it whole.
     ...(site.url ? (head.alternates ?? []).map((a) => `<link rel="alternate" hreflang="${esc(a.language)}" href="${esc(`${site.url}${a.href}`)}">`) : []),
+    // The main home page is also where a visitor with none of these languages lands (ADR 0071 d3).
+    site.url && head.path === '/' && (head.alternates ?? []).length ? `<link rel="alternate" hreflang="x-default" href="${esc(`${site.url}/`)}">` : '',
     `<link rel="stylesheet" href="${STYLESHEET}">`,
     css ? `<style>${css}</style>` : '',
     structured(site, head.data),

@@ -129,7 +129,7 @@ describe('the published site in more than one language', () => {
     expect(roAbout).toContain('<link rel="alternate" hreflang="en" href="https://atelier.example/about/">');
     expect(roAbout).toContain('<link rel="alternate" hreflang="ro" href="https://atelier.example/ro/about/">');
     expect(roAbout).not.toContain('hreflang="pt-BR" href');
-    expect(roAbout).toMatch(/<nav class="site-languages" aria-label="Limbi">.*href="\/about\/" hreflang="en" lang="en">English<\/a>.*aria-current="true">Română<\/a>.*href="\/pt-br\/"/s);
+    expect(roAbout).toMatch(/<nav class="site-languages" aria-label="Limbi">.*href="\/about\/" hreflang="en" lang="en"><span class="lang-long">English<\/span>.*aria-current="true"><span class="lang-long">Română<\/span>.*href="\/pt-br\/"/s);
     // The Romanian menu has the Romanian pages, and no blog: posts are in the main language.
     expect(roAbout).toContain('href="/ro/about/"');
     expect(roAbout).not.toContain('href="/blog/"');

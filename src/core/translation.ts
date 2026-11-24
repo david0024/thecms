@@ -156,3 +156,36 @@ export function siteIn(site: Site, language: string, pages: Placed[] = []): Site
     types: site.types.map((type) => typeIn(site, type, language)),
   };
 }
+
+/** The cookie that keeps the language a visitor chose with the switcher (ADR 0071 d2). It holds that language and nothing else. */
+export const LANGUAGE_COOKIE = 'uhlaka-lang';
+
+/** Where the switcher leads on a served site: an address that keeps the choice, then goes on to the page (ADR 0071 d2). */
+export const choicePath = (language: string, to: string): string => `/_/language?l=${encodeURIComponent(language)}&to=${encodeURIComponent(to)}`;
+
+/**
+ * The language a browser asks for, among the site's (ADR 0071 d3): the first
+ * of `Accept-Language`, by weight, that the site has, by its whole tag
+ * (`pt-BR`) or by its first part (`ro-RO` is `ro`, `pt` is `pt-BR`). Null when
+ * the browser says nothing, or asks for none of them.
+ */
+export function preferredLanguage(accept: string, languages: string[]): string | null {
+  const asked = accept
+    .split(',')
+    .slice(0, 20)
+    .map((part, order) => {
+      const [tag = '', ...params] = part.trim().split(';');
+      const q = params.map((p) => /^\s*q=([0-9.]+)\s*$/.exec(p)?.[1]).find((v) => v !== undefined);
+      return { tag: tag.trim().toLowerCase(), weight: q === undefined ? 1 : Number(q), order };
+    })
+    .filter((a) => a.tag && a.tag !== '*' && a.weight > 0 && Number.isFinite(a.weight))
+    .sort((a, b) => b.weight - a.weight || a.order - b.order);
+  const first = (tag: string): string => tag.split('-')[0] ?? tag;
+  for (const { tag } of asked) {
+    const whole = languages.find((l) => l.toLowerCase() === tag);
+    if (whole) return whole;
+    const part = languages.find((l) => first(l.toLowerCase()) === first(tag));
+    if (part) return part;
+  }
+  return null;
+}
