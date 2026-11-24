@@ -8,7 +8,7 @@
 import { applyPack, type Catalog, format, isPlural, type LanguagePack, type Message, type Plural } from '../core/language.ts';
 
 export const en = {
-  app: { pages: 'Pages', blocks: 'Add a block', blocksHint: 'Click to add, or drag onto the page.', tooDeep: 'Groups nest at most four deep; it cannot go there.', newPage: 'New page', pageTitle: 'Page title', create: 'Create', cancel: 'Cancel', home: 'Home page' },
+  app: { pages: 'Pages', blocks: 'Add a block', blocksHint: 'Click to add, or drag onto the page.', blockSearch: 'Search for a block', noBlock: 'No block is called that.', tooDeep: 'Groups nest at most four deep; it cannot go there.', newPage: 'New page', pageTitle: 'Page title', create: 'Create', cancel: 'Cancel', home: 'Home page' },
   nav: { pages: 'Pages', posts: 'Posts', media: 'Media', messages: 'Messages', comments: 'Comments', settings: 'Menu and settings', theme: 'Theme', label: 'Sections', back: 'All', forms: 'Forms', import: 'Import', export: 'Export', people: 'People', sections: 'Sections', layouts: 'Layouts', backups: 'Backups', stats: 'Statistics', me: 'Me', review: 'To review', orders: 'Orders', viewSite: 'View site' },
   door: {
     key: 'Open the address that the editor printed when it started; it carries the key to this editor.',
@@ -1015,6 +1015,10 @@ export const en = {
     upload: 'Upload a theme file',
     notATheme: 'This file is not a valid theme.',
   },
+  blockGroups: { text: "Text", media: "Pictures and media", ready: "Ready-made sections", forms: "Forms and search", lists: "Lists", layout: "Layout", extensions: "From extensions" } as Record<string, string>,
+  /** A shorter name for a block in "Add a block", where the full one does not fit on a line; the rest use their name. */
+  blockNames: { form: "Form", faq: "FAQ", embed: "YouTube, map…", entries: "Latest entries", archive: "By month", entry: "Entry part", section: "Reusable" } as Record<string, string>,
+  blockHints: { hero: "The big opening of a page: a title, a few words and buttons", text: "Headings and paragraphs", image: "One picture", services: "Cards side by side: what you offer", contact: "Address, phone and e-mail", form: "A form visitors fill in", search: "A box to search the site", gallery: "Several pictures in a grid", faq: "Questions and answers, each opening its answer", testimonials: "What people said about you", pricing: "Plans and their prices", buttons: "One or more buttons", table: "Rows and columns", code: "Code, shown as it is written", embed: "Video, song or map from another site (YouTube, Vimeo, Spotify, Google Maps)", video: "A video file uploaded here", audio: "A sound file uploaded here", files: "Documents to download", entries: "The latest posts or entries of a type", archive: "Posts by month", entry: "A part of the entry: title, picture, fields", section: "A section written once and shown on many pages", group: "Blocks kept together, side by side or one under another" } as Record<string, string>,
   types: { hero: 'Hero', text: 'Text', image: 'Image', services: 'Services', contact: 'Contact', form: 'Contact form', extension: 'From an extension', search: 'Search', gallery: 'Gallery', faq: 'Questions and answers', testimonials: 'Testimonials', pricing: 'Prices', buttons: 'Buttons', table: 'Table', code: 'Code', embed: 'Video, song or map from another site', video: 'Video', audio: 'Sound', files: 'Documents', entries: 'List of entries', archive: 'Archive by month', entry: 'Part of the entry', section: 'Section', group: 'Group' } as Record<string, string>,
   fields: {
     code: 'Code, as it is written',

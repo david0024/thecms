@@ -16,7 +16,6 @@ import {
   listPath,
   type MenuList,
   POSTS_TYPE,
-  BLOCK_TYPES,
   ENTRY_PARTS,
   type BlockDef,
   BLOCKS,
@@ -56,6 +55,7 @@ import { api, signedIn, type Doc, type Kind, type PostInfo, type State, type Tra
 import ContentList from './ContentList.svelte';
 import Layouts from './Layouts.svelte';
 import { layoutName } from './layouts.ts';
+import { BLOCK_GROUPS, BLOCK_WORDS, matches } from './blockGroups.ts';
 import Extensions from './Extensions.svelte';
 import ExtensionScreen from './ExtensionScreen.svelte';
 import { findView } from '../view/index.ts';
@@ -331,6 +331,20 @@ const extensionBlocks = $derived(
   (site?.extensions ?? [])
     .filter((e) => e.enabled)
     .flatMap((e) => (e.blocks ?? []).map((b) => ({ id: `${e.name}/${b.name}`, label: e.messages[adminLanguage()]?.[b.label] || e.messages[adminLanguage().split('-')[0] ?? '']?.[b.label] || b.label }))),
+);
+
+/** What is typed in the search over "Add a block" (ADR 0073). */
+let blockQuery = $state('');
+/** The blocks offered, group by group, as the search leaves them; a group left empty is not shown. */
+const blockGroups = $derived(
+  [
+    ...BLOCK_GROUPS.map((group) => ({
+      id: group.id,
+      types: group.types.filter((ty) => (ty !== 'entry' || designing) && matches(blockQuery, t.types[ty] ?? ty, t.blockNames[ty] ?? '', t.blockHints[ty] ?? '', BLOCK_WORDS[ty] ?? '', ty)),
+      extensions: [] as { id: string; label: string }[],
+    })),
+    { id: 'extensions', types: [] as BlockType[], extensions: extensionBlocks.filter((one) => matches(blockQuery, one.label, one.id)) },
+  ].filter((group) => group.types.length + group.extensions.length > 0),
 );
 
 /** A block dropped at a place on the page. `index` counts the blocks there with the moved one left out. */
@@ -924,34 +938,44 @@ onMount(() => {
 
     <aside class="left">
       <h2>{t.app.blocks}</h2>
-      <ul class="library">
-        {#each BLOCK_TYPES.filter((ty) => ty !== 'extension' && (ty !== 'entry' || designing)) as type (type)}
-          <li>
-            <button
-              type="button"
-              draggable="true"
-              ondragstart={(e) => {
-                e.dataTransfer?.setData('application/x-uhlaka-type', type);
-                if (e.dataTransfer) e.dataTransfer.effectAllowed = 'copy';
-              }}
-              onclick={() => add(type)}
-              data-add={type}>{t.types[type] ?? type}</button>
-          </li>
-        {/each}
-        {#each extensionBlocks as one (one.id)}
-          <li>
-            <button
-              type="button"
-              draggable="true"
-              ondragstart={(e) => {
-                e.dataTransfer?.setData('application/x-uhlaka-type', `extension:${one.id}`);
-                if (e.dataTransfer) e.dataTransfer.effectAllowed = 'copy';
-              }}
-              onclick={() => add('extension', { block: one.id })}
-              data-add-extension={one.id}>{one.label}</button>
-          </li>
-        {/each}
-      </ul>
+      <input type="search" class="find" placeholder={t.app.blockSearch} aria-label={t.app.blockSearch} bind:value={blockQuery} data-block-search />
+      {#each blockGroups as group (group.id)}
+        <details class="blocks" open data-block-group={group.id}>
+          <summary>{t.blockGroups[group.id] ?? group.id}</summary>
+          <ul class="library">
+            {#each group.types as type (type)}
+              <li>
+                <button
+                  type="button"
+                  draggable="true"
+                  title={t.blockHints[type] ?? ''}
+                  ondragstart={(e) => {
+                    e.dataTransfer?.setData('application/x-uhlaka-type', type);
+                    if (e.dataTransfer) e.dataTransfer.effectAllowed = 'copy';
+                  }}
+                  onclick={() => add(type)}
+                  data-add={type}>{t.blockNames[type] ?? t.types[type] ?? type}</button>
+              </li>
+            {/each}
+            {#each group.extensions as one (one.id)}
+              <li>
+                <button
+                  type="button"
+                  draggable="true"
+                  title={one.label}
+                  ondragstart={(e) => {
+                    e.dataTransfer?.setData('application/x-uhlaka-type', `extension:${one.id}`);
+                    if (e.dataTransfer) e.dataTransfer.effectAllowed = 'copy';
+                  }}
+                  onclick={() => add('extension', { block: one.id })}
+                  data-add-extension={one.id}>{one.label}</button>
+              </li>
+            {/each}
+          </ul>
+        </details>
+      {:else}
+        <p class="hint" data-no-block>{t.app.noBlock}</p>
+      {/each}
       <p class="hint">{t.app.blocksHint}</p>
     </aside>
 
@@ -1256,14 +1280,18 @@ onMount(() => {
   h2 { margin: 1.1rem 0 0.5rem; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: #6a6880; }
   h2:first-child { margin-top: 0; }
   ul { list-style: none; margin: 0 0 0.6rem; padding: 0; display: grid; gap: 0.25rem; }
-  .library { grid-template-columns: 1fr 1fr; }
+  .library { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .find { width: 100%; margin-bottom: 0.6rem; padding: 0.4rem 0.5rem; border: 1px solid #cfccdc; border-radius: 6px; background: #fff; color: inherit; font: inherit; }
+  .blocks { margin-bottom: 0.4rem; }
+  .blocks summary { cursor: pointer; padding: 0.25rem 0; font-size: 12.5px; font-weight: 600; color: #4b4960; }
+  .blocks .library { margin-top: 0.3rem; }
   :global(.editor button) { padding: 0.4rem 0.7rem; border: 1px solid #cfccdc; border-radius: 6px; background: #fff; color: inherit; font: inherit; cursor: pointer; }
   :global(.editor button:hover:not(:disabled)) { border-color: #6d5dfc; }
   :global(.editor button:disabled) { opacity: 0.45; cursor: default; }
   :global(.editor button.primary) { background: #6d5dfc; border-color: #6d5dfc; color: #fff; font-weight: 600; }
   :global(.editor button.quiet) { border-color: transparent; color: #6a6880; }
   :global(.editor button.danger) { color: #b3261e; margin-top: 1rem; }
-  .library button { width: 100%; text-align: start; }
+  .library button { width: 100%; height: 100%; padding-inline: 0.5rem; text-align: start; font-size: 13px; line-height: 1.25; }
   .tabs { display: flex; gap: 0.25rem; margin-bottom: 0.8rem; }
   .tabs button { flex: 1; }
   .tabs button[aria-selected='true'] { background: #f1efff; border-color: #6d5dfc; font-weight: 600; }
