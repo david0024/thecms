@@ -49,6 +49,8 @@ describe('the editor', () => {
       expect(face.headers.get('content-type')).toBe('font/woff2');
       expect((await face.arrayBuffer()).byteLength).toBeGreaterThan(1000);
       expect((await get('/assets/fonts/nothing.woff2')).status).toBe(404);
+      // A page may load them: the site's own faces are allowed, and only those.
+      expect(home.headers.get('content-security-policy')).toContain("font-src 'self'");
       expect((await get('/admin')).headers.get('location')).toBe('/admin/');
       expect((await get('/admin/')).status).toBe(200);
       expect((await get('/nowhere/')).status).toBe(404);
