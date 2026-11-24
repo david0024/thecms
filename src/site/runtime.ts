@@ -61,6 +61,7 @@ const TYPES: Record<string, string> = {
   gif: 'image/gif',
   webp: 'image/webp',
   avif: 'image/avif',
+  woff2: 'font/woff2',
 };
 
 /** What robots ask every site for, to find another software's weak spots: not worth showing the owner. */

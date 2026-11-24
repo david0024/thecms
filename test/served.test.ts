@@ -43,6 +43,12 @@ describe('the editor', () => {
       expect(await (await get('/assets/site.css')).text()).toContain('--t-color-primary');
       // The canvas's stylesheet is the theme as it is being built, at an address of the admin's.
       expect((await get('/admin/site.css')).headers.get('content-type')).toContain('text/css');
+      // It declares every face Uhlaka carries, which the site serves whatever is published (ADR 0068 d1).
+      expect(await (await get('/admin/site.css')).text()).toContain('url(/assets/fonts/bricolage-grotesque-latin.woff2)');
+      const face = await get('/assets/fonts/bricolage-grotesque-latin.woff2');
+      expect(face.headers.get('content-type')).toBe('font/woff2');
+      expect((await face.arrayBuffer()).byteLength).toBeGreaterThan(1000);
+      expect((await get('/assets/fonts/nothing.woff2')).status).toBe(404);
       expect((await get('/admin')).headers.get('location')).toBe('/admin/');
       expect((await get('/admin/')).status).toBe(200);
       expect((await get('/nowhere/')).status).toBe(404);

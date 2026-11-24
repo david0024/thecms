@@ -27,7 +27,7 @@ const ADMIN_PATHS = new Set(['/admin', '/preview']);
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { compile } from 'svelte/compiler';
-import { prefixOf, typeIn, SECTION_KIND, type Block, cleanSeo, type Form, fillSections, takeWords, withAreas, type Site, siteIn, type PlacedPage, translatedPage, cleanRow, EXTENSION_MAX_BYTES, type ExtensionManifest, extensionAsks, extensionWord, isObject, languageOf, normalizeBlocks, shownRow, str, type ContentType, DISPLAY_NAME, type LanguagePack, defaultTemplate, MEDIA_MAX_BYTES, MEDIA_PREFIX, UPLOAD_MAX_BYTES, EMBED_ORIGINS, normalizePage, type Page, type Post, contentTypes, listPath, type MenuList, normalizePost, parseTheme, pagesIn, POSTS_TYPE, reservedSlugs, slugProblem, type Theme, themeCss } from '../core/index.ts';
+import { prefixOf, typeIn, SECTION_KIND, type Block, cleanSeo, type Form, fillSections, takeWords, withAreas, type Site, siteIn, type PlacedPage, translatedPage, cleanRow, EXTENSION_MAX_BYTES, type ExtensionManifest, extensionAsks, extensionWord, isObject, languageOf, normalizeBlocks, shownRow, str, type ContentType, DISPLAY_NAME, type LanguagePack, defaultTemplate, MEDIA_MAX_BYTES, MEDIA_PREFIX, UPLOAD_MAX_BYTES, EMBED_ORIGINS, normalizePage, type Page, type Post, contentTypes, listPath, type MenuList, normalizePost, parseTheme, pagesIn, POSTS_TYPE, reservedSlugs, slugProblem, type Theme, themeCss, FONTS_PATH, fontFacesCss } from '../core/index.ts';
 import type { EntryLists } from '../blocks/editing.ts';
 import { type FetchImage, fetchImage as fetchOverNetwork, IMPORT_MAX_BYTES, type ImportReport, runImport } from '../import/run.ts';
 import { type ImportPlan, planImport } from '../import/wxr.ts';
@@ -40,7 +40,7 @@ import { accounts, cleanPublicAddress, ownerOnly, shown } from './accounts.ts';
 import { shopGate } from './shop-gate.ts';
 import { extensionHost, type Spawn } from './extensions.ts';
 import { BUILT_ADMIN } from './built-admin.ts';
-import { BASE_CSS, SHIPPED_STATS, SHIPPED_THEMES } from './shipped.ts';
+import { BASE_CSS, SHIPPED_STATS, SHIPPED_THEMES, shippedFonts } from './shipped.ts';
 import { STATS, type Store, type User, writesAll } from './store.ts';
 import { reportsOf, rowWrites } from '../view/index.ts';
 import { newer } from './update.ts';
@@ -1174,6 +1174,11 @@ export async function startEditor(
         return json({ error: error instanceof Error ? error.message : String(error) }, 400);
       }
     }
+    if (url.pathname.startsWith(FONTS_PATH) && request.method === 'GET') {
+      // The faces Uhlaka carries (ADR 0068 d1), for the canvas as for the site, published or not.
+      const bytes = (await shippedFonts()).get(url.pathname.slice(FONTS_PATH.length));
+      return bytes ? new Response(bytes as Uint8Array<ArrayBuffer>, { headers: { 'content-type': 'font/woff2', 'cache-control': 'public, max-age=86400', 'x-content-type-options': 'nosniff' } }) : json({ error: 'not found' }, 404);
+    }
     if (!ADMIN_PATHS.has(url.pathname) && !url.pathname.startsWith('/admin/') && !url.pathname.startsWith(MEDIA_PREFIX)) return site.fetch(request, ip);
     if (request.method !== 'GET') return json({ error: 'not found' }, 404);
     if (url.pathname.startsWith(MEDIA_PREFIX)) {
@@ -1196,7 +1201,7 @@ export async function startEditor(
         return html(previewPage((await store.site()).language));
       case '/admin/site.css':
         // The canvas's: the theme as it is being built. The structure first, the theme after it: where both set the same thing, the theme wins.
-        return text(`${baseCss}${themeCss(await theme())}`, 'text/css');
+        return text(`${fontFacesCss()}${baseCss}${themeCss(await theme())}`, 'text/css');
       default:
         return json({ error: 'not found' }, 404);
     }

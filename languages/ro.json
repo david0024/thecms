@@ -904,6 +904,8 @@
   "admin.style.props.color": "Culoarea textului",
   "admin.style.props.paddingBlock": "Spațiu sus și jos",
   "admin.style.props.paddingInline": "Spațiu stânga și dreapta",
+  "admin.style.props.buttonBackground": "Culoarea butoanelor",
+  "admin.style.props.buttonColor": "Culoarea textului din butoane",
   "admin.style.props.marginBlock": "Spațiu exterior sus și jos",
   "admin.style.props.gap": "Spațiu între elemente",
   "admin.style.props.radius": "Colțuri",

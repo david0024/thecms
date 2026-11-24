@@ -50,6 +50,10 @@ import {
   type Site,
   type Theme,
   themeCss,
+  FONTS_PATH,
+  facesUsed,
+  fontFacesCss,
+  SHIPPED_FACES,
   alternates,
   pagesIn,
   fillSections,
@@ -68,7 +72,7 @@ import { wordsFor } from '../blocks/words.ts';
 import { lockedPage, membersPage } from './locks.ts';
 import { menuOf, pageSetting, renderBlogList, renderPage, renderPost, STYLESHEET } from './document.ts';
 import { checkRedirects, checkSeo, checkSite, describeCheck, type SiteCheck, serverOnly } from './check.ts';
-import { BASE_CSS } from './shipped.ts';
+import { BASE_CSS, shippedFonts } from './shipped.ts';
 import { shopGate } from './shop-gate.ts';
 import { STATS, type Store } from './store.ts';
 
@@ -398,6 +402,13 @@ export async function buildSite(
   }
   files.set('robots.txt', robotsFile(site));
   if (site.data !== false) writeData(files, site, data.filter((d) => !(d.path in locked) && !members.has(d.path)));
+  // The faces Uhlaka carries that the theme or a page names, and only those (ADR 0068 d1): declared first in the stylesheet, served beside it.
+  const used = facesUsed([...files.values()].filter((f): f is string => typeof f === 'string'));
+  if (used.size) {
+    const css = STYLESHEET.slice(1);
+    files.set(css, `${fontFacesCss(used)}${files.get(css) as string}`);
+    for (const face of SHIPPED_FACES) if (used.has(face.family)) files.set(`${FONTS_PATH.slice(1)}${face.file}`, (await shippedFonts()).get(face.file) as Uint8Array);
+  }
   return files;
 }
 
