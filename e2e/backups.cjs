@@ -113,7 +113,8 @@ function fakeS3() {
     assert((await page.locator('[data-s3="secretAccessKey"]').inputValue()) === '***', 'the secret is never shown back');
     await page.locator('[data-backup-now]').click();
     await page.getByText('A copy was sent to the S3 storage.').waitFor();
-    assert([...s3.objects.keys()].some((k) => k.startsWith('uhlaka/site-')), 'the copy reaches the storage');
+    assert([...s3.objects.keys()].some((k) => k.startsWith('uhlaka/manual-')), 'the copy reaches the storage');
+    assert((await page.locator('[data-backup-kind]').first().textContent()).includes('Kept until you delete it'), '"Back up now" is made by hand, and kept until deleted');
     if (shots) await page.screenshot({ path: join(shots, 'backups.png'), fullPage: true });
 
     // Downloaded.

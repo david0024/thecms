@@ -253,9 +253,18 @@ export function listBackups(dir: string): BackupFile[] {
     .sort((a, b) => b.at.localeCompare(a.at) || b.name.localeCompare(a.name));
 }
 
-/** Deletes what is past the number kept, oldest first; never the one named in `spare`. */
+/**
+ * What a person made or brought on purpose (ADR 0051, amended 2026-11-24): a
+ * backup made by hand, with "Back up now" or `uhlaka backup`, and one uploaded.
+ * The number kept never deletes these; their owner does, from the admin.
+ */
+export const keptByHand = (name: string): boolean => name.startsWith('manual-') || name.startsWith('uploaded-');
+
+/** Deletes what is past the number kept, oldest first, of the backups the site made itself; never the one named in `spare`, nor one made by hand. */
 export function pruneBackups(dir: string, keep: number, spare = ''): string[] {
-  const gone = listBackups(dir).filter((f) => f.name !== spare).slice(Math.max(0, keep - (spare ? 1 : 0)));
+  const gone = listBackups(dir)
+    .filter((f) => f.name !== spare && !keptByHand(f.name))
+    .slice(Math.max(0, keep - (spare ? 1 : 0)));
   for (const f of gone) rmSync(join(dir, f.name), { force: true });
   return gone.map((f) => f.name);
 }
@@ -352,9 +361,9 @@ export function backups(
         try {
           const remote = remoteFor(set.s3);
           await remote.put(done.name, join(dir, done.name));
-          // The newest are kept, whatever kind each is: a name says when it was made.
+          // The newest the site made are kept, whatever kind each is (a name says when it was made); those made by hand stay.
           const there = (await remote.names()).sort((a, b) => stamp(b).localeCompare(stamp(a)));
-          for (const name of there.slice(set.keep)) await remote.remove(name);
+          for (const name of there.filter((n) => !keptByHand(n)).slice(set.keep)) await remote.remove(name);
           done.sent = 'yes';
         } catch (error) {
           done.sent = 'failed';
@@ -416,7 +425,8 @@ export function backups(
         return json(await shown());
       }
       case 'POST /api/backups':
-        await make();
+        // "Back up now": made by hand, so kept until the owner deletes it.
+        await make('manual');
         return json(await shown());
       case 'POST /api/backups/test': {
         const body = (await request.json()) as { settings?: unknown };

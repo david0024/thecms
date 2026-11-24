@@ -23,6 +23,7 @@ import {
   listBackups,
   normalizeBackupSettings,
   pruneBackups,
+  keptByHand,
   readBackup,
   type Remote,
   s3Remote,
@@ -238,6 +239,22 @@ for (const [name, address] of databases) {
       await store.close();
     });
 
+    test('one made by hand or brought from elsewhere is never deleted by the number kept', async () => {
+      const remote = memoryRemote();
+      const kept = backups(store, { dir: folder, remote: () => remote, log: () => {} });
+      await store.setBackupSettings({ keep: 1, s3: { bucket: 'b', secretAccessKey: 's' } });
+      const byHand = await kept.make('manual', new Date('2026-11-18T01:00:00Z'));
+      expect(byHand.name).toBe('manual-2026-11-18-010000.uhlaka-backup');
+      const brought = await writeBackup(store, folder, 'uploaded', new Date('2026-11-18T02:00:00Z'));
+      for (const day of ['19', '20', '21']) await kept.make('site', new Date(`2026-11-${day}T01:00:00Z`));
+      // One the site made is kept, and both made by hand, here and there.
+      expect(listBackups(folder).map((f) => f.name).sort()).toEqual([byHand.name, 'site-2026-11-21-010000.uhlaka-backup', brought.name].sort());
+      expect([...remote.files.keys()].sort()).toEqual([byHand.name, 'site-2026-11-21-010000.uhlaka-backup']);
+      expect(keptByHand(byHand.name) && keptByHand(brought.name) && !keptByHand('site-x.uhlaka-backup') && !keptByHand('before-restore-x.uhlaka-backup')).toBe(true);
+      // Their owner deletes them.
+      expect(pruneBackups(folder, 0)).toEqual(['site-2026-11-21-010000.uhlaka-backup']);
+    });
+
     test('made, kept, sent, and put back by the site', async () => {
       const remote = memoryRemote();
       const said: string[] = [];
@@ -410,6 +427,8 @@ describe('the admin\'s calls', () => {
 
       shown = await (await call('/api/backups', { method: 'POST' })).json();
       expect(shown.last).toMatchObject({ ok: true, sent: 'yes' });
+      // "Back up now" is made by hand.
+      expect(shown.files[0]?.name).toStartWith('manual-');
       const name = shown.files[0]?.name ?? '';
       const download = await call(`/api/backups/file?name=${name}`);
       expect(download.headers.get('content-disposition')).toBe(`attachment; filename="${name}"`);
@@ -473,7 +492,8 @@ describe('the command line', () => {
       mkdirSync(join(dir, 'cli'));
       await main(['init', db]);
       await main(['backup', db]);
-      expect(said.at(-1)).toMatch(/^Backed up .*site\.db to .*\/cli\/backups\/site-.*\.uhlaka-backup \(\d+ KB\)\.$/);
+      // Made by hand: named so, and kept whatever the number kept (ADR 0051, amended).
+      expect(said.at(-1)).toMatch(/^Backed up .*site\.db to .*\/cli\/backups\/manual-.*\.uhlaka-backup \(\d+ KB\)\.$/);
       const elsewhere = join(dir, 'cli-elsewhere');
       await main(['backup', db, elsewhere]);
       const file = join(elsewhere, readdirSync(elsewhere)[0] as string);
@@ -486,7 +506,7 @@ describe('the command line', () => {
       expect((await back.site()).name).not.toBe('Changed');
       await back.close();
       // A file already in the folder is put back from there.
-      const inFolder = listBackups(join(dir, 'cli', 'backups')).find((f) => f.name.startsWith('site-'))?.name ?? '';
+      const inFolder = listBackups(join(dir, 'cli', 'backups')).find((f) => f.name.startsWith('manual-'))?.name ?? '';
       await main(['restore', db, join(dir, 'cli', 'backups', inFolder)]);
       expect(said.at(-1)).toMatch(/^Put back /);
       await expect(main(['restore', db])).rejects.toThrow('give the backup file');

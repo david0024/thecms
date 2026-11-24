@@ -207,7 +207,8 @@ export async function main(args: string[]): Promise<{ stop: () => void } | undef
     try {
       if (command === 'backup') {
         const dir = extra ? resolve(extra) : backupsFolder(dbPath);
-        const done = await backups(store, { dir, log: () => {} }).make();
+        // Made by hand: kept until someone deletes it, whatever the number kept (ADR 0051).
+        const done = await backups(store, { dir, log: () => {} }).make('manual');
         if (!done.ok) throw new Error(`the backup could not be made: ${done.error}`);
         console.log(`Backed up ${shown} to ${join(dir, done.name)} (${Math.ceil(done.size / 1024)} KB).${done.sent === 'yes' ? ' A copy was sent to S3.' : done.sent === 'failed' ? ` It was not sent to S3: ${done.sendError}` : ''}`);
       } else {
