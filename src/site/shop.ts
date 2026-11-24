@@ -735,7 +735,7 @@ export async function openShop(store: Store): Promise<Shop> {
       if (url.pathname === '/api/shop/orders.csv') {
         if (request.method !== 'GET') return json({ error: 'not found' }, 404);
         const orders = (await db.rows<Row>('SELECT * FROM shop_orders ORDER BY number')).map(asOrder);
-        const head = ['number', 'date', 'state', 'name', 'email', 'phone', 'address', 'company', 'tax code', 'products', 'subtotal', 'delivery', 'total', 'currency', 'payment', 'tracking'];
+        const head = ['number', 'date', 'state', 'name', 'email', 'phone', 'address', 'company', 'tax code', 'products', 'subtotal', 'coupon', 'discount', 'delivery', 'total', 'currency', 'payment', 'tracking'];
         const rows = orders.map((o) => {
           const b = o.data.buyer;
           return [
@@ -750,6 +750,8 @@ export async function openShop(store: Store): Promise<Shop> {
             b.company?.taxCode ?? '',
             o.data.lines.map((l) => `${l.quantity} × ${l.name}${l.variant ? ` (${l.variant})` : ''}`).join('; '),
             (o.data.totals.subtotal / 100).toFixed(2),
+            o.data.totals.coupon ?? '',
+            ((o.data.totals.discount ?? 0) / 100).toFixed(2),
             (o.data.totals.shipping / 100).toFixed(2),
             (o.data.totals.total / 100).toFixed(2),
             o.data.currency,

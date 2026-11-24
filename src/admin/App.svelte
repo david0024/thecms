@@ -76,6 +76,7 @@ import Profile from './Profile.svelte';
 import Reviews from './Reviews.svelte';
 import Messages from './Messages.svelte';
 import Orders from './Orders.svelte';
+import Coupons from './Coupons.svelte';
 import Backups from './Backups.svelte';
 import Stats from './Stats.svelte';
 import Forms from './Forms.svelte';
@@ -98,7 +99,7 @@ let kind = $state<Kind>('page');
 let translation = $state<TranslationInfo | null>(null);
 const fixed = $derived(translation !== null && !translation.split);
 /** Which section of the admin is showing: a list, or the builder with one page or post open. */
-let view = $state<'pages' | 'sections' | 'forms' | 'layouts' | 'media' | 'messages' | 'orders' | 'backups' | 'stats' | 'comments' | 'people' | 'me' | 'review' | 'types' | 'import' | 'export' | 'extensions' | 'edit' | `list:${string}` | `ext:${string}`>('pages');
+let view = $state<'pages' | 'sections' | 'forms' | 'layouts' | 'media' | 'messages' | 'orders' | 'coupons' | 'backups' | 'stats' | 'comments' | 'people' | 'me' | 'review' | 'types' | 'import' | 'export' | 'extensions' | 'edit' | `list:${string}` | `ext:${string}`>('pages');
 let selected = $state<string | null>(null);
 /** The form the Forms screen opens on, when a form block asked for it (ADR 0049). */
 let formAsked = $state('');
@@ -447,7 +448,7 @@ async function panel(which: 'site' | 'theme'): Promise<void> {
  * the one before, and a screen opens in a new tab. The key stays where it is.
  */
 const AT = 'at';
-const SCREENS = new Set(['pages', 'sections', 'forms', 'layouts', 'media', 'messages', 'orders', 'backups', 'stats', 'comments', 'people', 'me', 'review', 'types', 'import', 'export', 'extensions']);
+const SCREENS = new Set(['pages', 'sections', 'forms', 'layouts', 'media', 'messages', 'orders', 'coupons', 'backups', 'stats', 'comments', 'people', 'me', 'review', 'types', 'import', 'export', 'extensions']);
 /** Set while an address is being followed, so following it does not write a new one. */
 let following = false;
 /** Addresses are written once the one the admin was opened at has been followed. */
@@ -822,6 +823,7 @@ onMount(() => {
       {/if}
       {#if site.shop.on && (owner || (staff && site.shop.editors))}
         <button type="button" aria-current={view === 'orders' ? 'page' : undefined} onclick={() => (view = 'orders')} data-nav="orders">{t.nav.orders}</button>
+        <button type="button" aria-current={view === 'coupons' ? 'page' : undefined} onclick={() => (view = 'coupons')} data-nav="coupons">{t.nav.coupons}</button>
       {/if}
       {#if owner}
         <button type="button" aria-current={view === 'forms' ? 'page' : undefined} onclick={() => ((formAsked = ''), (view = 'forms'))} data-nav="forms">{t.nav.forms}</button>
@@ -872,6 +874,8 @@ onMount(() => {
       <Messages />
     {:else if view === 'orders'}
       <Orders />
+    {:else if view === 'coupons'}
+      <Coupons currency={site.site.business?.currency || 'RON'} />
     {:else if view === 'backups'}
       <Backups />
     {:else if view === 'stats'}
