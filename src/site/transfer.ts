@@ -54,7 +54,7 @@ export interface ContentComment {
 export interface ContentMedia {
   name: string;
   label: string;
-  /** The words a picture is offered with (ADR 0070 d3); left out when it has none. */
+  /** The words a picture is offered with (ADR 0072 d3); left out when it has none. */
   alt?: string;
   /** The file's bytes, in base64. */
   data: string;

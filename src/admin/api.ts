@@ -278,9 +278,9 @@ export interface MediaItem {
   path: string;
   type: string;
   size: number;
-  /** Its name in the library (ADR 0070 d2). */
+  /** Its name in the library (ADR 0072 d2). */
   label: string;
-  /** The words a picture is offered with when put on a page (ADR 0070 d3). */
+  /** The words a picture is offered with when put on a page (ADR 0072 d3). */
   alt: string;
   uploadedAt: string;
   width: number;

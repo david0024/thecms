@@ -822,7 +822,7 @@ export async function startEditor(
       return json({ item });
     }
     if (url.pathname === '/api/media/used' && request.method === 'GET') {
-      // Where a file is shown or linked to, as its details say (ADR 0070 d4).
+      // Where a file is shown or linked to, as its details say (ADR 0072 d4).
       return json({ usedBy: await store.mediaUsedBy(url.searchParams.get('name') ?? '') });
     }
     if (url.pathname === '/api/media') {
@@ -840,7 +840,7 @@ export async function startEditor(
     }
     const body = request.method === 'GET' || request.method === 'DELETE' ? {} : ((await request.json()) as Record<string, unknown>);
     if (url.pathname === '/api/media' && request.method === 'PUT') {
-      // A file renamed, a picture described (ADR 0070 d2, d3).
+      // A file renamed, a picture described (ADR 0072 d2, d3).
       const item = await store.setMediaTexts(url.searchParams.get('name') ?? '', { label: body.label, alt: body.alt });
       return json({ item, media: await store.media() });
     }

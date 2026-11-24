@@ -3,7 +3,7 @@
  * Every file the site holds, in one place: images (ADR 0005), documents, sound
  * and video (ADR 0046). Upload, look, delete. A file a page still shows or
  * links to is not deleted; the server says where it is used. A file chosen
- * opens its details beside the list (ADR 0070): its name, the words a picture
+ * opens its details beside the list (ADR 0072): its name, the words a picture
  * is offered with, what it is, its address, and where it is used.
  */
 import { onMount } from 'svelte';

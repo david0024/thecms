@@ -33,7 +33,7 @@ let fileInput: HTMLInputElement | undefined = $state();
 
 const src = $derived(value?.src ?? '');
 const alt = $derived(value?.alt ?? '');
-/** The words a picture keeps, or else those its file's name gives; a library-only field keeps none. A picture described in the library brings its own words (ADR 0070 d3). */
+/** The words a picture keeps, or else those its file's name gives; a library-only field keeps none. A picture described in the library brings its own words (ADR 0072 d3). */
 const offered = (name: string): string => (only || !named ? alt : alt || altFromName(name));
 
 async function upload(event: Event): Promise<void> {

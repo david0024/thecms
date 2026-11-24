@@ -206,7 +206,7 @@ function png(width, height) {
     await page.locator('[data-library-file]').setInputFiles({ name: 'sample.png', mimeType: 'image/png', buffer: png(64, 48) });
     await page.locator('[data-media-item]').first().waitFor();
     assert((await page.locator('[data-media-item]').count()) >= 1, 'an image can be uploaded to the media library');
-    // Its details (ADR 0070): a new name, words for people who cannot see it, what it is and where it is used.
+    // Its details (ADR 0072): a new name, words for people who cannot see it, what it is and where it is used.
     await page.locator('[data-media-item]', { hasText: 'sample.png' }).locator('[data-media-open]').click();
     const details = page.locator('[data-media-details]');
     await details.locator('[data-media-used]', { hasText: 'Not used on any page yet.' }).waitFor();

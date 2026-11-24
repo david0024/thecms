@@ -1,4 +1,4 @@
-# ADR 0070 — The details of a file in the media library, and a way out to the site
+# ADR 0072 — The details of a file in the media library, and a way out to the site
 
 - **Status:** Accepted (Liviu asked for both on 2026-11-24, from a review of the admin; "ai acordul meu si al lui David", Liviu, the same day)
 - **Date:** 2026-11-24

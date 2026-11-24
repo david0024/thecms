@@ -114,7 +114,7 @@ describe('images stored with the site', () => {
     await store.savePage({ ...home, blocks: [...home.blocks, { type: 'image', content: { image: { src, alt: 'A pixel' } } }] });
   };
 
-  test('a file is renamed and a picture described in the library; deleting it forgets both (ADR 0070)', async () => {
+  test('a file is renamed and a picture described in the library; deleting it forgets both (ADR 0072)', async () => {
     const item = await store.addMedia(PNG, 'IMG_2041.png');
     expect(item.alt).toBe('');
     expect(item.uploadedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);

@@ -149,9 +149,9 @@ export interface MediaItem {
   path: string;
   type: string;
   size: number;
-  /** The file's name in the library: the name it was uploaded under, until someone renames it (ADR 0070 d2). */
+  /** The file's name in the library: the name it was uploaded under, until someone renames it (ADR 0072 d2). */
   label: string;
-  /** The words for people who cannot see the picture, offered when it is put on a page (ADR 0070 d3); '' for none. */
+  /** The words for people who cannot see the picture, offered when it is put on a page (ADR 0072 d3); '' for none. */
   alt: string;
   /** When it was uploaded. */
   uploadedAt: string;
@@ -1838,7 +1838,7 @@ export class Store {
 
   /**
    * Renames a file in the library and sets the words a picture is offered with
-   * (ADR 0070). Neither changes a page that already shows it: a page keeps the
+   * (ADR 0072). Neither changes a page that already shows it: a page keeps the
    * words it was given, and the file's address stays the same.
    */
   async setMediaTexts(name: string, texts: { label?: unknown; alt?: unknown }): Promise<MediaItem> {
