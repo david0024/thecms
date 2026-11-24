@@ -18,6 +18,8 @@ let {
   ontranslate,
   layouts = [],
   people = [],
+  adding = false,
+  onadding,
 }: {
   kind: Kind;
   /** The content type listed; none for pages. */
@@ -32,6 +34,10 @@ let {
   layouts?: readonly Layout[];
   /** Who has an account: each entry's author is named beside it (ADR 0055). */
   people?: Person[];
+  /** Asked from the bar over the site (ADR 0075): the title of a new one is asked at once. */
+  adding?: boolean;
+  /** Told once it is asked, so it is asked only once. */
+  onadding?: () => void;
 } = $props();
 
 const others = $derived(site ? site.languages : []);
@@ -49,6 +55,11 @@ const mark = $derived(kind === POSTS_TYPE ? 'post' : kind);
 
 let title = $state<string | null>(null);
 let layout = $state(STANDARD);
+$effect(() => {
+  if (!adding) return;
+  title = '';
+  onadding?.();
+});
 const words = $derived(
   !type
     ? { heading: t.nav.pages, add: t.app.newPage, none: '' }

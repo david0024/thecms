@@ -36,7 +36,8 @@ import { contentFileName, contentParts, exportContent } from './transfer.ts';
 import { zipFiles } from './zip.ts';
 import { type MenuItem, menuOf, pageSetting, renderParts, renderPostParts } from './document.ts';
 import { languages, packFor } from './languages.ts';
-import { accounts, cleanPublicAddress, ownerOnly, shown } from './accounts.ts';
+import { accounts, cleanPublicAddress, cookieOf, ownerOnly, shown } from './accounts.ts';
+import { barHtml, barLinks, barWords, withBar } from './admin-bar.ts';
 import { shopGate } from './shop-gate.ts';
 import { extensionHost, type Spawn } from './extensions.ts';
 import { BUILT_ADMIN } from './built-admin.ts';
@@ -1157,6 +1158,31 @@ export async function startEditor(
   }
 
   /**
+   * A page of the site, with the admin bar over it for a person signed in
+   * (ADR 0075). Only a request that carries a session is asked about: a
+   * visitor's page is the one the runtime made, untouched, with its headers.
+   * A page with the bar is that person's alone, so no cache keeps it.
+   */
+  async function barred(request: Request, url: URL, answered: Response): Promise<Response> {
+    if (!people || request.method !== 'GET' || !cookieOf(request)) return answered;
+    if (!(answered.headers.get('content-type') ?? '').startsWith('text/html') || ![200, 403, 404].includes(answered.status)) return answered;
+    const user = await people.user(request).catch(() => null);
+    if (!user) return answered;
+    const current = await store.site();
+    const language = current.adminLanguage || current.language;
+    const words = barWords(packFor(language));
+    const target = await site.editTarget(url.pathname);
+    const author = target?.entry && target.kind !== 'page' ? await store.entryAuthor(target.kind, target.entry).catch(() => null) : null;
+    const posts = contentTypes(current).find((type) => type.id === POSTS_TYPE) ?? null;
+    const person = { name: user.name || user.email, role: user.role };
+    const bar = barHtml(person, barLinks(person, target, words, language, author, user.id, posts), words, language);
+    const headers = new Headers(answered.headers);
+    headers.delete('content-length');
+    headers.set('cache-control', 'private, no-store');
+    return new Response(withBar(await answered.text(), bar), { status: answered.status, headers });
+  }
+
+  /**
    * The admin's own addresses are never for search engines: whatever they answer, a page to
    * sign in or an error, carries noindex. The site's pages and its media are left as they are.
    */
@@ -1200,7 +1226,7 @@ export async function startEditor(
       const bytes = (await shippedFonts()).get(url.pathname.slice(FONTS_PATH.length));
       return bytes ? new Response(bytes as Uint8Array<ArrayBuffer>, { headers: { 'content-type': 'font/woff2', 'cache-control': 'public, max-age=86400', 'x-content-type-options': 'nosniff' } }) : json({ error: 'not found' }, 404);
     }
-    if (!ADMIN_PATHS.has(url.pathname) && !url.pathname.startsWith('/admin/') && !url.pathname.startsWith(MEDIA_PREFIX)) return site.fetch(request, ip);
+    if (!ADMIN_PATHS.has(url.pathname) && !url.pathname.startsWith('/admin/') && !url.pathname.startsWith(MEDIA_PREFIX)) return barred(request, url, await site.fetch(request, ip));
     if (request.method !== 'GET') return json({ error: 'not found' }, 404);
     if (url.pathname.startsWith(MEDIA_PREFIX)) {
       // An <img> cannot carry the token, so a stored file is read without it. Its name is the hash of its bytes.

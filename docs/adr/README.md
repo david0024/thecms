@@ -76,3 +76,4 @@ work it decides. A new one that changes an old one says so at its top.
 - [ADR 0072 — The details of a file in the media library, and a way out to the site](0072-details-of-a-file.md)
 - [ADR 0073 — "Add a block" in groups, with a search](0073-add-a-block-in-groups.md)
 - [ADR 0074 — Dark mode: a second palette in each theme, and a switch on the site](0074-dark-mode.md)
+- [ADR 0075 — The admin bar over the site](0075-the-admin-bar.md)

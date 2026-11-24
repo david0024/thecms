@@ -797,6 +797,16 @@ export const en = {
     yes: 'Yes',
     no: 'No',
   },
+  /** The bar a signed-in person sees over the site's pages (ADR 0075). */
+  siteBar: {
+    label: 'Admin bar',
+    admin: 'Admin',
+    editPage: 'Edit page',
+    editEntry: 'Edit {singular}',
+    newPage: 'New page',
+    newEntry: 'New {singular}',
+    me: 'Your account: {name}',
+  },
   bar: {
     viewPage: 'View on the site',
     viewPageHint: 'Opens the published page in a new tab',

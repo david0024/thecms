@@ -76,6 +76,7 @@ import { checkRedirects, checkSeo, checkSite, describeCheck, type SiteCheck, ser
 import { BASE_CSS, shippedFonts } from './shipped.ts';
 import { shopGate } from './shop-gate.ts';
 import { STATS, type Store } from './store.ts';
+import type { EditTarget } from './admin-bar.ts';
 
 const MARKER = '.uhlaka-export';
 const FEED_ENTRIES = 30;
@@ -178,6 +179,8 @@ export async function buildSite(
   times: PublishedTimes = {},
   /** Who sees each page, entry and type that is not for everyone (ADR 0064 d4). */
   audiences: Audiences = NO_AUDIENCES,
+  /** Filled with what each page and entry address is in the editor, for the admin bar of a served site (ADR 0075). */
+  targets?: Map<string, EditTarget>,
 ): Promise<Map<string, string | Uint8Array>> {
   const files = new Map<string, string | Uint8Array>();
   /** Each address for visitors signed in or for members, with who sees it: marked for the runtime at the end. */
@@ -249,6 +252,7 @@ export async function buildSite(
       imageSources(p.blocks),
     );
     data.push({ path: pagePath(p.slug), language: setting.site.language, page: p });
+    targets?.set(pagePath(p.slug), { kind: 'page', slug: p.slug });
     const audience = audiences.pages[(p as Partial<PlacedPage>).of ?? p.slug];
     if (audience) members.set(pagePath(p.slug), audience);
   }
@@ -281,6 +285,8 @@ export async function buildSite(
           [...(post.cover ? [post.cover.src] : []), ...imageSources(post.blocks)],
         );
         data.push({ path: entryPath(type, post.slug), language, post, type });
+        // An entry in another language is opened in the editor at `ro/<address>` (ADR 0054).
+        targets?.set(entryPath(type, post.slug), { kind: original.id, slug: language === site.language ? post.slug : `${prefixOf(language)}/${post.slug}`, entry: from.slug, singular: original.singular });
         const audience = audienceOf(original.id, from);
         if (audience) members.set(entryPath(type, post.slug), audience);
       }
@@ -580,7 +586,7 @@ export async function fullCheck(store: Store, files: Map<string, string | Uint8A
 /** Whether the home page follows the visitor's browser (ADR 0071 d3): on as soon as there is a second language, unless the owner turned it off. */
 const following = (site: Site): boolean => site.languages.length > 0 && site.visitorLanguage !== false;
 
-export async function publishedSite(store: Store, served = false): Promise<Map<string, string | Uint8Array>> {
+export async function publishedSite(store: Store, served = false, targets?: Map<string, EditTarget>): Promise<Map<string, string | Uint8Array>> {
   const theme = await store.publishedTheme();
   if (!theme) throw new Error('the theme is not published yet');
   const pages = await store.published();
@@ -602,5 +608,5 @@ export async function publishedSite(store: Store, served = false): Promise<Map<s
   const locked = Object.fromEntries(pages.filter((p) => locks.has(p.of)).map((p) => [pagePath(p.slug), p.of]));
   const media: MediaSource = async (name) =>
     served && mediaKindOf(name) !== 'image' ? ((await store.hasMedia(name)) ? new Uint8Array(0) : null) : ((await store.mediaFile(name))?.bytes ?? null);
-  return buildSite(site, theme, pages, media, entries, await store.redirects(), templates, await store.publishedSections(), await store.mediaSizes(), await store.shownComments(), locked, await store.bylines(), await store.publishedTimes(), await store.audiences());
+  return buildSite(site, theme, pages, media, entries, await store.redirects(), templates, await store.publishedSections(), await store.mediaSizes(), await store.shownComments(), locked, await store.bylines(), await store.publishedTimes(), await store.audiences(), targets);
 }
