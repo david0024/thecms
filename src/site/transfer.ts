@@ -5,12 +5,14 @@
  * moves content between sites, so it holds the content and never the people
  * who sign in, their passwords, the messages visitors sent or the counts.
  * The visitors are a part of their own, chosen apart from the whole site
- * (ADR 0064 d6), and even then without anything to sign in with.
+ * (ADR 0064 d6), and even then without anything to sign in with; so are the
+ * shop's orders, which name their buyers (ADR 0065).
  */
-import { type Audience, type ContentType, type Form, type Layout, type Level, mediaNameOf, type Redirect, type Site, slugify, type Theme } from '../core/index.ts';
+import { type Audience, type ContentType, type Form, type Layout, type Level, mediaNameOf, normalizeShopSettings, type Redirect, type Site, slugify, type Theme } from '../core/index.ts';
 import type { Store } from './store.ts';
 import { normalizeVisitorSettings } from './visitor-gate.ts';
 import type { ContentVisitor } from './visitor-transfer.ts';
+import type { ContentOrder, ContentShop } from './shop-transfer.ts';
 import { VERSION } from './version.ts';
 
 export const CONTENT_FORMAT = 'uhlaka.content/1';
@@ -76,7 +78,7 @@ export interface ContentFile {
   /** The program that wrote it, and when. */
   program: string;
   madeAt: string;
-  /** What was asked for (`pages`, `sections`, `forms`, `design`, `type:<id>`, `visitors`). */
+  /** What was asked for (`pages`, `sections`, `forms`, `design`, `type:<id>`, `shop`, `visitors`, `orders`). */
   parts: string[];
   /** Which site it came from, to be shown before it is brought in. */
   from: { name: string; url: string; language: string; languages: string[] };
@@ -93,6 +95,10 @@ export interface ContentFile {
   levels?: Level[];
   /** With `visitors`: each visitor whose address was confirmed, without a password (ADR 0064 d6). */
   visitors?: ContentVisitor[];
+  /** With `shop`: the shop's settings, what is left of each product and the coupons (ADR 0065). */
+  shop?: ContentShop;
+  /** With `orders`: every order, with its buyer, without the secret of their link (ADR 0065). */
+  orders?: ContentOrder[];
   types: TypePart[];
   people: ContentPerson[];
   comments: ContentComment[];
@@ -101,6 +107,9 @@ export interface ContentFile {
 
 /** The part of the people who sign in: never in the whole site, only when chosen by itself (ADR 0064 d6). */
 export const VISITORS_PART = 'visitors';
+/** The shop's part, with the whole site; and its orders, which name their buyers, only when chosen by themselves (ADR 0065). */
+export const SHOP_PART = 'shop';
+export const ORDERS_PART = 'orders';
 
 /**
  * Every part a site has, in the order the admin offers them. The visitors
@@ -109,13 +118,16 @@ export const VISITORS_PART = 'visitors';
 export async function contentParts(store: Store): Promise<{ id: string; name: string; apart?: true }[]> {
   const site = await store.site();
   const accounts = normalizeVisitorSettings(await store.visitorSettings()).on || (await store.hasTable('visitors'));
+  const shop = normalizeShopSettings(await store.shopSettings()).on || (await store.hasTable('shop_orders'));
   return [
     { id: 'pages', name: 'pages' },
     ...site.types.map((t) => ({ id: `type:${t.id}`, name: t.name })),
     { id: 'sections', name: 'sections' },
     { id: 'forms', name: 'forms' },
     { id: 'design', name: 'design' },
+    ...(shop ? [{ id: SHOP_PART, name: 'shop' }] : []),
     ...(accounts ? [{ id: VISITORS_PART, name: 'visitors', apart: true as const }] : []),
+    ...(shop ? [{ id: ORDERS_PART, name: 'orders', apart: true as const }] : []),
   ];
 }
 
@@ -210,6 +222,9 @@ export async function exportContent(store: Store, asked: string[] = [], now = ne
 
   // The visitors, only when chosen by themselves; and the levels, when who sees something or a visitor names one.
   if (parts.includes(VISITORS_PART)) file.visitors = await (await import('./visitor-transfer.ts')).exportVisitors(store);
+  // The shop: its settings, stock and coupons with the site; its orders only when chosen by themselves.
+  if (parts.includes(SHOP_PART)) file.shop = await (await import('./shop-transfer.ts')).exportShop(store);
+  if (parts.includes(ORDERS_PART)) file.orders = await (await import('./shop-transfer.ts')).exportOrders(store);
   const { levels } = normalizeVisitorSettings(await store.visitorSettings());
   const audienced = [...(file.pages ?? []), ...file.types.flatMap((t) => t.entries)].some((d) => d.audience) || file.types.some((t) => t.audience);
   if (levels.length && (audienced || file.visitors)) file.levels = levels;

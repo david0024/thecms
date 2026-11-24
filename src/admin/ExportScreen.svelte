@@ -14,14 +14,15 @@ let { site }: { site: Site } = $props();
 
 let parts = $state<{ id: string; name: string; apart?: true }[]>([]);
 let chosen = $state<string[]>([]);
-/** The visitors (ADR 0064 d6): offered apart from the whole site, never chosen for the owner. */
+/** The visitors (ADR 0064 d6) and the shop's orders (ADR 0065): offered apart from the whole site, never chosen for the owner. */
 let apart = $state<{ id: string; name: string }[]>([]);
-let visitors = $state(false);
+let apartChosen = $state<string[]>([]);
 let lose = $state<string[] | null>(null);
 let busy = $state('');
 let problem = $state('');
 
-const words: Record<string, string> = { pages: t.exp.pages, sections: t.exp.sections, forms: t.exp.forms, design: t.exp.design };
+const words: Record<string, string> = { pages: t.exp.pages, sections: t.exp.sections, forms: t.exp.forms, design: t.exp.design, shop: t.exp.shop };
+const apartWords: Record<string, { name: string; hint: string }> = { visitors: { name: t.exp.visitors, hint: t.exp.visitorsHint }, orders: { name: t.exp.orders, hint: t.exp.ordersHint } };
 const all = $derived(parts.length > 0 && chosen.length === parts.length);
 
 async function attempt(what: string, work: () => Promise<void>): Promise<void> {
@@ -59,7 +60,7 @@ function save({ blob, name }: { blob: Blob; name: string }): void {
 const toggle = (id: string, on: boolean): void => {
   chosen = on ? parts.map((p) => p.id).filter((p) => p === id || chosen.includes(p)) : chosen.filter((p) => p !== id);
 };
-const content = () => attempt('content', async () => save(await api.exportFile('content', visitors ? [...chosen, ...apart.map((p) => p.id)] : all ? [] : chosen)));
+const content = () => attempt('content', async () => save(await api.exportFile('content', apartChosen.length ? [...chosen, ...apartChosen] : all ? [] : chosen)));
 const files = () => attempt('files', async () => save(await api.exportFile('files')));
 </script>
 
@@ -76,10 +77,10 @@ const files = () => attempt('files', async () => save(await api.exportFile('file
     {/each}
   </div>
   {#each apart as part (part.id)}
-    <label class="check"><input type="checkbox" bind:checked={visitors} data-export-apart={part.id} /> <strong>{t.exp.visitors}</strong></label>
-    <p class="hint apart">{t.exp.visitorsHint}</p>
+    <label class="check"><input type="checkbox" checked={apartChosen.includes(part.id)} onchange={(e) => (apartChosen = e.currentTarget.checked ? [...apartChosen, part.id] : apartChosen.filter((p) => p !== part.id))} data-export-apart={part.id} /> <strong>{apartWords[part.id]?.name ?? part.name}</strong></label>
+    <p class="hint apart">{apartWords[part.id]?.hint ?? ''}</p>
   {/each}
-  <button type="button" class="primary" onclick={content} disabled={busy !== '' || (chosen.length === 0 && !visitors)} data-export-content>{busy === 'content' ? t.exp.working : t.exp.downloadContent}</button>
+  <button type="button" class="primary" onclick={content} disabled={busy !== '' || (chosen.length === 0 && apartChosen.length === 0)} data-export-content>{busy === 'content' ? t.exp.working : t.exp.downloadContent}</button>
 
   <h2>{t.exp.filesHeading}</h2>
   <p class="hint">{t.exp.filesIntro}</p>

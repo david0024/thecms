@@ -3,6 +3,8 @@
  * the owner turns the shop on, never before (ADR 0060 d3). Only words here, so
  * that the store and the backups know them without loading the shop.
  */
+import { createHash } from 'node:crypto';
+import { type Coupon, normalizeCoupon } from '../core/index.ts';
 import type { DatabaseKind } from './store.ts';
 
 const MYSQL = 'ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin';
@@ -47,3 +49,12 @@ export const shopTable = (table: string): string | undefined => SQLITE[table];
  * session, it belongs to a browser, and is forgotten in 30 days anyway.
  */
 export const BACKED_UP_SHOP_TABLES = ['shop_stock', 'shop_orders', 'shop_coupons'] as const;
+
+/** The key of a stock's row: the hash of `type/slug#variant`, which may be longer than a key MySQL allows. */
+export const stockId = (product: string, variant: string): string => createHash('sha256').update(`${product}#${variant}`).digest('hex').slice(0, 40);
+
+/** A coupon as kept: its numbers as numbers, whichever database gave them (PostgreSQL gives a BIGINT as text). */
+export const asCoupon = (row: Record<string, unknown>): Coupon | null => {
+  const n = (v: unknown): number | null => (v === null || v === undefined ? null : Number(v));
+  return normalizeCoupon({ code: row.code, kind: row.kind, value: n(row.value), ends: row.ends, uses: n(row.uses), used: n(row.used), minimum: n(row.minimum) });
+};

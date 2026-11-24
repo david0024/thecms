@@ -43,7 +43,7 @@ import { wordsFor } from '../blocks/words.ts';
 import { openMailQueue } from './mail-queue.ts';
 import { normalizeTemplates, type OrderValues, renderTemplate, type TemplateName } from './site-mail.ts';
 import { type CartLine, checkoutForm, dayOf, linesPart, type Order, type OrderData, orderPart, orderText, stateName, type Totals, totalsPart, type Typed } from './shop-pages.ts';
-import { shopSchema } from './shop-schema.ts';
+import { asCoupon, shopSchema, stockId } from './shop-schema.ts';
 import { escape, framed, type Notice } from './framed.ts';
 import { cleanEmail, type Database, type OrderEvent, type Store, type User } from './store.ts';
 import './languages.ts';
@@ -135,7 +135,6 @@ const json = (data: unknown, status = 200): Response =>
 const plain = (words: string, status: number): Response => new Response(`${words}\n`, { status, headers: { 'content-type': 'text/plain; charset=utf-8' } });
 
 const hashed = (value: string): string => createHash('sha256').update(value).digest('hex');
-const idOf = (key: string): string => hashed(key).slice(0, 40);
 const newSecret = (): string => Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64url');
 
 /** A stock as typed: a whole number from 0, or null for "not given". */
@@ -173,12 +172,6 @@ const asOrder = (row: Row): Order => ({
   updatedAt: String(row.updated_at),
   data: JSON.parse(String(row.data)) as OrderData,
 });
-
-/** A coupon as kept: its numbers as numbers, whichever database gave them. */
-const asCoupon = (row: Row): Coupon | null => {
-  const n = (v: unknown): number | null => (v === null || v === undefined ? null : Number(v));
-  return normalizeCoupon({ code: row.code, kind: row.kind, value: n(row.value), ends: row.ends, uses: n(row.uses), used: n(row.used), minimum: n(row.minimum) });
-};
 
 /**
  * The sums of lines that can be bought, with a way to deliver them (ADR 0065
@@ -238,7 +231,7 @@ export async function openShop(store: Store): Promise<Shop> {
     if (!type || !entry || !product) return gone;
     const sold = product.options.length ? combinations(product.options).includes(line.variant) : line.variant === '';
     const price = sold ? paid(priceOf(product, line.variant)) : null;
-    const counted = product.counted ? ((await one('SELECT quantity FROM shop_stock WHERE id = ?', [idOf(`${line.product}#${line.variant}`)]))?.quantity ?? 0) : null;
+    const counted = product.counted ? ((await one('SELECT quantity FROM shop_stock WHERE id = ?', [stockId(line.product, line.variant)]))?.quantity ?? 0) : null;
     return { ...line, name: entry.title, href: entryPath(type, slug), sku: priceOf(product, line.variant).sku, price, rate: rateFor(product, settings.rates), left: counted === null ? null : Number(counted) };
   };
 
@@ -294,7 +287,7 @@ export async function openShop(store: Store): Promise<Shop> {
     const wanted = new Map<string, { quantity: number; name: string; product: string; variant: string }>();
     for (const l of lines) {
       if (l.left === null) continue;
-      const id = idOf(`${l.product}#${l.variant}`);
+      const id = stockId(l.product, l.variant);
       const was = wanted.get(id);
       wanted.set(id, { quantity: (was?.quantity ?? 0) + l.quantity, name: l.name, product: l.product, variant: l.variant });
     }
@@ -314,7 +307,7 @@ export async function openShop(store: Store): Promise<Shop> {
   const giveBack = async (order: Order): Promise<void> => {
     let crossed = false;
     for (const l of order.data.lines) {
-      const id = idOf(`${l.product}#${l.variant}`);
+      const id = stockId(l.product, l.variant);
       const row = await one('SELECT quantity FROM shop_stock WHERE id = ?', [id]);
       // Only what is still counted: a product whose stock the owner stopped counting has nothing to give back to.
       if (!row) continue;
@@ -854,7 +847,7 @@ export async function openShop(store: Store): Promise<Shop> {
       await db.run('DELETE FROM shop_stock WHERE product = ?', [product]);
       for (const key of keys) {
         const quantity = quantityOf(given[key]);
-        if (quantity !== null) await db.run('INSERT INTO shop_stock (id, product, variant, quantity) VALUES (?, ?, ?, ?)', [idOf(`${product}#${key}`), product, key, quantity]);
+        if (quantity !== null) await db.run('INSERT INTO shop_stock (id, product, variant, quantity) VALUES (?, ?, ?, ?)', [stockId(product, key), product, key, quantity]);
         if ((quantity ?? 0) > 0 !== (before[key] ?? 0) > 0) crossed = true;
       }
       // A product that ran out or came back: its page says so once built again.
