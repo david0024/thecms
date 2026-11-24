@@ -125,13 +125,13 @@ Fly.io) ([ADR 0048](docs/adr/0048-the-installer-in-steps.md)).
 On Linux or macOS:
 
 ```sh
-curl -fsSL https://github.com/uhlaka-devs/uhlaka/releases/download/v0.1.0-alpha.6/install.sh | sh
+curl -fsSL https://github.com/uhlaka-devs/uhlaka/releases/download/v0.1.0-alpha.7/install.sh | sh
 ```
 
 On Windows, in PowerShell, for this computer:
 
 ```powershell
-irm https://github.com/uhlaka-devs/uhlaka/releases/download/v0.1.0-alpha.6/install.ps1 | iex
+irm https://github.com/uhlaka-devs/uhlaka/releases/download/v0.1.0-alpha.7/install.ps1 | iex
 ```
 
 - **This computer:** in a folder for your site, run `uhlaka`. It makes a sample
@@ -149,7 +149,7 @@ language and make your account. Every question also has an option, for
 scripts:
 
 ```sh
-curl -fsSL https://github.com/uhlaka-devs/uhlaka/releases/download/v0.1.0-alpha.6/install.sh \
+curl -fsSL https://github.com/uhlaka-devs/uhlaka/releases/download/v0.1.0-alpha.7/install.sh \
   | sh -s -- --host=server --database=postgres --public=https://cms.example.com
 ```
 
