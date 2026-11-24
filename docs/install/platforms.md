@@ -11,7 +11,7 @@ language and make your account.
 ## Docker
 
 ```sh
-curl -fsSL https://github.com/uhlaka-devs/uhlaka/releases/download/v0.1.0-alpha.5/install.sh | sh -s -- --host=docker
+curl -fsSL https://github.com/uhlaka-devs/uhlaka/releases/download/v0.1.0-alpha.6/install.sh | sh -s -- --host=docker
 ```
 
 It asks which database (SQLite, PostgreSQL, MySQL, MariaDB, or one of yours)
