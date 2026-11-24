@@ -112,6 +112,7 @@ export function describeOffer(offer: ExtensionOffer): string {
   if (asks.uses.length) lines.push(`  read the site's data: ${asks.uses.join(', ')}`);
   if (asks.mails?.length) lines.push(`  send visitors these messages: ${asks.mails.join(', ')}`);
   if (offer.accountsOff) lines.push('It works with visitor accounts, which are off: it does that part once they are turned on.');
+  if (offer.shopOff) lines.push('It works with the shop, which is off: it does that part once the shop is turned on.');
   return lines.join('\n');
 }
 

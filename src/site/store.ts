@@ -120,6 +120,7 @@ import { wordsFor } from '../blocks/words.ts';
 import { DAYS_KEPT, type Kind, KINDS, summed } from '../../extensions/stats/rows.ts';
 import { isIndexNowKey } from './indexnow.ts';
 import { BACKED_UP_VISITOR_TABLES, visitorSchema, visitorTable } from './visitor-schema.ts';
+import { BACKED_UP_SHOP_TABLES, shopSchema, shopTable } from './shop-schema.ts';
 import './languages.ts';
 
 /** What is kept with translations: a page, or a section (ADR 0033). */
@@ -446,10 +447,11 @@ export class Store {
   }
 
   /**
-   * Tells what visitor accounts did (ADR 0064 d7): they keep their tables
-   * apart and are loaded only while on, so they say it themselves.
+   * Tells what visitor accounts (ADR 0064 d7) and the shop (ADR 0065 d9) did:
+   * they keep their tables apart and are loaded only while on, so they say it
+   * themselves.
    */
-  tell(name: 'account.made' | 'account.removed' | 'member.changed', data: Record<string, unknown>): void {
+  tell(name: 'account.made' | 'account.removed' | 'member.changed' | OrderEvent, data: Record<string, unknown>): void {
     this.emit(name, data);
   }
 
@@ -2518,15 +2520,21 @@ export class Store {
     await this.setMeta('stats:zone', zone);
   }
 
+  /** The tables of the parts turned on at least once, which a backup holds besides the site's own. */
+  private async optionalTables(): Promise<string[]> {
+    const optional: string[] = [];
+    for (const table of [...BACKED_UP_VISITOR_TABLES, ...BACKED_UP_SHOP_TABLES]) if (await this.hasTable(table)) optional.push(table);
+    return optional;
+  }
+
   /**
    * Every row a backup holds (ADR 0051 d1), table by table, a few at a time so
    * that a site with many pictures is never all in memory. Bytes come as
    * Uint8Array, whichever database gave them.
    */
   async *backupRows(): AsyncGenerator<{ table: string; row: Row }> {
-    // The visitors' tables, once the owner has turned the accounts on (ADR 0064 d6).
-    const optional: string[] = [];
-    for (const table of BACKED_UP_VISITOR_TABLES) if (await this.hasTable(table)) optional.push(table);
+    // The visitors' tables, once the owner has turned the accounts on (ADR 0064 d6); the shop's, once it was (ADR 0065).
+    const optional = await this.optionalTables();
     for (const table of [...BACKUP_TABLES, ...optional]) {
       const key = TABLE_KEYS[table] as string[];
       const order = key.map((column) => (column === 'key' ? this.dialect.key : column)).join(', ');
@@ -2563,8 +2571,9 @@ export class Store {
       if (next.value.table !== 'meta') break;
     }
     if (ahead.some(({ table, row }) => table === 'meta' && row.key === VISITOR_SETTINGS)) await this.database().make(visitorSchema(this.kind));
-    const optional: string[] = [];
-    for (const table of BACKED_UP_VISITOR_TABLES) if (await this.hasTable(table)) optional.push(table);
+    // So does a site whose shop was ever turned on (ADR 0065).
+    if (ahead.some(({ table, row }) => table === 'meta' && row.key === SHOP_SETTINGS)) await this.database().make(shopSchema(this.kind));
+    const optional = await this.optionalTables();
     const all = async function* (): AsyncGenerator<{ table: string; row: Row }> {
       yield* ahead;
       for (let next = await iterator.next(); !next.done; next = await iterator.next()) yield next.value;
@@ -2603,6 +2612,9 @@ export class Store {
     return count;
   }
 }
+
+/** What the shop tells extensions about an order (ADR 0065 d9). */
+export type OrderEvent = 'order.made' | 'order.paid' | 'order.sent' | 'order.refunded';
 
 /** An address visitors asked for that the site does not have (ADR 0063 d1). */
 export interface NotFound {
@@ -2676,7 +2688,7 @@ export const BACKUP_TABLES = [
 /** Each table's columns and key, read from the schema, which says them once. */
 const TABLE_COLUMNS: Record<string, string[]> = {};
 const TABLE_KEYS: Record<string, string[]> = {};
-for (const statement of [...SQLITE.schema, ...BACKED_UP_VISITOR_TABLES.map((t) => visitorTable(t) as string)]) {
+for (const statement of [...SQLITE.schema, ...BACKED_UP_VISITOR_TABLES.map((t) => visitorTable(t) as string), ...BACKED_UP_SHOP_TABLES.map((t) => shopTable(t) as string)]) {
   const [, table, inside] = statement.match(/^CREATE TABLE IF NOT EXISTS (\w+) \((.*)\)$/) as RegExpMatchArray;
   const parts = (inside as string).split(/, (?![^()]*\))/);
   const key = parts.find((p) => p.startsWith('PRIMARY KEY'));

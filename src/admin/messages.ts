@@ -441,6 +441,7 @@ export const en = {
     blocks: 'add blocks to the site\'s pages: {list}',
     mails: 'send visitors these messages: {list}',
     accountsOff: 'It works with visitor accounts, which are off: it does that part once you turn them on in Settings → Visitor accounts.',
+    shopOff: 'It works with the shop, which is off: it does that part once you turn it on in Settings → Shop.',
     earlier: 'The month before',
     later: 'The month after',
     blockMissing: 'An extension\'s block that is not there',

@@ -94,10 +94,10 @@ export interface ExtensionAction {
 
 /**
  * The program's data an extension may read, declared (ADR 0062 d4): the
- * published pages, and with visitor accounts (ADR 0064 d7) the members and
- * e-mail to them.
+ * published pages, with visitor accounts (ADR 0064 d7) the members and
+ * e-mail to them, and with the shop (ADR 0065 d9) its orders.
  */
-export const PROGRAM_DATA = ['published', 'members', 'mail'] as const;
+export const PROGRAM_DATA = ['published', 'members', 'mail', 'orders'] as const;
 export type ProgramData = (typeof PROGRAM_DATA)[number];
 
 /** The questions the program asks an extension and waits for (ADR 0062 d3), and what each may answer. */
@@ -160,9 +160,26 @@ export interface ExtensionJob {
 }
 
 /** What happens in the site that an extension may hear of, and what it is told. */
-export const EXTENSION_EVENTS = ['page.published', 'entry.published', 'comment.created', 'comment.approved', 'message.received', 'page.served', 'search.made', 'account.made', 'account.removed', 'member.changed'] as const;
+export const EXTENSION_EVENTS = [
+  'page.published',
+  'entry.published',
+  'comment.created',
+  'comment.approved',
+  'message.received',
+  'page.served',
+  'search.made',
+  'account.made',
+  'account.removed',
+  'member.changed',
+  'order.made',
+  'order.paid',
+  'order.sent',
+  'order.refunded',
+] as const;
 /** What visitor accounts tell (ADR 0064 d7): the visitor's id and levels, never their e-mail, password or session. */
 export const ACCOUNT_EVENTS: readonly ExtensionEventName[] = ['account.made', 'account.removed', 'member.changed'];
+/** What the shop tells (ADR 0065 d9): the order's id, number, total and currency, never who bought it. */
+export const ORDER_EVENTS: readonly ExtensionEventName[] = ['order.made', 'order.paid', 'order.sent', 'order.refunded'];
 /** What the second format may listen to: the site's changes, not its visits. */
 const EVENTS_2: readonly string[] = EXTENSION_EVENTS.slice(0, 5);
 /**
@@ -552,6 +569,8 @@ export function extensionAsks(manifest: ExtensionManifest): {
   mails: string[];
   /** Whether it works with visitor accounts (ADR 0064 d7): their events, the members or e-mail to them. */
   accounts: boolean;
+  /** Whether it works with the shop (ADR 0065 d9): the orders' events, or the orders. */
+  shop: boolean;
 } {
   const label = (name: string): string => manifest.actions.find((a) => a.name === name)?.label ?? name;
   return {
@@ -568,6 +587,7 @@ export function extensionAsks(manifest: ExtensionManifest): {
     blocks: manifest.blocks.map((b) => b.label),
     mails: manifest.mails.map((m) => m.subject),
     accounts: manifest.uses.includes('members') || manifest.uses.includes('mail') || manifest.events.some((e) => ACCOUNT_EVENTS.includes(e.on)),
+    shop: manifest.uses.includes('orders') || manifest.events.some((e) => ORDER_EVENTS.includes(e.on)),
   };
 }
 

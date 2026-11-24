@@ -15,11 +15,17 @@
 import { createHash } from 'node:crypto';
 import {
   combinations,
+  type Coupon,
+  couponCode,
+  couponOff,
+  couponProblem,
   entryPath,
   isFinal,
   isObject,
+  MAX_COUPONS,
   moneyText,
   NAME,
+  normalizeCoupon,
   normalizeShopSettings,
   ORDER_STATES,
   type OrderState,
@@ -39,7 +45,7 @@ import { normalizeTemplates, type OrderValues, renderTemplate, type TemplateName
 import { type CartLine, checkoutForm, dayOf, linesPart, type Order, type OrderData, orderPart, orderText, stateName, type Totals, totalsPart, type Typed } from './shop-pages.ts';
 import { shopSchema } from './shop-schema.ts';
 import { escape, framed, type Notice } from './framed.ts';
-import { cleanEmail, type Database, type Store, type User } from './store.ts';
+import { cleanEmail, type Database, type OrderEvent, type Store, type User } from './store.ts';
 import './languages.ts';
 
 type Row = Record<string, unknown>;
@@ -75,7 +81,54 @@ export interface Shop {
   chores: (now: Date) => Promise<void>;
   /** A visitor's orders, for "My account" (ADR 0065 d4). */
   ordersOf: (visitorId: string, language: string) => Promise<string>;
+  /** What an extension that uses `orders` is lent (ADR 0065 d9). */
+  lent: OrdersLent;
 }
+
+/** An order as an extension that uses `orders` reads it (ADR 0065 d9): everything but the buyer's secret link. */
+export interface LentOrder {
+  id: string;
+  number: number;
+  state: OrderState;
+  createdAt: string;
+  language: string;
+  email: string;
+  buyer: OrderData['buyer'];
+  lines: OrderData['lines'];
+  shipping: OrderData['shipping'];
+  payment: OrderData['payment'];
+  totals: Totals;
+  currency: string;
+  tracking: string;
+}
+
+/**
+ * What the shop lends an extension that declared `orders` (ADR 0065 d9): an
+ * order read by its id, marked paid or refunded, given a tracking number.
+ * Marking an order paid twice, as a provider's webhook may, changes nothing.
+ */
+export interface OrdersLent {
+  get: (id: string) => Promise<LentOrder | null>;
+  paid: (id: string) => Promise<LentOrder>;
+  refunded: (id: string) => Promise<LentOrder>;
+  tracking: (id: string, tracking: string) => Promise<LentOrder>;
+}
+
+const lentOrder = (o: Order): LentOrder => ({
+  id: o.id,
+  number: o.number,
+  state: o.state,
+  createdAt: o.createdAt,
+  language: o.language,
+  email: o.email,
+  buyer: o.data.buyer,
+  lines: o.data.lines,
+  shipping: o.data.shipping,
+  payment: o.data.payment,
+  totals: o.data.totals,
+  currency: o.data.currency,
+  tracking: o.data.tracking,
+});
 
 const json = (data: unknown, status = 200): Response =>
   new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } });
@@ -121,14 +174,36 @@ const asOrder = (row: Row): Order => ({
   data: JSON.parse(String(row.data)) as OrderData,
 });
 
-/** The sums of lines that can be bought, with a way to deliver them (ADR 0065 d5). */
-export function totalsOf(lines: { price: number; quantity: number; rate: number }[], method: ShippingMethod | null, settings: ShopSettings): Totals {
+/** A coupon as kept: its numbers as numbers, whichever database gave them. */
+const asCoupon = (row: Row): Coupon | null => {
+  const n = (v: unknown): number | null => (v === null || v === undefined ? null : Number(v));
+  return normalizeCoupon({ code: row.code, kind: row.kind, value: n(row.value), ends: row.ends, uses: n(row.uses), used: n(row.used), minimum: n(row.minimum) });
+};
+
+/**
+ * The sums of lines that can be bought, with a way to deliver them (ADR 0065
+ * d5) and a coupon (d8). A coupon takes off the products, never delivery; what
+ * it takes is shared between the VAT rates as the products are, and delivery
+ * is free above its sum by what is paid for the products after it.
+ */
+export function totalsOf(lines: { price: number; quantity: number; rate: number }[], method: ShippingMethod | null, settings: ShopSettings, coupon: Pick<Coupon, 'code' | 'kind' | 'value'> | null = null): Totals {
   const subtotal = lines.reduce((sum, l) => sum + l.price * l.quantity, 0);
-  const shipping = method ? shippingCost(method, subtotal) : 0;
+  const discount = coupon ? couponOff(coupon, subtotal) : 0;
+  const shipping = method ? shippingCost(method, subtotal - discount) : 0;
   const vat: [number, number][] = [];
   if (settings.vat) {
     const gross = new Map<number, number>();
     for (const l of lines) gross.set(l.rate, (gross.get(l.rate) ?? 0) + l.price * l.quantity);
+    if (discount) {
+      // Each rate gives up its share of the discount; the last gives what rounding left over.
+      const rates = [...gross.keys()];
+      let left = discount;
+      rates.forEach((rate, i) => {
+        const share = i === rates.length - 1 ? left : Math.round((discount * (gross.get(rate) ?? 0)) / subtotal);
+        left -= share;
+        gross.set(rate, (gross.get(rate) ?? 0) - share);
+      });
+    }
     // Delivery is taxed at the site's first rate.
     const first = settings.rates[0] ?? 0;
     if (shipping) gross.set(first, (gross.get(first) ?? 0) + shipping);
@@ -137,7 +212,7 @@ export function totalsOf(lines: { price: number; quantity: number; rate: number 
       if (amount && !vat.some(([r]) => r === rate)) vat.push([rate, amount]);
     }
   }
-  return { subtotal, shipping, total: subtotal + shipping, vat };
+  return { subtotal, ...(coupon && discount ? { coupon: coupon.code, discount } : {}), shipping, total: subtotal - discount + shipping, vat };
 }
 
 export async function openShop(store: Store): Promise<Shop> {
@@ -175,14 +250,38 @@ export async function openShop(store: Store): Promise<Shop> {
     }
     return '';
   };
-  const cartOf = async (secret: string, now = new Date()): Promise<{ lines: Kept[]; shipping: string } | null> => {
+  // A cart's items are its lines and the coupon typed (`{ lines, coupon }`); a cart kept before coupons is its lines alone.
+  const cartOf = async (secret: string, now = new Date()): Promise<{ lines: Kept[]; shipping: string; coupon: string } | null> => {
     if (!secret || secret.length > 100) return null;
     const row = await one('SELECT items, shipping, updated_at FROM shop_carts WHERE id = ?', [hashed(secret)]);
     if (!row || String(row.updated_at) <= new Date(now.getTime() - CART_DAYS * DAY).toISOString()) return null;
-    return { lines: keptLines(JSON.parse(String(row.items))), shipping: String(row.shipping) };
+    const items: unknown = JSON.parse(String(row.items));
+    const kept = isObject(items) ? items : { lines: items };
+    return { lines: keptLines(kept.lines), shipping: String(row.shipping), coupon: couponCode(kept.coupon) };
   };
-  const keepCart = async (secret: string, lines: Kept[], shipping: string): Promise<void> => {
-    await db.run(db.upsert('shop_carts', ['id', 'items', 'shipping', 'updated_at'], ['id'], ['items', 'shipping', 'updated_at']), [hashed(secret), JSON.stringify(lines), shipping, new Date().toISOString()]);
+  const keepCart = async (secret: string, lines: Kept[], shipping: string, coupon: string): Promise<void> => {
+    await db.run(db.upsert('shop_carts', ['id', 'items', 'shipping', 'updated_at'], ['id'], ['items', 'shipping', 'updated_at']), [
+      hashed(secret),
+      JSON.stringify({ lines, coupon }),
+      shipping,
+      new Date().toISOString(),
+    ]);
+  };
+
+  // Coupons (ADR 0065 d8).
+  const couponOf = async (code: string): Promise<Coupon | null> => {
+    if (!code) return null;
+    const row = await one('SELECT * FROM shop_coupons WHERE code = ?', [code]);
+    return row ? asCoupon(row) : null;
+  };
+  /**
+   * Takes one use of a coupon for an order, only while it has one left and
+   * has not ended: two buyers never both take its last use.
+   */
+  const takeCoupon = async (code: string): Promise<boolean> =>
+    (await db.changed("UPDATE shop_coupons SET used = used + 1 WHERE code = ? AND (uses IS NULL OR used < uses) AND (ends = '' OR ends >= ?)", [code, new Date().toISOString().slice(0, 10)])) === 1;
+  const giveCouponBack = async (code: string | undefined): Promise<void> => {
+    if (code) await db.run('UPDATE shop_coupons SET used = used - 1 WHERE code = ? AND used > 0', [code]);
   };
 
   // Stock.
@@ -232,16 +331,16 @@ export async function openShop(store: Store): Promise<Shop> {
     return row ? asOrder(row) : null;
   };
   /** Where an order's link leads: the site's own address, or the one asked. */
-  const baseOf = (site: Site, url: URL): string => {
+  const baseOf = (site: Site, url: URL | null): string => {
     try {
       const own = new URL(site.url);
       if (own.protocol === 'https:' || own.protocol === 'http:') return own.origin;
     } catch {
       // No address set: the one asked.
     }
-    return url.origin;
+    return url?.origin ?? '';
   };
-  const orderLink = (site: Site, url: URL, order: Order): string => `${baseOf(site, url)}/_/order/${order.secret}${order.language === site.language ? '' : `?l=${encodeURIComponent(order.language)}`}`;
+  const orderLink = (site: Site, url: URL | null, order: Order): string => `${baseOf(site, url)}/_/order/${order.secret}${order.language === site.language ? '' : `?l=${encodeURIComponent(order.language)}`}`;
   /** A message about an order, in the owner's words where they gave them, in the order's language. */
   const tell = async (to: string, what: TemplateName, order: Order, link: string): Promise<void> => {
     if (!to) return;
@@ -336,9 +435,15 @@ export async function openShop(store: Store): Promise<Shop> {
     const cart = await cartOf(secret);
     const methodOf = (id: string): ShippingMethod | null => settings.shipping.find((m) => m.id === id) ?? null;
 
-    /** The cart's lines as they can be bought now, each lowered to what is left. Saved when something changed. */
-    const current = async (): Promise<{ lines: CartLine[]; notices: string[] }> => {
-      if (!cart) return { lines: [], notices: [] };
+    const bought = (lines: CartLine[]) => lines.filter((l): l is CartLine & { price: number } => l.price !== null);
+    /**
+     * The cart's lines as they can be bought now, each lowered to what is
+     * left, and its coupon when it is taken from them. Saved when something
+     * changed: a coupon that ended or was used up is taken off; one under its
+     * smallest order stays, and is said.
+     */
+    const current = async (): Promise<{ lines: CartLine[]; notices: string[]; coupon: Coupon | null }> => {
+      if (!cart) return { lines: [], notices: [], coupon: null };
       const lines: CartLine[] = [];
       const notices: string[] = [];
       let changed = false;
@@ -355,16 +460,36 @@ export async function openShop(store: Store): Promise<Shop> {
         }
         lines.push(line);
       }
-      if (changed) await keepCart(secret, lines.map(({ product, variant, quantity }) => ({ product, variant, quantity })), cart.shipping);
-      return { lines, notices };
+      let coupon: Coupon | null = null;
+      let code = cart.coupon;
+      if (code) {
+        const subtotal = bought(lines).reduce((sum, l) => sum + l.price * l.quantity, 0);
+        const kept = await couponOf(code);
+        const problem = kept ? couponProblem(kept, subtotal) : 'ended';
+        if (problem === 'minimum') notices.push(said.cartCouponMinimum.replace('{code}', code).replace('{sum}', money(kept?.minimum ?? 0)));
+        else if (problem) {
+          notices.push(said.cartCouponGone.replace('{code}', code));
+          code = '';
+          changed = true;
+        } else coupon = kept;
+      }
+      if (changed) await keepCart(secret, lines.map(({ product, variant, quantity }) => ({ product, variant, quantity })), cart.shipping, code);
+      return { lines, notices, coupon };
     };
-    const bought = (lines: CartLine[]) => lines.filter((l): l is CartLine & { price: number } => l.price !== null);
+    /** The coupon's own form, under the cart's lines (ADR 0065 d8): a code to apply, or the one applied to take off. */
+    const couponForm = (code: string): string =>
+      `<form class="form cart-coupon" method="post" action="/_/cart${query}" accept-charset="utf-8">` +
+      (code
+        ? `<p>${escape(said.cartCouponOff.replace('{code}', code))} <button class="button button-quiet" type="submit" name="coupon" value="" data-cart-uncoupon>${escape(said.cartCouponRemove)}</button></p>`
+        : `<p class="form-field"><label for="cart-coupon">${escape(said.cartCoupon)}</label><input id="cart-coupon" name="coupon" maxlength="40" autocomplete="off" autocapitalize="characters"> <button class="button button-quiet" type="submit" data-cart-coupon>${escape(said.cartCouponApply)}</button></p>`) +
+      `</form>`;
 
     switch (route) {
       case '/_/cart': {
         if (post) {
           const lines = [...(cart?.lines ?? [])];
           let shipping = cart?.shipping ?? '';
+          let coupon = cart?.coupon ?? '';
           let notice = 'updated';
           const product = field('product', 300);
           if (product) {
@@ -380,6 +505,21 @@ export async function openShop(store: Store): Promise<Shop> {
               else lines.push({ product, variant, quantity: wanted });
               notice = 'added';
             }
+          } else if (fields.has('coupon')) {
+            // The coupon's own form (ADR 0065 d8): a code typed, or none to take it off.
+            const typed = couponCode(field('coupon', 80));
+            const kept = await couponOf(typed);
+            const problem = kept ? couponProblem(kept, 0) : null;
+            if (!field('coupon', 80)) {
+              coupon = '';
+              notice = 'updated';
+            } else if (!kept || problem === 'ended') notice = 'couponbad';
+            else if (problem === 'used') notice = 'couponused';
+            else {
+              // One under its smallest order is kept, and said in the cart until the order reaches it.
+              coupon = kept.code;
+              notice = 'coupon';
+            }
           } else {
             const removed = fields.get('remove');
             for (let i = lines.length - 1; i >= 0; i--) {
@@ -390,17 +530,25 @@ export async function openShop(store: Store): Promise<Shop> {
             }
             if (fields.has('shipping') && (methodOf(field('shipping', 40)) || field('shipping') === '')) shipping = field('shipping', 40);
           }
-          if (notice === 'notadded' && !cart) return to('/_/cart', notice);
+          if ((notice === 'notadded' || notice === 'couponbad' || notice === 'couponused') && !cart) return to('/_/cart', notice);
           const own = cart ? secret : newSecret();
-          await keepCart(own, lines, shipping);
+          await keepCart(own, lines, shipping, coupon);
           return to('/_/cart', notice, cart ? {} : { 'set-cookie': cookie(own, CART_DAYS * 86_400) });
         }
-        const { lines, notices } = await current();
-        const NOTICES: Record<string, Notice> = { added: { text: said.cartAdded }, updated: { text: said.cartUpdated }, notadded: { text: said.cartNotAdded, failed: true }, changed: { text: said.checkoutChanged, failed: true } };
+        const { lines, notices, coupon } = await current();
+        const NOTICES: Record<string, Notice> = {
+          added: { text: said.cartAdded },
+          updated: { text: said.cartUpdated },
+          notadded: { text: said.cartNotAdded, failed: true },
+          changed: { text: said.checkoutChanged, failed: true },
+          coupon: { text: said.cartCouponAdded },
+          couponbad: { text: said.cartCouponBad, failed: true },
+          couponused: { text: said.cartCouponUsed, failed: true },
+        };
         const notice: Notice | undefined = notices.length ? { text: notices.join(' '), failed: true } : NOTICES[url.searchParams.get('said') ?? ''];
         if (!lines.length) return draw(said.cart, `<p class="lead" data-cart-empty>${escape(said.cartEmpty)}</p><p><a href="/">${escape(said.cartBack)}</a></p>`, notice);
         const method = methodOf(cart?.shipping ?? '') ?? (settings.shipping.length === 1 ? (settings.shipping[0] as ShippingMethod) : null);
-        const totals = totalsOf(bought(lines), method, settings);
+        const totals = totalsOf(bought(lines), method, settings, coupon);
         const rows = lines
           .map(
             (l, i) =>
@@ -421,13 +569,14 @@ export async function openShop(store: Store): Promise<Shop> {
           `<form id="cart-remove" method="post" action="/_/cart${query}"></form>` +
             `<form class="form cart" method="post" action="/_/cart${query}" accept-charset="utf-8"><table class="cart-lines"><thead><tr><th scope="col">${escape(said.cartProduct)}</th><th scope="col">${escape(said.cartPrice)}</th><th scope="col">${escape(said.shopQuantity)}</th><th scope="col">${escape(said.cartLineTotal)}</th><th></th></tr></thead><tbody>${rows}</tbody></table>` +
             `${choose}<p><button class="button button-quiet" type="submit">${escape(said.cartUpdate)}</button></p></form>` +
+            couponForm(cart?.coupon ?? '') +
             totalsPart(said, totals, money, method ? method.name : null, settings.vat) +
             (bought(lines).length ? `<p><a class="button" href="/_/checkout${query}" data-cart-checkout>${escape(said.cartToCheckout)}</a></p>` : ''),
           notice,
         );
       }
       case '/_/checkout': {
-        const { lines } = await current();
+        const { lines, coupon } = await current();
         const buying = bought(lines);
         if (!buying.length) return to('/_/cart');
         const payments = [...(settings.transfer.on ? (['transfer'] as const) : []), ...(settings.cod ? (['cod'] as const) : [])];
@@ -441,7 +590,7 @@ export async function openShop(store: Store): Promise<Shop> {
           ? Object.fromEntries(['name', 'email', 'phone', 'street', 'town', 'county', 'postcode', 'company', 'companyName', 'taxCode', 'registration', 'shipping', 'payment', 'note'].map((k) => [k, field(k, k === 'note' ? 1000 : 200)]))
           : { name: me?.name ?? '', email: me?.email ?? '', shipping: methodOf(cart?.shipping ?? '')?.id ?? (settings.shipping.length === 1 ? (settings.shipping[0]?.id ?? '') : ''), payment: payments.length === 1 ? (payments[0] as string) : '' };
         const method = methodOf(typed.shipping ?? '');
-        const totals = totalsOf(buying, method, settings);
+        const totals = totalsOf(buying, method, settings, coupon);
         const page = (notice?: Notice, bad = new Set<string>(), status = 200): Response =>
           draw(
             said.checkout,
@@ -470,8 +619,13 @@ export async function openShop(store: Store): Promise<Shop> {
           if (lines.some((l) => l.price === null)) return to('/_/cart', 'changed');
           return page({ text: said.checkoutChanged, failed: true }, new Set(), 409);
         }
+        // The coupon's use first: one used up meanwhile sends the buyer back to the cart, which says so.
+        if (totals.coupon && !(await takeCoupon(totals.coupon))) return to('/_/cart', 'changed');
         const taken = await take(buying);
-        if (taken.short !== null) return page({ text: said.checkoutNoStock.replace('{name}', taken.short), failed: true }, new Set(), 409);
+        if (taken.short !== null) {
+          await giveCouponBack(totals.coupon);
+          return page({ text: said.checkoutNoStock.replace('{name}', taken.short), failed: true }, new Set(), 409);
+        }
         const chosen = method as ShippingMethod;
         const data: OrderData = {
           buyer: {
@@ -499,6 +653,7 @@ export async function openShop(store: Store): Promise<Shop> {
         const state: OrderState = data.payment === 'transfer' ? 'waiting' : 'preparing';
         data.history.push({ state, at: new Date().toISOString() });
         const order = await place(data, email, me?.id ?? '', language, state);
+        told('order.made', order);
         await db.run('DELETE FROM shop_carts WHERE id = ?', [hashed(secret)]);
         if (taken.crossed) await store.touch();
         const link = orderLink(site, url, order);
@@ -529,6 +684,44 @@ export async function openShop(store: Store): Promise<Shop> {
           .join('')}</ul>`
       : `<p data-my-orders>${escape(said.myOrdersNone)}</p>`;
     return `<h2>${escape(said.myOrders)}</h2>${list}`;
+  }
+
+  /** Tells extensions what happened to an order (ADR 0065 d9): its id, number and total, never who bought it. */
+  const told = (event: OrderEvent, order: Order): void => store.tell(event, { id: order.id, number: order.number, total: order.total, currency: order.data.currency });
+
+  /**
+   * Moves an order to a state, or sets its tracking number: from the Orders
+   * screen, or by an extension that uses `orders`. Cancelling gives back the
+   * stock and the coupon's use; the buyer is told when it is paid, sent or
+   * cancelled, and extensions when it is paid, sent or refunded.
+   */
+  async function change(order: Order, asked: { state?: unknown; tracking?: unknown }, url: URL | null): Promise<{ order: Order } | { error: string; status: number }> {
+    const wanted = String(asked.state ?? order.state);
+    if (!(ORDER_STATES as readonly string[]).includes(wanted)) return { error: 'that is not a state an order has', status: 400 };
+    const state = wanted as OrderState;
+    const tracking = typeof asked.tracking === 'string' ? asked.tracking.replace(/\s+/g, ' ').trim().slice(0, 100) : order.data.tracking;
+    if (state !== order.state && isFinal(order.state)) return { error: 'a cancelled or refunded order stays so', status: 409 };
+    const data: OrderData = { ...order.data, tracking, history: state === order.state ? order.data.history : [...order.data.history, { state, at: new Date().toISOString() }] };
+    const at = new Date().toISOString();
+    // Changed only from the state it was read in: two people handling one order do not both send its message.
+    if ((await db.changed('UPDATE shop_orders SET state = ?, data = ?, updated_at = ? WHERE id = ? AND state = ?', [state, JSON.stringify(data), at, order.id, order.state])) !== 1) {
+      return { error: 'someone else changed this order: open it again', status: 409 };
+    }
+    const next: Order = { ...order, state, data, updatedAt: at };
+    if (state !== order.state) {
+      if (state === 'cancelled') {
+        await giveBack(order);
+        await giveCouponBack(order.data.totals.coupon);
+      }
+      const site = await store.site();
+      const message: Partial<Record<OrderState, TemplateName>> = { paid: 'orderPaid', sent: 'orderSent', cancelled: 'orderCancelled' };
+      const what = message[state];
+      if (what) await tell(order.email, what, next, orderLink(site, url, next));
+      const event: Partial<Record<OrderState, OrderEvent>> = { paid: 'order.paid', sent: 'order.sent', refunded: 'order.refunded' };
+      const heard = event[state];
+      if (heard) told(heard, next);
+    }
+    return { order: next };
   }
 
   /** An order as the admin lists it. */
@@ -588,32 +781,54 @@ export async function openShop(store: Store): Promise<Shop> {
       const order = await orderBy('id', id);
       if (!order) return json({ error: 'there is no such order' }, 404);
       if (request.method === 'PUT') {
-        const asked = String(body.state ?? order.state);
-        if (!(ORDER_STATES as readonly string[]).includes(asked)) return json({ error: 'that is not a state an order has' }, 400);
-        const state = asked as OrderState;
-        const tracking = typeof body.tracking === 'string' ? body.tracking.replace(/\s+/g, ' ').trim().slice(0, 100) : order.data.tracking;
-        if (state !== order.state && isFinal(order.state)) return json({ error: 'a cancelled or refunded order stays so' }, 409);
-        const data: OrderData = { ...order.data, tracking, history: state === order.state ? order.data.history : [...order.data.history, { state, at: new Date().toISOString() }] };
-        const at = new Date().toISOString();
-        // Changed only from the state it was read in: two people handling one order do not both send its message.
-        if ((await db.changed('UPDATE shop_orders SET state = ?, data = ?, updated_at = ? WHERE id = ? AND state = ?', [state, JSON.stringify(data), at, order.id, order.state])) !== 1) {
-          return json({ error: 'someone else changed this order: open it again' }, 409);
-        }
-        const next: Order = { ...order, state, data, updatedAt: at };
-        if (state !== order.state) {
-          if (state === 'cancelled') await giveBack(order);
-          const site = await store.site();
-          const message: Partial<Record<OrderState, TemplateName>> = { paid: 'orderPaid', sent: 'orderSent', cancelled: 'orderCancelled' };
-          const what = message[state];
-          if (what) await tell(order.email, what, next, orderLink(site, url, next));
-        }
-        return json({ order: next });
+        const changed = await change(order, body, url);
+        return 'error' in changed ? json({ error: changed.error }, changed.status) : json(changed);
       }
       if (request.method !== 'GET') return json({ error: 'not found' }, 404);
       return json({ order });
     }
+    if (url.pathname === '/api/shop/coupons') {
+      const settings = await settingsOf();
+      // Whoever handles the orders handles the coupons.
+      if (!(me.role === 'owner' || (me.role === 'editor' && settings.editors))) return json({ error: 'only the owner handles coupons' }, 403);
+      return couponsApi(request, url, body);
+    }
     if (url.pathname !== '/api/shop/stock') return json({ error: 'not found' }, 404);
     return stockApi(request, url, body);
+  }
+
+  const coupons = async (): Promise<Coupon[]> => (await db.rows<Row>('SELECT * FROM shop_coupons ORDER BY code')).map(asCoupon).filter((c): c is Coupon => c !== null);
+
+  /**
+   * Keeps a coupon (ADR 0065 d8), by its code: a new one, or one changed with
+   * its uses so far kept. Null, and why, when it is not one.
+   */
+  async function saveCoupon(input: unknown): Promise<{ coupon: Coupon } | { error: string }> {
+    const coupon = normalizeCoupon(input);
+    if (!coupon) return { error: 'a coupon needs a code (letters, digits, "-" and "_") and what it takes off: a percentage from 1 to 100, or a sum' };
+    const before = await couponOf(coupon.code);
+    if (!before && Number((await one('SELECT COUNT(*) AS n FROM shop_coupons', []))?.n ?? 0) >= MAX_COUPONS) return { error: `a shop keeps at most ${MAX_COUPONS} coupons: delete some that ended first` };
+    const kept = { ...coupon, used: before?.used ?? 0 };
+    await db.run(
+      db.upsert('shop_coupons', ['code', 'kind', 'value', 'ends', 'uses', 'used', 'minimum', 'created_at'], ['code'], ['kind', 'value', 'ends', 'uses', 'minimum']),
+      [kept.code, kept.kind, kept.value, kept.ends, kept.uses, kept.used, kept.minimum, new Date().toISOString()],
+    );
+    return { coupon: kept };
+  }
+
+  /** `/api/shop/coupons`: every coupon (GET), one kept by its code (PUT), one deleted (`DELETE ?code=`). */
+  async function couponsApi(request: Request, url: URL, body: Record<string, unknown>): Promise<Response> {
+    if (request.method === 'GET') return json({ coupons: await coupons() });
+    if (request.method === 'PUT') {
+      const saved = await saveCoupon(body);
+      return 'error' in saved ? json(saved, 400) : json({ ...saved, coupons: await coupons() });
+    }
+    if (request.method === 'DELETE') {
+      const code = couponCode(url.searchParams.get('code') ?? body.code);
+      if (!code || (await db.changed('DELETE FROM shop_coupons WHERE code = ?', [code])) !== 1) return json({ error: 'there is no such coupon' }, 404);
+      return json({ coupons: await coupons() });
+    }
+    return json({ error: 'not found' }, 404);
   }
 
   /**
@@ -663,5 +878,25 @@ export async function openShop(store: Store): Promise<Shop> {
       await db.run('DELETE FROM shop_carts WHERE updated_at <= ?', [new Date(now.getTime() - CART_DAYS * DAY).toISOString()]);
     },
     ordersOf,
+    lent: {
+      get: async (id) => {
+        const order = await orderBy('id', String(id));
+        return order ? lentOrder(order) : null;
+      },
+      paid: (id) => changeFor(id, (o) => (o.state === 'waiting' ? { state: 'paid' } : null)),
+      refunded: (id) => changeFor(id, (o) => (o.state === 'refunded' ? null : { state: 'refunded' })),
+      tracking: (id, tracking) => changeFor(id, () => ({ tracking: String(tracking) })),
+    },
   };
+
+  /** A change an extension asks for: none when the order is already so. */
+  async function changeFor(id: string, asked: (order: Order) => { state?: OrderState; tracking?: string } | null): Promise<LentOrder> {
+    const order = await orderBy('id', String(id));
+    if (!order) throw new Error('there is no such order');
+    const wanted = asked(order);
+    if (!wanted) return lentOrder(order);
+    const changed = await change(order, wanted, null);
+    if ('error' in changed) throw new Error(changed.error);
+    return lentOrder(changed.order);
+  }
 }

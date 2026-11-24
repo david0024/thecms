@@ -6,7 +6,7 @@
  */
 import { type ContentType, normalizeShopSettings, type ShopSettings, type ShopShown, slugify } from '../core/index.ts';
 import { wordsFor } from '../blocks/words.ts';
-import type { Shop, ShopDeps } from './shop.ts';
+import type { OrdersLent, Shop, ShopDeps } from './shop.ts';
 import type { Store, User } from './store.ts';
 
 const json = (data: unknown, status = 200): Response =>
@@ -24,6 +24,8 @@ export interface ShopGate {
   chores: (now: Date) => Promise<void>;
   /** A visitor's orders for "My account": nothing while the shop is off. */
   ordersOf: (visitorId: string, language: string) => Promise<string>;
+  /** What an extension that uses `orders` is lent (ADR 0065 d9): each call says the shop is off while it is. */
+  lent: OrdersLent;
   /** Whether the shop's code was loaded in this process: never, while it stays off (the tests ask). */
   loaded: () => boolean;
 }
@@ -59,6 +61,11 @@ export function shopGate(store: Store): ShopGate {
     for (let n = 2; taken.has(path) || (await store.draft(path)); n++) path = `${base}-${n}`;
     const type: ContentType = { id: path, name: said.shopProducts, singular: said.shopProduct, path, dated: false, categories: true, feed: false, fields: [], schema: 'product', sells: true };
     await store.setSite({ ...site, types: [...site.types, type] });
+  };
+
+  const lend = async <T>(use: (lent: OrdersLent) => Promise<T>): Promise<T> => {
+    if (!(await settings()).on) throw new Error('the shop is off');
+    return use((await open()).lent);
   };
 
   const gate: ShopGate = {
@@ -100,6 +107,12 @@ export function shopGate(store: Store): ShopGate {
     },
     async ordersOf(visitorId, language) {
       return (await settings()).on ? (await open()).ordersOf(visitorId, language) : '';
+    },
+    lent: {
+      get: (id) => lend((l) => l.get(id)),
+      paid: (id) => lend((l) => l.paid(id)),
+      refunded: (id) => lend((l) => l.refunded(id)),
+      tracking: (id, tracking) => lend((l) => l.tracking(id, tracking)),
     },
     loaded: () => loading !== null,
   };

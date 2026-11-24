@@ -17,16 +17,19 @@ const SQLITE: Record<string, string> = {
   // An order (ADR 0065 d7): its number follows the last; `secret` is in the buyer's link to it; the rest, as bought, in `data`.
   shop_orders:
     'CREATE TABLE IF NOT EXISTS shop_orders (id TEXT PRIMARY KEY, number INTEGER NOT NULL UNIQUE, secret TEXT NOT NULL, state TEXT NOT NULL, email TEXT NOT NULL, visitor_id TEXT NOT NULL, language TEXT NOT NULL, total INTEGER NOT NULL, data TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)',
+  // A coupon (ADR 0065 d8): its code, what it takes off, until when, how many times and from how much; `used` counts the orders that took it.
+  shop_coupons:
+    'CREATE TABLE IF NOT EXISTS shop_coupons (code TEXT PRIMARY KEY, kind TEXT NOT NULL, value INTEGER NOT NULL, ends TEXT NOT NULL, uses INTEGER, used INTEGER NOT NULL, minimum INTEGER, created_at TEXT NOT NULL)',
 };
 
 const translate = (statement: string, kind: DatabaseKind): string => {
   if (kind === 'sqlite') return statement;
   const out = statement
-    .replace(/\b(id|secret|visitor_id) TEXT\b/g, '$1 VARCHAR(64)')
+    .replace(/\b(id|secret|visitor_id|code) TEXT\b/g, '$1 VARCHAR(64)')
     .replace(/\b(product|variant|email) TEXT\b/g, '$1 VARCHAR(255)')
-    .replace(/\b(state|language) TEXT\b/g, '$1 VARCHAR(20)')
+    .replace(/\b(state|language|kind|ends) TEXT\b/g, '$1 VARCHAR(20)')
     .replace(/\b(\w+_at) TEXT\b/g, '$1 VARCHAR(40)')
-    .replace(/\btotal INTEGER\b/g, 'total BIGINT');
+    .replace(/\b(total|value|minimum) INTEGER\b/g, '$1 BIGINT');
   return kind === 'mysql' ? `${out.replace(/\b(items|data) TEXT\b/g, '$1 LONGTEXT')} ${MYSQL}` : out;
 };
 
@@ -34,3 +37,13 @@ export const SHOP_TABLES = Object.keys(SQLITE);
 
 /** The statements that make the tables, for one database. */
 export const shopSchema = (kind: DatabaseKind): string[] => Object.values(SQLITE).map((s) => translate(s, kind));
+
+/** The SQLite statement of a table, from which the backups read its columns and key. */
+export const shopTable = (table: string): string | undefined => SQLITE[table];
+
+/**
+ * The tables a backup holds once they exist (ADR 0065, PR c): what is left of
+ * each product, the orders and the coupons. A cart is not in it: like a
+ * session, it belongs to a browser, and is forgotten in 30 days anyway.
+ */
+export const BACKED_UP_SHOP_TABLES = ['shop_stock', 'shop_orders', 'shop_coupons'] as const;

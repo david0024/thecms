@@ -318,3 +318,68 @@ export interface ShopShown {
 export function inStock(shop: ShopShown, product: Product, key: string): boolean {
   return !product.counted || (shop.stock[key] ?? 0) > 0;
 }
+
+/** How a coupon takes off (ADR 0065 d8): a percentage of the products, or a sum. */
+export const COUPON_KINDS = ['percent', 'amount'] as const;
+export type CouponKind = (typeof COUPON_KINDS)[number];
+/** The longest code a coupon has. */
+export const COUPON_CODE_MAX = 40;
+/** The most coupons a shop keeps at once: more is a campaign for an extension. */
+export const MAX_COUPONS = 500;
+
+/**
+ * A coupon (ADR 0065 d8): a code a buyer types in the cart, that takes a
+ * percentage or a sum off the products (never off delivery), until a day, a
+ * number of times, from a smallest order. One coupon an order.
+ */
+export interface Coupon {
+  /** What the buyer types, in capitals: `SUMMER-10`. Letters, digits, `-` and `_`. */
+  code: string;
+  kind: CouponKind;
+  /** A percentage from 1 to 100 for `percent`; a sum in the smallest unit for `amount`. */
+  value: number;
+  /** The last day it is taken (`2026-12-31`, by the site's clock, UTC); '' for no end. */
+  ends: string;
+  /** How many orders may use it; null for no limit. */
+  uses: number | null;
+  /** How many orders have used it: kept by the shop, never typed. Cancelling an order gives its use back. */
+  used: number;
+  /** The smallest sum of products it is taken from, in the smallest unit; null for any. */
+  minimum: number | null;
+}
+
+/** A coupon's code as people type it: ` summer-10 ` → `SUMMER-10`; '' for what is not one. */
+export function couponCode(value: unknown): string {
+  const typed = str(value, COUPON_CODE_MAX + 20).trim().toUpperCase();
+  return /^[A-Z0-9_-]+$/.test(typed) && typed.length <= COUPON_CODE_MAX ? typed : '';
+}
+
+/** Untrusted input as a coupon, or null when it is not one: no code, or nothing taken off. */
+export function normalizeCoupon(input: unknown): Coupon | null {
+  const raw = isObject(input) ? input : {};
+  const code = couponCode(raw.code);
+  const kind: CouponKind = raw.kind === 'amount' ? 'amount' : 'percent';
+  const percent = typeof raw.value === 'number' ? raw.value : typeof raw.value === 'string' ? Number(raw.value.trim()) : Number.NaN;
+  const value = kind === 'percent' ? (Number.isInteger(percent) && percent >= 1 && percent <= 100 ? percent : null) : moneyOf(raw.value);
+  if (!code || !value) return null;
+  const ends = typeof raw.ends === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(raw.ends) && !Number.isNaN(Date.parse(raw.ends)) ? raw.ends : '';
+  const count = (v: unknown): number | null => {
+    const n = typeof v === 'number' ? v : typeof v === 'string' && v.trim() ? Number(v.trim()) : Number.NaN;
+    return Number.isInteger(n) && n >= 0 ? Math.min(n, 1_000_000_000) : null;
+  };
+  const uses = count(raw.uses);
+  const minimum = moneyOf(raw.minimum);
+  return { code, kind, value, ends, uses: uses === 0 ? null : uses, used: count(raw.used) ?? 0, minimum: minimum ? minimum : null };
+}
+
+/** Why a coupon is not taken from products of this much, on this day: `ended`, `used` up, under its `minimum`; null when it is. */
+export function couponProblem(coupon: Coupon, subtotal: number, now = new Date()): 'ended' | 'used' | 'minimum' | null {
+  if (coupon.ends && coupon.ends < now.toISOString().slice(0, 10)) return 'ended';
+  if (coupon.uses !== null && coupon.used >= coupon.uses) return 'used';
+  if (coupon.minimum !== null && subtotal < coupon.minimum) return 'minimum';
+  return null;
+}
+
+/** What a coupon takes off products of this much: never more than they cost. */
+export const couponOff = (coupon: Pick<Coupon, 'kind' | 'value'>, subtotal: number): number =>
+  Math.max(0, Math.min(subtotal, coupon.kind === 'percent' ? Math.round((subtotal * coupon.value) / 100) : coupon.value));
