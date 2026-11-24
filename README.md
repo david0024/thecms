@@ -84,6 +84,8 @@ ever breaking it.
 - AI writing as an extension, with your own key (Claude, OpenAI or Ollama): a
   block written or rewritten, a page translated, a description suggested. Each
   comes back as a change for you to accept.
+- A whole site written by an AI agent as one file, from a schema made from the
+  blocks themselves, and imported with one command: see [AGENTS.md](AGENTS.md).
 
 **Backups**
 - The whole site in one file, made by itself every night (or every week), the
