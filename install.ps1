@@ -1,7 +1,7 @@
 # Installs Uhlaka on Windows from its GitHub releases, checked against the
 # release's checksums before anything is put in place.
 #
-#   irm https://github.com/uhlaka-devs/uhlaka/releases/download/v0.1.0-alpha.5/install.ps1 | iex
+#   irm https://github.com/uhlaka-devs/uhlaka/releases/download/v0.1.0-alpha.6/install.ps1 | iex
 #
 # The program goes in %LOCALAPPDATA%\uhlaka\bin, which is added to your PATH.
 # Run again to update. $env:INSTALL_VERSION picks a version; $env:RELEASE_URL
