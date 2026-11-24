@@ -1,6 +1,6 @@
 # ADR 0068 — Typefaces that ship with Uhlaka, button colours, and the Atelier theme
 
-- **Status:** Proposed (Liviu chose direction "B Atelier" for uhlaka.org on 2026-11-24, out of three shown; to be confirmed by David before this is merged)
+- **Status:** Accepted (Liviu chose direction "B Atelier" for uhlaka.org on 2026-11-24, out of three shown; David confirmed it the same day)
 - **Date:** 2026-11-24
 - **Builds on:** ADR 0001 d3 (no third-party request; fonts are self-hosted), ADR 0001 d8 (a theme is data), ADR 0002 d3 (typefaces), ADR 0004 (the theme builder), ADR 0006 (header and footer)
 
