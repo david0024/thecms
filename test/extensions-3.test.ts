@@ -231,7 +231,7 @@ const CHECKER_PACKAGE = JSON.stringify({ format: EXTENSION_FORMAT, manifest: che
 describe('a question the program waits for', () => {
   test('is declared, shown before installing, and only in the third format', () => {
     const { pkg } = parseExtension(JSON.parse(CHECKER_PACKAGE));
-    expect(pkg?.manifest.answers).toEqual([{ question: 'comment.check', action: 'check' }]);
+    expect(pkg?.manifest.answers).toEqual([{ question: 'comment.check', action: 'check', methods: [] }]);
     expect(extensionAsks(pkg!.manifest)).toMatchObject({ answers: ['comment.check'], uses: ['published'] });
     expect(parseExtension({ format: EXTENSION_FORMAT_2, manifest: checker, code: CHECKER }).pkg?.manifest.answers).toEqual([]);
     const wrong = parseExtension({

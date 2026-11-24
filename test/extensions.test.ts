@@ -52,6 +52,10 @@ describe('a package', () => {
       mails: [],
       accounts: false,
       shop: false,
+      later: [],
+      files: [],
+      payments: [],
+      delivery: false,
     });
     expect(extensionWord(m, 'ro', 'Louder')).toBe('Mai tare');
     expect(extensionWord(m, 'ro-MD', 'Settings')).toBe('Setări');
