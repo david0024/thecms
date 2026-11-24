@@ -1,6 +1,6 @@
 # ADR 0070 — One structure, made for AI to write; screens over it, made for people
 
-- **Status:** Proposed (Liviu, 2026-11-24: "ar trebui gandita structura pentru a facilita crearea cu ajutorul ai-ului iar pentru utilizatorul uman sa avem un ui/ux corect peste aceasta structura"; waiting for David)
+- **Status:** Accepted (Liviu, 2026-11-24: "ar trebui gandita structura pentru a facilita crearea cu ajutorul ai-ului iar pentru utilizatorul uman sa avem un ui/ux corect peste aceasta structura"; David confirmed it the same day, through Liviu: "ai acordul meu si al lui David")
 - **Date:** 2026-11-24
 - **Builds on:** ADR 0001 d7 (one list of blocks) and d8 (a theme is data), ADR 0057 (a complete export), ADR 0062 d6–d7 (an extension's blocks and screens as data), ADR 0069 (a contract for AI: AGENTS.md and the schema)
 
@@ -129,7 +129,7 @@ These follow from the rule and are each a decision for David:
 - **The grouping of the admin's menu, the admin bar on the site and the admin
   on a phone,** from the admin review.
 
-## What changes now, if it is accepted
+## What changes now
 
 - `src/core/blocks.ts`: a `purpose` sentence and a `group` for every block
   type, a `purpose` for every field; `tools/content-schema.ts` writes them;
