@@ -308,7 +308,8 @@ export async function startEditor(
     pages: await store.pages(),
     sections: await store.sections(),
     forms: (await store.forms()).map((f) => ({ name: f.name, title: f.title })),
-    posts: await store.posts(),
+    // A site may have no posts (ADR 0025): it then lists none, rather than failing to open the admin.
+    posts: contentTypes(await store.site()).some((t) => t.id === POSTS_TYPE) ? await store.posts() : [],
     entries: await allEntries(),
     templates: await templates(),
   });
