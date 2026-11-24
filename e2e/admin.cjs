@@ -123,6 +123,14 @@ function png(width, height) {
     await page.getByPlaceholder('Page title').fill('Corners');
     await page.getByRole('button', { name: 'Create' }).click();
     await canvas.locator('[data-empty="page"]').waitFor();
+    // "Add a block" in groups, with a search (ADR 0073).
+    assert((await page.locator('[data-block-group]').count()) >= 6, 'the blocks are offered in groups');
+    await page.locator('[data-block-search]').fill('youtube');
+    assert((await page.locator('[data-add]').count()) === 1 && (await page.locator('[data-add="embed"]').isVisible()), 'a block is found by another word for it');
+    await page.locator('[data-block-search]').fill('nothing like this');
+    await page.locator('[data-no-block]').waitFor();
+    assert(true, 'a search that finds nothing says so');
+    await page.locator('[data-block-search]').fill('');
     await page.locator('[data-add="hero"]').click();
     await canvas.locator('.b-hero').waitFor();
     await saved();
