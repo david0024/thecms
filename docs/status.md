@@ -62,3 +62,4 @@ and in the README; stage 3, part by part, in [ADR 0060](adr/0060-stage-3-core-an
 | Blocks for buttons, tables, video, sound, documents, and players from YouTube, Vimeo, Spotify, SoundCloud, Google Maps and OpenStreetMap, made from the address an author pastes | done |
 | A block of code (ADR 0067): lines and spaces kept, a fixed-width font, scrolled sideways on a phone, its language as a class; never translated; each `<pre>` imported as one, and each HTML table as a table block | done |
 | Typefaces that ship with Uhlaka (Bricolage Grotesque, Figtree), served by the site itself and carried only where used; button colours and button corners from the theme; tints for services cards; the Atelier theme (ADR 0068) | done |
+| A contract for AI (ADR 0069): AGENTS.md; the schema of a content file, made from the core's blocks (docs/content-schema.json); a whole example site that imports with nothing dropped; the admin's addresses marked noindex | done |
