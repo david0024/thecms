@@ -51,6 +51,30 @@ Every extension is third-party and isolated; none runs inside the program.
 Zveltio reached the same rule for everyone but itself, and the program has
 no "own" extensions that would need more.
 
+### d1b. The rule for what stays in the program
+
+Taken from Zveltio's ADR 0049 ("what stays in the engine", 2026-11-14),
+adapted. A feature stays in the program only if at least one holds:
+
+- (a) it decides who may see or do what, or it is the way data is kept and
+  served (content, pages, files, accounts and members);
+- (b) it must run as the program itself: the database's tables, backups,
+  updates, building and serving the site;
+- (c) it confines code the program did not write (the extension runner).
+
+Everything else is an extension, and leaves the program only once what it
+needs from the program exists; a feature that cannot leave names what it
+lacks, and that is the program's work. The shop's base (d2) is held by that
+last clause: it stays a part until extensions can draw public pages in the
+theme and take stock in one step with an order, not by a rule of its own.
+
+Zveltio's own extensions run inside its engine for one reason its ADR 0056
+(2026-11-16) gives: memory on a small server (a process each costs about
+60 MB). Its owner's rule there is that an operator's bad code must never take
+the instance down, and its failures must name the extension. Uhlaka's
+extension processes stop after five minutes unused, so the reason does not
+carry over.
+
 ### d2. In the program
 
 What other features hang on, each off until the owner turns it on, at no cost
