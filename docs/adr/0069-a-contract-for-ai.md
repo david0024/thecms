@@ -1,6 +1,6 @@
 # ADR 0069 — A contract for AI: AGENTS.md and the schema of a content file
 
-- **Status:** Proposed (Liviu asked for it on 2026-11-24, after reading a list of product ideas; to be confirmed by David before this is merged)
+- **Status:** Accepted (Liviu asked for it on 2026-11-24, after reading a list of product ideas; David confirmed it the same day)
 - **Date:** 2026-11-24
 - **Builds on:** ADR 0001 d8 (a theme is data), ADR 0017 (blocks), ADR 0033 (sections), ADR 0049 (forms), ADR 0057 (a complete export)
 
