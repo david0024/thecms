@@ -57,7 +57,9 @@ export async function openMailQueue(store: Store, mail: MailEnvironment, log: (l
   return {
     async queue(to, what, message) {
       const now = new Date().toISOString();
-      await db.run('INSERT INTO mail_queue (id, to_address, subject, body, what, tries, next_at, failed_at, error, created_at) VALUES (?, ?, ?, ?, ?, 0, ?, NULL, ?, ?)', [crypto.randomUUID(), to, message.subject, message.text, what.slice(0, 100), now, '', now]);
+      // The queue is sent in the order of `next_at, id`. Messages queued in the same millisecond share `next_at`,
+      // so the id keeps their order: a time-ordered UUID (v7) grows with each message, a random one would shuffle them.
+      await db.run('INSERT INTO mail_queue (id, to_address, subject, body, what, tries, next_at, failed_at, error, created_at) VALUES (?, ?, ?, ?, ?, 0, ?, NULL, ?, ?)', [Bun.randomUUIDv7(), to, message.subject, message.text, what.slice(0, 100), now, '', now]);
     },
     async send(now) {
       const due = await db.rows<Row>(`SELECT * FROM mail_queue WHERE failed_at IS NULL AND next_at <= ? ORDER BY next_at, id LIMIT ${SENT_AT_ONCE}`, [now.toISOString()]);

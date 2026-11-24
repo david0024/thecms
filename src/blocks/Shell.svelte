@@ -14,7 +14,7 @@
  */
 import { getContext, type Snippet } from 'svelte';
 import type { Alternate, MenuLink, Site } from '../core/index.ts';
-import { areaBlock, holdsCurrent, isLink, isMega, layoutOf, measureFor } from '../core/index.ts';
+import { areaBlock, holdsCurrent, isLink, isMega, layoutOf, measureFor, menuLeadsAway } from '../core/index.ts';
 import BlockView from './BlockView.svelte';
 import { type EntryLists, marker, setEditing, setLists, setMeasure, setSite } from './editing.ts';
 import { ALTERNATES, wordsFor } from './words.ts';
@@ -54,6 +54,7 @@ const footerLinks = $derived(site.footerLinks.filter(isLink));
 const others: Alternate[] = getContext(ALTERNATES) ?? [];
 const home = others.find((a) => a.current)?.home ?? '/';
 const frame = $derived(layoutOf(site.layouts, layout));
+const hasMenu = $derived(menuLeadsAway(menu, home));
 /** A place of the layout, with what its section holds in this language; nothing when it shows none. */
 const area = (section: string) => (section ? { ...areaBlock(section), children: site.areas?.[section] ?? [] } : null);
 const top = $derived(area(frame.top));
@@ -67,11 +68,11 @@ const bottom = $derived(area(frame.bottom));
     <a class="site-name" href={home}>
       {#if site.logo}<img class="site-logo" src={site.logo.src} alt={site.logo.alt || site.name} />{:else}{site.name}{/if}
     </a>
-    {#if menu.length > 1 || isLink(site.action)}
+    {#if hasMenu || isLink(site.action)}
       <input class="menu-check" type="checkbox" id="site-menu" aria-label={words.menu} />
       <label class="menu-button" for="site-menu">{words.menu}</label>
       <div class="site-nav">
-        {#if menu.length > 1}
+        {#if hasMenu}
           <nav aria-label={words.mainMenu}>
             <ul class="menu">
               {#each menu as item}
