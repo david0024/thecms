@@ -273,6 +273,15 @@ describe('the editing API', () => {
     expect((await call('/api/page', { method: 'PUT', body: JSON.stringify({ kind: 'projects', create: true, page: { title: 'A kitchen' } }) })).status).toBe(409);
   });
 
+  test('a site without posts opens in the admin, its other types listed', async () => {
+    await store.setSite({ ...site, types: site.types.filter((t) => t.id !== 'posts') });
+    const state = await call('/api/state');
+    expect(state.status).toBe(200);
+    const data = (await state.json()) as { posts: unknown[]; entries: Record<string, unknown[]> };
+    expect(data.posts).toEqual([]);
+    expect(Object.keys(data.entries)).not.toContain('posts');
+  });
+
   test('a type the site does not have is refused; a page may not take a type\'s address; a type in use is not removed', async () => {
     expect((await call('/api/page', { method: 'PUT', body: JSON.stringify({ kind: 'recipes', create: true, page: { title: 'Soup' } }) })).status).toBe(400);
     expect((await call('/api/page', { method: 'PUT', body: JSON.stringify({ create: true, page: { title: 'Projects' } }) })).status).toBe(409);
