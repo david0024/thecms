@@ -253,17 +253,48 @@ if [ "$host" != computer ]; then
   done
 fi
 
+# The newest of the versions read, one per line, as semantic versions are
+# ordered (ADR 0045): alpha.10 after alpha.9, and a release after its
+# pre-releases. The same order as newer() in src/site/update.ts.
+newest() {
+  awk '
+    function later(a, b,   x, y, ca, cb, pa, pb, i, n, m, ia, ib) {
+      sub(/^v/, "", a); sub(/^v/, "", b)
+      ia = index(a, "-"); ib = index(b, "-")
+      ca = ia ? substr(a, 1, ia - 1) : a; pa = ia ? substr(a, ia + 1) : ""
+      cb = ib ? substr(b, 1, ib - 1) : b; pb = ib ? substr(b, ib + 1) : ""
+      n = split(ca, x, "."); m = split(cb, y, "."); if (m > n) n = m
+      for (i = 1; i <= n; i++) if (x[i] + 0 != y[i] + 0) return x[i] + 0 > y[i] + 0
+      if (pa == pb) return 0
+      if (pa == "" || pb == "") return pa == ""
+      n = split(pa, x, "."); m = split(pb, y, "."); if (m > n) n = m
+      for (i = 1; i <= n; i++) {
+        if (x[i] == y[i]) continue
+        if (i > split(pa, x, ".")) return 0
+        if (i > split(pb, y, ".")) return 1
+        if (x[i] ~ /^[0-9]+$/ && y[i] ~ /^[0-9]+$/) return x[i] + 0 > y[i] + 0
+        if ((x[i] ~ /^[0-9]+$/) != (y[i] ~ /^[0-9]+$/)) return y[i] ~ /^[0-9]+$/
+        return x[i] > y[i]
+      }
+      return 0
+    }
+    NF { if (best == "" || later($0, best)) best = $0 }
+    END { print best }
+  '
+}
+
 # Where the files are: the release on GitHub, or a folder of them (RELEASE_URL, to try a build).
 if [ -n "${RELEASE_URL:-}" ]; then
   base=$RELEASE_URL
 elif [ "$version" = latest ]; then
   # The newest release, a pre-release among them: during alpha and beta those are all there is (ADR 0045).
+  # GitHub does not list them newest first, and extensions' releases (ai-v1.2.0) are among them: the version is compared.
   if command -v curl >/dev/null 2>&1; then
-    listed=$(curl -fsSL "https://api.github.com/repos/$REPOSITORY/releases?per_page=1") || fail "could not ask GitHub for the newest release"
+    listed=$(curl -fsSL "https://api.github.com/repos/$REPOSITORY/releases?per_page=100") || fail "could not ask GitHub for the newest release"
   else
-    listed=$(wget -qO- "https://api.github.com/repos/$REPOSITORY/releases?per_page=1") || fail "could not ask GitHub for the newest release"
+    listed=$(wget -qO- "https://api.github.com/repos/$REPOSITORY/releases?per_page=100") || fail "could not ask GitHub for the newest release"
   fi
-  tag=$(printf '%s' "$listed" | grep -o '"tag_name": *"[^"]*"' | head -n 1 | sed 's/.*"\([^"]*\)"$/\1/')
+  tag=$(printf '%s' "$listed" | grep -o '"tag_name": *"v[0-9][^"]*"' | sed 's/.*"\([^"]*\)"$/\1/' | newest)
   [ -n "$tag" ] || fail "GitHub lists no release of $REPOSITORY yet"
   base="https://github.com/$REPOSITORY/releases/download/$tag"
 else

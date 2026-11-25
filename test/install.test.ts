@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { NAME, REPOSITORY } from '../src/core/index.ts';
 import { SHIPPED_LANGUAGES, SHIPPED_THEMES } from '../src/site/shipped.ts';
-import { isCompiled, newer, platformName, releaseFile, update } from '../src/site/update.ts';
+import { isCompiled, newer, newestTag, platformName, releaseFile, update } from '../src/site/update.ts';
 import { VERSION } from '../src/site/version.ts';
 import { build, PLATFORMS } from '../tools/build.ts';
 
@@ -168,7 +168,8 @@ describe('update', () => {
   const program = new TextEncoder().encode('the new program');
   /** A release on GitHub, as fetch sees it. */
   const releases = (tag: string, sums = `${sha256(program)}  ${file}\n`) => async (url: string): Promise<Response> => {
-    if (url.endsWith('/releases?per_page=1')) return Response.json(tag ? [{ tag_name: tag }] : []);
+    // As GitHub lists them: not newest first, with an extension's release among them.
+    if (url.endsWith('/releases?per_page=100')) return Response.json(tag ? [{ tag_name: 'v0.0.1' }, { tag_name: tag }, { tag_name: 'ai-v9.0.0' }, { tag_name: 'v99.0.0', draft: true }] : []);
     if (url.endsWith(`/${tag}/checksums.sha256`)) return new Response(sums);
     if (url.endsWith(`/${tag}/${file}`)) return new Response(program);
     return new Response('not found', { status: 404 });
@@ -202,6 +203,25 @@ describe('update', () => {
     expect(said.at(-1)).toContain('1.0.0 is out; this is 0.9.0');
     await expect(update({ ...options, fetch: releases('v1.0.0'), compiled: false })).rejects.toThrow('runs from the sources');
     expect(await Bun.file(executable).text()).toBe('the old program');
+  });
+
+  test('takes the newest version from the list, not the first one listed', () => {
+    const listed = ['v0.1.0-alpha.9', 'v0.1.0-alpha.4', 'v0.1.0-alpha.10', 'v0.1.0-alpha.3', 'ai-v1.2.0'].map((tag_name) => ({ tag_name }));
+    expect(newestTag(listed)).toBe('v0.1.0-alpha.10');
+    expect(newestTag([...listed, { tag_name: 'v0.1.0' }])).toBe('v0.1.0');
+    expect(newestTag([{ tag_name: 'ai-v1.2.0' }])).toBe('');
+    expect(newestTag([])).toBe('');
+  });
+
+  test('install.sh takes the newest version the same way', async () => {
+    const script = await Bun.file(join(root, 'install.sh')).text();
+    const fn = script.slice(script.indexOf('newest() {'), script.indexOf('\n}\n', script.indexOf('newest() {')) + 3);
+    const newest = (...tags: string[]) => Bun.spawnSync(['sh', '-c', `${fn}\nnewest`], { stdin: new TextEncoder().encode(`${tags.join('\n')}\n`) }).stdout.toString().trim();
+    expect(newest('v0.1.0-alpha.9', 'v0.1.0-alpha.4', 'v0.1.0-alpha.10', 'v0.1.0-alpha.3')).toBe('v0.1.0-alpha.10');
+    expect(newest('v0.1.0-alpha.10', 'v0.1.0')).toBe('v0.1.0');
+    expect(newest('v0.1.0-beta.1', 'v0.1.0-alpha.12')).toBe('v0.1.0-beta.1');
+    expect(newest('v1.2.9', 'v1.2.10')).toBe('v1.2.10');
+    expect(newest('v0.1.0-alpha', 'v0.1.0-alpha.1')).toBe('v0.1.0-alpha.1');
   });
 
   test('knows versions, platforms and whether it runs as the single file', () => {
