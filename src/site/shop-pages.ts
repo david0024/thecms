@@ -41,7 +41,12 @@ export interface OrderData {
   buyer: { name: string; email: string; phone: string; street: string; town: string; county: string; postcode: string; company: { name: string; taxCode: string; registration: string } | null };
   lines: { product: string; variant: string; name: string; sku: string; price: number; quantity: number; rate: number }[];
   shipping: { id: string; name: string; price: number; pickup: string };
-  payment: 'transfer' | 'cod';
+  /**
+   * `transfer`, `cod`, or a way to pay an extension offers (ADR 0076 d4.1):
+   * `<extension>:<method>`, whose words as the buyer read them are `paymentName`.
+   */
+  payment: string;
+  paymentName?: string;
   /** The account to pay into, as it was when the order was placed. */
   transfer: { holder: string; iban: string; bank: string } | null;
   totals: Totals;
@@ -51,6 +56,47 @@ export interface OrderData {
   note: string;
   tracking: string;
   history: { state: OrderState; at: string }[];
+}
+
+/** A way to pay at checkout: the shop's own, or one an extension offers (ADR 0076 d4.1). */
+export interface PaymentChoice {
+  id: string;
+  label: string;
+  hint: string;
+}
+
+/** What a payment extension is told to start a payment (ADR 0076 d4.1). */
+export interface PayAsk {
+  order: { id: string; number: number; total: number; currency: string; language: string; email: string; buyer: OrderData['buyer']; lines: OrderData['lines']; shipping: OrderData['shipping']; totals: Totals };
+  /** The buyer's page of the order, where the provider sends them back. */
+  back: string;
+}
+
+/** What a delivery extension is asked (ADR 0076 d4.1): the cart, and the address once it is typed. */
+export interface DeliveryAsk {
+  lines: { product: string; variant: string; name: string; sku: string; price: number; quantity: number }[];
+  subtotal: number;
+  currency: string;
+  address: { street: string; town: string; county: string; postcode: string } | null;
+}
+
+/** What the extensions offer at checkout (ADR 0076 d4.1), given the shop by the runtime. */
+export interface ShopProviders {
+  /** The ways to pay the extensions offer, in a language. */
+  payments: (language: string) => Promise<PaymentChoice[]>;
+  /** Starts a payment with one of them: where the buyer is sent to pay. */
+  pay: (id: string, ask: PayAsk) => Promise<string>;
+  /** The ways to deliver a cart the extensions offer, each with its id `<extension>:<option>`. */
+  deliveries: (ask: DeliveryAsk, language: string) => Promise<ShippingMethod[]>;
+}
+
+/** A way to pay an extension offers (ADR 0076 d4.1): its id is `<extension>:<method>`. */
+export const byExtension = (payment: string): boolean => payment.includes(':');
+
+/** A file an extension put on an order for its buyer (ADR 0076 d4.4), as the order's page lists it. */
+export interface BuyerFile {
+  id: string;
+  name: string;
 }
 
 export interface Order {
@@ -113,6 +159,7 @@ export function linesPart(said: Words, lines: { name: string; variant: string; p
 export function payText(said: Words, order: Pick<Order, 'number' | 'data'>, money: (n: number) => string): string {
   const { data } = order;
   if (data.payment === 'cod') return said.orderPayCod.replace('{total}', money(data.totals.total));
+  if (byExtension(data.payment)) return said.orderPayWith.replace('{total}', money(data.totals.total)).replace('{method}', data.paymentName || data.payment);
   const transfer = data.transfer ?? { holder: '', iban: '', bank: '' };
   return said.orderPayTransfer
     .replace('{total}', money(data.totals.total))
@@ -124,18 +171,27 @@ export function payText(said: Words, order: Pick<Order, 'number' | 'data'>, mone
 
 const addressOf = (buyer: OrderData['buyer']): string => [buyer.street, buyer.postcode, buyer.town, buyer.county].filter(Boolean).join(', ');
 
-/** An order, as its buyer reads it on its page. */
-export function orderPart(said: Words, order: Order, money: (n: number) => string): string {
+/**
+ * An order, as its buyer reads it on its page. Paid with an extension's way
+ * and still waiting, it offers to pay again (ADR 0076 d4.1); the files an
+ * extension put on it for the buyer are listed (ADR 0076 d4.4).
+ */
+export function orderPart(said: Words, order: Order, money: (n: number) => string, extra: { action?: string; files?: BuyerFile[]; path?: string } = {}): string {
   const { data } = order;
   const company = data.buyer.company;
   const waiting = order.state === 'waiting';
+  const payAgain = waiting && byExtension(data.payment) && extra.action ? `<form method="post" action="${escape(extra.action)}"><button class="button" type="submit" data-order-pay-now>${escape(said.orderPayNow)}</button></form>` : '';
+  const files = extra.files?.length
+    ? `<h2>${escape(said.orderFiles)}</h2><ul data-order-files>${extra.files.map((f) => `<li><a href="${escape(`${extra.path ?? ''}/file/${f.id}`)}" download>${escape(f.name)}</a></li>`).join('')}</ul>`
+    : '';
   return (
     `<p class="lead" data-order-state="${order.state}">${escape(said.orderState)}: <strong>${escape(stateName(said, order.state))}</strong></p>` +
     `<p>${escape(said.orderDate)} ${escape(dayOf(order.createdAt, order.language))}</p>` +
     (data.tracking && (order.state === 'sent' || order.state === 'completed') ? `<p data-order-tracking>${escape(said.orderTracking.replace('{tracking}', data.tracking))}</p>` : '') +
     (waiting || (data.payment === 'cod' && !['completed', 'cancelled', 'refunded'].includes(order.state))
-      ? `<h2>${escape(said.orderPay)}</h2><p data-order-pay>${escape(payText(said, order, money))}</p>`
+      ? `<h2>${escape(said.orderPay)}</h2><p data-order-pay>${escape(payText(said, order, money))}</p>${payAgain}`
       : '') +
+    files +
     linesPart(said, data.lines, money) +
     totalsPart(said, data.totals, money, data.shipping.name, data.vat) +
     `<h2>${escape(said.orderBuyer)}</h2><p>${escape(data.buyer.name)}<br>${escape(data.shipping.pickup ? said.checkoutPickup.replace('{address}', data.shipping.pickup) : addressOf(data.buyer))}<br>${escape(data.buyer.email)} · ${escape(data.buyer.phone)}</p>` +
@@ -170,7 +226,7 @@ export type Typed = Record<string, string>;
 export function checkoutForm(
   said: Words,
   settings: ShopSettings,
-  options: { action: string; typed: Typed; bad: Set<string>; methods: ShippingMethod[]; money: (n: number) => string; subtotal: number; total: number; payments: ('transfer' | 'cod')[] },
+  options: { action: string; typed: Typed; bad: Set<string>; methods: ShippingMethod[]; money: (n: number) => string; subtotal: number; total: number; payments: PaymentChoice[] },
 ): string {
   const { typed, bad } = options;
   let n = 0;
@@ -190,7 +246,7 @@ export function checkoutForm(
       return radio('shipping', m.id, `${m.name}: ${cost ? options.money(cost) : said.cartShippingFree}`, m.pickup ? said.checkoutPickup.replace('{address}', m.pickup) : '');
     })
     .join('');
-  const payments = options.payments.map((p) => (p === 'transfer' ? radio('payment', 'transfer', said.checkoutTransfer, said.checkoutTransferHint) : radio('payment', 'cod', said.checkoutCod))).join('');
+  const payments = options.payments.map((p) => radio('payment', p.id, p.label, p.hint)).join('');
   return (
     `<form class="form checkout" method="post" action="${escape(options.action)}" accept-charset="utf-8">` +
     `<input type="hidden" name="total" value="${options.total}">` +

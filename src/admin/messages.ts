@@ -279,6 +279,10 @@ export const en = {
     cancelHint: 'Cancelling gives the stock back.',
     states: { waiting: 'Waiting for payment', paid: 'Paid', preparing: 'Being prepared', sent: 'Sent', completed: 'Completed', cancelled: 'Cancelled', refunded: 'Refunded' },
     coupon: 'Coupon {code}',
+    extensions: 'Extensions',
+    files: 'Documents',
+    forBuyer: 'the buyer sees it too',
+    ran: 'Done.',
   },
   coupons: {
     heading: 'Coupons',

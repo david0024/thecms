@@ -242,7 +242,7 @@ describe('a question the program waits for', () => {
     expect(wrong.problems).toEqual([
       'an extension reads published, members, mail, orders of the program\'s data ("payments")',
       'list: it reads "published", which the extension does not declare in "uses"',
-      'an extension answers one of comment.check ("order.pay")',
+      'an extension answers one of comment.check, checkout.payment, checkout.delivery ("order.pay")',
       'answering comment.check runs "nothing", which is not one of its actions',
     ]);
   });

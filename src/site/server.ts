@@ -635,6 +635,52 @@ export async function startEditor(
   }
 
   /**
+   * What extensions do on an order (ADR 0076 d4.2, d4.4), for whoever handles
+   * the orders: the actions offered on it, run with the order as `orders`
+   * lends it, and the files they put on it, downloaded.
+   */
+  async function orderExtensions(request: Request, url: URL, me: User, body: Record<string, unknown>): Promise<Response> {
+    const settings = await shop.settings();
+    if (!settings.on) return json({ error: 'the shop is off' }, 404);
+    if (!(me.role === 'owner' || (me.role === 'editor' && settings.editors))) return json({ error: 'only the owner handles orders' }, 403);
+    const what = url.pathname.slice('/api/shop/orders/'.length);
+    const offered = async () => {
+      const out: { extension: string; action: string; label: string }[] = [];
+      for (const e of await store.extensions()) if (e.enabled) for (const a of e.manifest.actions) if (a.on === 'order') out.push({ extension: e.manifest.name, action: a.name, label: extensionWord(e.manifest, (url.searchParams.get('l') ?? '').slice(0, 20) || 'en', a.label) });
+      return out;
+    };
+    const files = async (id: string) => (await store.orderFiles(id)).map(({ id, name, type, size, buyer, extension, createdAt }) => ({ id, name, type, size, buyer, extension, createdAt }));
+    if (what === 'extensions' && request.method === 'GET') {
+      const order = await shop.lent.get(url.searchParams.get('id') ?? '');
+      if (!order) return json({ error: 'there is no such order' }, 404);
+      return json({ actions: await offered(), files: await files(order.id) });
+    }
+    if (what === 'run' && request.method === 'POST') {
+      const order = await shop.lent.get(String(body.id ?? ''));
+      if (!order) return json({ error: 'there is no such order' }, 404);
+      const chosen = (await offered()).find((o) => o.extension === body.extension && o.action === body.action);
+      if (!chosen) return json({ error: 'no extension that is on offers that on an order' }, 404);
+      let answer: unknown;
+      try {
+        answer = await extensions.run(chosen.extension, chosen.action, { order });
+      } catch (error) {
+        return json({ error: error instanceof Error ? error.message : String(error) }, 502);
+      }
+      // What it says back is words for the person, nothing more.
+      const said = typeof answer === 'string' ? answer : isObject(answer) && typeof answer.message === 'string' ? answer.message : '';
+      return json({ said: str(said, 500), order: await shop.lent.get(order.id), files: await files(order.id) });
+    }
+    if (what === 'file' && request.method === 'GET') {
+      const file = await store.extensionFile(url.searchParams.get('id') ?? '');
+      if (!file) return json({ error: 'there is no such file' }, 404);
+      return new Response(file.bytes as Uint8Array<ArrayBuffer>, {
+        headers: { 'content-type': file.type, 'content-disposition': `attachment; filename*=UTF-8''${encodeURIComponent(file.name)}`, 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' },
+      });
+    }
+    return json({ error: 'not found' }, 404);
+  }
+
+  /**
    * The Statistics screen (ADR 0062 d8): the statistics are an extension the
    * program carries. Read by the owner and the editors, it says whether it is
    * installed and on, and offers the owner the packed one when it is not, or
@@ -853,6 +899,7 @@ export async function startEditor(
     if (url.pathname === '/api/visitors' || url.pathname.startsWith('/api/visitors/')) return site.visitors.admin(request, url, me, body);
     if (url.pathname === '/api/mail' || url.pathname.startsWith('/api/mail/')) return mailApi(request, url, me, body);
     // The shop (ADR 0065): nothing of it is loaded until the owner turns it on.
+    if (url.pathname.startsWith('/api/shop/orders/')) return orderExtensions(request, url, me, body);
     if (url.pathname === '/api/shop' || url.pathname.startsWith('/api/shop/')) return shop.admin(request, url, me, body);
     if (url.pathname === '/api/me' && request.method === 'PUT') {
       // Their own name, the few words about them (ADR 0055 d3) and their picture (ADR 0056 d2).

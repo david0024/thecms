@@ -9,8 +9,9 @@
  * within what the extension declared.
  */
 import { join } from 'node:path';
-import { ANSWER_SECONDS, extensionWord, cleanBlockPost, cleanFind, cleanRow, findRows, LATER_TRIES, uniqueFields, contentTypes, egressAllows, entryIn, entryPath, type ExtensionAction, type ExtensionEventName, pagePath, type Question, QUESTIONS, typeIn, type ExtensionManifest, extensionAsks, EXTENSION_MAX_BYTES, mediaKindOf, mediaNameOf, parseExtension, variantOf } from '../core/index.ts';
+import { type ShippingMethod, ANSWER_SECONDS, extensionWord, cleanBlockPost, cleanFind, cleanRow, findRows, LATER_TRIES, uniqueFields, contentTypes, egressAllows, entryIn, entryPath, type ExtensionAction, type ExtensionEventName, pagePath, type Question, QUESTIONS, typeIn, type ExtensionManifest, extensionAsks, EXTENSION_MAX_BYTES, mediaKindOf, mediaNameOf, parseExtension, variantOf } from '../core/index.ts';
 import { type FromRunner, lines, type ToRunner } from './extension-runner.ts';
+import type { PaymentChoice, ShopProviders } from './shop-pages.ts';
 import type { InstalledExtension, SiteEvent, Store } from './store.ts';
 import type { AccountsLent } from './visitor-gate.ts';
 import { extensionMailKey, normalizeTemplates, withoutExtension } from './site-mail.ts';
@@ -34,6 +35,41 @@ const LATER_WAITING_MAX = 1000;
 /** Files an extension keeps for an order (ADR 0076 d4.4): of these kinds, each at most 10 MB. */
 export const FILE_TYPES: readonly string[] = ['application/pdf', 'image/png', 'image/jpeg', 'application/xml', 'text/xml', 'text/plain', 'text/csv', 'application/zip'];
 const FILE_MAX_BYTES = 10 * 1024 * 1024;
+/** How long the buyer waits for a payment extension to say where to pay. */
+const PAY_SECONDS = 20;
+/** Of what a delivery extension answers, at most this many ways, and places to pick up each. */
+const WAYS_MAX = 10;
+const POINTS_MAX = 20;
+const WAY_ID = /^[a-z0-9-]{1,40}$/;
+const POINT_ID = /^[A-Za-z0-9._-]{1,40}$/;
+
+/** The ways to deliver an extension answered (ADR 0076 d4.1), as the shop's own: checked, and named `<extension>:<option>[:<point>]`. */
+export function deliveryWays(extension: string, answer: unknown[]): ShippingMethod[] {
+  const out: ShippingMethod[] = [];
+  const line = (value: unknown, max: number): string => String(value ?? '').replace(/[\u0000-\u001f\u007f]+/g, ' ').trim().slice(0, max);
+  for (const raw of answer.slice(0, WAYS_MAX)) {
+    if (!raw || typeof raw !== 'object') continue;
+    const way = raw as { id?: unknown; name?: unknown; price?: unknown; points?: unknown };
+    const id = String(way.id ?? '');
+    const name = line(way.name, 80);
+    const price = Number(way.price);
+    if (!WAY_ID.test(id) || !name || !Number.isInteger(price) || price < 0 || price > 100_000_000) continue;
+    if (!Array.isArray(way.points)) {
+      out.push({ id: `${extension}:${id}`, name, price, free: null, pickup: '' });
+      continue;
+    }
+    for (const p of way.points.slice(0, POINTS_MAX)) {
+      if (!p || typeof p !== 'object') continue;
+      const point = p as { id?: unknown; name?: unknown; address?: unknown };
+      const pid = String(point.id ?? '');
+      const address = line(point.address, 200);
+      if (!POINT_ID.test(pid) || !address) continue;
+      out.push({ id: `${extension}:${id}:${pid}`, name: `${name}: ${line(point.name, 80) || pid}`, price, free: null, pickup: address });
+    }
+  }
+  return out;
+}
+
 /** What a visitor may send to an extension's route: a provider's notice, not a file. */
 export const ROUTE_MAX_BYTES = 64 * 1024;
 /** Headers a route's action is not given: the editor's session and key are not the extension's. */
@@ -667,6 +703,78 @@ export function extensionHost(store: Store, options: { spawn?: Spawn; fetch?: (u
     return (await Promise.all(asked)).filter((a): a is string => a !== null);
   }
 
+  /** Runs an action, and gives up waiting after `seconds`. */
+  const within = <T>(work: Promise<T>, seconds: number): Promise<T> => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const late = new Promise<never>((_, reject) => (timer = setTimeout(() => reject(new Error(`no answer within ${seconds} seconds`)), seconds * 1000)));
+    return Promise.race([work, late]).finally(() => timer && clearTimeout(timer));
+  };
+
+  /**
+   * What the extensions offer at checkout (ADR 0076 d4.1): the shop asks,
+   * and nothing an extension answers is taken without being checked.
+   */
+  const checkout: ShopProviders = {
+    async payments(language) {
+      const out: PaymentChoice[] = [];
+      for (const extension of await store.extensions()) {
+        if (!extension.enabled) continue;
+        for (const answer of extension.manifest.answers.filter((a) => a.question === 'checkout.payment'))
+          for (const m of answer.methods) out.push({ id: `${extension.manifest.name}:${m.id}`, label: extensionWord(extension.manifest, language, m.label), hint: '' });
+      }
+      return out;
+    },
+    /**
+     * Where the buyer is sent to pay: the extension answers an address, or
+     * `{ redirect }`, over https on a host it declared. It is told the order
+     * as `orders` lends it, and the buyer's page of the order to come back to.
+     */
+    async pay(id, asked) {
+      const [name = '', method = ''] = id.split(':');
+      const extension = await store.extension(name);
+      const answering = extension?.enabled ? extension.manifest.answers.find((a) => a.question === 'checkout.payment' && a.methods.some((m) => m.id === method)) : undefined;
+      if (!extension || !answering) throw new Error(`no extension that is on offers "${id}"`);
+      try {
+        const answer = await within(run(name, answering.action, { question: 'checkout.payment', method, ...asked }), PAY_SECONDS);
+        const given = typeof answer === 'string' ? answer : answer && typeof answer === 'object' ? (answer as { redirect?: unknown }).redirect : undefined;
+        let url: URL;
+        try {
+          url = new URL(String(given ?? ''));
+        } catch {
+          throw new Error('it did not answer where to pay');
+        }
+        if (url.protocol !== 'https:' || !egressAllows(extension.manifest.egress, url.hostname)) throw new Error(`it sends the buyer to ${url.hostname}, which is not a host it declared, over https`);
+        return url.href;
+      } catch (error) {
+        log(`${extension.manifest.displayName} could not start the payment of order ${asked.order.number}: ${error instanceof Error ? error.message : String(error)}`);
+        throw error;
+      }
+    },
+    /**
+     * The ways to deliver a cart (ADR 0076 d4.1): each extension that answers
+     * gives a list of `{ id, name, price }`, `price` in the smallest unit with
+     * VAT, and `points` where it is picked up (each `{ id, name, address }`).
+     * What one does not answer in time, or answers wrong, is said and left out.
+     */
+    async deliveries(asked, language) {
+      const out: ShippingMethod[] = [];
+      for (const extension of await store.extensions()) {
+        if (!extension.enabled) continue;
+        const answering = extension.manifest.answers.find((a) => a.question === 'checkout.delivery');
+        if (!answering) continue;
+        const name = extension.manifest.name;
+        try {
+          const answer = await within(run(name, answering.action, { question: 'checkout.delivery', language, ...asked }), ANSWER_SECONDS);
+          if (!Array.isArray(answer)) throw new Error('it did not answer a list');
+          out.push(...deliveryWays(name, answer));
+        } catch (error) {
+          log(`${extension.manifest.displayName} did not answer checkout.delivery: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+      return out;
+    },
+  };
+
   /** Which events an extension that is on listens to, asked at most once in LISTENING_MS. */
   let listening: { at: number; names: Promise<Set<string>> } | null = null;
   async function listens(event: ExtensionEventName): Promise<boolean> {
@@ -689,6 +797,7 @@ export function extensionHost(store: Store, options: { spawn?: Spawn; fetch?: (u
     deliver,
     listens,
     ask,
+    checkout,
     /** What visitor accounts lend extensions (ADR 0064 d7), from the runtime that serves them. */
     lend(given: AccountsLent): void {
       accounts = given;

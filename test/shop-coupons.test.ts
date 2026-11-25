@@ -282,7 +282,7 @@ describe('orders for extensions', () => {
 
   test('an extension that uses `orders` or hears of them is said to work with the shop', () => {
     expect(PROGRAM_DATA).toContain('orders');
-    const manifest = { uses: ['orders'], events: [], collections: [], egress: [], actions: [], routes: [], jobs: [], answers: [], blocks: [], mails: [] } as unknown as ExtensionManifest;
+    const manifest = { uses: ['orders'], events: [], collections: [], egress: [], actions: [], routes: [], jobs: [], later: [], answers: [], blocks: [], mails: [] } as unknown as ExtensionManifest;
     expect(extensionAsks(manifest).shop).toBe(true);
     expect(extensionAsks({ ...manifest, uses: [], events: [{ on: 'order.paid', action: 'a' }] } as unknown as ExtensionManifest).shop).toBe(true);
     expect(extensionAsks({ ...manifest, uses: [] } as unknown as ExtensionManifest).shop).toBe(false);

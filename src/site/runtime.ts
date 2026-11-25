@@ -203,6 +203,8 @@ export function startRuntime(
     frame: frameFor,
     headers: HEADERS,
     accounts: async () => (await visitors.settings()).on,
+    // Ways to pay and to deliver the extensions offer (ADR 0076 d4.1).
+    providers: extensions.checkout,
     visitor: async (request: Request) => {
       const signed = await visitors.lent.visitor(request);
       const member = signed ? await visitors.lent.get(signed.id) : null;

@@ -123,6 +123,15 @@ Before the first of d3, the format gains, each shown on Stripe or a courier:
 Dependencies between extensions are not added: with the shop's base in the
 program, each provider talks to the program only.
 
+As built (2026-11-25): a way to pay is `<extension>:<method>` on the order,
+whose answer is an address over https on a host the extension declared; a
+way to deliver is `<extension>:<option>`, and `:<point>` for a place to pick
+up, asked again with the address at checkout; a job queued once is declared
+as a job with `"once": true` and is given `{ input, tries, at }`; files are
+PDF, PNG, JPEG, XML, text, CSV or ZIP, at most 10 MB, always downloaded,
+never shown in the browser; a search reads the collection and filters it,
+except for a value of a unique field, which is looked up.
+
 ### d5. The order
 
 1. The format of d4.

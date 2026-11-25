@@ -8,7 +8,7 @@
  * installed beside it. The package is checked as Uhlaka will check it.
  */
 import { join } from 'node:path';
-import { EXTENSION_FORMAT, parseExtension } from '../src/core/index.ts';
+import { EXTENSION_FORMAT, EXTENSION_FORMAT_3, parseExtension } from '../src/core/index.ts';
 
 export async function packExtension(folder: string, out = folder): Promise<{ file: string; sha256: string }> {
   const manifest = await Bun.file(join(folder, 'manifest.json')).json();
@@ -19,9 +19,11 @@ export async function packExtension(folder: string, out = folder): Promise<{ fil
     if (!built.success) throw new Error(built.logs.map(String).join('\n'));
     code = await (built.outputs[0] as Blob).text();
   }
-  const raw = { format: EXTENSION_FORMAT, manifest, code };
-  const { pkg, problems } = parseExtension(raw);
+  const { pkg, problems } = parseExtension({ format: EXTENSION_FORMAT, manifest, code });
   if (!pkg) throw new Error(problems.join('\n'));
+  // Written in the oldest format that holds all it declares, so that a program not updated yet still installs it.
+  const format = [EXTENSION_FORMAT_3, EXTENSION_FORMAT].find((f) => JSON.stringify(parseExtension({ format: f, manifest, code }).pkg?.manifest) === JSON.stringify(pkg.manifest)) as string;
+  const raw = { format, manifest, code };
   const text = `${JSON.stringify(raw)}\n`;
   const file = join(out, `${pkg.manifest.name}-${pkg.manifest.version}.uhlaka-extension`);
   await Bun.write(file, text);
