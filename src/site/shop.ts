@@ -42,13 +42,15 @@ import {
 import { wordsFor } from '../blocks/words.ts';
 import { openMailQueue } from './mail-queue.ts';
 import { normalizeTemplates, type OrderValues, renderTemplate, type TemplateName } from './site-mail.ts';
-import { type CartLine, checkoutForm, dayOf, linesPart, type Order, type OrderData, orderPart, orderText, stateName, type Totals, totalsPart, type Typed } from './shop-pages.ts';
+import { byExtension, type CartLine, checkoutForm, dayOf, linesPart, type Order, type OrderData, orderPart, orderText, type PaymentChoice, type ShopProviders, stateName, type Totals, totalsPart, type Typed } from './shop-pages.ts';
 import { asCoupon, shopSchema, stockId } from './shop-schema.ts';
 import { escape, framed, type Notice } from './framed.ts';
 import { cleanEmail, type Database, type OrderEvent, type Store, type User } from './store.ts';
 import './languages.ts';
 
 type Row = Record<string, unknown>;
+/** A way to deliver an extension offers (ADR 0076 d4.1): `<extension>:<option>`, and `:<point>` for a place to pick it up. */
+const EXTENSION_WAY = /^[a-z][a-z0-9-]{1,39}:[a-z0-9-]{1,40}(:[A-Za-z0-9._-]{1,40})?$/;
 /** The most a stock may say: more than any shop counts. */
 const STOCK_MAX = 1_000_000_000;
 export const CART_COOKIE = `${NAME}_cart`;
@@ -69,6 +71,8 @@ export interface ShopDeps {
   visitor: (request: Request) => Promise<{ id: string; name: string; email: string } | null>;
   /** Whether visitor accounts are on: only then may the owner require one to buy. */
   accounts: () => Promise<boolean>;
+  /** What the extensions offer at checkout (ADR 0076 d4.1): ways to pay and to deliver. Absent: none. */
+  providers?: ShopProviders;
 }
 
 export interface Shop {
@@ -426,7 +430,19 @@ export async function openShop(store: Store): Promise<Shop> {
     };
     const secret = cookieOf(request, CART_COOKIE);
     const cart = await cartOf(secret);
-    const methodOf = (id: string): ShippingMethod | null => settings.shipping.find((m) => m.id === id) ?? null;
+    /** The ways to deliver: the shop's own, then what the extensions offer for these lines (ADR 0076 d4.1), asked once a request. */
+    let offered: ShippingMethod[] = [];
+    const methodOf = (id: string): ShippingMethod | null => settings.shipping.find((m) => m.id === id) ?? offered.find((m) => m.id === id) ?? null;
+    const ask = async (lines: (CartLine & { price: number })[], address: { street: string; town: string; county: string; postcode: string } | null): Promise<ShippingMethod[]> => {
+      if (!deps.providers || !lines.length) return (offered = []);
+      const subtotal = lines.reduce((sum, l) => sum + l.price * l.quantity, 0);
+      offered = await deps.providers
+        .deliveries({ lines: lines.map((l) => ({ product: l.product, variant: l.variant, name: l.name, sku: l.sku, price: l.price, quantity: l.quantity })), subtotal, currency, address }, language)
+        .catch(() => []);
+      return offered;
+    };
+    /** Which way to deliver a cart is on: the one kept, or the only one there is. */
+    const methodsAll = (): ShippingMethod[] => [...settings.shipping, ...offered];
 
     const bought = (lines: CartLine[]) => lines.filter((l): l is CartLine & { price: number } => l.price !== null);
     /**
@@ -521,7 +537,8 @@ export async function openShop(store: Store): Promise<Shop> {
               if (removed === String(i) || quantity === 0) lines.splice(i, 1);
               else (lines[i] as Kept).quantity = Math.min(quantity, QUANTITY_MAX);
             }
-            if (fields.has('shipping') && (methodOf(field('shipping', 40)) || field('shipping') === '')) shipping = field('shipping', 40);
+            // An extension's way (ADR 0076 d4.1) is checked when it is used: what it offers may change with the address.
+            if (fields.has('shipping') && (methodOf(field('shipping', 120)) || field('shipping') === '' || EXTENSION_WAY.test(field('shipping', 120)))) shipping = field('shipping', 120);
           }
           if ((notice === 'notadded' || notice === 'couponbad' || notice === 'couponused') && !cart) return to('/_/cart', notice);
           const own = cart ? secret : newSecret();
@@ -540,7 +557,9 @@ export async function openShop(store: Store): Promise<Shop> {
         };
         const notice: Notice | undefined = notices.length ? { text: notices.join(' '), failed: true } : NOTICES[url.searchParams.get('said') ?? ''];
         if (!lines.length) return draw(said.cart, `<p class="lead" data-cart-empty>${escape(said.cartEmpty)}</p><p><a href="/">${escape(said.cartBack)}</a></p>`, notice);
-        const method = methodOf(cart?.shipping ?? '') ?? (settings.shipping.length === 1 ? (settings.shipping[0] as ShippingMethod) : null);
+        await ask(bought(lines), null);
+        const all = methodsAll();
+        const method = methodOf(cart?.shipping ?? '') ?? (all.length === 1 ? (all[0] as ShippingMethod) : null);
         const totals = totalsOf(bought(lines), method, settings, coupon);
         const rows = lines
           .map(
@@ -552,8 +571,8 @@ export async function openShop(store: Store): Promise<Shop> {
               `<td><button type="submit" form="cart-remove" name="remove" value="${i}" class="cart-remove">${escape(said.cartRemove)}</button></td></tr>`,
           )
           .join('');
-        const choose = settings.shipping.length
-          ? `<p class="form-field"><label for="cart-shipping">${escape(said.cartShipping)}</label><select id="cart-shipping" name="shipping"><option value="">${escape(said.shopChoose)}…</option>${settings.shipping
+        const choose = all.length
+          ? `<p class="form-field"><label for="cart-shipping">${escape(said.cartShipping)}</label><select id="cart-shipping" name="shipping"><option value="">${escape(said.shopChoose)}…</option>${all
               .map((m) => `<option value="${escape(m.id)}"${method?.id === m.id ? ' selected' : ''}>${escape(m.name)}: ${escape(shippingCost(m, totals.subtotal) ? money(shippingCost(m, totals.subtotal)) : said.cartShippingFree)}</option>`)
               .join('')}</select></p>`
           : '';
@@ -572,8 +591,15 @@ export async function openShop(store: Store): Promise<Shop> {
         const { lines, coupon } = await current();
         const buying = bought(lines);
         if (!buying.length) return to('/_/cart');
-        const payments = [...(settings.transfer.on ? (['transfer'] as const) : []), ...(settings.cod ? (['cod'] as const) : [])];
-        if (!payments.length || !settings.shipping.length) return draw(said.checkout, `<p class="lead" data-checkout-closed>${escape(said.checkoutClosed)}</p>`, undefined, 503);
+        // The shop's own ways to pay, then those the extensions offer (ADR 0076 d4.1).
+        const payments: PaymentChoice[] = [
+          ...(settings.transfer.on ? [{ id: 'transfer', label: said.checkoutTransfer, hint: said.checkoutTransferHint }] : []),
+          ...(settings.cod ? [{ id: 'cod', label: said.checkoutCod, hint: '' }] : []),
+          ...(deps.providers ? await deps.providers.payments(language).catch(() => []) : []),
+        ];
+        const address = post && fields.get('street') ? { street: field('street'), town: field('town'), county: field('county'), postcode: field('postcode') } : null;
+        await ask(buying, address);
+        if (!payments.length || !methodsAll().length) return draw(said.checkout, `<p class="lead" data-checkout-closed>${escape(said.checkoutClosed)}</p>`, undefined, 503);
         const me = await deps.visitor(request);
         if (settings.account && !me && (await deps.accounts())) {
           const back = `/_/checkout${query}`;
@@ -581,7 +607,7 @@ export async function openShop(store: Store): Promise<Shop> {
         }
         const typed: Typed = post
           ? Object.fromEntries(['name', 'email', 'phone', 'street', 'town', 'county', 'postcode', 'company', 'companyName', 'taxCode', 'registration', 'shipping', 'payment', 'note'].map((k) => [k, field(k, k === 'note' ? 1000 : 200)]))
-          : { name: me?.name ?? '', email: me?.email ?? '', shipping: methodOf(cart?.shipping ?? '')?.id ?? (settings.shipping.length === 1 ? (settings.shipping[0]?.id ?? '') : ''), payment: payments.length === 1 ? (payments[0] as string) : '' };
+          : { name: me?.name ?? '', email: me?.email ?? '', shipping: methodOf(cart?.shipping ?? '')?.id ?? (methodsAll().length === 1 ? (methodsAll()[0]?.id ?? '') : ''), payment: payments.length === 1 ? (payments[0]?.id ?? '') : '' };
         const method = methodOf(typed.shipping ?? '');
         const totals = totalsOf(buying, method, settings, coupon);
         const page = (notice?: Notice, bad = new Set<string>(), status = 200): Response =>
@@ -589,7 +615,7 @@ export async function openShop(store: Store): Promise<Shop> {
             said.checkout,
             linesPart(said, buying.map((l) => ({ ...l, href: l.href })), money) +
               totalsPart(said, totals, money, method ? method.name : null, settings.vat) +
-              checkoutForm(said, settings, { action: `/_/checkout${query}`, typed, bad, methods: settings.shipping, money, subtotal: totals.subtotal, total: totals.total, payments }),
+              checkoutForm(said, settings, { action: `/_/checkout${query}`, typed, bad, methods: methodsAll(), money, subtotal: totals.subtotal, total: totals.total, payments }),
             notice,
             status,
           );
@@ -601,7 +627,8 @@ export async function openShop(store: Store): Promise<Shop> {
         if (!email) bad.add('email');
         if (!/^\+?[\d\s().-]{6,30}$/.test(typed.phone ?? '')) bad.add('phone');
         if (!method) bad.add('shipping');
-        if (!payments.includes(typed.payment as 'transfer' | 'cod')) bad.add('payment');
+        const paying = payments.find((p) => p.id === typed.payment);
+        if (!paying) bad.add('payment');
         if (method && !method.pickup) for (const k of ['street', 'town', 'county']) if (!typed[k]) bad.add(k);
         const company = typed.company === 'yes';
         if (company) for (const k of ['companyName', 'taxCode']) if (!typed[k]) bad.add(k);
@@ -633,7 +660,8 @@ export async function openShop(store: Store): Promise<Shop> {
           },
           lines: buying.map((l) => ({ product: l.product, variant: l.variant, name: l.name, sku: l.sku, price: l.price, quantity: l.quantity, rate: settings.vat ? l.rate : 0 })),
           shipping: { id: chosen.id, name: chosen.name, price: totals.shipping, pickup: chosen.pickup },
-          payment: typed.payment as 'transfer' | 'cod',
+          payment: (paying as PaymentChoice).id,
+          ...(byExtension((paying as PaymentChoice).id) ? { paymentName: (paying as PaymentChoice).label } : {}),
           transfer: typed.payment === 'transfer' ? { holder: settings.transfer.holder, iban: settings.transfer.iban, bank: settings.transfer.bank } : null,
           totals,
           vat: settings.vat,
@@ -642,8 +670,8 @@ export async function openShop(store: Store): Promise<Shop> {
           tracking: '',
           history: [],
         };
-        // Paid by transfer, it waits for the money; paid on delivery, it is prepared at once.
-        const state: OrderState = data.payment === 'transfer' ? 'waiting' : 'preparing';
+        // Paid by transfer or with an extension's way, it waits for the money; paid on delivery, it is prepared at once.
+        const state: OrderState = data.payment === 'cod' ? 'preparing' : 'waiting';
         data.history.push({ state, at: new Date().toISOString() });
         const order = await place(data, email, me?.id ?? '', language, state);
         told('order.made', order);
@@ -652,15 +680,72 @@ export async function openShop(store: Store): Promise<Shop> {
         const link = orderLink(site, url, order);
         await tell(email, 'orderReceived', order, link);
         await tell(await ownerAddress(settings), 'orderNew', order, link);
+        // Paid with an extension's way (ADR 0076 d4.1): the buyer is sent to pay at once, or back to the order to try again.
+        if (byExtension(order.data.payment)) return payWith(order, link, deps.providers, { 'set-cookie': cookie('', 0) });
         return to(`/_/order/${order.secret}`, 'placed', { 'set-cookie': cookie('', 0) });
       }
       default: {
-        const asked = /^\/_\/order\/([A-Za-z0-9_-]{20,100})$/.exec(route)?.[1];
-        const order = asked && !post ? await orderBy('secret', asked) : null;
-        if (!order) return draw(said.orderGone, `<p><a href="/">${escape(said.cartBack)}</a></p>`, undefined, 404);
+        const [, asked, rest = ''] = /^\/_\/order\/([A-Za-z0-9_-]{20,100})(\/pay|\/file\/[A-Za-z0-9]{1,40})?$/.exec(route) ?? [];
+        const order = asked && (!post || rest === '/pay') ? await orderBy('secret', asked) : null;
+        if (!order || (post && rest !== '/pay') || (!post && rest === '/pay')) return draw(said.orderGone, `<p><a href="/">${escape(said.cartBack)}</a></p>`, undefined, 404);
+        // Paying again, for an order that still waits for it.
+        if (rest === '/pay') return order.state === 'waiting' && byExtension(order.data.payment) ? payWith(order, orderLink(site, url, order), deps.providers) : to(`/_/order/${order.secret}`);
+        const files = (await store.orderFiles(order.id)).filter((f) => f.buyer);
+        if (rest.startsWith('/file/')) {
+          // A file an extension put on the order for its buyer (ADR 0076 d4.4); only for this order.
+          const one = files.find((f) => f.id === rest.slice(6));
+          const file = one ? await store.extensionFile(one.id) : null;
+          if (!file) return draw(said.orderGone, `<p><a href="/">${escape(said.cartBack)}</a></p>`, undefined, 404);
+          return new Response(file.bytes as Uint8Array<ArrayBuffer>, {
+            headers: {
+              'content-type': file.type,
+              'content-disposition': `attachment; filename*=UTF-8''${encodeURIComponent(file.name)}`,
+              'cache-control': 'private, no-store',
+              'x-content-type-options': 'nosniff',
+              'referrer-policy': 'no-referrer',
+            },
+          });
+        }
         const shown = (n: number): string => moneyText(n, order.data.currency, language);
-        return draw(said.order.replace('{number}', String(order.number)), orderPart(said, order, shown), url.searchParams.get('said') === 'placed' ? { text: said.orderPlaced } : undefined, 200, { 'referrer-policy': 'no-referrer' });
+        const notices: Record<string, Notice> = { placed: { text: said.orderPlaced }, paying: { text: said.orderPaying }, payfailed: { text: said.orderPayFailed, failed: true } };
+        const path = `/_/order/${order.secret}`;
+        return draw(
+          said.order.replace('{number}', String(order.number)),
+          orderPart(said, order, shown, { action: `${path}/pay${query}`, files: files.map((f) => ({ id: f.id, name: f.name })), path }),
+          notices[url.searchParams.get('said') ?? ''],
+          200,
+          { 'referrer-policy': 'no-referrer' },
+        );
       }
+    }
+  }
+
+  /**
+   * Sends the buyer to pay with an extension's way (ADR 0076 d4.1): where the
+   * extension answers, or back to the order, which says the payment did not
+   * start and offers it again. The order waits either way.
+   */
+  async function payWith(order: Order, link: string, providers: ShopProviders | undefined, headers: Record<string, string> = {}): Promise<Response> {
+    const back = (said: string): Response => {
+      const at = new URL(link);
+      at.searchParams.set('said', said);
+      return new Response(null, { status: 303, headers: { location: `${at.pathname}${at.search}`, 'cache-control': 'no-store', ...headers } });
+    };
+    const using = providers;
+    if (!using) return back('payfailed');
+    try {
+      const { data } = order;
+      const at = await using.pay(data.payment, {
+        order: { id: order.id, number: order.number, total: order.total, currency: data.currency, language: order.language, email: order.email, buyer: data.buyer, lines: data.lines, shipping: data.shipping, totals: data.totals },
+        back: (() => {
+          const u = new URL(link);
+          u.searchParams.set('said', 'paying');
+          return u.href;
+        })(),
+      });
+      return new Response(null, { status: 303, headers: { location: at, 'cache-control': 'no-store', 'referrer-policy': 'no-referrer', ...headers } });
+    } catch {
+      return back('payfailed');
     }
   }
 

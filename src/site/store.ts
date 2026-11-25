@@ -135,6 +135,26 @@ export interface InstalledExtension extends ExtensionPackage {
 /** A row an extension keeps: its fields and an id. */
 export type ExtensionRow = Record<string, unknown> & { id: string };
 
+/** A file an extension kept for an order (ADR 0076 d4.4), as it is listed. */
+export interface ExtensionFile {
+  id: string;
+  extension: string;
+  order: string;
+  name: string;
+  type: string;
+  /** The buyer sees it on the order's page. */
+  buyer: boolean;
+  size: number;
+  createdAt: string;
+}
+
+/** A unique field's value as it is kept (ADR 0076 d4.5): text up to 255 characters; empty is not kept. */
+const uniqueValue = (value: unknown): string | null => {
+  if (value === null || value === undefined || value === '') return null;
+  const text = typeof value === 'number' ? String(value) : typeof value === 'string' ? value : null;
+  return text === null ? null : text.slice(0, 255);
+};
+
 /** A publication set for later (ADR 0039): a page (`page`) or an entry of a type, by its address, at an ISO time. */
 export interface Scheduled {
   kind: string;
@@ -212,6 +232,9 @@ const SQLITE: Dialect = {
     'CREATE TABLE IF NOT EXISTS user_pictures (id TEXT PRIMARY KEY, src TEXT NOT NULL)',
     'CREATE TABLE IF NOT EXISTS user_bar (id TEXT PRIMARY KEY, shown INTEGER NOT NULL)',
     'CREATE TABLE IF NOT EXISTS not_found (path TEXT PRIMARY KEY, hits INTEGER NOT NULL, last_at TEXT NOT NULL, referrer TEXT NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS extension_unique (extension TEXT NOT NULL, collection TEXT NOT NULL, field TEXT NOT NULL, value TEXT NOT NULL, id TEXT NOT NULL, PRIMARY KEY (extension, collection, field, value))',
+    'CREATE TABLE IF NOT EXISTS extension_later (id TEXT PRIMARY KEY, extension TEXT NOT NULL, action TEXT NOT NULL, input TEXT NOT NULL, due_at TEXT NOT NULL, tries INTEGER NOT NULL, made_at TEXT NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS extension_files (id TEXT PRIMARY KEY, extension TEXT NOT NULL, order_id TEXT NOT NULL, name TEXT NOT NULL, type TEXT NOT NULL, buyer INTEGER NOT NULL, size INTEGER NOT NULL, bytes BLOB NOT NULL, created_at TEXT NOT NULL)',
   ],
   params: (query) => query,
   upsert: (table, columns, key, update) =>
@@ -252,6 +275,9 @@ const POSTGRES: Dialect = {
     'CREATE TABLE IF NOT EXISTS user_pictures (id VARCHAR(40) PRIMARY KEY, src TEXT NOT NULL)',
     'CREATE TABLE IF NOT EXISTS user_bar (id VARCHAR(40) PRIMARY KEY, shown INTEGER NOT NULL)',
     'CREATE TABLE IF NOT EXISTS not_found (path VARCHAR(255) PRIMARY KEY, hits INTEGER NOT NULL, last_at VARCHAR(40) NOT NULL, referrer VARCHAR(255) NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS extension_unique (extension VARCHAR(64) NOT NULL, collection VARCHAR(64) NOT NULL, field VARCHAR(64) NOT NULL, value VARCHAR(255) NOT NULL, id VARCHAR(40) NOT NULL, PRIMARY KEY (extension, collection, field, value))',
+    'CREATE TABLE IF NOT EXISTS extension_later (id VARCHAR(40) PRIMARY KEY, extension VARCHAR(64) NOT NULL, action VARCHAR(64) NOT NULL, input TEXT NOT NULL, due_at VARCHAR(40) NOT NULL, tries INTEGER NOT NULL, made_at VARCHAR(40) NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS extension_files (id VARCHAR(40) PRIMARY KEY, extension VARCHAR(64) NOT NULL, order_id VARCHAR(64) NOT NULL, name VARCHAR(255) NOT NULL, type VARCHAR(100) NOT NULL, buyer INTEGER NOT NULL, size INTEGER NOT NULL, bytes BYTEA NOT NULL, created_at VARCHAR(40) NOT NULL)',
   ],
   params: (query) => {
     let n = 0;
@@ -291,6 +317,9 @@ const MYSQL: Dialect = {
     `CREATE TABLE IF NOT EXISTS user_pictures (id VARCHAR(40) PRIMARY KEY, src TEXT NOT NULL) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS user_bar (id VARCHAR(40) PRIMARY KEY, shown INTEGER NOT NULL) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS not_found (path VARCHAR(255) PRIMARY KEY, hits INTEGER NOT NULL, last_at VARCHAR(40) NOT NULL, referrer VARCHAR(255) NOT NULL) ${MYSQL_TABLE}`,
+    `CREATE TABLE IF NOT EXISTS extension_unique (extension VARCHAR(64) NOT NULL, collection VARCHAR(64) NOT NULL, field VARCHAR(64) NOT NULL, value VARCHAR(255) NOT NULL, id VARCHAR(40) NOT NULL, PRIMARY KEY (extension, collection, field, value)) ${MYSQL_TABLE}`,
+    `CREATE TABLE IF NOT EXISTS extension_later (id VARCHAR(40) PRIMARY KEY, extension VARCHAR(64) NOT NULL, action VARCHAR(64) NOT NULL, input LONGTEXT NOT NULL, due_at VARCHAR(40) NOT NULL, tries INTEGER NOT NULL, made_at VARCHAR(40) NOT NULL) ${MYSQL_TABLE}`,
+    `CREATE TABLE IF NOT EXISTS extension_files (id VARCHAR(40) PRIMARY KEY, extension VARCHAR(64) NOT NULL, order_id VARCHAR(64) NOT NULL, name VARCHAR(255) NOT NULL, type VARCHAR(100) NOT NULL, buyer INTEGER NOT NULL, size INTEGER NOT NULL, bytes LONGBLOB NOT NULL, created_at VARCHAR(40) NOT NULL) ${MYSQL_TABLE}`,
   ],
   params: (query) => query,
   upsert: (table, columns, _key, update) =>
@@ -2328,6 +2357,8 @@ export class Store {
       await tx.unsafe(this.dialect.params('DELETE FROM extension_rows WHERE extension = ?'), [name]);
       await tx.unsafe(this.dialect.params('DELETE FROM extensions WHERE name = ?'), [name]);
       await tx.unsafe(this.dialect.params('DELETE FROM extension_jobs WHERE extension = ?'), [name]);
+      // What the fourth format keeps goes with it too (ADR 0076 d4): its unique values, its queued work and its files.
+      for (const table of ['extension_unique', 'extension_later', 'extension_files']) await tx.unsafe(this.dialect.params(`DELETE FROM ${table} WHERE extension = ?`), [name]);
     });
     if (blocks) await this.touch();
   }
@@ -2356,13 +2387,127 @@ export class Store {
     return row ? { ...(JSON.parse(row.data) as Record<string, unknown>), id } : null;
   }
 
-  /** Keeps a row, already cleaned by its collection's fields. A new one gets an id that sorts after the ones before it. */
-  async saveExtensionRow(extension: string, collection: string, data: Record<string, unknown>, id: string | null = null, at = new Date()): Promise<ExtensionRow> {
+  /**
+   * Keeps a row, already cleaned by its collection's fields. A new one gets an
+   * id that sorts after the ones before it. The fields named `unique` (ADR 0076
+   * d4.5) are kept in the same step: a value another row has refuses the row.
+   */
+  async saveExtensionRow(extension: string, collection: string, data: Record<string, unknown>, id: string | null = null, at = new Date(), unique: readonly string[] = []): Promise<ExtensionRow> {
     const key = id ?? `${at.getTime().toString(36).padStart(9, '0')}${crypto.randomUUID().replace(/-/g, '').slice(0, 8)}`;
     if (id !== null && !(await this.extensionRow(extension, collection, id))) throw new Error('no such row');
     const { id: _ignored, ...rest } = data;
-    await this.run(this.dialect.upsert('extension_rows', ['extension', 'collection', 'id', 'data', 'updated_at'], ['extension', 'collection', 'id'], ['data', 'updated_at']), [extension, collection, key, JSON.stringify(rest), at.toISOString()]);
+    await this.sql.begin(async (tx) => {
+      const run = (query: string, params: unknown[]) => tx.unsafe(this.dialect.params(query), params);
+      await run(this.dialect.upsert('extension_rows', ['extension', 'collection', 'id', 'data', 'updated_at'], ['extension', 'collection', 'id'], ['data', 'updated_at']), [extension, collection, key, JSON.stringify(rest), at.toISOString()]);
+      if (!unique.length) return;
+      await run('DELETE FROM extension_unique WHERE extension = ? AND collection = ? AND id = ?', [extension, collection, key]);
+      for (const field of unique) {
+        const value = uniqueValue(rest[field]);
+        if (value === null) continue;
+        const kept = Number(((await run(this.dialect.insertNew('extension_unique', ['extension', 'collection', 'field', 'value', 'id']), [extension, collection, field, value, key])) as { count?: number }).count ?? 0);
+        if (kept !== 1) throw new Error(`another row already has ${field} "${value.slice(0, 80)}"`);
+      }
+    });
     return { ...rest, id: key };
+  }
+
+  /** The row whose unique field has this value (ADR 0076 d4.5), or null. */
+  async extensionRowBy(extension: string, collection: string, field: string, value: unknown): Promise<ExtensionRow | null> {
+    const asKept = uniqueValue(value);
+    if (asKept === null) return null;
+    const found = await this.row<{ id: string }>('SELECT id FROM extension_unique WHERE extension = ? AND collection = ? AND field = ? AND value = ?', [extension, collection, field, asKept]);
+    return found ? this.extensionRow(extension, collection, found.id) : null;
+  }
+
+  /**
+   * Takes from the number fields of a row (ADR 0076 d4.6), only if each stays
+   * at zero or above: in one step, so two buyers never take the last seat both.
+   * Like `addToExtensionRow`, each try writes only over the row as it was read.
+   */
+  async takeFromExtensionRow(extension: string, collection: string, id: string, by: Record<string, number>, at = new Date()): Promise<ExtensionRow> {
+    for (let tries = 0; tries < 50; tries++) {
+      const row = await this.row<{ data: string }>('SELECT data FROM extension_rows WHERE extension = ? AND collection = ? AND id = ?', [extension, collection, id]);
+      if (!row) throw new Error('no such row');
+      const next = JSON.parse(row.data) as Record<string, unknown>;
+      for (const [key, value] of Object.entries(by)) {
+        const left = (Number(next[key]) || 0) - value;
+        if (left < 0) throw new Error(`not enough ${key} left`);
+        next[key] = left;
+      }
+      const kept = await this.changed('UPDATE extension_rows SET data = ?, updated_at = ? WHERE extension = ? AND collection = ? AND id = ? AND data = ?', [JSON.stringify(next), at.toISOString(), extension, collection, id, row.data]);
+      if (kept === 1) return { ...next, id };
+    }
+    throw new Error('the row is changed by too many at once; try again');
+  }
+
+  /** Queues an action of an extension to run once, when `due` (ADR 0076 d4.3). */
+  async queueLater(extension: string, action: string, input: unknown, due: Date, now = new Date()): Promise<string> {
+    const id = `${now.getTime().toString(36).padStart(9, '0')}${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`;
+    await this.run('INSERT INTO extension_later (id, extension, action, input, due_at, tries, made_at) VALUES (?, ?, ?, ?, ?, ?, ?)', [id, extension, action, JSON.stringify(input ?? null), due.toISOString(), 0, now.toISOString()]);
+    return id;
+  }
+
+  /** How many of an extension's actions wait to run once. */
+  async laterCount(extension: string): Promise<number> {
+    const row = await this.row<{ n: number | string }>('SELECT COUNT(*) AS n FROM extension_later WHERE extension = ?', [extension]);
+    return Number(row?.n ?? 0);
+  }
+
+  /** The work queued once that is due, oldest first. */
+  async laterDue(now = new Date(), limit = 20): Promise<{ id: string; extension: string; action: string; input: unknown; dueAt: string; tries: number }[]> {
+    const rows = await this.rows<{ id: string; extension: string; action: string; input: string; due_at: string; tries: number | string }>(`SELECT id, extension, action, input, due_at, tries FROM extension_later WHERE due_at <= ? ORDER BY due_at, id LIMIT ${Math.max(1, Math.floor(limit))}`, [now.toISOString()]);
+    return rows.map((r) => ({ id: r.id, extension: r.extension, action: r.action, input: JSON.parse(r.input) as unknown, dueAt: r.due_at, tries: Number(r.tries) }));
+  }
+
+  /**
+   * Claims one run of work queued once: true when this process moved it from
+   * when it was due to `until`, so another clock does not run it meanwhile.
+   */
+  async claimLater(id: string, dueAt: string, until: Date): Promise<boolean> {
+    return (await this.changed('UPDATE extension_later SET due_at = ? WHERE id = ? AND due_at = ?', [until.toISOString(), id, dueAt])) === 1;
+  }
+
+  /** Work queued once that ran: gone. That failed: tried again at `due`, or gone when `due` is null. */
+  async laterRan(id: string, retry: { tries: number; due: Date } | null): Promise<void> {
+    if (retry) await this.run('UPDATE extension_later SET tries = ?, due_at = ? WHERE id = ?', [retry.tries, retry.due.toISOString(), id]);
+    else await this.run('DELETE FROM extension_later WHERE id = ?', [id]);
+  }
+
+  /** Keeps a file an extension made for an order (ADR 0076 d4.4); its id. */
+  async saveExtensionFile(file: { extension: string; order: string; name: string; type: string; buyer: boolean; bytes: Uint8Array }, at = new Date()): Promise<string> {
+    const id = `${at.getTime().toString(36).padStart(9, '0')}${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`;
+    await this.run('INSERT INTO extension_files (id, extension, order_id, name, type, buyer, size, bytes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', [
+      id,
+      file.extension,
+      file.order,
+      file.name,
+      file.type,
+      file.buyer ? 1 : 0,
+      file.bytes.length,
+      file.bytes,
+      at.toISOString(),
+    ]);
+    return id;
+  }
+
+  /** The files kept for an order, without their bytes, oldest first. */
+  async orderFiles(order: string): Promise<ExtensionFile[]> {
+    const rows = await this.rows<{ id: string; extension: string; order_id: string; name: string; type: string; buyer: number | string; size: number | string; created_at: string }>(
+      'SELECT id, extension, order_id, name, type, buyer, size, created_at FROM extension_files WHERE order_id = ? ORDER BY id',
+      [order],
+    );
+    return rows.map((r) => ({ id: r.id, extension: r.extension, order: r.order_id, name: r.name, type: r.type, buyer: Number(r.buyer) === 1, size: Number(r.size), createdAt: r.created_at }));
+  }
+
+  /** One file an extension kept, with its bytes. */
+  async extensionFile(id: string): Promise<(ExtensionFile & { bytes: Uint8Array }) | null> {
+    const r = await this.row<{ id: string; extension: string; order_id: string; name: string; type: string; buyer: number | string; size: number | string; created_at: string; bytes: Uint8Array }>('SELECT * FROM extension_files WHERE id = ?', [id]);
+    return r ? { id: r.id, extension: r.extension, order: r.order_id, name: r.name, type: r.type, buyer: Number(r.buyer) === 1, size: Number(r.size), createdAt: r.created_at, bytes: new Uint8Array(r.bytes) } : null;
+  }
+
+  /** Removes one of an extension's files; another's is left. */
+  async deleteExtensionFile(extension: string, id: string): Promise<boolean> {
+    return (await this.changed('DELETE FROM extension_files WHERE extension = ? AND id = ?', [extension, id])) === 1;
   }
 
   /**
@@ -2393,6 +2538,7 @@ export class Store {
 
   async deleteExtensionRow(extension: string, collection: string, id: string): Promise<void> {
     await this.run('DELETE FROM extension_rows WHERE extension = ? AND collection = ? AND id = ?', [extension, collection, id]);
+    await this.run('DELETE FROM extension_unique WHERE extension = ? AND collection = ? AND id = ?', [extension, collection, id]);
   }
 
   async rawForTests(query: string, params: unknown[] = []): Promise<void> {
@@ -2569,7 +2715,7 @@ export class Store {
     for (const table of [...BACKUP_TABLES, ...optional]) {
       const key = TABLE_KEYS[table] as string[];
       const order = key.map((column) => (column === 'key' ? this.dialect.key : column)).join(', ');
-      const step = table === 'media' || table === 'media_variants' ? 20 : 500;
+      const step = table === 'media' || table === 'media_variants' || table === 'extension_files' ? 20 : 500;
       for (let offset = 0; ; offset += step) {
         const rows = await this.rows(`SELECT * FROM ${table} ORDER BY ${order} LIMIT ${step} OFFSET ${offset}`);
         for (const row of rows) {
@@ -2711,6 +2857,9 @@ export const BACKUP_TABLES = [
   'extensions',
   'extension_rows',
   'extension_jobs',
+  'extension_unique',
+  'extension_later',
+  'extension_files',
   'entry_authors',
   'entry_reviews',
   'user_bios',

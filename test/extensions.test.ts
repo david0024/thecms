@@ -52,6 +52,10 @@ describe('a package', () => {
       mails: [],
       accounts: false,
       shop: false,
+      later: [],
+      files: [],
+      payments: [],
+      delivery: false,
     });
     expect(extensionWord(m, 'ro', 'Louder')).toBe('Mai tare');
     expect(extensionWord(m, 'ro-MD', 'Settings')).toBe('Setări');
@@ -92,7 +96,7 @@ describe('a package', () => {
       'the collection "rows" is declared twice',
       'empty: a collection has at least one field',
       'a collection\'s name is lower case letters, digits and _ ("Nope")',
-      'go: an action is on block or page, or on its own screen',
+      'go: an action is on block or page or order, or on its own screen',
       'go: it reads "users", which is not one of its collections',
       'the action "go" is declared twice',
       'each: an action runs for each language only on a page',

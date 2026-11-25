@@ -14,13 +14,22 @@ import { allViews, checkViews, type ViewDocument } from '../view/index.ts';
 import { fromOldName } from './name.ts';
 import { isObject, str } from './util.ts';
 
-/** The format a package is written in now: the second, with what the program tells, asks and lends (ADR 0062). */
-export const EXTENSION_FORMAT = 'uhlaka.extension/3';
+/**
+ * The format a package is written in now: the third, with what a shop's
+ * providers need (ADR 0076 d4): questions at checkout, actions on an order,
+ * jobs queued once, files, collections that can be searched and numbers taken
+ * only while enough is left.
+ */
+export const EXTENSION_FORMAT = 'uhlaka.extension/4';
+/** The third format (ADR 0062), still read: what the program tells, asks and lends. */
+export const EXTENSION_FORMAT_3 = 'uhlaka.extension/3';
 /** The second format (ADR 0041), still read: routes, jobs and the events of the site's changes. */
 export const EXTENSION_FORMAT_2 = 'uhlaka.extension/2';
 /** The first format (ADR 0026), still read: a package in it has no routes, jobs or events. */
 export const EXTENSION_FORMAT_1 = 'uhlaka.extension/1';
-const FORMATS: readonly string[] = [EXTENSION_FORMAT, EXTENSION_FORMAT_2, EXTENSION_FORMAT_1];
+const FORMATS: readonly string[] = [EXTENSION_FORMAT, EXTENSION_FORMAT_3, EXTENSION_FORMAT_2, EXTENSION_FORMAT_1];
+/** The number of a package's format: 1 to 4. */
+const formatOf = (format: string): number => Number(format.slice(format.lastIndexOf('/') + 1));
 export const EXTENSION_MAX_BYTES = 5 * 1024 * 1024;
 
 const NAME = /^[a-z][a-z0-9-]{1,39}$/;
@@ -44,6 +53,12 @@ export interface ExtensionField {
   options: string[];
   /** What a new row starts with. */
   initial: string | number | boolean | null;
+  /**
+   * No two rows have the same value here (ADR 0076 d4.5), kept by the program
+   * in the step that writes the row: a provider's payment, a number in a series.
+   * An empty value is not counted.
+   */
+  unique: boolean;
 }
 
 export interface ExtensionCollection {
@@ -55,9 +70,10 @@ export interface ExtensionCollection {
 /**
  * Where an action shows in the editor: on the block being edited, or on the
  * whole page. Its answer is put in the editor as a change the person sees and
- * saves, never written behind their back.
+ * saves, never written behind their back. Or, in the fourth format, on an
+ * order in the Orders screen (ADR 0076 d4.2): an AWB, an invoice, a refund.
  */
-export const EXTENSION_POINTS = ['block', 'page'] as const;
+export const EXTENSION_POINTS = ['block', 'page', 'order'] as const;
 export type ExtensionPoint = (typeof EXTENSION_POINTS)[number];
 
 /** Something the editor asks before it runs an action. */
@@ -89,6 +105,8 @@ export interface ExtensionAction {
   pictures: boolean;
   /** The program's data it reads (ADR 0062 d4), of those the manifest declares. */
   uses: ProgramData[];
+  /** It keeps files (ADR 0076 d4.4): an invoice's PDF, a label, put on an order. */
+  files: boolean;
   timeoutSeconds: number;
 }
 
@@ -106,9 +124,26 @@ export type Question = keyof typeof QUESTIONS;
 /** How long the program waits for an answer before it goes on without it. */
 export const ANSWER_SECONDS = 10;
 
+/**
+ * The questions a shop asks at checkout (ADR 0076 d4.1), in the fourth
+ * format. `checkout.payment`: where the buyer is sent to pay with one of the
+ * methods the extension declares. `checkout.delivery`: the ways a cart can be
+ * delivered, and their prices.
+ */
+export const CHECKOUT_QUESTIONS = ['checkout.payment', 'checkout.delivery'] as const;
+export type CheckoutQuestion = (typeof CHECKOUT_QUESTIONS)[number];
+
+/** A way to pay an extension offers at checkout: `card`, with the words the buyer reads. */
+export interface PaymentMethod {
+  id: string;
+  label: string;
+}
+
 export interface ExtensionAnswer {
-  question: Question;
+  question: Question | CheckoutQuestion;
   action: string;
+  /** For `checkout.payment`, the ways to pay it offers. */
+  methods: PaymentMethod[];
 }
 
 /** The kinds of field a public block asks for (ADR 0062 d6): those of the form builder, and a consent to tick. */
@@ -158,6 +193,13 @@ export interface ExtensionJob {
   action: string;
   everyMinutes: number;
 }
+
+/**
+ * Work queued once, by `host.later` (ADR 0076 d4.3): kept in the database,
+ * run when due, tried again with a growing wait, and said in the log when it
+ * gives up. Declared as a job with `"once": true`.
+ */
+export const LATER_TRIES = 8;
 
 /** What happens in the site that an extension may hear of, and what it is told. */
 export const EXTENSION_EVENTS = [
@@ -226,6 +268,8 @@ export interface ExtensionManifest {
   /** Its public addresses, its work at intervals and what it listens to (ADR 0041). */
   routes: ExtensionRoute[];
   jobs: ExtensionJob[];
+  /** The actions `host.later` may queue (ADR 0076 d4.3). */
+  later: string[];
   events: ExtensionListener[];
   /** The questions it answers, and the program's data it reads (ADR 0062). */
   answers: ExtensionAnswer[];
@@ -245,7 +289,11 @@ export interface ExtensionPackage {
 const list = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
 const text = (value: unknown, max: number): string => str(value, max).trim();
 
-function field(raw: unknown, problems: string[], where: string, third: boolean): ExtensionField | null {
+/** The kinds a field declared unique may be (ADR 0076 d4.5). */
+const UNIQUE_KINDS: readonly string[] = ['text', 'number', 'url'];
+
+function field(raw: unknown, problems: string[], where: string, format: number): ExtensionField | null {
+  const third = format >= 3;
   if (!isObject(raw)) return null;
   const key = text(raw.key, 40);
   if (!KEY.test(key)) {
@@ -271,10 +319,12 @@ function field(raw: unknown, problems: string[], where: string, third: boolean):
           : kind === 'secret' || KINDS_3.includes(kind)
             ? null
             : text(initial, 2000);
-  return { key, label: text(raw.label, 80) || key, kind, required: raw.required === true, options, initial: fit };
+  const unique = raw.unique === true && format >= 4 && UNIQUE_KINDS.includes(kind);
+  if (raw.unique === true && !unique) problems.push(format >= 4 ? `${where}.${key}: only a field of ${UNIQUE_KINDS.join(', ')} is unique` : `${where}.${key}: a unique field needs ${EXTENSION_FORMAT}`);
+  return { key, label: text(raw.label, 80) || key, kind, required: raw.required === true, options, initial: fit, unique };
 }
 
-function collection(raw: unknown, problems: string[], third: boolean): ExtensionCollection | null {
+function collection(raw: unknown, problems: string[], format: number): ExtensionCollection | null {
   if (!isObject(raw)) return null;
   const name = text(raw.name, 40);
   if (!KEY.test(name)) {
@@ -283,7 +333,7 @@ function collection(raw: unknown, problems: string[], third: boolean): Extension
   }
   const fields: ExtensionField[] = [];
   for (const f of list(raw.fields).slice(0, 40)) {
-    const one = field(f, problems, name, third);
+    const one = field(f, problems, name, format);
     if (!one) continue;
     if (one.key === 'id' || fields.some((x) => x.key === one.key)) problems.push(`${name}.${one.key}: a field's key is used once, and never "id"`);
     else fields.push(one);
@@ -292,15 +342,16 @@ function collection(raw: unknown, problems: string[], third: boolean): Extension
   return { name, label: text(raw.label, 80) || name, fields };
 }
 
-function action(raw: unknown, names: string[], problems: string[]): ExtensionAction | null {
+function action(raw: unknown, names: string[], problems: string[], format: number): ExtensionAction | null {
   if (!isObject(raw)) return null;
   const name = text(raw.name, 40);
   if (!/^[a-zA-Z][a-zA-Z0-9]{0,39}$/.test(name)) {
     problems.push(`an action's name is letters and digits ("${name}")`);
     return null;
   }
-  const on = EXTENSION_POINTS.find((p) => p === raw.on) ?? null;
-  if (raw.on !== undefined && raw.on !== null && !on) problems.push(`${name}: an action is on ${EXTENSION_POINTS.join(' or ')}, or on its own screen`);
+  const points = format >= 4 ? EXTENSION_POINTS : EXTENSION_POINTS.filter((p) => p !== 'order');
+  const on = points.find((p) => p === raw.on) ?? null;
+  if (raw.on !== undefined && raw.on !== null && !on) problems.push(`${name}: an action is on ${points.join(' or ')}, or on its own screen`);
   const own = (value: unknown, what: string): string[] =>
     list(value)
       .map((c) => text(c, 40))
@@ -318,6 +369,10 @@ function action(raw: unknown, names: string[], problems: string[]): ExtensionAct
   const seconds = Number(raw.timeoutSeconds);
   const each = raw.each === 'language' && on === 'page' ? 'language' : null;
   if (raw.each !== undefined && raw.each !== null && !each) problems.push(`${name}: an action runs for each language only on a page`);
+  const uses = PROGRAM_DATA.filter((d) => list(raw.uses).includes(d));
+  // An action on an order reads it: the order is the program's, lent by `orders` (ADR 0065 d9).
+  if (on === 'order' && !uses.includes('orders')) problems.push(`${name}: an action on an order declares that it uses "orders"`);
+  if (raw.files === true && format < 4) problems.push(`${name}: keeping files needs ${EXTENSION_FORMAT}`);
   return {
     name,
     label: text(raw.label, 60) || name,
@@ -327,7 +382,8 @@ function action(raw: unknown, names: string[], problems: string[]): ExtensionAct
     reads: own(raw.reads, 'reads'),
     writes: own(raw.writes, 'writes'),
     pictures: raw.pictures === true,
-    uses: PROGRAM_DATA.filter((d) => list(raw.uses).includes(d)),
+    uses,
+    files: raw.files === true && format >= 4,
     timeoutSeconds: Number.isInteger(seconds) && seconds >= 1 && seconds <= 300 ? seconds : 60,
   };
 }
@@ -338,7 +394,7 @@ const ROUTE = /^[a-z0-9][a-z0-9-]{0,39}(\/[a-z0-9][a-z0-9-]{0,39}){0,3}$/;
  * Routes, jobs and events each name an action that runs on its own, not one
  * the editor offers on a block or a page: what it is given is not a page.
  */
-function serverParts(m: Record<string, unknown>, actions: ExtensionAction[], problems: string[], format: string): Pick<ExtensionManifest, 'routes' | 'jobs' | 'events'> {
+function serverParts(m: Record<string, unknown>, actions: ExtensionAction[], problems: string[], format: number): Pick<ExtensionManifest, 'routes' | 'jobs' | 'later' | 'events'> {
   const own = (name: unknown, what: string): string | null => {
     const action = actions.find((a) => a.name === text(name, 40));
     if (!action) problems.push(`${what} runs "${text(name, 40)}", which is not one of its actions`);
@@ -362,10 +418,18 @@ function serverParts(m: Record<string, unknown>, actions: ExtensionAction[], pro
     if (action) routes.push({ path, action, methods: methods.length ? methods : ['POST'] });
   }
   const jobs: ExtensionJob[] = [];
+  const later: string[] = [];
   for (const j of list(m.jobs).slice(0, 12)) {
     if (!isObject(j)) continue;
     const every = Number(j.everyMinutes);
     const action = own(j.action, 'a job');
+    if (j.once === true) {
+      // Queued by `host.later` (ADR 0076 d4.3), not run at an interval.
+      if (format < 4) problems.push(`a job queued once needs ${EXTENSION_FORMAT}`);
+      else if (action && later.includes(action)) problems.push(`the job "${action}" is declared twice`);
+      else if (action) later.push(action);
+      continue;
+    }
     if (!Number.isInteger(every) || every < 1 || every > 10_080) problems.push(`a job runs every 1 to 10080 minutes ("${String(j.everyMinutes)}")`);
     else if (action && jobs.some((x) => x.action === action)) problems.push(`the job "${action}" is declared twice`);
     else if (action) jobs.push({ action, everyMinutes: every });
@@ -373,7 +437,7 @@ function serverParts(m: Record<string, unknown>, actions: ExtensionAction[], pro
   const events: ExtensionListener[] = [];
   for (const e of list(m.events).slice(0, 24)) {
     if (!isObject(e)) continue;
-    const heard = format === EXTENSION_FORMAT ? EXTENSION_EVENTS : EVENTS_2;
+    const heard = format >= 3 ? EXTENSION_EVENTS : EVENTS_2;
     const on = EXTENSION_EVENTS.find((x) => x === e.on && heard.includes(x));
     if (!on) {
       problems.push(`an extension listens to one of ${heard.join(', ')} ("${text(e.on, 40)}")`);
@@ -382,7 +446,7 @@ function serverParts(m: Record<string, unknown>, actions: ExtensionAction[], pro
     const action = own(e.action, `listening to ${on}`);
     if (action && !events.some((x) => x.on === on && x.action === action)) events.push({ on, action });
   }
-  return { routes, jobs, events };
+  return { routes, jobs, later, events };
 }
 
 /** A public block's field (ADR 0062 d6). */
@@ -434,23 +498,36 @@ function publicBlocks(m: Record<string, unknown>, routes: ExtensionRoute[], prob
 }
 
 /** What the third format adds (ADR 0062): the questions it answers and the program's data it reads. */
-function thirdParts(m: Record<string, unknown>, actions: ExtensionAction[], problems: string[]): Pick<ExtensionManifest, 'answers' | 'uses' | 'mails'> {
+function thirdParts(m: Record<string, unknown>, actions: ExtensionAction[], problems: string[], format: number): Pick<ExtensionManifest, 'answers' | 'uses' | 'mails'> {
   const uses = PROGRAM_DATA.filter((d) => list(m.uses).includes(d));
   for (const u of list(m.uses)) if (!PROGRAM_DATA.includes(u as ProgramData)) problems.push(`an extension reads ${PROGRAM_DATA.join(', ')} of the program's data ("${text(u, 40)}")`);
   for (const a of actions) for (const u of a.uses) if (!uses.includes(u)) problems.push(`${a.name}: it reads "${u}", which the extension does not declare in "uses"`);
   const answers: ExtensionAnswer[] = [];
+  const asked: string[] = [...Object.keys(QUESTIONS), ...(format >= 4 ? CHECKOUT_QUESTIONS : [])];
   for (const q of list(m.answers).slice(0, 12)) {
     if (!isObject(q)) continue;
-    const question = Object.keys(QUESTIONS).find((x) => x === q.question) as Question | undefined;
+    const question = asked.find((x) => x === q.question) as ExtensionAnswer['question'] | undefined;
     if (!question) {
-      problems.push(`an extension answers one of ${Object.keys(QUESTIONS).join(', ')} ("${text(q.question, 40)}")`);
+      problems.push(`an extension answers one of ${asked.join(', ')} ("${text(q.question, 40)}")`);
       continue;
+    }
+    // The ways to pay, each with the words the buyer reads (ADR 0076 d4.1).
+    const methods: PaymentMethod[] = [];
+    if (question === 'checkout.payment') {
+      for (const raw of list(q.methods).slice(0, 6)) {
+        if (!isObject(raw)) continue;
+        const id = text(raw.id, 40);
+        if (!/^[a-z][a-z0-9-]{0,39}$/.test(id)) problems.push(`a way to pay is named by lower case letters, digits and - ("${id}")`);
+        else if (methods.some((x) => x.id === id)) problems.push(`the way to pay "${id}" is declared twice`);
+        else methods.push({ id, label: text(raw.label, 60) || id });
+      }
+      if (!methods.length) problems.push('answering checkout.payment, it declares the ways to pay it offers in "methods"');
     }
     const action = actions.find((a) => a.name === text(q.action, 40));
     if (!action) problems.push(`answering ${question} runs "${text(q.action, 40)}", which is not one of its actions`);
     else if (action.on) problems.push(`answering ${question} runs "${action.name}", which the editor offers on a ${action.on}`);
     else if (answers.some((x) => x.question === question)) problems.push(`it answers ${question} twice`);
-    else answers.push({ question, action: action.name });
+    else answers.push({ question, action: action.name, methods });
   }
   const mails: ExtensionMail[] = [];
   for (const raw of list(m.mails).slice(0, 12)) {
@@ -474,6 +551,7 @@ export function parseExtension(given: unknown): { pkg: ExtensionPackage | null; 
   const raw = fromOldName(given);
   if (!isObject(raw) || typeof raw.format !== 'string' || !FORMATS.includes(raw.format)) return { pkg: null, problems: [`this is not an extension (${EXTENSION_FORMAT})`] };
   const m = isObject(raw.manifest) ? raw.manifest : {};
+  const format = formatOf(raw.format);
   const name = text(m.name, 40);
   if (!NAME.test(name)) problems.push(`an extension's name is lower case letters, digits and - ("${name}")`);
   const version = text(m.version, 40);
@@ -485,7 +563,7 @@ export function parseExtension(given: unknown): { pkg: ExtensionPackage | null; 
 
   const collections: ExtensionCollection[] = [];
   for (const c of list(m.collections).slice(0, 12)) {
-    const one = collection(c, problems, raw.format === EXTENSION_FORMAT);
+    const one = collection(c, problems, format);
     if (!one) continue;
     if (collections.some((x) => x.name === one.name)) problems.push(`the collection "${one.name}" is declared twice`);
     else collections.push(one);
@@ -493,7 +571,7 @@ export function parseExtension(given: unknown): { pkg: ExtensionPackage | null; 
   const names = collections.map((c) => c.name);
   const actions: ExtensionAction[] = [];
   for (const a of list(m.actions).slice(0, 24)) {
-    const one = action(a, names, problems);
+    const one = action(a, names, problems, format);
     if (!one) continue;
     if (actions.some((x) => x.name === one.name)) problems.push(`the action "${one.name}" is declared twice`);
     else actions.push(one);
@@ -501,7 +579,7 @@ export function parseExtension(given: unknown): { pkg: ExtensionPackage | null; 
   // Screens are checked against uhlaka.view/1 and against what this manifest declares.
   const { views, problems: viewProblems } = checkViews(m.views, { collections: collections.map((c) => ({ name: c.name, fields: c.fields })), actions });
   problems.push(...viewProblems);
-  if (raw.format !== EXTENSION_FORMAT) for (const v of allViews(views)) if (VIEWS_3.includes(v.type)) problems.push(`a screen of the kind "${v.type}" needs ${EXTENSION_FORMAT}`);
+  if (format < 3) for (const v of allViews(views)) if (VIEWS_3.includes(v.type)) problems.push(`a screen of the kind "${v.type}" needs ${EXTENSION_FORMAT_3}`);
   const messages: Record<string, Record<string, string>> = {};
   if (isObject(m.messages)) {
     for (const [language, words] of Object.entries(m.messages).slice(0, 40)) {
@@ -514,8 +592,8 @@ export function parseExtension(given: unknown): { pkg: ExtensionPackage | null; 
     }
   }
   // The first format has none of these: what such a package says of them is not read.
-  const server = raw.format !== EXTENSION_FORMAT_1 ? serverParts(m, actions, problems, String(raw.format)) : { routes: [], jobs: [], events: [] };
-  const third = raw.format === EXTENSION_FORMAT ? { ...thirdParts(m, actions, problems), blocks: publicBlocks(m, server.routes, problems) } : { answers: [], uses: [], blocks: [], mails: [] };
+  const server = format >= 2 ? serverParts(m, actions, problems, format) : { routes: [], jobs: [], later: [], events: [] };
+  const third = format >= 3 ? { ...thirdParts(m, actions, problems, format), blocks: publicBlocks(m, server.routes, problems) } : { answers: [], uses: [], blocks: [], mails: [] };
   const code = typeof raw.code === 'string' ? raw.code : '';
   if (actions.length > 0 && !code.trim()) problems.push('it has actions and no code');
   if (code.length > EXTENSION_MAX_BYTES) problems.push('its code is larger than 5 MB');
@@ -571,6 +649,13 @@ export function extensionAsks(manifest: ExtensionManifest): {
   accounts: boolean;
   /** Whether it works with the shop (ADR 0065 d9): the orders' events, or the orders. */
   shop: boolean;
+  /** The actions it may queue to run once, later (ADR 0076 d4.3). */
+  later: string[];
+  /** The actions that keep files (ADR 0076 d4.4). */
+  files: string[];
+  /** The ways to pay it offers at checkout, and whether it offers ways to deliver (ADR 0076 d4.1). */
+  payments: string[];
+  delivery: boolean;
 } {
   const label = (name: string): string => manifest.actions.find((a) => a.name === name)?.label ?? name;
   return {
@@ -587,7 +672,15 @@ export function extensionAsks(manifest: ExtensionManifest): {
     blocks: manifest.blocks.map((b) => b.label),
     mails: manifest.mails.map((m) => m.subject),
     accounts: manifest.uses.includes('members') || manifest.uses.includes('mail') || manifest.events.some((e) => ACCOUNT_EVENTS.includes(e.on)),
-    shop: manifest.uses.includes('orders') || manifest.events.some((e) => ORDER_EVENTS.includes(e.on)),
+    shop:
+      manifest.uses.includes('orders') ||
+      manifest.events.some((e) => ORDER_EVENTS.includes(e.on)) ||
+      manifest.answers.some((a) => (CHECKOUT_QUESTIONS as readonly string[]).includes(a.question)) ||
+      manifest.actions.some((a) => a.on === 'order'),
+    later: manifest.later.map(label),
+    files: manifest.actions.filter((a) => a.files).map((a) => a.label),
+    payments: manifest.answers.flatMap((a) => a.methods.map((m) => m.label)),
+    delivery: manifest.answers.some((a) => a.question === 'checkout.delivery'),
   };
 }
 
@@ -688,4 +781,91 @@ export function cleanBlockPost(block: PublicBlock, sent: URLSearchParams): { fie
     fields[f.key] = value;
   }
   return { fields, problems };
+}
+
+/** The fields of a collection no two rows share (ADR 0076 d4.5). */
+export const uniqueFields = (of: ExtensionCollection): string[] => of.fields.filter((f) => f.unique).map((f) => f.key);
+
+/** What one field is compared with in a search (ADR 0076 d4.5): equal to a value, or one of these. */
+export type FindTest = string | number | boolean | null | { ne?: unknown; gt?: unknown; gte?: unknown; lt?: unknown; lte?: unknown; in?: unknown[]; has?: string };
+
+/** A search of a collection, cleaned: the program writes every query, so only these. */
+export interface FindQuery {
+  where: Record<string, FindTest>;
+  /** A field, or `-field` for the largest first; `id` is the order rows were made in. */
+  order: string;
+  limit: number;
+  offset: number;
+}
+
+/** At most this many rows come back from one search. */
+export const FIND_MAX = 500;
+const FIND_OPS = ['ne', 'gt', 'gte', 'lt', 'lte', 'in', 'has'];
+
+/**
+ * Reads what an extension asked to search for (ADR 0076 d4.5), against the
+ * collection's fields: a field it does not have, or a test that is not one of
+ * those above, is refused, not ignored.
+ */
+export function cleanFind(of: ExtensionCollection, raw: unknown): { query: FindQuery; problems: string[] } {
+  const given = isObject(raw) ? raw : {};
+  const problems: string[] = [];
+  const keys = ['id', ...of.fields.map((f) => f.key)];
+  const where: Record<string, FindTest> = {};
+  if (given.where !== undefined && !isObject(given.where)) problems.push('"where" is an object of fields');
+  for (const [key, test] of Object.entries(isObject(given.where) ? given.where : {}).slice(0, 12)) {
+    if (!keys.includes(key)) {
+      problems.push(`${of.name} has no field "${key.slice(0, 40)}"`);
+      continue;
+    }
+    if (isObject(test)) {
+      const bad = Object.keys(test).find((op) => !FIND_OPS.includes(op));
+      if (bad) problems.push(`${key}: a test is one of ${FIND_OPS.join(', ')} ("${bad.slice(0, 20)}")`);
+      else if (test.in !== undefined && !Array.isArray(test.in)) problems.push(`${key}: "in" is a list`);
+      else if (test.has !== undefined && typeof test.has !== 'string') problems.push(`${key}: "has" is a text`);
+      else where[key] = { ...(test as object), ...(Array.isArray(test.in) ? { in: test.in.slice(0, 200) } : {}) };
+    } else if (test === null || ['string', 'number', 'boolean'].includes(typeof test)) where[key] = test as FindTest;
+    else problems.push(`${key}: a value, or a test`);
+  }
+  const order = typeof given.order === 'string' ? given.order : 'id';
+  if (!keys.includes(order.replace(/^-/, ''))) problems.push(`${of.name} has no field "${order.slice(0, 40)}" to order by`);
+  const limit = given.limit === undefined ? 100 : Number(given.limit);
+  const offset = given.offset === undefined ? 0 : Number(given.offset);
+  if (!Number.isInteger(limit) || limit < 0 || limit > FIND_MAX) problems.push(`"limit" is 0 to ${FIND_MAX}`);
+  if (!Number.isInteger(offset) || offset < 0) problems.push('"offset" is 0 or more');
+  return { query: { where, order, limit: Number.isInteger(limit) ? Math.min(Math.max(limit, 0), FIND_MAX) : 100, offset: Number.isInteger(offset) ? Math.max(offset, 0) : 0 }, problems };
+}
+
+/** Whether one value passes a test. Numbers compare as numbers, the rest as text. */
+function passes(value: unknown, test: FindTest): boolean {
+  if (!isObject(test)) return value === test || (value === undefined && test === null);
+  const compare = (other: unknown): number => {
+    if (typeof value === 'number' && typeof other === 'number') return value - other;
+    return String(value ?? '').localeCompare(String(other ?? ''));
+  };
+  const has = (v: unknown): boolean => v !== null && v !== undefined && v !== '';
+  if ('ne' in test && (value === test.ne || (value === undefined && test.ne === null))) return false;
+  if ('gt' in test && !(has(value) && compare(test.gt) > 0)) return false;
+  if ('gte' in test && !(has(value) && compare(test.gte) >= 0)) return false;
+  if ('lt' in test && !(has(value) && compare(test.lt) < 0)) return false;
+  if ('lte' in test && !(has(value) && compare(test.lte) <= 0)) return false;
+  if (Array.isArray(test.in) && !test.in.includes(value)) return false;
+  if (typeof test.has === 'string' && !String(value ?? '').toLowerCase().includes(test.has.toLowerCase())) return false;
+  return true;
+}
+
+/** The rows a search finds, in its order, and how many there are in all. */
+export function findRows<T extends Record<string, unknown>>(rows: readonly T[], query: FindQuery): { rows: T[]; count: number } {
+  const found = rows.filter((row) => Object.entries(query.where).every(([key, test]) => passes(row[key], test)));
+  const key = query.order.replace(/^-/, '');
+  const down = query.order.startsWith('-') ? -1 : 1;
+  const sorted = [...found].sort((a, b) => {
+    const x = a[key];
+    const y = b[key];
+    // Empty values go last, whichever way.
+    if ((x === null || x === undefined || x === '') !== (y === null || y === undefined || y === '')) return x === null || x === undefined || x === '' ? 1 : -1;
+    const by = typeof x === 'number' && typeof y === 'number' ? x - y : String(x ?? '').localeCompare(String(y ?? ''));
+    return by * down || String(a.id ?? '').localeCompare(String(b.id ?? ''));
+  });
+  return { rows: sorted.slice(query.offset, query.offset + query.limit), count: found.length };
 }

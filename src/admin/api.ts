@@ -31,6 +31,24 @@ export interface Performance {
   fromEnvironment: boolean;
 }
 
+/** An action an extension offers on an order (ADR 0076 d4.2), in the admin's language. */
+export interface OrderAction {
+  extension: string;
+  action: string;
+  label: string;
+}
+
+/** A file an extension put on an order (ADR 0076 d4.4). */
+export interface OrderFile {
+  id: string;
+  name: string;
+  type: string;
+  size: number;
+  buyer: boolean;
+  extension: string;
+  createdAt: string;
+}
+
 /** An order as the Orders screen lists it (ADR 0065 d7). */
 export interface OrderListed {
   id: string;
@@ -368,6 +386,15 @@ export const api = {
   orders: (state = '') => call<{ orders: OrderListed[] }>('GET', `/api/shop/orders${state ? `?state=${encodeURIComponent(state)}` : ''}`),
   order: (id: string) => call<{ order: Order }>('GET', `/api/shop/orders?id=${encodeURIComponent(id)}`),
   setOrder: (id: string, change: { state?: OrderState; tracking?: string }) => call<{ order: Order }>('PUT', '/api/shop/orders', { id, ...change }),
+  /** What extensions do on an order (ADR 0076 d4.2, d4.4): the actions offered on it, and the files they put on it. */
+  orderExtensions: (id: string, language: string) => call<{ actions: OrderAction[]; files: OrderFile[] }>('GET', `/api/shop/orders/extensions?id=${encodeURIComponent(id)}&l=${encodeURIComponent(language)}`),
+  runOnOrder: (id: string, action: OrderAction) => call<{ said: string; files: OrderFile[] }>('POST', '/api/shop/orders/run', { id, extension: action.extension, action: action.action }),
+  /** A file on an order: fetched, because a link could not carry the key. */
+  async orderFile(id: string): Promise<Blob> {
+    const response = await fetch(`/api/shop/orders/file?id=${encodeURIComponent(id)}`, { headers: who() });
+    if (!response.ok) await answer(response);
+    return response.blob();
+  },
   coupons: () => call<{ coupons: Coupon[] }>('GET', '/api/shop/coupons'),
   saveCoupon: (coupon: Record<string, unknown>) => call<{ coupon: Coupon; coupons: Coupon[] }>('PUT', '/api/shop/coupons', coupon),
   deleteCoupon: (code: string) => call<{ coupons: Coupon[] }>('DELETE', `/api/shop/coupons?code=${encodeURIComponent(code)}`),

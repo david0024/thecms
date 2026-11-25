@@ -241,6 +241,16 @@ const PORT = 4431;
     if (shots) await buyer.screenshot({ path: join(shots, 'shop-order.png'), fullPage: true });
     await buyer.close();
 
+    // An extension that acts on an order and puts a file on it (ADR 0076 d4.2, d4.4), installed through the admin's API.
+    const token = new URL(url).hash.match(/token=(\w+)/)[1];
+    const invoicer = JSON.stringify({
+      format: 'uhlaka.extension/4',
+      manifest: { name: 'invoicer', displayName: 'Invoicer', version: '1.0.0', uses: ['orders'], actions: [{ name: 'invoice', label: 'Make the invoice', on: 'order', uses: ['orders'], files: true }] },
+      code: "export const actions = { invoice: async (input, host) => { await host.files.put({ order: input.order.id, name: 'invoice-' + input.order.number + '.pdf', type: 'application/pdf', data: btoa('%PDF-1.4'), buyer: true }); return 'Invoice made.'; } };",
+    });
+    const offered = await (await page.request.post(site('/api/extensions/offer'), { headers: { 'x-uhlaka-token': token }, data: invoicer })).json();
+    await page.request.post(site(`/api/extensions/install?sha256=${offered.offer.sha256}`), { headers: { 'x-uhlaka-token': token }, data: invoicer });
+
     // The owner handles it in Orders.
     await page.evaluate(() => history.replaceState(null, "", location.href.replace(/[#&]at=[^&#]*/, ""))); // opened again at its first screen, not the one it was on
     await page.reload();
@@ -257,6 +267,12 @@ const PORT = 4431;
     await page.locator('[data-order-number]').waitFor();
     await page.locator('[data-order-discount]').waitFor();
     assert(true, 'the order shows its coupon');
+    await page.locator('[data-order-action="invoicer.invoice"]').click();
+    await page.locator('[data-order-files] [data-order-file]').waitFor();
+    assert((await page.getByRole('status').textContent()).includes('Invoice made.'), 'an extension\'s action on the order runs, and says what it did');
+    const invoice = page.waitForEvent('download');
+    await page.locator('[data-order-files] [data-order-file]').click();
+    assert((await invoice).suggestedFilename() === 'invoice-1.pdf', 'the file it put on the order is downloaded');
     await page.locator('select[data-order-state]').selectOption('sent');
     await page.locator('[data-order-tracking]').fill('AWB 123');
     await page.locator('[data-order-save]').click();

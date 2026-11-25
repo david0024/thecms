@@ -1,0 +1,66 @@
+{
+  "name": "netopia",
+  "displayName": "NETOPIA Payments",
+  "description": "Card payments at checkout through NETOPIA Payments (mobilPay), on NETOPIA's own page: the buyer pays there and comes back to the order, which is marked paid when NETOPIA confirms it. Needs a NETOPIA account's API key, the point of sale's signature and NETOPIA's public key.",
+  "version": "1.0.0",
+  "publisher": "uhlaka",
+  "uhlakaMinVersion": "0.1.0",
+  "egress": ["secure.mobilpay.ro", "secure.netopia-payments.com", "secure.sandbox.netopia-payments.com"],
+  "uses": ["orders"],
+  "collections": [
+    {
+      "name": "settings",
+      "label": "Settings",
+      "fields": [
+        { "key": "api_key", "label": "API key", "kind": "secret", "required": true },
+        { "key": "pos_signature", "label": "Point of sale signature (XXXX-XXXX-XXXX-XXXX-XXXX)", "kind": "text", "required": true },
+        { "key": "public_key", "label": "NETOPIA's public key (the .cer file's text, BEGIN PUBLIC KEY…)", "kind": "longtext", "required": true },
+        { "key": "sandbox", "label": "Test account (sandbox)", "kind": "boolean", "initial": true }
+      ]
+    },
+    {
+      "name": "payments",
+      "label": "Payments",
+      "fields": [
+        { "key": "reference", "label": "Reference sent to NETOPIA", "kind": "text", "unique": true },
+        { "key": "order", "label": "Order", "kind": "text" },
+        { "key": "number", "label": "Order number", "kind": "number" },
+        { "key": "amount", "label": "Amount", "kind": "number" },
+        { "key": "currency", "label": "Currency", "kind": "text" },
+        { "key": "ntp", "label": "NETOPIA id", "kind": "text" },
+        { "key": "state", "label": "State", "kind": "choice", "options": ["open", "paid", "rejected"], "initial": "open" }
+      ]
+    }
+  ],
+  "actions": [
+    { "name": "pay", "label": "Pay by card", "reads": ["settings", "payments"], "writes": ["payments"] },
+    { "name": "notify", "label": "Hear from NETOPIA", "reads": ["settings", "payments"], "writes": ["payments"], "uses": ["orders"] }
+  ],
+  "routes": [{ "path": "notify", "action": "notify", "methods": ["POST"] }],
+  "answers": [{ "question": "checkout.payment", "action": "pay", "methods": [{ "id": "card", "label": "Card (NETOPIA)" }] }],
+  "views": [
+    { "spec": "uhlaka.view/1", "id": "netopia.settings", "title": "NETOPIA Payments", "type": "list", "collection": "settings", "fields": ["pos_signature", "api_key", "sandbox"] },
+    { "spec": "uhlaka.view/1", "id": "netopia.payments", "title": "Card payments (NETOPIA)", "type": "list", "collection": "payments", "fields": ["number", "amount", "currency", { "field": "state", "display": "badge" }, "ntp"], "create": false, "edit": false }
+  ],
+  "messages": {
+    "ro": {
+      "Settings": "Setări",
+      "API key": "Cheie API",
+      "Point of sale signature (XXXX-XXXX-XXXX-XXXX-XXXX)": "Semnătura punctului de vânzare (XXXX-XXXX-XXXX-XXXX-XXXX)",
+      "NETOPIA's public key (the .cer file's text, BEGIN PUBLIC KEY…)": "Cheia publică NETOPIA (textul fișierului .cer, BEGIN PUBLIC KEY…)",
+      "Test account (sandbox)": "Cont de test (sandbox)",
+      "Payments": "Plăți",
+      "Reference sent to NETOPIA": "Referința trimisă la NETOPIA",
+      "Order": "Comandă",
+      "Order number": "Numărul comenzii",
+      "Amount": "Sumă",
+      "Currency": "Monedă",
+      "NETOPIA id": "Id NETOPIA",
+      "State": "Stare",
+      "Pay by card": "Plată cu cardul",
+      "Hear from NETOPIA": "Ascultă NETOPIA",
+      "Card (NETOPIA)": "Card (NETOPIA)",
+      "Card payments (NETOPIA)": "Plăți cu cardul (NETOPIA)"
+    }
+  }
+}
