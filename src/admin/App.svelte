@@ -241,7 +241,7 @@ async function draw(): Promise<void> {
   try {
     const { body, css } = await api.render(page, kind);
     frame.contentWindow.postMessage(
-      { type: 'render', body, css, selected, themeVersion, scheme: previewScheme, labels: { types: t.types, fields: t.fields, empty: t.empty, actions: t.actions, format: t.format } },
+      { type: 'render', body, css, selected, themeVersion, scheme: previewScheme, themeMode, labels: { types: t.types, fields: t.fields, empty: t.empty, actions: t.actions, format: t.format } },
       location.origin,
     );
   } catch (error) {
@@ -776,6 +776,7 @@ async function toggleTheme(): Promise<void> {
   const next = !themeMode;
   if (siteMode) await toggleSite();
   themeMode = next;
+  await draw();
 }
 
 async function publishTheme(): Promise<void> {
@@ -1022,7 +1023,7 @@ onMount(() => {
         <SitePanel site={site.site} pages={pagesIn(site.site, site.site.language, site.pages)} lists={menuLists} languages={site.languages} onchange={editSite} onadminlanguage={setAdminLanguage} shop={site.shop} onshop={reload} />
       {:else if themeMode}
         <h2>{t.theme.heading}</h2>
-        <ThemeBuilder theme={site.theme} onchange={editTheme} handPicked={page ? countFreeColors(page.blocks) : 0} />
+        <ThemeBuilder theme={site.theme} onchange={editTheme} handPicked={page ? countFreeColors(page.blocks) : 0} changed={site.themeChanged} onpublish={publishTheme} />
       {:else if block && def}
         <h2>{t.types[block.type] ?? block.type}</h2>
         <div class="tabs" role="tablist">
