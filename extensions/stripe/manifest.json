@@ -1,0 +1,234 @@
+{
+  "name": "stripe",
+  "displayName": "Stripe",
+  "description": "Card payments at checkout through Stripe Checkout: the buyer pays on Stripe's page and comes back to the order, which is marked paid when Stripe confirms it. Refunds from the order, in the Orders screen. Needs a Stripe account's secret key and, for the confirmations, a webhook pointed at this site.",
+  "version": "1.0.0",
+  "publisher": "uhlaka",
+  "uhlakaMinVersion": "0.1.0",
+  "egress": [
+    "api.stripe.com",
+    "checkout.stripe.com"
+  ],
+  "uses": [
+    "orders"
+  ],
+  "collections": [
+    {
+      "name": "settings",
+      "label": "Settings",
+      "fields": [
+        {
+          "key": "secret_key",
+          "label": "Secret key (sk_live_… or sk_test_…)",
+          "kind": "secret",
+          "required": true
+        },
+        {
+          "key": "webhook_secret",
+          "label": "Webhook signing secret (whsec_…)",
+          "kind": "secret"
+        }
+      ]
+    },
+    {
+      "name": "payments",
+      "label": "Payments",
+      "fields": [
+        {
+          "key": "session",
+          "label": "Stripe session",
+          "kind": "text",
+          "unique": true
+        },
+        {
+          "key": "order",
+          "label": "Order",
+          "kind": "text"
+        },
+        {
+          "key": "number",
+          "label": "Order number",
+          "kind": "number"
+        },
+        {
+          "key": "amount",
+          "label": "Amount",
+          "kind": "number"
+        },
+        {
+          "key": "currency",
+          "label": "Currency",
+          "kind": "text"
+        },
+        {
+          "key": "intent",
+          "label": "Payment",
+          "kind": "text"
+        },
+        {
+          "key": "state",
+          "label": "State",
+          "kind": "choice",
+          "options": [
+            "open",
+            "paid",
+            "expired",
+            "refunded"
+          ],
+          "initial": "open"
+        }
+      ]
+    }
+  ],
+  "actions": [
+    {
+      "name": "pay",
+      "label": "Pay by card",
+      "reads": [
+        "settings"
+      ],
+      "writes": [
+        "payments"
+      ]
+    },
+    {
+      "name": "webhook",
+      "label": "Hear from Stripe",
+      "reads": [
+        "settings",
+        "payments"
+      ],
+      "writes": [
+        "payments"
+      ],
+      "uses": [
+        "orders"
+      ]
+    },
+    {
+      "name": "check",
+      "label": "Check a payment",
+      "reads": [
+        "settings",
+        "payments"
+      ],
+      "writes": [
+        "payments"
+      ],
+      "uses": [
+        "orders"
+      ]
+    },
+    {
+      "name": "checkOrder",
+      "label": "Check the card payment",
+      "on": "order",
+      "reads": [
+        "settings",
+        "payments"
+      ],
+      "writes": [
+        "payments"
+      ],
+      "uses": [
+        "orders"
+      ]
+    },
+    {
+      "name": "refund",
+      "label": "Refund by card",
+      "on": "order",
+      "reads": [
+        "settings",
+        "payments"
+      ],
+      "writes": [
+        "payments"
+      ],
+      "uses": [
+        "orders"
+      ]
+    }
+  ],
+  "routes": [
+    {
+      "path": "webhook",
+      "action": "webhook",
+      "methods": [
+        "POST"
+      ]
+    }
+  ],
+  "jobs": [
+    {
+      "action": "check",
+      "once": true
+    }
+  ],
+  "answers": [
+    {
+      "question": "checkout.payment",
+      "action": "pay",
+      "methods": [
+        {
+          "id": "card",
+          "label": "Card"
+        }
+      ]
+    }
+  ],
+  "views": [
+    {
+      "spec": "uhlaka.view/1",
+      "id": "stripe.settings",
+      "title": "Stripe",
+      "type": "list",
+      "collection": "settings",
+      "fields": [
+        "secret_key",
+        "webhook_secret"
+      ]
+    },
+    {
+      "spec": "uhlaka.view/1",
+      "id": "stripe.payments",
+      "title": "Card payments",
+      "type": "list",
+      "collection": "payments",
+      "fields": [
+        "number",
+        "amount",
+        "currency",
+        {
+          "field": "state",
+          "display": "badge"
+        },
+        "session"
+      ],
+      "create": false,
+      "edit": false
+    }
+  ],
+  "messages": {
+    "ro": {
+      "Settings": "Setări",
+      "Secret key (sk_live_… or sk_test_…)": "Cheia secretă (sk_live_… sau sk_test_…)",
+      "Webhook signing secret (whsec_…)": "Secretul de semnare al webhook-ului (whsec_…)",
+      "Payments": "Plăți",
+      "Stripe session": "Sesiune Stripe",
+      "Order": "Comandă",
+      "Order number": "Numărul comenzii",
+      "Amount": "Sumă",
+      "Currency": "Monedă",
+      "Payment": "Plată",
+      "State": "Stare",
+      "Pay by card": "Plată cu cardul",
+      "Hear from Stripe": "Ascultă Stripe",
+      "Check a payment": "Verifică o plată",
+      "Check the card payment": "Verifică plata cu cardul",
+      "Refund by card": "Rambursează pe card",
+      "Card": "Card",
+      "Card payments": "Plăți cu cardul"
+    }
+  }
+}
