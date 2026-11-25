@@ -950,6 +950,7 @@ export const en = {
     footer: 'Footer',
     arrangement: 'Arrangement',
     sticky: 'Stays at the top while the page scrolls',
+    stickyHint: 'Shown so in the canvas while this panel is open; while you edit blocks it stays in place, so it does not cover them.',
     arrangements: { inline: 'In one row', centered: 'Centred', stacked: 'Name above the menu' } as Record<string, string>,
   },
   posts: {
@@ -1062,6 +1063,8 @@ export const en = {
     name: 'Theme name',
     publish: 'Publish theme',
     changed: 'Theme changes not published',
+    savedLive: 'Every change here is kept at once; there is nothing to save. Visitors see the theme as it is now.',
+    savedDraft: 'Your changes are kept, there is nothing to save. Visitors see them after you publish the theme.',
     groups: { color: 'Colours', space: 'Spacing', radius: 'Corners', font: 'Typefaces', size: 'Text sizes', width: 'Widths' } as Record<string, string>,
     tokenName: 'new name',
     blocks: 'Blocks',

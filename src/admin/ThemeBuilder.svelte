@@ -37,11 +37,16 @@ let {
   theme,
   onchange,
   handPicked = 0,
+  changed = false,
+  onpublish,
 }: {
   theme: Theme;
   onchange: (theme: Theme) => void;
   /** Colours chosen by hand on the page in the canvas: they follow neither scheme (ADR 0074 d5). */
   handPicked?: number;
+  /** The draft theme differs from the one visitors see. */
+  changed?: boolean;
+  onpublish?: () => void;
 } = $props();
 
 /** What is typed in a field but not valid yet, by field. */
@@ -198,6 +203,11 @@ const canAdd = (group: TokenGroup): boolean =>
   isTokenName(pending(group).name) && !Object.hasOwn(theme.tokens[group], pending(group).name) && isFreeValue(group, pending(group).value);
 const hex6 = (value: string): string => (/^#[0-9a-f]{6}$/i.test(value) ? value : '#000000');
 </script>
+
+<div class="saved" data-theme-state={changed ? 'changed' : 'published'}>
+  <p class="hint">{changed ? t.theme.savedDraft : t.theme.savedLive}</p>
+  {#if changed && onpublish}<button type="button" class="primary" onclick={onpublish} data-theme-publish-here>{t.theme.publish}</button>{/if}
+</div>
 
 <label class="field">
   <span>{t.theme.name}</span>
@@ -368,6 +378,7 @@ const hex6 = (value: string): string => (/^#[0-9a-f]{6}$/i.test(value) ? value :
     <input type="checkbox" checked={theme.layout.header.sticky} onchange={(e) => apply((d) => { d.layout.header.sticky = e.currentTarget.checked; })} data-layout-sticky />
     <span>{t.layout.sticky}</span>
   </label>
+  <p class="hint">{t.layout.stickyHint}</p>
   <div data-layout-style="header">
     <StyleEditor style={theme.layout.header.style} {theme} onstyle={(style) => setLayoutStyle('header', style)} defaultLabel={t.theme.unset} />
   </div>
@@ -397,6 +408,9 @@ const hex6 = (value: string): string => (/^#[0-9a-f]{6}$/i.test(value) ? value :
 
 <style>
   /* Stays in view: the field that caused it may be far down the panel. */
+  .saved { display: grid; gap: 0.4rem; margin: 0 0 0.8rem; padding: 0.6rem 0.7rem; border-radius: 8px; background: #f2f1f7; }
+  .saved[data-theme-state='changed'] { background: #fff6d6; }
+  .saved p { margin: 0; }
   .problem { position: sticky; top: -0.9rem; z-index: 1; margin: 0 -0.9rem 0.6rem; padding: 0.5rem 0.9rem; background: #fdecea; }
   details { margin-bottom: 0.6rem; border: 1px solid #e4e2ee; border-radius: 6px; padding: 0.5rem 0.6rem; }
   summary { cursor: pointer; font-weight: 600; }
