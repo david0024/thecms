@@ -9,7 +9,7 @@ import { applyPack, type Catalog, format, isPlural, type LanguagePack, type Mess
 
 export const en = {
   app: { pages: 'Pages', blocks: 'Add a block', blocksHint: 'Click to add, or drag onto the page.', blockSearch: 'Search for a block', noBlock: 'No block is called that.', tooDeep: 'Groups nest at most four deep; it cannot go there.', newPage: 'New page', pageTitle: 'Page title', create: 'Create', cancel: 'Cancel', home: 'Home page' },
-  nav: { pages: 'Pages', posts: 'Posts', media: 'Media', messages: 'Messages', comments: 'Comments', settings: 'Menu and settings', theme: 'Theme', label: 'Sections', back: 'All', forms: 'Forms', import: 'Import', export: 'Export', people: 'People', sections: 'Sections', layouts: 'Layouts', backups: 'Backups', stats: 'Statistics', me: 'Me', review: 'To review', orders: 'Orders', coupons: 'Coupons', viewSite: 'View site' },
+  nav: { pages: 'Pages', posts: 'Posts', media: 'Media', messages: 'Messages', comments: 'Comments', settings: 'Site content (menu, logo, SEO)', theme: 'Look (colours, fonts, header)', label: 'Sections', back: 'All', forms: 'Forms', import: 'Import', export: 'Export', people: 'People', sections: 'Sections', layouts: 'Layouts', backups: 'Backups', stats: 'Statistics', me: 'Me', review: 'To review', orders: 'Orders', coupons: 'Coupons', viewSite: 'View site' },
   door: {
     key: 'Open the address that the editor printed when it started; it carries the key to this editor.',
     signIn: 'Sign in',
@@ -44,8 +44,8 @@ export const en = {
     redirects: 'These old addresses do not lead where they should:',
     server: 'The site\'s own server does these. If you export it to a static host instead, they will not work:',
     serverOnly: {
-      forms: 'contact forms (unless a form service is set in Site settings)',
-      comments: 'comments (unless a form service is set in Site settings)',
+      forms: 'contact forms (unless a form service is set in Site content)',
+      comments: 'comments (unless a form service is set in Site content)',
       search: 'search',
       locked: 'pages behind a password',
       members: 'pages for members',
@@ -61,7 +61,7 @@ export const en = {
     seoLong: 'the title "{title}" is longer than {count} letters, so search engines cut it',
     seoDuplicate: 'share the title "{title}"; give each its own',
     seoHidden: 'the home page is hidden from search engines',
-    seoBlocked: 'the lines added for search engines in Site settings shut the whole site to them (Disallow: /)',
+    seoBlocked: 'the lines added for search engines in Site content shut the whole site to them (Disallow: /)',
   },
   sections: {
     heading: 'Sections',
@@ -636,7 +636,7 @@ export const en = {
   },
   inbox: {
     heading: 'Messages',
-    intro: { one: 'What visitors sent through the forms on your site. Each message is kept 1 day, then deleted; change that in Site settings.', other: 'What visitors sent through the forms on your site. Each message is kept {count} days, then deleted; change that in Site settings.' } as Plural,
+    intro: { one: 'What visitors sent through the forms on your site. Each message is kept 1 day, then deleted; change that in Site content.', other: 'What visitors sent through the forms on your site. Each message is kept {count} days, then deleted; change that in Site content.' } as Plural,
     empty: 'No messages yet. A contact form on a published page sends them here.',
     consent: 'What they agreed to',
     remove: 'Delete',
@@ -856,13 +856,13 @@ export const en = {
     seoTitle: 'Title in search engines',
     seoTitleHint: 'Left empty, it is the page\'s title. Up to {count} letters show in full.',
     shareImage: 'Picture when the page is shared',
-    shareImageHint: 'Left empty: the cover, or the site\'s picture from Site settings.',
+    shareImageHint: 'Left empty: the cover, or the site\'s picture from Site content.',
     noindex: 'Hide from search engines',
     noindexHint: 'The page stays open to whoever has its address, but search engines, the sitemap and the site\'s search leave it out.',
     seoPreview: 'In a search engine',
     sharePreview: 'When shared',
     inMenu: 'Show in the menu',
-    inMenuOff: 'You arrange the menu yourself, in Site settings.',
+    inMenuOff: 'You arrange the menu yourself, in Site content.',
     deletePage: 'Delete this page',
     add: 'Add',
     remove: 'Remove',
@@ -880,8 +880,9 @@ export const en = {
     deleteTranslation: 'Remove the page from {language}',
   },
   site: {
-    edit: 'Site settings',
-    heading: 'Site',
+    edit: 'Site content',
+    heading: 'Site content',
+    intro: 'What the site says on every page: its name, logo, menu, language, and what search engines and shared links show. How it looks is under Look.',
     name: 'Site name',
     language: 'Language (en, ro, pt-BR)',
     languageHint: "The site's own words (the menu, \"Page not found\") come from its language pack; without one they are in English.",
@@ -1057,9 +1058,10 @@ export const en = {
     align: { start: 'Start', center: 'Centre', end: 'End' } as Record<string, string>,
   },
   theme: {
-    edit: 'Edit theme',
+    edit: 'Edit the look',
     done: 'Back to the page',
-    heading: 'Theme',
+    heading: 'Look',
+    intro: 'How the whole site looks: colours, fonts, spacing and how the header and footer are laid out. What they say is under Site content.',
     name: 'Theme name',
     publish: 'Publish theme',
     changed: 'Theme changes not published',
