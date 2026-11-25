@@ -14,7 +14,7 @@ bun run cms export site.db site.uhlaka.json   # the content in one file; `import
 The site's forms, comments and search are answered by its own server. To be
 told of a message by email, set `UHLAKA_SMTP` and `UHLAKA_MAIL_TO`. A site
 exported as files can send its forms to the small form service (ADR 0019): run
-it where visitors can reach it, put its address in Site settings, and export
+it where visitors can reach it, put its address in Site content, and export
 again:
 
 ```sh

@@ -1876,7 +1876,7 @@ export class Store {
   async mediaUsedBy(name: string): Promise<string[]> {
     const site = await this.site();
     const titles: string[] = mediaNameOf(site.logo?.src ?? '') === name ? ['the header (logo)'] : [];
-    if (mediaNameOf(site.shareImage?.src ?? '') === name) titles.push('the picture for sharing, in Site settings');
+    if (mediaNameOf(site.shareImage?.src ?? '') === name) titles.push('the picture for sharing, in Site content');
     for (const row of await this.rows<{ draft: string; published: string | null }>('SELECT draft, published FROM pages ORDER BY position, slug')) {
       const copies = [row.draft, row.published].filter((c): c is string => c !== null).map((c) => normalizePage(JSON.parse(c)).page);
       if (copies.some((page) => [...mediaSources(page.blocks), page.shareImage?.src ?? ''].some((src) => mediaNameOf(src) === name))) titles.push((copies[0] as Page).title);

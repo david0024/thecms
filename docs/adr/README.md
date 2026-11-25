@@ -79,3 +79,4 @@ work it decides. A new one that changes an old one says so at its top.
 - [ADR 0075 — The admin bar over the site](0075-the-admin-bar.md)
 - [ADR 0076 — What stays in the program, and what an extension needs to take the rest](0076-what-stays-in-the-program.md)
 - [ADR 0077 — Tools for a large site: links to add, every title in one table, Search Console](0077-tools-for-a-large-site.md)
+- [ADR 0078 — Site content and Look: two panels named by what they hold](0078-site-content-and-look.md)

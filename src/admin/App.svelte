@@ -1047,9 +1047,11 @@ onMount(() => {
     <aside class="right">
       {#if siteMode}
         <h2>{t.site.heading}</h2>
+        <p class="hint" data-panel-intro="site">{t.site.intro}</p>
         <SitePanel site={site.site} pages={pagesIn(site.site, site.site.language, site.pages)} lists={menuLists} languages={site.languages} onchange={editSite} onadminlanguage={setAdminLanguage} shop={site.shop} onshop={reload} />
       {:else if themeMode}
         <h2>{t.theme.heading}</h2>
+        <p class="hint" data-panel-intro="theme">{t.theme.intro}</p>
         <ThemeBuilder theme={site.theme} onchange={editTheme} handPicked={page ? countFreeColors(page.blocks) : 0} changed={site.themeChanged} onpublish={publishTheme} />
       {:else if block && def}
         <h2>{t.types[block.type] ?? block.type}</h2>
