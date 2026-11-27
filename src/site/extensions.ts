@@ -11,9 +11,9 @@
 import { join } from 'node:path';
 import { type ShippingMethod, ANSWER_SECONDS, extensionWord, cleanBlockPost, cleanFind, cleanRow, findRows, LATER_TRIES, uniqueFields, contentTypes, egressAllows, entryIn, entryPath, type ExtensionAction, type ExtensionEventName, pagePath, type Question, QUESTIONS, typeIn, type ExtensionManifest, extensionAsks, EXTENSION_MAX_BYTES, mediaKindOf, mediaNameOf, parseExtension, variantOf } from '../core/index.ts';
 import { type FromRunner, lines, type ToRunner } from './extension-runner.ts';
-import type { PaymentChoice, ShopProviders } from './shop-pages.ts';
+import type { PaymentChoice, ShopProviders } from '../parts/shop/pages.ts';
 import type { InstalledExtension, SiteEvent, Store } from './store.ts';
-import type { AccountsLent } from './visitor-gate.ts';
+import type { AccountsLent } from '../parts/visitors/gate.ts';
 import { extensionMailKey, normalizeTemplates, withoutExtension } from './site-mail.ts';
 import { isCompiled, newer } from './update.ts';
 import { VERSION } from './version.ts';
@@ -311,7 +311,7 @@ export function extensionHost(store: Store, options: { spawn?: Spawn; fetch?: (u
         }
         if (!action.uses.includes('orders')) throw new Error(`the action "${action.name}" did not declare that it uses "orders"`);
         const file = (args[0] && typeof args[0] === 'object' ? args[0] : {}) as { order?: unknown; name?: unknown; type?: unknown; data?: unknown; buyer?: unknown };
-        const { shopGate } = await import('./shop-gate.ts');
+        const { shopGate } = await import('../parts/shop/gate.ts');
         const order = await shopGate(store).lent.get(String(file.order ?? ''));
         if (!order) throw new Error('there is no such order');
         const type = String(file.type ?? '').toLowerCase();
@@ -364,7 +364,7 @@ export function extensionHost(store: Store, options: { spawn?: Spawn; fetch?: (u
       case 'orders.tracking': {
         // The shop's orders, declared (ADR 0065 d9): one by its id, never a list of them all.
         if (!action.uses.includes('orders')) throw new Error(`the action "${action.name}" did not declare that it uses "orders"`);
-        const { shopGate } = await import('./shop-gate.ts');
+        const { shopGate } = await import('../parts/shop/gate.ts');
         const lent = shopGate(store).lent;
         const id = String(args[0] ?? '');
         if (method === 'orders.tracking') return lent.tracking(id, String(args[1] ?? ''));

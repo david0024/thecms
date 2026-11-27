@@ -9,13 +9,13 @@
  * site's clock sends, so no request waits for a mail server.
  */
 import { createHash } from 'node:crypto';
-import { type Audience, languageName, mayView, NAME, type Site } from '../core/index.ts';
-import { openMailQueue } from './mail-queue.ts';
-import { normalizeTemplates, renderTemplate, siteMailer, type TemplateName } from './site-mail.ts';
-import { cleanEmail, PASSWORD_MIN, type Database, type Store, type User } from './store.ts';
-import { type Notice, escape, framed, parts } from './visitor-pages.ts';
-import { type AccountsLent, normalizeVisitorSettings, type VisitorDeps, type Visitors, type VisitorSettings } from './visitor-gate.ts';
-import { visitorSchema } from './visitor-schema.ts';
+import { type Audience, languageName, mayView, NAME, type Site } from '../../core/index.ts';
+import { openMailQueue } from '../../site/mail-queue.ts';
+import { normalizeTemplates, renderTemplate, siteMailer, type TemplateName } from '../../site/site-mail.ts';
+import { cleanEmail, PASSWORD_MIN, type Database, type Store, type User } from '../../site/store.ts';
+import { type Notice, escape, framed, parts } from './pages.ts';
+import { type AccountsLent, normalizeVisitorSettings, type VisitorDeps, type Visitors, type VisitorSettings } from './gate.ts';
+import { visitorSchema } from './schema.ts';
 
 export const VISITOR_COOKIE = `${NAME}_visitor`;
 const SESSION_DAYS = 30;

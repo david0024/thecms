@@ -7,9 +7,9 @@
 import { type Audience, type Coupon, fromOldName, isObject, normalizeShopSettings, OLD_NAME, normalizeAudience, normalizeLevels, normalizeTypes, POSTS_TYPE, READY_LAYOUTS, reservedSlugs, type ContentType, type Layout, type Site } from '../core/index.ts';
 import { CONTENT_FORMAT, type ContentDoc, type ContentFile } from '../site/transfer.ts';
 import { cleanEmail, type Store } from '../site/store.ts';
-import { normalizeVisitorSettings } from '../site/visitor-gate.ts';
-import type { ContentVisitor } from '../site/visitor-transfer.ts';
-import type { ContentOrder, ContentShop } from '../site/shop-transfer.ts';
+import { normalizeVisitorSettings } from '../parts/visitors/gate.ts';
+import type { ContentVisitor } from '../parts/visitors/transfer.ts';
+import type { ContentOrder, ContentShop } from '../parts/shop/transfer.ts';
 import type { ImportReport } from './run.ts';
 
 /** Whether a file's text is a Uhlaka content file rather than a WordPress export. */
@@ -375,7 +375,7 @@ export async function runContentImport(store: Store, file: ContentFile, options:
 
   // The visitors, last: only into a site whose accounts are on, and without passwords (ADR 0064 d6).
   if (file.visitors?.length) {
-    const { importVisitors } = await import('../site/visitor-transfer.ts');
+    const { importVisitors } = await import('../parts/visitors/transfer.ts');
     const came = await importVisitors(store, file.visitors);
     if (came.off) notes.push(`The file holds ${file.visitors.length === 1 ? 'one visitor account' : `${file.visitors.length} visitor accounts`}, and visitor accounts are off here, so none was brought. Turn them on in Settings → Visitor accounts and import the file again.`);
     else {
@@ -386,7 +386,7 @@ export async function runContentImport(store: Store, file: ContentFile, options:
 
   // The shop, after the products it counts: its settings with the old site's, its stock and coupons into a shop that is on (ADR 0065).
   if (file.shop) {
-    const { importShop } = await import('../site/shop-transfer.ts');
+    const { importShop } = await import('../parts/shop/transfer.ts');
     const came = await importShop(store, file.shop, options.fresh);
     if (came.settings) notes.push("The old site's shop settings were taken.");
     if (came.off && (file.shop.stock.length || file.shop.coupons.length)) notes.push('The shop is off here, so its stock and coupons were not brought. Turn it on in Settings → Shop and import the file again.');
@@ -395,7 +395,7 @@ export async function runContentImport(store: Store, file: ContentFile, options:
     if (came.kept.length) notes.push(`This shop already has the coupons ${came.kept.join(', ')}: left as they were.`);
   }
   if (file.orders?.length) {
-    const { importOrders } = await import('../site/shop-transfer.ts');
+    const { importOrders } = await import('../parts/shop/transfer.ts');
     const came = await importOrders(store, file.orders);
     if (came.off) notes.push(`The file holds ${file.orders.length === 1 ? 'one order' : `${file.orders.length} orders`}, and the shop is off here, so none was brought. Turn it on in Settings → Shop and import the file again.`);
     else {

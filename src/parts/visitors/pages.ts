@@ -3,12 +3,12 @@
  * header and footer, with its theme, in the visitor's language, and without
  * script: each is a form the browser sends by itself.
  */
-import { type Words, wordsFor } from '../blocks/words.ts';
-import './languages.ts';
+import { type Words, wordsFor } from '../../blocks/words.ts';
+import '../../site/languages.ts';
 
-import { escape } from './framed.ts';
+import { escape } from '../../site/framed.ts';
 
-export { escape, framed, type Notice } from './framed.ts';
+export { escape, framed, type Notice } from '../../site/framed.ts';
 
 /** The pieces a page's forms are made of. */
 export function parts(language: string, query: string) {

@@ -13,8 +13,8 @@ import { contentPreview, readContentFile, runContentImport } from '../src/import
 import { publishedSite } from '../src/site/export.ts';
 import { Store } from '../src/site/store.ts';
 import { contentParts, exportContent } from '../src/site/transfer.ts';
-import { normalizeVisitorSettings } from '../src/site/visitor-gate.ts';
-import { visitorSchema } from '../src/site/visitor-schema.ts';
+import { normalizeVisitorSettings } from '../src/parts/visitors/gate.ts';
+import { visitorSchema } from '../src/parts/visitors/schema.ts';
 import plain from '../themes/plain.json';
 
 const dir = await mkdtemp(join(tmpdir(), 'uhlaka-visitors-export-'));

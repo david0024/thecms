@@ -100,6 +100,7 @@ A release: set the version in `package.json` (alpha and beta versions carry a da
 src/core/     documents and their rules; pure TypeScript, no database, no framework
 src/blocks/   one Svelte 5 component per block type, and the shared layout CSS
 src/site/     the store (SQLite, Postgres or MySQL), the static export, the editing server, the command line
+src/parts/    the parts (ADR 0076 d6): the shop and visitor accounts, each loaded by its gate only when on
 src/admin/    the editor: a Svelte 5 app and the script that runs inside the canvas
 themes/       themes, as JSON
 languages/    language packs, as JSON (more from the folder in UHLAKA_LANGUAGES)

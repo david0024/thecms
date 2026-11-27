@@ -12,8 +12,8 @@ import { combinations, moneyOf, moneyText, normalizeProduct, normalizeRates, nor
 import { exportedFiles } from '../src/site/export.ts';
 import { startRuntime } from '../src/site/runtime.ts';
 import { startEditor } from '../src/site/server.ts';
-import { shopGate } from '../src/site/shop-gate.ts';
-import { SHOP_TABLES, shopSchema } from '../src/site/shop-schema.ts';
+import { shopGate } from '../src/parts/shop/gate.ts';
+import { SHOP_TABLES, shopSchema } from '../src/parts/shop/schema.ts';
 import { Store } from '../src/site/store.ts';
 import plain from '../themes/plain.json';
 

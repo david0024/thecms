@@ -16,7 +16,7 @@ import { extensionHost } from '../src/site/extensions.ts';
 import { startRuntime } from '../src/site/runtime.ts';
 import { startEditor } from '../src/site/server.ts';
 import { Store, type User } from '../src/site/store.ts';
-import { VISITOR_TABLES } from '../src/site/visitor-schema.ts';
+import { VISITOR_TABLES } from '../src/parts/visitors/schema.ts';
 import plain from '../themes/plain.json';
 
 const dir = await mkdtemp(join(tmpdir(), 'uhlaka-accounts-ext-'));

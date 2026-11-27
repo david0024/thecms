@@ -38,15 +38,15 @@ import {
   type Site,
   stockKey,
   vatIn,
-} from '../core/index.ts';
-import { wordsFor } from '../blocks/words.ts';
-import { openMailQueue } from './mail-queue.ts';
-import { normalizeTemplates, type OrderValues, renderTemplate, type TemplateName } from './site-mail.ts';
-import { byExtension, type CartLine, checkoutForm, dayOf, linesPart, type Order, type OrderData, orderPart, orderText, type PaymentChoice, type ShopProviders, stateName, type Totals, totalsPart, type Typed } from './shop-pages.ts';
-import { asCoupon, shopSchema, stockId } from './shop-schema.ts';
-import { escape, framed, type Notice } from './framed.ts';
-import { cleanEmail, type Database, type OrderEvent, type Store, type User } from './store.ts';
-import './languages.ts';
+} from '../../core/index.ts';
+import { wordsFor } from '../../blocks/words.ts';
+import { openMailQueue } from '../../site/mail-queue.ts';
+import { normalizeTemplates, type OrderValues, renderTemplate, type TemplateName } from '../../site/site-mail.ts';
+import { byExtension, type CartLine, checkoutForm, dayOf, linesPart, type Order, type OrderData, orderPart, orderText, type PaymentChoice, type ShopProviders, stateName, type Totals, totalsPart, type Typed } from './pages.ts';
+import { asCoupon, shopSchema, stockId } from './schema.ts';
+import { escape, framed, type Notice } from '../../site/framed.ts';
+import { cleanEmail, type Database, type OrderEvent, type Store, type User } from '../../site/store.ts';
+import '../../site/languages.ts';
 
 type Row = Record<string, unknown>;
 /** A way to deliver an extension offers (ADR 0076 d4.1): `<extension>:<option>`, and `:<point>` for a place to pick it up. */

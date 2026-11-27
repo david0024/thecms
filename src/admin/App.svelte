@@ -945,7 +945,7 @@ onMount(() => {
     {:else if view === 'me'}
       <Profile me={site.me} onsaved={(next) => (site = next)} />
     {:else if view === 'extensions'}
-      <Extensions extensions={site.extensions} onchange={(next) => site && (site = { ...site, extensions: next })} onopen={(name, screen) => (view = `ext:${name}/${screen}`)} />
+      <Extensions extensions={site.extensions} shop={site.shop.on} onchange={(next) => site && (site = { ...site, extensions: next })} onopen={(name, screen) => (view = `ext:${name}/${screen}`)} onparts={reload} onsettings={() => panel('site')} />
     {:else if view.startsWith('ext:')}
       {@const [name, screen] = view.slice(4).split('/')}
       {@const extension = site.extensions.find((e) => e.name === name)}

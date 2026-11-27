@@ -4,10 +4,10 @@
  * admin's calls about it say only that it is off. Turned on, the shop is
  * loaded the first time it is needed, and makes its tables then.
  */
-import { type ContentType, normalizeShopSettings, type ShopSettings, type ShopShown, slugify } from '../core/index.ts';
-import { wordsFor } from '../blocks/words.ts';
+import { type ContentType, normalizeShopSettings, type ShopSettings, type ShopShown, slugify } from '../../core/index.ts';
+import { wordsFor } from '../../blocks/words.ts';
 import type { OrdersLent, Shop, ShopDeps } from './shop.ts';
-import type { Store, User } from './store.ts';
+import type { Store, User } from '../../site/store.ts';
 
 const json = (data: unknown, status = 200): Response =>
   new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } });

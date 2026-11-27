@@ -120,8 +120,8 @@ import { wordsFor } from '../blocks/words.ts';
 import { DAYS_KEPT, type Kind, KINDS, summed } from '../../extensions/stats/rows.ts';
 import { isIndexNowKey } from './indexnow.ts';
 import type { SearchConsoleSettings } from './search-console.ts';
-import { BACKED_UP_VISITOR_TABLES, visitorSchema, visitorTable } from './visitor-schema.ts';
-import { BACKED_UP_SHOP_TABLES, shopSchema, shopTable } from './shop-schema.ts';
+import { BACKED_UP_VISITOR_TABLES, visitorSchema, visitorTable } from '../parts/visitors/schema.ts';
+import { BACKED_UP_SHOP_TABLES, shopSchema, shopTable } from '../parts/shop/schema.ts';
 import './languages.ts';
 
 /** What is kept with translations: a page, or a section (ADR 0033). */

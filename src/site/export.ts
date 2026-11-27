@@ -74,7 +74,7 @@ import { menuOf, pageSetting, renderBlogList, renderPage, renderPost, STYLESHEET
 import { SCHEME_SCRIPT, SCHEME_SCRIPT_PATH } from './scheme.ts';
 import { checkRedirects, checkSeo, checkSite, describeCheck, type SiteCheck, serverOnly } from './check.ts';
 import { BASE_CSS, shippedFonts } from './shipped.ts';
-import { shopGate } from './shop-gate.ts';
+import { shopGate } from '../parts/shop/gate.ts';
 import { STATS, type Store } from './store.ts';
 import type { EditTarget } from './admin-bar.ts';
 

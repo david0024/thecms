@@ -14,9 +14,9 @@ import type { Mail } from '../src/site/mail.ts';
 import { mailSchema } from '../src/site/mail-queue.ts';
 import { startRuntime } from '../src/site/runtime.ts';
 import { startEditor } from '../src/site/server.ts';
-import { shopGate } from '../src/site/shop-gate.ts';
-import { shopSchema } from '../src/site/shop-schema.ts';
-import { totalsOf } from '../src/site/shop.ts';
+import { shopGate } from '../src/parts/shop/gate.ts';
+import { shopSchema } from '../src/parts/shop/schema.ts';
+import { totalsOf } from '../src/parts/shop/shop.ts';
 import { Store, type User } from '../src/site/store.ts';
 import plain from '../themes/plain.json';
 

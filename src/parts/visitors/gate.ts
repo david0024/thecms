@@ -4,13 +4,13 @@
  * exist and `/_/account` is not found. Turned on, the accounts are loaded the
  * first time they are needed, and make their tables then.
  */
-import { type Audience, type Level, NAME, normalizeLevels } from '../core/index.ts';
-import type { Member } from './extension-runner.ts';
-import type { MailEnvironment } from './site-mail.ts';
-import type { Shared } from './shared.ts';
-import { escape, framed } from './visitor-pages.ts';
-import { wordsFor } from '../blocks/words.ts';
-import type { Store, User } from './store.ts';
+import { type Audience, type Level, NAME, normalizeLevels } from '../../core/index.ts';
+import type { Member } from '../../site/extension-runner.ts';
+import type { MailEnvironment } from '../../site/site-mail.ts';
+import type { Shared } from '../../site/shared.ts';
+import { escape, framed } from './pages.ts';
+import { wordsFor } from '../../blocks/words.ts';
+import type { Store, User } from '../../site/store.ts';
 
 /** Who may make an account (ADR 0064 d2). */
 export type Signup = 'open' | 'invite' | 'closed';

@@ -4,7 +4,7 @@
  * (ADR 0060 d3). Only words here, so that the store and the backups know them
  * without loading the accounts themselves.
  */
-import type { DatabaseKind } from './store.ts';
+import type { DatabaseKind } from '../../site/store.ts';
 
 const MYSQL = 'ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin';
 
