@@ -1,0 +1,306 @@
+{
+  "name": "fancourier",
+  "displayName": "Fan Courier",
+  "description": "Delivery by Fan Courier: its price at checkout (the owner's fixed price, or Fan Courier's own), FANbox lockers in the buyer's town, the AWB made from the order with its PDF label and cash on delivery, and the parcel followed until it is delivered, the buyer told. Needs a Fan Courier contract: the user, password and client id of its account.",
+  "version": "1.0.0",
+  "publisher": "uhlaka",
+  "uhlakaMinVersion": "0.1.0",
+  "egress": [
+    "api.fancourier.ro"
+  ],
+  "uses": [
+    "orders"
+  ],
+  "collections": [
+    {
+      "name": "settings",
+      "label": "Settings",
+      "fields": [
+        {
+          "key": "username",
+          "label": "User",
+          "kind": "text",
+          "required": true
+        },
+        {
+          "key": "password",
+          "label": "Password",
+          "kind": "secret",
+          "required": true
+        },
+        {
+          "key": "client_id",
+          "label": "Client id",
+          "kind": "text",
+          "required": true
+        },
+        {
+          "key": "pricing",
+          "label": "Price of delivery",
+          "kind": "choice",
+          "options": [
+            "fixed",
+            "courier"
+          ],
+          "initial": "fixed"
+        },
+        {
+          "key": "home_price",
+          "label": "Fixed price to the door (lei, with VAT)",
+          "kind": "number",
+          "initial": 20
+        },
+        {
+          "key": "locker_price",
+          "label": "Fixed price to a FANbox locker (lei, with VAT)",
+          "kind": "number",
+          "initial": 15
+        },
+        {
+          "key": "free_from",
+          "label": "Free delivery from (lei; empty for never)",
+          "kind": "number"
+        },
+        {
+          "key": "default_weight",
+          "label": "Weight of a parcel when products have none (kg)",
+          "kind": "number",
+          "initial": 1
+        },
+        {
+          "key": "lockers",
+          "label": "Offer FANbox lockers at checkout",
+          "kind": "boolean",
+          "initial": true
+        },
+        {
+          "key": "auto_awb",
+          "label": "Make the AWB by itself when the order is paid (or placed, when paid on delivery)",
+          "kind": "boolean",
+          "initial": false
+        }
+      ]
+    },
+    {
+      "name": "shipments",
+      "label": "Shipments",
+      "fields": [
+        {
+          "key": "order",
+          "label": "Order",
+          "kind": "text",
+          "unique": true
+        },
+        {
+          "key": "number",
+          "label": "Order number",
+          "kind": "number"
+        },
+        {
+          "key": "awb",
+          "label": "AWB",
+          "kind": "text"
+        },
+        {
+          "key": "state",
+          "label": "State",
+          "kind": "choice",
+          "options": [
+            "making",
+            "made",
+            "sent",
+            "delivered",
+            "returned"
+          ],
+          "initial": "making"
+        },
+        {
+          "key": "labelled",
+          "label": "Label on the order",
+          "kind": "boolean"
+        },
+        {
+          "key": "since",
+          "label": "Since",
+          "kind": "text"
+        }
+      ]
+    }
+  ],
+  "actions": [
+    {
+      "name": "quote",
+      "label": "Price at checkout",
+      "reads": [
+        "settings"
+      ]
+    },
+    {
+      "name": "awb",
+      "label": "Make the AWB",
+      "on": "order",
+      "reads": [
+        "settings",
+        "shipments"
+      ],
+      "writes": [
+        "shipments"
+      ],
+      "uses": [
+        "orders"
+      ],
+      "files": true
+    },
+    {
+      "name": "make",
+      "label": "Make the AWB later",
+      "reads": [
+        "settings",
+        "shipments"
+      ],
+      "writes": [
+        "shipments"
+      ],
+      "uses": [
+        "orders"
+      ],
+      "files": true
+    },
+    {
+      "name": "paid",
+      "label": "Make the AWB of a paid order",
+      "reads": [
+        "settings"
+      ],
+      "uses": [
+        "orders"
+      ]
+    },
+    {
+      "name": "made",
+      "label": "Make the AWB of an order paid on delivery",
+      "reads": [
+        "settings"
+      ],
+      "uses": [
+        "orders"
+      ]
+    },
+    {
+      "name": "follow",
+      "label": "Follow the parcel",
+      "reads": [
+        "settings",
+        "shipments"
+      ],
+      "writes": [
+        "shipments"
+      ],
+      "uses": [
+        "orders"
+      ]
+    }
+  ],
+  "jobs": [
+    {
+      "action": "make",
+      "once": true
+    },
+    {
+      "action": "follow",
+      "once": true
+    }
+  ],
+  "events": [
+    {
+      "on": "order.paid",
+      "action": "paid"
+    },
+    {
+      "on": "order.made",
+      "action": "made"
+    }
+  ],
+  "answers": [
+    {
+      "question": "checkout.delivery",
+      "action": "quote"
+    }
+  ],
+  "views": [
+    {
+      "spec": "uhlaka.view/1",
+      "id": "fancourier.settings",
+      "title": "Fan Courier",
+      "type": "list",
+      "collection": "settings",
+      "fields": [
+        "username",
+        "password",
+        "client_id",
+        "pricing",
+        "home_price",
+        "locker_price",
+        "free_from",
+        "default_weight",
+        "lockers",
+        "auto_awb"
+      ]
+    },
+    {
+      "spec": "uhlaka.view/1",
+      "id": "fancourier.shipments",
+      "title": "Fan Courier shipments",
+      "type": "list",
+      "collection": "shipments",
+      "fields": [
+        "number",
+        "awb",
+        {
+          "field": "state",
+          "display": "badge"
+        },
+        "labelled"
+      ],
+      "create": false,
+      "edit": false
+    }
+  ],
+  "messages": {
+    "ro": {
+      "Settings": "Setări",
+      "Price of delivery": "Prețul livrării",
+      "fixed": "fix",
+      "courier": "al curierului",
+      "Fixed price to the door (lei, with VAT)": "Preț fix la ușă (lei, cu TVA)",
+      "Fixed price to a FANbox locker (lei, with VAT)": "Preț fix la un locker FANbox (lei, cu TVA)",
+      "Free delivery from (lei; empty for never)": "Livrare gratuită de la (lei; gol pentru niciodată)",
+      "Weight of a parcel when products have none (kg)": "Greutatea unui colet când produsele nu o au (kg)",
+      "Offer FANbox lockers at checkout": "Oferă lockere FANbox la comandă",
+      "Make the AWB by itself when the order is paid (or placed, when paid on delivery)": "Fă AWB-ul singur când comanda e plătită (sau plasată, la plata ramburs)",
+      "Shipments": "Expedieri",
+      "Order": "Comandă",
+      "Order number": "Numărul comenzii",
+      "AWB": "AWB",
+      "State": "Stare",
+      "making": "în lucru",
+      "made": "făcut",
+      "sent": "trimis",
+      "delivered": "livrat",
+      "returned": "returnat",
+      "Label on the order": "Eticheta pe comandă",
+      "Since": "De la",
+      "Price at checkout": "Prețul la comandă",
+      "Make the AWB": "Fă AWB-ul",
+      "Make the AWB later": "Fă AWB-ul mai târziu",
+      "Make the AWB of a paid order": "Fă AWB-ul unei comenzi plătite",
+      "Make the AWB of an order paid on delivery": "Fă AWB-ul unei comenzi cu plata ramburs",
+      "Follow the parcel": "Urmărește coletul",
+      "Fan Courier": "Fan Courier",
+      "Fan Courier shipments": "Expedieri Fan Courier",
+      "User": "Utilizator",
+      "Password": "Parolă",
+      "Client id": "ID client"
+    }
+  }
+}

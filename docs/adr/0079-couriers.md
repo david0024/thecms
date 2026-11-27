@@ -102,3 +102,15 @@ hand in the Orders screen.
   sent"; on an order already sent it only adds a tracking number it lacks.
   `orders.completed` moves it from any of those, or from sent, to completed.
   `host.fetch(url, { as: "base64" })` gives the bytes in base64, at most 5 MB.
+- **Fan Courier (2026-11-27):** `extensions/fancourier`, with what the three
+  share in `extensions/courier/courier.ts`, bundled into each when packed.
+  Ways answered: `fancourier:home` and `fancourier:locker:<FANbox id>`. The
+  settings: user, password, client id; price `fixed` or `courier`; the fixed
+  prices in lei; free from a sum; a parcel's weight when products have none;
+  lockers on or off; the AWB by itself. Its collection `shipments` keeps one
+  row an order (`order` unique), made before Fan Courier is asked, so two
+  asks at once do not make two AWBs. Cash on delivery is the service "Cont
+  Colector" with `cod`; a FANbox is the service "FANbox" with the locker's id
+  as `pickupLocation`. The parcel is asked about two hours after the AWB, then
+  every three hours. The API was written from Fan Courier's documentation and
+  answered by the tests; it has not yet been tried with a real account.
