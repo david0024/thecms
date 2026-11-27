@@ -120,7 +120,7 @@ is the program's rule for the Orders screen.
   invoices' series and, if wanted, the storno's; a warehouse when Oblio
   keeps the stock; and whether a paid order's invoice is marked collected.
   It declares `www.oblio.eu` only and uses `orders` only. Each app is a file
-  of its own (`oblio.ts`) behind one shape (`app.ts`), so SmartBill and FGO
+  of its own (`oblio.ts`) behind one shape (`App`, in `index.ts`), so SmartBill and FGO
   are added beside it.
   - **What Oblio is sent** (`POST /api/docs/invoice`, after a token from
     `/api/authorize/token`): the buyer, or the company with its CIF and

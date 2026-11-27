@@ -14,7 +14,7 @@ import { importOrders } from '../src/parts/shop/transfer.ts';
 import { extensionHost } from '../src/site/extensions.ts';
 import { Store, type User } from '../src/site/store.ts';
 import { packExtension } from '../tools/pack-extension.ts';
-import type { Order } from '../extensions/invoicing-ro/app.ts';
+import type { Order } from '../extensions/invoicing-ro/index.ts';
 import { actions } from '../extensions/invoicing-ro/index.ts';
 import { collectOf, deliveryRate, invoiceOf, stornoOf } from '../extensions/invoicing-ro/oblio.ts';
 import manifest from '../extensions/invoicing-ro/manifest.json';

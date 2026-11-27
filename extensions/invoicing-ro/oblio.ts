@@ -6,7 +6,7 @@
  * `/api/authorize/token`, then `/api/docs/invoice`, the storno being an
  * invoice that names the one it cancels.
  */
-import type { App, Made, Order, Settings } from './app.ts';
+import type { App, Made, Order, Settings } from './index.ts';
 
 type Host = import('../../src/site/extension-runner.ts').ExtensionHost;
 
