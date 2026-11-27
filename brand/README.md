@@ -29,3 +29,18 @@ square ends. Next to the name, the name is set in Bricolage Grotesque 800
 - On a dark background the black tile almost disappears: use the mark alone,
   or the Atelier version.
 - Do not redraw, recolour or stretch it. The files are the reference.
+
+## A reserved mark
+
+The name Uhlaka and this logo are the project's mark. They are **not** under
+the AGPL that covers the code, nor the MIT that covers themes and language
+packs ([ADR 0080 d5](../docs/adr/0080-the-logo.md)).
+
+- **You may** use them to talk about Uhlaka: in an article, a talk, a
+  tutorial, a list of tools, a link to the project, or to say a site is made
+  with Uhlaka.
+- **You may not** put them on a fork, or on a product or service that could
+  pass as the official Uhlaka. A fork takes its own name and its own logo.
+- **You may not** change them.
+
+If you are unsure whether a use is allowed, ask in the project's issues.

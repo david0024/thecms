@@ -1,6 +1,6 @@
 # ADR 0080 — The logo: the UH monogram
 
-- **Status:** Accepted (David, 2026-11-27: "ramane acest logo. arata foarte bine. deci stabilit definitiv."; the colours chosen the same day)
+- **Status:** Accepted (David, 2026-11-27: "ramane acest logo. arata foarte bine. deci stabilit definitiv."; the colours and the mark's terms chosen the same day)
 - **Date:** 2026-11-27
 - **Builds on:** ADR 0068 (the Atelier theme and the faces that ship)
 
@@ -39,11 +39,25 @@ from `brand/uhlaka-icon-16.svg` (no request leaves the site, ADR 0001 d3).
 The admin's own screens keep showing the owner's site, not Uhlaka's logo:
 the admin is the owner's, and the site's name stays at the top of the rail.
 
+### d5. The logo is a reserved mark, not under the code's licences
+
+The core is AGPL and themes are MIT (ADR 0020); neither covers the name
+Uhlaka or its logo. They stay the project's mark, as WordPress keeps its own
+(David, 2026-11-27: "e marca rezervata, clar"):
+
+- **Anyone may use them to talk about Uhlaka**: in an article, a talk, a
+  list of tools, a tutorial, a link to the project, a page that says a site
+  is made with Uhlaka.
+- **Not on a fork, or on a product or service that could pass as the
+  official one.** A fork takes its own name and its own logo.
+- **Not changed**: no redrawing, recolouring or stretching; the files in
+  `brand/` are the reference.
+
+`brand/README.md` says this where the files are; the README's licence
+section points to it.
+
 ## Not decided here
 
-- **The licence of the logo.** The core is AGPL and themes are MIT
-  (ADR 0020); a logo is usually kept out of both, as a mark, with a short
-  policy on who may use it. That is for Chef to decide.
-- **A trademark search** for the mark has not been made.
+- **A trademark search** for the mark has not been made, nor a registration.
 - **The story of the name** (what *uhlaka* means in isiZulu) waits for a
   native speaker; it does not touch the logo.

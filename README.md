@@ -201,3 +201,7 @@ The core is [AGPL-3.0-or-later](LICENSE) ([ADR 0020](docs/adr/0020-licence-agpl.
 Themes, language packs and the client SDK are MIT; your themes, extensions and
 the sites you build may carry any licence. Contributions come under a simple
 [CLA](CLA.md).
+
+The name Uhlaka and its logo (`brand/`) are not under these licences: they
+are a reserved mark. Use them to talk about Uhlaka, not on a fork or a
+product that could pass as the official one ([brand/](brand/README.md)).
