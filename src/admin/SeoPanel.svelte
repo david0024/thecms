@@ -5,7 +5,7 @@
  * with what a search result and a link preview would show. A translation
  * writes only its title: the picture and the choice are the main page's.
  */
-import { type ImageValue, LONG_TITLE, MAX_SEO_TITLE, type Seo } from '../core/index.ts';
+import { type ImageValue, type LinkTarget, LONG_TITLE, MAX_SEO_TITLE, type Seo } from '../core/index.ts';
 import ImageField from './ImageField.svelte';
 import { say, t } from './messages.ts';
 
@@ -16,6 +16,7 @@ let {
   address,
   fallback = null,
   translation = false,
+  suggestions = [],
   onchange,
 }: {
   seo: Seo;
@@ -27,11 +28,18 @@ let {
   /** The picture a preview shows when the page has none: the cover, or the site's. */
   fallback?: ImageValue | null;
   translation?: boolean;
+  /** Pages and entries its words name that it does not link to yet (ADR 0077 d1). */
+  suggestions?: LinkTarget[];
   onchange: (seo: Seo) => void;
 } = $props();
 
 const shown = $derived(seo.seoTitle || title);
 const picture = $derived(seo.shareImage?.src || fallback?.src || '');
+let copied = $state('');
+async function copy(path: string): Promise<void> {
+  await navigator.clipboard?.writeText(path).catch(() => {});
+  copied = path;
+}
 const short = (text: string, max: number): string => (text.length > max ? `${text.slice(0, max - 1).trimEnd()}…` : text);
 </script>
 
@@ -53,6 +61,18 @@ const short = (text: string, max: number): string => (text.length > max ? `${tex
     </label>
     <small>{t.inspector.noindexHint}</small>
   {/if}
+  {#if suggestions.length}
+    <p class="label">{t.inspector.linkSuggestions}</p>
+    <ul class="links" data-link-suggestions>
+      {#each suggestions as target (target.path)}
+        <li data-link-suggestion={target.path}>
+          <span>{target.title} <code>{target.path}</code></span>
+          <button type="button" class="quiet" onclick={() => copy(target.path)} data-link-copy={target.path}>{copied === target.path ? t.inspector.linkCopied : t.inspector.linkCopy}</button>
+        </li>
+      {/each}
+    </ul>
+    <small>{t.inspector.linkSuggestionsHint}</small>
+  {/if}
   <p class="label">{t.inspector.seoPreview}</p>
   <div class="result" class:hidden={seo.noindex} data-seo-preview>
     <small>{address}</small>
@@ -73,6 +93,8 @@ const short = (text: string, max: number): string => (text.length > max ? `${tex
   .seo[open] summary { margin-bottom: 0.6rem; }
   .check { display: flex; align-items: center; gap: 0.5rem; }
   .check span { margin: 0; }
+  .links { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.25rem; font-size: 12.5px; }
+  .links li { display: flex; align-items: center; gap: 0.4rem; justify-content: space-between; overflow-wrap: anywhere; }
   .label { margin: 0.8rem 0 0.3rem; font-size: 12.5px; color: #6a6880; }
   .result, .card { display: grid; gap: 0.15rem; padding: 0.5rem 0.6rem; border-radius: 6px; background: #fff; border: 1px solid #e6e4ee; overflow-wrap: anywhere; }
   .result strong { color: #1a0dab; font-weight: 500; font-size: 15px; }

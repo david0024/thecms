@@ -78,3 +78,4 @@ work it decides. A new one that changes an old one says so at its top.
 - [ADR 0074 — Dark mode: a second palette in each theme, and a switch on the site](0074-dark-mode.md)
 - [ADR 0075 — The admin bar over the site](0075-the-admin-bar.md)
 - [ADR 0076 — What stays in the program, and what an extension needs to take the rest](0076-what-stays-in-the-program.md)
+- [ADR 0077 — Tools for a large site: links to add, every title in one table, Search Console](0077-tools-for-a-large-site.md)

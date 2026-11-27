@@ -119,6 +119,7 @@ import {
 import { wordsFor } from '../blocks/words.ts';
 import { DAYS_KEPT, type Kind, KINDS, summed } from '../../extensions/stats/rows.ts';
 import { isIndexNowKey } from './indexnow.ts';
+import type { SearchConsoleSettings } from './search-console.ts';
 import { BACKED_UP_VISITOR_TABLES, visitorSchema, visitorTable } from './visitor-schema.ts';
 import { BACKED_UP_SHOP_TABLES, shopSchema, shopTable } from './shop-schema.ts';
 import './languages.ts';
@@ -2666,6 +2667,17 @@ export class Store {
     for (const row of oldest) await this.run('DELETE FROM not_found WHERE path = ?', [row.path]);
   }
 
+  /** The service account and property Search Console is read with (ADR 0077 d3), when the owner connected it. */
+  async searchConsole(): Promise<SearchConsoleSettings | null> {
+    const kept = await this.getMeta(SEARCH_CONSOLE);
+    return isObject(kept) && typeof kept.clientEmail === 'string' && typeof kept.privateKey === 'string' && typeof kept.property === 'string' ? (kept as unknown as SearchConsoleSettings) : null;
+  }
+
+  async setSearchConsole(settings: SearchConsoleSettings | null): Promise<void> {
+    if (settings) await this.setMeta(SEARCH_CONSOLE, settings);
+    else await this.run(`DELETE FROM meta WHERE ${this.dialect.key} = ?`, [SEARCH_CONSOLE]);
+  }
+
   /** The key that proves to IndexNow the site is the one telling it (ADR 0063 d2), made the first time it is asked for. */
   async indexNowKey(): Promise<string> {
     const kept = await this.getMeta(INDEXNOW_KEY);
@@ -2827,6 +2839,8 @@ export interface Database {
 
 /** Where the IndexNow key is kept (ADR 0063 d2). */
 const INDEXNOW_KEY = 'indexnow:key';
+/** Where the Search Console settings are kept (ADR 0077 d3). */
+const SEARCH_CONSOLE = 'searchconsole';
 /** How many addresses not found are kept (ADR 0063 d1). */
 export const NOT_FOUND_KEPT = 500;
 /** Where the backup settings and the last backup are kept; neither is in a backup (ADR 0051 d1). */

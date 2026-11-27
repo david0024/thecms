@@ -30,7 +30,7 @@ describe('a package', () => {
     const { pkg, problems } = parseExtension(raw);
     expect(problems).toEqual([]);
     const m = pkg!.manifest;
-    expect(m.actions.map((a) => `${a.name}:${a.on ?? 'screen'}:${a.timeoutSeconds}`)).toEqual(['louder:block:60', 'title:page:60', 'stamp:page:60', 'ping:screen:60', 'sneak:screen:60', 'slow:screen:1', 'crash:screen:60', 'rotate:screen:60', 'open:screen:60', 'look:screen:60']);
+    expect(m.actions.map((a) => `${a.name}:${a.on ?? 'screen'}:${a.timeoutSeconds}`)).toEqual(['louder:block:60', 'title:page:60', 'stamp:page:60', 'describe:page:60', 'ping:screen:60', 'sneak:screen:60', 'slow:screen:1', 'crash:screen:60', 'rotate:screen:60', 'open:screen:60', 'look:screen:60']);
     expect(m.collections[0]?.fields.map((f) => `${f.key}:${f.kind}:${f.initial}`)).toEqual(['name:text:null', 'key:secret:null', 'loud:boolean:true', 'style:choice:caps']);
     expect(m.views.map((v) => `${v.id}:${v.type}`)).toEqual(['shout.settings:list', 'shout.more:tabs']);
     expect(extensionAsks(m)).toEqual({
@@ -41,6 +41,7 @@ describe('a package', () => {
         { action: 'Louder', on: 'block' },
         { action: 'Louder title', on: 'page' },
         { action: 'Stamp', on: 'page' },
+        { action: 'Describe', on: 'page' },
       ],
       routes: [],
       jobs: [],
@@ -379,7 +380,7 @@ describe('who may do what with extensions', () => {
     };
     try {
       const seen = (await call('GET', '/api/extensions')).data.extensions[0];
-      expect(seen.actions.map((a: { name: string }) => a.name)).toEqual(['louder', 'title', 'stamp']);
+      expect(seen.actions.map((a: { name: string }) => a.name)).toEqual(['louder', 'title', 'stamp', 'describe']);
       expect(seen.actions[2].each).toBe('language');
       // A section's translations are the owner's to change.
       expect((await call('POST', '/api/extensions/shout/each/stamp', { slug: 'offer', kind: '_section' })).status).toBe(403);

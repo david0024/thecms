@@ -53,6 +53,8 @@ import {
   READY_LAYOUTS,
   STANDARD,
   typeIn,
+  type LinkTarget,
+  linkSuggestions,
 } from '../core/index.ts';
 import { api, signedIn, type Doc, type Kind, type PostInfo, type State, type TranslationInfo } from './api.ts';
 import ContentList from './ContentList.svelte';
@@ -90,6 +92,8 @@ import Fields from './Fields.svelte';
 import { adminLanguage, say, t } from './messages.ts';
 import { setPath } from './paths.ts';
 import SeoPanel from './SeoPanel.svelte';
+import SeoTable from './SeoTable.svelte';
+import SearchConsole from './SearchConsole.svelte';
 import SitePanel from './SitePanel.svelte';
 import StylePanel from './StylePanel.svelte';
 import ThemeBuilder from './ThemeBuilder.svelte';
@@ -100,9 +104,28 @@ let page = $state.raw<Doc | null>(null);
 let kind = $state<Kind>('page');
 /** The page being written is a translation of another (ADR 0032): its words only, unless it is split. */
 let translation = $state<TranslationInfo | null>(null);
+/**
+ * The published pages and entries in the language being written, that a page
+ * could link to (ADR 0077 d1).
+ */
+const linkTargets = $derived.by((): LinkTarget[] => {
+  if (!site) return [];
+  const language = translation?.language ?? site.site.language;
+  const main = language === site.site.language;
+  const pages = site.pages.filter((p) => p.published && (p.language ?? site?.site.language) === language).map((p) => ({ title: p.title, path: pagePath(p.slug) }));
+  const entries = contentTypes(site.site).flatMap((type) =>
+    (site?.entries[type.id] ?? []).flatMap((entry): LinkTarget[] => {
+      if (!entry.published) return [];
+      if (main) return [{ title: entry.title, path: entryPath(type, entry.slug) }];
+      const own = entry.translations?.find((tr) => tr.language === language);
+      return own && site ? [{ title: entry.title, path: entryPath(typeIn(site.site, type, language), own.slug.slice(prefixOf(language).length + 1)) }] : [];
+    }),
+  );
+  return [...pages, ...entries];
+});
 const fixed = $derived(translation !== null && !translation.split);
 /** Which section of the admin is showing: a list, or the builder with one page or post open. */
-let view = $state<'pages' | 'sections' | 'forms' | 'layouts' | 'media' | 'messages' | 'orders' | 'coupons' | 'backups' | 'stats' | 'comments' | 'people' | 'me' | 'review' | 'types' | 'import' | 'export' | 'extensions' | 'edit' | `list:${string}` | `ext:${string}`>('pages');
+let view = $state<'pages' | 'sections' | 'forms' | 'layouts' | 'media' | 'messages' | 'orders' | 'coupons' | 'backups' | 'stats' | 'seo' | 'comments' | 'people' | 'me' | 'review' | 'types' | 'import' | 'export' | 'extensions' | 'edit' | `list:${string}` | `ext:${string}`>('pages');
 let selected = $state<string | null>(null);
 /** The form the Forms screen opens on, when a form block asked for it (ADR 0049). */
 let formAsked = $state('');
@@ -842,6 +865,7 @@ onMount(() => {
       <button type="button" aria-current={view === 'media' ? 'page' : undefined} onclick={() => (view = 'media')} data-nav="media">{t.nav.media}</button>
       {#if staff}
       <button type="button" aria-current={view === 'stats' ? 'page' : undefined} onclick={() => (view = 'stats')} data-nav="stats">{t.nav.stats}</button>
+      <button type="button" aria-current={view === 'seo' ? 'page' : undefined} onclick={() => (view = 'seo')} data-nav="seo">{t.nav.seo}</button>
       {/if}
       {#if staff && types.some((ty) => ty.comments)}
         <button type="button" aria-current={view === 'comments' ? 'page' : undefined} onclick={() => (view = 'comments')} data-nav="comments">{t.nav.comments}</button>
@@ -905,6 +929,9 @@ onMount(() => {
       <Backups />
     {:else if view === 'stats'}
       <Stats onchange={(next) => site && (site = { ...site, extensions: next })} />
+      <SearchConsole {owner} />
+    {:else if view === 'seo'}
+      <SeoTable extensions={site.extensions} onopen={(slug, kind) => edit(slug, kind)} />
     {:else if view === 'comments'}
       <Comments site={site.site} entries={site.entries} />
     {:else if view === 'import'}
@@ -1089,6 +1116,7 @@ onMount(() => {
             description={entry ? postDescription(entry) : pageDescription(page as Page)}
             address={`${site.site.url || ''}${type && entry ? (translation ? entryPath(typeIn(site.site, type, translation.language), page.slug.slice(prefixOf(translation.language).length + 1)) : entryPath(type, page.slug)) : pagePath(page.slug)}`}
             fallback={entry?.cover ?? site.site.shareImage ?? null}
+            suggestions={linkSuggestions(page.blocks, linkTargets, type && entry ? entryPath(type, page.slug) : pagePath(page.slug))}
             translation={!!translation}
             onchange={(seo) => page && change({ ...page, ...seo }, { step: false, redraw: false })}
           />
