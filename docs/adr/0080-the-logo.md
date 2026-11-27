@@ -1,6 +1,6 @@
 # ADR 0080 — The logo: the UH monogram
 
-- **Status:** Accepted (David, 2026-11-27: "ramane acest logo. arata foarte bine. deci stabilit definitiv."; the colours and the mark's terms chosen the same day)
+- **Status:** Accepted (David, 2026-11-27: "ramane acest logo. arata foarte bine. deci stabilit definitiv."; the colours, the mark's terms, the name's story and the tagline chosen the same day)
 - **Date:** 2026-11-27
 - **Builds on:** ADR 0068 (the Atelier theme and the faces that ship)
 
@@ -56,8 +56,20 @@ Uhlaka or its logo. They stay the project's mark, as WordPress keeps its own
 `brand/README.md` says this where the files are; the README's licence
 section points to it.
 
+### d6. The name's story and the tagline
+
+The README tells why the name, in three short paragraphs: *uhlaka* is a
+framework and the outline drawn before speaking; a site needs a frame that
+holds, as the logo's U holds its H; and the frame is a plan, not code, that
+a person and an AI both read and neither can break. The tagline is
+*Structure first. Built for humans and AI.* (David, 2026-11-27: "da, imi
+place. asa le facem"). uhlaka.org tells the same story.
+
 ## Not decided here
 
 - **A trademark search** for the mark has not been made, nor a registration.
-- **The story of the name** (what *uhlaka* means in isiZulu) waits for a
-  native speaker; it does not touch the logo.
+- **A native speaker's reading** of the story (d6). It uses only the
+  meanings found in sources: *uhlaka* as "framework" (an official South
+  African document, Microsoft's glossary) and as the outline of a talk.
+  Other meanings that were going around (the woven frame of a hut, a
+  stretcher) could not be confirmed and are left out.
