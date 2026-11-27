@@ -96,6 +96,26 @@ export interface ShopProviders {
   deliveries: (ask: DeliveryAsk, language: string) => Promise<ShippingMethod[]>;
 }
 
+/** An invoice as the owner's invoicing app made it (ADR 0081 d3), through an extension. */
+export interface MadeInvoice {
+  /** The extension that made it, by its name. */
+  extension: string;
+  series: string;
+  number: string;
+  /** Where it is in the app, over https on a host the extension declared; '' for none. */
+  link: string;
+  /** Its PDF, in base64; '' when the app gave none. */
+  pdf: string;
+}
+
+/** Who makes the shop's invoices (ADR 0081 d3): the one extension that is on and answers `invoice.make`. */
+export interface Invoicer {
+  /** The extension's name and the words the owner reads, or null when none is on. */
+  who: () => Promise<{ name: string; title: string } | null>;
+  /** Asks for the invoice of an order, or for the storno of `of`; throws what the app said. */
+  make: (question: 'invoice.make' | 'invoice.storno', order: unknown, of?: { series: string; number: string }) => Promise<MadeInvoice>;
+}
+
 /** A way to pay an extension offers (ADR 0076 d4.1): its id is `<extension>:<method>`. */
 export const byExtension = (payment: string): boolean => payment.includes(':');
 

@@ -5,7 +5,7 @@
  * of sale, and who handles orders. While off, nothing else is shown, and
  * nothing of the shop is loaded on the server.
  */
-import { moneyOf, type ShippingMethod, type ShopSettings, typedMoney } from '../core/index.ts';
+import { INVOICES_WHEN, moneyOf, type ShippingMethod, type ShopSettings, typedMoney } from '../core/index.ts';
 import { api } from './api.ts';
 import { t } from './messages.ts';
 
@@ -106,6 +106,13 @@ const rates = (typed: string): number[] => typed.split(/[;,\s]+/).filter(Boolean
     <span>{t.shop.notify}</span>
     <input type="email" value={settings.notify} onchange={(e) => save({ notify: e.currentTarget.value })} data-shop-notify />
     <small>{t.shop.notifyHint}</small>
+  </label>
+  <label class="field">
+    <span>{t.shop.invoices}</span>
+    <select value={settings.invoices} onchange={(e) => save({ invoices: e.currentTarget.value as ShopSettings['invoices'] })} data-shop-invoices>
+      {#each INVOICES_WHEN as w (w)}<option value={w}>{t.shop.invoicesWhen[w]}</option>{/each}
+    </select>
+    <small>{t.shop.invoicesHint}</small>
   </label>
   <small>{t.shop.staticHint}</small>
 {/if}

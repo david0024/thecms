@@ -11,7 +11,7 @@
 import { join } from 'node:path';
 import { type ShippingMethod, ANSWER_SECONDS, extensionWord, cleanBlockPost, cleanFind, cleanRow, findRows, LATER_TRIES, uniqueFields, contentTypes, egressAllows, entryIn, entryPath, type ExtensionAction, type ExtensionEventName, pagePath, type Question, QUESTIONS, typeIn, type ExtensionManifest, extensionAsks, EXTENSION_MAX_BYTES, mediaKindOf, mediaNameOf, parseExtension, variantOf } from '../core/index.ts';
 import { type FromRunner, lines, type ToRunner } from './extension-runner.ts';
-import type { PaymentChoice, ShopProviders } from '../parts/shop/pages.ts';
+import type { Invoicer, PaymentChoice, ShopProviders } from '../parts/shop/pages.ts';
 import type { InstalledExtension, SiteEvent, Store } from './store.ts';
 import type { AccountsLent } from '../parts/visitors/gate.ts';
 import { extensionMailKey, normalizeTemplates, withoutExtension } from './site-mail.ts';
@@ -37,6 +37,8 @@ export const FILE_TYPES: readonly string[] = ['application/pdf', 'image/png', 'i
 const FILE_MAX_BYTES = 10 * 1024 * 1024;
 /** How long the buyer waits for a payment extension to say where to pay. */
 const PAY_SECONDS = 20;
+/** How long an invoicing app may take to make an invoice (ADR 0081): the shop asks again later when it is longer. */
+const INVOICE_SECONDS = 60;
 /** Of what a delivery extension answers, at most this many ways, and places to pick up each. */
 const WAYS_MAX = 10;
 const POINTS_MAX = 20;
@@ -780,6 +782,42 @@ export function extensionHost(store: Store, options: { spawn?: Spawn; fetch?: (u
     },
   };
 
+  /**
+   * Who makes the shop's invoices (ADR 0081 d3): the first extension that is
+   * on and answers `invoice.make`. What it answers is checked: a series and a
+   * number, a link over https on a host it declared, a PDF that is one.
+   */
+  const invoicing: Invoicer = {
+    async who() {
+      for (const extension of await store.extensions())
+        if (extension.enabled && extension.manifest.answers.some((a) => a.question === 'invoice.make')) return { name: extension.manifest.name, title: extension.manifest.displayName };
+      return null;
+    },
+    async make(question, order, of) {
+      const extension = (await store.extensions()).find((e) => e.enabled && e.manifest.answers.some((a) => a.question === 'invoice.make'));
+      if (!extension) throw new Error('no extension that is on makes invoices');
+      const answering = extension.manifest.answers.find((a) => a.question === question);
+      if (!answering) throw new Error(`${extension.manifest.displayName} does not answer ${question}`);
+      const name = extension.manifest.name;
+      const answer = await within(run(name, answering.action, { question, order, ...(of ? { invoice: of } : {}) }), INVOICE_SECONDS);
+      const given = (answer && typeof answer === 'object' ? answer : {}) as { series?: unknown; number?: unknown; link?: unknown; pdf?: unknown };
+      const word = (v: unknown): string => (typeof v === 'string' || typeof v === 'number' ? String(v).replace(/\s+/g, ' ').trim().slice(0, 40) : '');
+      const number = word(given.number);
+      if (!number) throw new Error(`${extension.manifest.displayName} did not answer the invoice's number`);
+      let link = '';
+      if (typeof given.link === 'string' && given.link) {
+        try {
+          const url = new URL(given.link);
+          if (url.protocol === 'https:' && egressAllows(extension.manifest.egress, url.hostname)) link = url.href.slice(0, 1000);
+        } catch {
+          // Not an address: left out.
+        }
+      }
+      const pdf = typeof given.pdf === 'string' && given.pdf.startsWith('JVBER') && given.pdf.length <= (FILE_MAX_BYTES * 4) / 3 + 4 ? given.pdf : '';
+      return { extension: name, series: word(given.series), number, link, pdf };
+    },
+  };
+
   /** Which events an extension that is on listens to, asked at most once in LISTENING_MS. */
   let listening: { at: number; names: Promise<Set<string>> } | null = null;
   async function listens(event: ExtensionEventName): Promise<boolean> {
@@ -803,6 +841,7 @@ export function extensionHost(store: Store, options: { spawn?: Spawn; fetch?: (u
     listens,
     ask,
     checkout,
+    invoicing,
     /** What visitor accounts lend extensions (ADR 0064 d7), from the runtime that serves them. */
     lend(given: AccountsLent): void {
       accounts = given;

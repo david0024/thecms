@@ -22,12 +22,17 @@ const SQLITE: Record<string, string> = {
   // A coupon (ADR 0065 d8): its code, what it takes off, until when, how many times and from how much; `used` counts the orders that took it.
   shop_coupons:
     'CREATE TABLE IF NOT EXISTS shop_coupons (code TEXT PRIMARY KEY, kind TEXT NOT NULL, value INTEGER NOT NULL, ends TEXT NOT NULL, uses INTEGER, used INTEGER NOT NULL, minimum INTEGER, created_at TEXT NOT NULL)',
+  // An invoice asked of the owner's invoicing app (ADR 0081 d2): `id` is `<order>:<kind>`, so an order has one invoice and one storno at most.
+  // `state` is waiting, making, made or failed; `due_at` when it is asked (again); `said` what the app answered when it failed.
+  shop_invoices:
+    'CREATE TABLE IF NOT EXISTS shop_invoices (id TEXT PRIMARY KEY, order_id TEXT NOT NULL, kind TEXT NOT NULL, state TEXT NOT NULL, extension TEXT NOT NULL, series TEXT NOT NULL, number TEXT NOT NULL, link TEXT NOT NULL, file TEXT NOT NULL, tries INTEGER NOT NULL, said TEXT NOT NULL, due_at TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)',
 };
 
 const translate = (statement: string, kind: DatabaseKind): string => {
   if (kind === 'sqlite') return statement;
   const out = statement
     .replace(/\b(id|secret|visitor_id|code) TEXT\b/g, '$1 VARCHAR(64)')
+    .replace(/\bid VARCHAR\(64\) PRIMARY KEY, order_id TEXT\b/g, 'id VARCHAR(80) PRIMARY KEY, order_id VARCHAR(64)')
     .replace(/\b(product|variant|email) TEXT\b/g, '$1 VARCHAR(255)')
     .replace(/\b(state|language|kind|ends) TEXT\b/g, '$1 VARCHAR(20)')
     .replace(/\b(\w+_at) TEXT\b/g, '$1 VARCHAR(40)')
@@ -45,10 +50,10 @@ export const shopTable = (table: string): string | undefined => SQLITE[table];
 
 /**
  * The tables a backup holds once they exist (ADR 0065, PR c): what is left of
- * each product, the orders and the coupons. A cart is not in it: like a
+ * each product, the orders, the coupons and the invoices asked for (ADR 0081). A cart is not in it: like a
  * session, it belongs to a browser, and is forgotten in 30 days anyway.
  */
-export const BACKED_UP_SHOP_TABLES = ['shop_stock', 'shop_orders', 'shop_coupons'] as const;
+export const BACKED_UP_SHOP_TABLES = ['shop_stock', 'shop_orders', 'shop_coupons', 'shop_invoices'] as const;
 
 /** The key of a stock's row: the hash of `type/slug#variant`, which may be longer than a key MySQL allows. */
 export const stockId = (product: string, variant: string): string => createHash('sha256').update(`${product}#${variant}`).digest('hex').slice(0, 40);

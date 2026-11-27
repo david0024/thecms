@@ -1,9 +1,9 @@
 # ADR 0081 — Invoices: the shop asks, an extension for the country makes them
 
-- **Status:** Proposed (David, 2026-11-27: Uhlaka is international, not
+- **Status:** Accepted (David, 2026-11-27: Uhlaka is international, not
   Romanian; "cine își dorește să aibă 2 aplicații de facturare?"; "întâi
   partea generică separat, și apoi integrarea pe fiecare țară (deocamdată
-  România) ca altă extensie")
+  România) ca altă extensie"; the generic part in the shop: "da")
 - **Date:** 2026-11-27
 - **Changes:** ADR 0076 d3 and d5 step 4 ("e-Factura" becomes "invoicing",
   d1–d3 below); ADR 0065 d4 ("for e-Factura later")
@@ -40,9 +40,9 @@ In the shop's settings, **Invoices**, off by default. Turned on, the shop:
 - keeps the invoice on the order: its series and number, a link to it in
   the app, and its PDF, which the buyer sees on the order's page;
 - asks for a **storno** of it when the order is refunded;
-- tries again later what fails (`host.later`'s way), and says in the log
-  when it gives up;
-- lists the invoices in the Orders screen (number, order, state).
+- tries again later what fails, waiting longer each time, and says on the
+  order what the app answered when it gives up;
+- shows them on the order, in the Orders screen (kind, number, state).
 
 It keeps one invoice for an order (the order unique), written before the
 extension is asked, so two asks never make two invoices.
@@ -52,8 +52,8 @@ extension is asked, so two asks never make two invoices.
 `invoice.make`, given the order as an extension that uses `orders` reads
 it, answers `{ series, number, link?, pdf? }` (the PDF in base64), or throws
 what the app said. `invoice.storno`, given the order and the invoice, answers
-the storno invoice the same way. One extension answers them on a site; a
-second one installed is refused while the first is on.
+the storno invoice the same way. One extension answers them on a site: the
+first that is on is asked, so the owner keeps one on.
 
 ### d4. Romania: `extensions/invoicing-ro`
 
@@ -86,3 +86,31 @@ is the program's rule for the Orders screen.
 - The buyer's country on the order, needed by apps outside Romania; added
   with the first of them.
 - Sending straight to ANAF or Peppol without an app.
+
+## As built
+
+- **The generic part (2026-11-27):** Settings → Shop → **Invoices**: off
+  (the default), made by themselves, or only by the button. Made by
+  themselves, an invoice is asked when an order becomes paid, or, paid on
+  delivery, sent or completed; with invoices on, a storno when an order that
+  has an invoice is refunded. Each is a row of `shop_invoices`, its id
+  `<order>:invoice` or `<order>:storno`, written before the extension is
+  asked and claimed (`waiting` → `making`) by one process, so an order never
+  gets two. It is asked at once, without holding up the order's change, and
+  by the site's clock after: what fails waits 5 minutes, then twice as long
+  each time, and after 8 tries is `failed`, with what the app answered shown
+  on the order. One left `making` for 30 minutes (a process stopped half
+  way) is `failed` too, saying to look in the app before asking again.
+- **The answer** is checked by the program: a number (and a series), a link
+  only over https on a host the extension declared, a PDF only when it is
+  one, at most 10 MB. The PDF is kept on the order as a file of that
+  extension, seen by the buyer on the order's page.
+- **The Orders screen:** an order's **Invoice**: who makes them, each one
+  asked (invoice or storno, its series and number, its state, a link to it
+  in the app, what failed), and **Make the invoice** (or **Ask again**).
+  `POST /api/shop/invoice { id }`, for whoever handles the orders.
+- **The format:** `invoice.make` and `invoice.storno` in the answers of the
+  fourth format; the action reads the order, so it declares `orders`. It is
+  given `{ question, order }` (and `invoice: { series, number }` for a
+  storno), the order as `orders` lends it, which now says `vat`.
+- `shop_invoices` is in backups with the shop's other tables.

@@ -7,7 +7,7 @@
  */
 import { onMount } from 'svelte';
 import { moneyText, ORDER_STATES, type OrderState } from '../core/index.ts';
-import { api, type Order, type OrderAction, type OrderFile, type OrderListed } from './api.ts';
+import { api, type Order, type OrderAction, type OrderFile, type OrderInvoices, type OrderListed } from './api.ts';
 import { adminLanguage, say, t } from './messages.ts';
 
 let orders = $state.raw<OrderListed[] | null>(null);
@@ -21,6 +21,8 @@ let note = $state('');
 let actions = $state.raw<OrderAction[]>([]);
 let files = $state.raw<OrderFile[]>([]);
 let running = $state('');
+// Its invoices, made by the owner's invoicing app (ADR 0081 d2).
+let invoices = $state.raw<OrderInvoices | null>(null);
 
 const money = (n: number, currency: string): string => moneyText(n, currency, adminLanguage());
 const when = (iso: string): string => new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
@@ -41,7 +43,7 @@ const list = (): Promise<void> =>
   });
 const show = (id: string): Promise<void> =>
   attempt(async () => {
-    open = (await api.order(id)).order;
+    ({ order: open, invoices } = await api.order(id));
     chosen = open.state;
     tracking = open.data.tracking;
     note = '';
@@ -59,6 +61,20 @@ const runOn = (action: OrderAction): Promise<void> =>
       chosen = open.state;
       tracking = open.data.tracking;
       note = done.said || t.orders.ran;
+    } finally {
+      running = '';
+    }
+  });
+const invoiceNow = (): Promise<void> =>
+  attempt(async () => {
+    if (!open) return;
+    running = 'invoice';
+    try {
+      const done = await api.invoice(open.id);
+      invoices = done.invoices;
+      ({ files } = await api.orderExtensions(open.id, adminLanguage()));
+      const last = done.invoices.list.at(-1);
+      note = last?.state === 'made' ? t.orders.ran : last?.said || t.orders.ran;
     } finally {
       running = '';
     }
@@ -142,6 +158,27 @@ onMount(() => void list());
           <button type="button" onclick={() => runOn(a)} disabled={running !== ''} aria-busy={running === `${a.extension}.${a.action}`} data-order-action={`${a.extension}.${a.action}`}>{a.label}</button>
         {/each}
       </div>
+    {/if}
+    {#if invoices && invoices.when !== 'off'}
+      {@const made = invoices.list.find((i) => i.kind === 'invoice')}
+      <h4>{t.orders.invoices}</h4>
+      {#if !invoices.by}
+        <p class="hint" data-order-invoice-none>{t.orders.invoiceNone}</p>
+      {:else}
+        <p class="hint">{say(t.orders.invoiceBy, { by: invoices.by })}</p>
+        {#if invoices.list.length}
+          <ul class="files" data-order-invoices>
+            {#each invoices.list as i (i.id)}
+              <li data-order-invoice={i.kind}>
+                {t.orders.invoiceKinds[i.kind]} {i.series}{i.number} · {t.orders.invoiceStates[i.state]}{#if i.link} · <a href={i.link} target="_blank" rel="noopener noreferrer">{t.orders.openInApp}</a>{/if}{#if i.state !== 'made' && i.said}<br /><small class="bad">{i.said}</small>{/if}
+              </li>
+            {/each}
+          </ul>
+        {/if}
+        {#if o.state !== 'cancelled' && (!made || made.state === 'failed' || (o.state === 'refunded' && made.state === 'made' && !invoices.list.some((i) => i.kind === 'storno' && i.state === 'made')))}
+          <button type="button" onclick={invoiceNow} disabled={running !== ''} aria-busy={running === 'invoice'} data-order-invoice-make>{made?.state === 'failed' ? t.orders.tryAgain : t.orders.makeInvoice}</button>
+        {/if}
+      {/if}
     {/if}
     {#if note}<p role="status">{note}</p>{/if}
     {#if files.length}

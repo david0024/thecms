@@ -133,6 +133,15 @@ export const ANSWER_SECONDS = 10;
 export const CHECKOUT_QUESTIONS = ['checkout.payment', 'checkout.delivery'] as const;
 export type CheckoutQuestion = (typeof CHECKOUT_QUESTIONS)[number];
 
+/**
+ * The questions the shop asks for an invoice (ADR 0081 d3), in the fourth
+ * format: `invoice.make`, the invoice of an order, and `invoice.storno`, the
+ * one that cancels it, each made by the owner's invoicing app. The action
+ * that answers reads the order, so it declares that it uses `orders`.
+ */
+export const INVOICE_QUESTIONS = ['invoice.make', 'invoice.storno'] as const;
+export type InvoiceQuestion = (typeof INVOICE_QUESTIONS)[number];
+
 /** A way to pay an extension offers at checkout: `card`, with the words the buyer reads. */
 export interface PaymentMethod {
   id: string;
@@ -140,7 +149,7 @@ export interface PaymentMethod {
 }
 
 export interface ExtensionAnswer {
-  question: Question | CheckoutQuestion;
+  question: Question | CheckoutQuestion | InvoiceQuestion;
   action: string;
   /** For `checkout.payment`, the ways to pay it offers. */
   methods: PaymentMethod[];
@@ -503,7 +512,7 @@ function thirdParts(m: Record<string, unknown>, actions: ExtensionAction[], prob
   for (const u of list(m.uses)) if (!PROGRAM_DATA.includes(u as ProgramData)) problems.push(`an extension reads ${PROGRAM_DATA.join(', ')} of the program's data ("${text(u, 40)}")`);
   for (const a of actions) for (const u of a.uses) if (!uses.includes(u)) problems.push(`${a.name}: it reads "${u}", which the extension does not declare in "uses"`);
   const answers: ExtensionAnswer[] = [];
-  const asked: string[] = [...Object.keys(QUESTIONS), ...(format >= 4 ? CHECKOUT_QUESTIONS : [])];
+  const asked: string[] = [...Object.keys(QUESTIONS), ...(format >= 4 ? [...CHECKOUT_QUESTIONS, ...INVOICE_QUESTIONS] : [])];
   for (const q of list(m.answers).slice(0, 12)) {
     if (!isObject(q)) continue;
     const question = asked.find((x) => x === q.question) as ExtensionAnswer['question'] | undefined;
@@ -527,6 +536,7 @@ function thirdParts(m: Record<string, unknown>, actions: ExtensionAction[], prob
     if (!action) problems.push(`answering ${question} runs "${text(q.action, 40)}", which is not one of its actions`);
     else if (action.on) problems.push(`answering ${question} runs "${action.name}", which the editor offers on a ${action.on}`);
     else if (answers.some((x) => x.question === question)) problems.push(`it answers ${question} twice`);
+    else if ((INVOICE_QUESTIONS as readonly string[]).includes(question) && !action.uses.includes('orders')) problems.push(`answering ${question} runs "${action.name}", which reads the order: it declares that it uses "orders"`);
     else answers.push({ question, action: action.name, methods });
   }
   const mails: ExtensionMail[] = [];
@@ -656,6 +666,8 @@ export function extensionAsks(manifest: ExtensionManifest): {
   /** The ways to pay it offers at checkout, and whether it offers ways to deliver (ADR 0076 d4.1). */
   payments: string[];
   delivery: boolean;
+  /** Whether it makes the shop's invoices (ADR 0081 d3). */
+  invoices: boolean;
 } {
   const label = (name: string): string => manifest.actions.find((a) => a.name === name)?.label ?? name;
   return {
@@ -675,12 +687,13 @@ export function extensionAsks(manifest: ExtensionManifest): {
     shop:
       manifest.uses.includes('orders') ||
       manifest.events.some((e) => ORDER_EVENTS.includes(e.on)) ||
-      manifest.answers.some((a) => (CHECKOUT_QUESTIONS as readonly string[]).includes(a.question)) ||
+      manifest.answers.some((a) => ([...CHECKOUT_QUESTIONS, ...INVOICE_QUESTIONS] as readonly string[]).includes(a.question)) ||
       manifest.actions.some((a) => a.on === 'order'),
     later: manifest.later.map(label),
     files: manifest.actions.filter((a) => a.files).map((a) => a.label),
     payments: manifest.answers.flatMap((a) => a.methods.map((m) => m.label)),
     delivery: manifest.answers.some((a) => a.question === 'checkout.delivery'),
+    invoices: manifest.answers.some((a) => a.question === 'invoice.make'),
   };
 }
 
