@@ -18,6 +18,10 @@ export const actions = {
     const say = await loud(host);
     return { page: { ...input.page, title: `${say(input.page.title)} (${input.ask.language})` } };
   },
+  /** A description, said of the page's title: what the table of titles and descriptions asks for each page (ADR 0064 d2). */
+  async describe(input: { page: { title: string } }) {
+    return { page: { ...input.page, description: `All about ${input.page.title}.` } };
+  },
   /** Marks every text of a page with its language, prices and addresses too: what is kept of it is the editor's to say. */
   async stamp(input: { page: { title: string; description: string; blocks: Block[] }; language: string }) {
     if (input.page.title === 'Nothing') return {};

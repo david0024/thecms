@@ -43,6 +43,12 @@ import { type Store, type User, writesAll } from './store.ts';
 import { rowWrites } from '../view/index.ts';
 import { exportedFiles, fullCheck, publishedSite } from './export.ts';
 import { indexNow } from './indexnow.ts';
+import { seoRows, setSeo } from './seo-table.ts';
+import { cleanSearchConsole, type SearchReport, searchReport } from './search-console.ts';
+
+/** Where the Search Console report is kept, and for how long: Google counts it again once a day. */
+const SEARCH_REPORT = 'searchconsole:report';
+const SEARCH_REPORT_MS = 60 * 60_000;
 
 const ADMIN = new URL('../admin/', import.meta.url);
 
@@ -225,6 +231,8 @@ export async function startEditor(
     backups?: string;
     /** Where a copy of each backup is sent; S3 unless a test gives its own. */
     backupRemote?: (s3: S3Settings) => Remote;
+    /** How Google is asked for the Search Console report; the tests give their own. */
+    searchConsoleFetch?: (url: string, init: RequestInit) => Promise<Response>;
     /** How IndexNow is told; the tests give their own. */
     indexNowFetch?: (url: string, init: RequestInit) => Promise<Response>;
   } = {},
@@ -658,6 +666,22 @@ export async function startEditor(
     }
   }
 
+  /** Search Console as the admin shows it: whom it reads as, and its report, kept an hour (ADR 0064 d3). */
+  async function searchConsoleState(fresh: boolean): Promise<{ connected: false } | { connected: true; email: string; property: string; report?: SearchReport; error?: string }> {
+    const settings = await store.searchConsole();
+    if (!settings) return { connected: false };
+    const shown = { connected: true as const, email: settings.clientEmail, property: settings.property };
+    const kept = fresh ? null : await shared.get(SEARCH_REPORT);
+    if (kept) return { ...shown, report: JSON.parse(kept) as SearchReport };
+    try {
+      const report = await searchReport(settings, { fetch: options.searchConsoleFetch });
+      await shared.set(SEARCH_REPORT, JSON.stringify(report), SEARCH_REPORT_MS);
+      return { ...shown, report };
+    } catch (error) {
+      return { ...shown, error: error instanceof Error ? error.message : String(error) };
+    }
+  }
+
   async function api(request: Request, url: URL, me: User): Promise<Response> {
     const refused = await refusedTo(request, url, me);
     if (refused) return refused;
@@ -974,6 +998,31 @@ export async function startEditor(
         return json({ redirects: await store.redirects() });
       case 'PUT /api/redirects':
         return json({ redirects: await store.setRedirects(body.redirects) });
+      // What people searched for on Google, and the pages they found (ADR 0064 d3).
+      case 'GET /api/search-console':
+        return json(await searchConsoleState(url.searchParams.get('fresh') === '1'));
+      case 'PUT /api/search-console': {
+        const cleaned = cleanSearchConsole(body, (await store.site()).url);
+        if ('problem' in cleaned) return json({ error: cleaned.problem }, 400);
+        // Kept only once Google answers with it, so a key that does not work is said at once.
+        try {
+          const report = await searchReport(cleaned.settings, { fetch: options.searchConsoleFetch });
+          await store.setSearchConsole(cleaned.settings);
+          await shared.set(SEARCH_REPORT, JSON.stringify(report), SEARCH_REPORT_MS);
+        } catch (error) {
+          return json({ error: error instanceof Error ? error.message : String(error) }, 400);
+        }
+        return json(await searchConsoleState(false));
+      }
+      case 'DELETE /api/search-console':
+        await store.setSearchConsole(null);
+        await shared.del(SEARCH_REPORT);
+        return json(await searchConsoleState(false));
+      // Every page and entry with what it says to search engines, written in one table (ADR 0064 d2).
+      case 'GET /api/seo':
+        return json({ rows: await seoRows(store) });
+      case 'PUT /api/seo':
+        return json({ row: await setSeo(store, body) });
       // The addresses visitors asked for that the site does not have (ADR 0063 d1).
       case 'GET /api/not-found':
         return json({ notFound: await store.notFound() });

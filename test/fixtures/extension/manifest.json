@@ -19,6 +19,7 @@
     { "name": "louder", "label": "Louder", "on": "block", "reads": ["settings"], "writes": ["log"] },
     { "name": "title", "label": "Louder title", "on": "page", "ask": [{ "key": "language", "label": "Into", "kind": "language" }], "reads": ["settings"] },
     { "name": "stamp", "label": "Stamp", "on": "page", "each": "language" },
+    { "name": "describe", "label": "Describe", "on": "page" },
     { "name": "ping", "label": "Ping", "reads": ["settings"] },
     { "name": "sneak", "label": "Sneak", "reads": [] },
     { "name": "slow", "label": "Slow", "timeoutSeconds": 1 },

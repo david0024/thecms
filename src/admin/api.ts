@@ -8,6 +8,11 @@ import type { ViewDocument } from '../view/index.ts';
 import type { ExtensionOffer } from '../site/extensions.ts';
 import type { ImportPreview, ImportProgress } from '../site/server.ts';
 import type { BackupSettings, BackupsShown } from '../site/backup.ts';
+import type { SeoRow } from '../site/seo-table.ts';
+import type { SearchReport, SearchRow } from '../site/search-console.ts';
+export type { SearchReport, SearchRow, SeoRow };
+/** Search Console as the admin shows it (ADR 0064 d3). */
+export type SearchConsoleState = { connected: false } | { connected: true; email: string; property: string; report?: SearchReport; error?: string };
 export type { BackupSettings, BackupsShown };
 import type { Range, StatsShown } from '../site/stats.ts';
 export type { Range, StatsShown };
@@ -262,6 +267,11 @@ export const api = {
   setForms: (forms: Form[]) => call<FormsState>('PUT', '/api/forms', { forms }),
   redirects: () => call<{ redirects: Redirect[] }>('GET', '/api/redirects'),
   setRedirects: (redirects: Redirect[]) => call<{ redirects: Redirect[] }>('PUT', '/api/redirects', { redirects }),
+  searchConsole: (fresh = false) => call<SearchConsoleState>('GET', `/api/search-console${fresh ? '?fresh=1' : ''}`),
+  connectSearchConsole: (key: string, property: string) => call<SearchConsoleState>('PUT', '/api/search-console', { key, property }),
+  disconnectSearchConsole: () => call<SearchConsoleState>('DELETE', '/api/search-console'),
+  seoRows: () => call<{ rows: SeoRow[] }>('GET', '/api/seo'),
+  setSeo: (row: { type: string; slug: string; seoTitle: string; description: string }) => call<{ row: SeoRow }>('PUT', '/api/seo', row),
   notFound: () => call<{ notFound: NotFound[] }>('GET', '/api/not-found'),
   forgetNotFound: (path: string | null) => call<{ notFound: NotFound[] }>('DELETE', path === null ? '/api/not-found' : `/api/not-found?path=${encodeURIComponent(path)}`),
   page: (slug: string, kind: Kind = 'page') => call<{ page: Doc; translation?: TranslationInfo }>('GET', `/api/page?kind=${kind}&slug=${encodeURIComponent(slug)}`),
