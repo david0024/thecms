@@ -114,3 +114,11 @@ hand in the Orders screen.
   as `pickupLocation`. The parcel is asked about two hours after the AWB, then
   every three hours. The API was written from Fan Courier's documentation and
   answered by the tests; it has not yet been tried with a real account.
+- **Sameday (2026-11-27):** `extensions/sameday`. Ways answered:
+  `sameday:home` and `sameday:locker:<easybox id>`. The settings: user,
+  password, and Sameday's demo account for trying it (its own host,
+  `sameday-api.demo.zitec.com`). The AWB is made from the account's default
+  pick-up point and contact person, with the service whose code is `24`
+  (24H) to the door, and `LN` (Locker NextDay) with `lockerLastMile` to an
+  easybox; the courier's price is `/api/awb/estimate-cost`. Not yet tried with
+  a real account.
