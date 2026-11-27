@@ -4,7 +4,7 @@
  * session cookie and a header only the admin's own page sends (ADR 0022).
  */
 import type { Audience, Audiences, Block, Level, ExtensionAction, Form, Redirect, RedirectProblem, ExtensionCollection, Page, Post, ShopSettings, Site, Theme, OrderState, Coupon } from '../core/index.ts';
-import type { Order } from '../site/shop-pages.ts';
+import type { Order } from '../parts/shop/pages.ts';
 import type { ViewDocument } from '../view/index.ts';
 import type { ExtensionOffer } from '../site/extensions.ts';
 import type { ImportPreview, ImportProgress } from '../site/server.ts';

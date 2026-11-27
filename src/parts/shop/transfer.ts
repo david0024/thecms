@@ -6,10 +6,10 @@
  * written on the tables themselves, so the shop's own code is not loaded for
  * it (ADR 0060 d3).
  */
-import { type Coupon, normalizeShopSettings, ORDER_STATES, type OrderState, type ShopSettings } from '../core/index.ts';
-import type { OrderData } from './shop-pages.ts';
-import { asCoupon, shopSchema, stockId } from './shop-schema.ts';
-import { cleanEmail, type Store } from './store.ts';
+import { type Coupon, normalizeShopSettings, ORDER_STATES, type OrderState, type ShopSettings } from '../../core/index.ts';
+import type { OrderData } from './pages.ts';
+import { asCoupon, shopSchema, stockId } from './schema.ts';
+import { cleanEmail, type Store } from '../../site/store.ts';
 
 /** The shop's part of a content file. */
 export interface ContentShop {

@@ -2,13 +2,31 @@
 /**
  * The extensions (ADR 0026), for the owner: what is installed, turned on or
  * off, removed; a new one installed from its file, after the owner has seen
- * what it asks for and accepted that very file.
+ * what it asks for and accepted that very file. Above them, the parts of
+ * Uhlaka (ADR 0076 d6): the shop and visitor accounts, our own code shipped
+ * with the program, turned on and off here as an extension is.
  */
 import { api, type ExtensionInfo, type ExtensionOffer } from './api.ts';
 import ExtensionOfferBox from './ExtensionOffer.svelte';
 import { adminLanguage, say, t } from './messages.ts';
 
-let { extensions, onchange, onopen }: { extensions: ExtensionInfo[]; onchange: (next: ExtensionInfo[]) => void; onopen: (name: string, screen: string) => void } = $props();
+let { extensions, shop, onchange, onopen, onparts, onsettings }: { extensions: ExtensionInfo[]; shop: boolean; onchange: (next: ExtensionInfo[]) => void; onopen: (name: string, screen: string) => void; onparts: () => void; onsettings: () => void } = $props();
+
+/** Whether visitor accounts are on, read once the screen opens. */
+let accounts = $state<boolean | null>(null);
+$effect(() => {
+  void api.visitors().then((shown) => (accounts = shown.settings.on), () => (accounts = null));
+});
+
+async function part(work: () => Promise<unknown>): Promise<void> {
+  problem = '';
+  try {
+    await work();
+    onparts();
+  } catch (error) {
+    problem = error instanceof Error ? error.message : String(error);
+  }
+}
 
 let problem = $state('');
 let file = $state.raw<File | null>(null);
@@ -53,6 +71,30 @@ async function accept(): Promise<void> {
   <p class="hint">{t.ext.intro}</p>
   {#if problem}<p class="bad" role="alert">{problem}</p>{/if}
 
+  <h2>{t.ext.parts}</h2>
+  <p class="hint">{t.ext.partsIntro}</p>
+  <ul class="cards" data-list="parts">
+    <li data-part="shop">
+      <div class="who"><strong>{t.ext.partShop}</strong><p>{t.ext.partShopHint}</p></div>
+      <label class="check">
+        <input type="checkbox" checked={shop} onchange={(e) => part(() => api.setShop({ on: e.currentTarget.checked }))} data-part-on />
+        <span>{shop ? t.ext.on : t.ext.off}</span>
+      </label>
+      {#if shop}<button type="button" class="quiet" onclick={onsettings} data-part-settings>{t.ext.partSettings}</button>{/if}
+    </li>
+    {#if accounts !== null}
+      <li data-part="visitors">
+        <div class="who"><strong>{t.ext.partVisitors}</strong><p>{t.ext.partVisitorsHint}</p></div>
+        <label class="check">
+          <input type="checkbox" checked={accounts} onchange={(e) => part(async () => { accounts = (await api.setVisitors({ on: e.currentTarget.checked })).settings.on; })} data-part-on />
+          <span>{accounts ? t.ext.on : t.ext.off}</span>
+        </label>
+        {#if accounts}<button type="button" class="quiet" onclick={onsettings} data-part-settings>{t.ext.partSettings}</button>{/if}
+      </li>
+    {/if}
+  </ul>
+
+  <h2>{t.ext.installed}</h2>
   {#if extensions.length === 0}
     <p data-no-extensions>{t.ext.none}</p>
   {:else}

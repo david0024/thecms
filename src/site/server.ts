@@ -38,7 +38,7 @@ import { type MenuItem, menuOf, pageSetting, renderParts, renderPostParts } from
 import { languages, packFor } from './languages.ts';
 import { accounts, cleanPublicAddress, cookieOf, ownerOnly, shown } from './accounts.ts';
 import { backTo, barHtml, barLinks, barWords, SIGN_OUT_PATH, withBar } from './admin-bar.ts';
-import { shopGate } from './shop-gate.ts';
+import { shopGate } from '../parts/shop/gate.ts';
 import { extensionHost, type Spawn } from './extensions.ts';
 import { BUILT_ADMIN } from './built-admin.ts';
 import { BASE_CSS, SHIPPED_STATS, SHIPPED_THEMES, shippedFonts } from './shipped.ts';

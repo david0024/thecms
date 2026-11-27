@@ -945,7 +945,7 @@ onMount(() => {
     {:else if view === 'me'}
       <Profile me={site.me} onsaved={(next) => (site = next)} />
     {:else if view === 'extensions'}
-      <Extensions extensions={site.extensions} onchange={(next) => site && (site = { ...site, extensions: next })} onopen={(name, screen) => (view = `ext:${name}/${screen}`)} />
+      <Extensions extensions={site.extensions} shop={site.shop.on} onchange={(next) => site && (site = { ...site, extensions: next })} onopen={(name, screen) => (view = `ext:${name}/${screen}`)} onparts={reload} onsettings={() => panel('site')} />
     {:else if view.startsWith('ext:')}
       {@const [name, screen] = view.slice(4).split('/')}
       {@const extension = site.extensions.find((e) => e.name === name)}
@@ -1047,9 +1047,11 @@ onMount(() => {
     <aside class="right">
       {#if siteMode}
         <h2>{t.site.heading}</h2>
+        <p class="hint" data-panel-intro="site">{t.site.intro}</p>
         <SitePanel site={site.site} pages={pagesIn(site.site, site.site.language, site.pages)} lists={menuLists} languages={site.languages} onchange={editSite} onadminlanguage={setAdminLanguage} shop={site.shop} onshop={reload} />
       {:else if themeMode}
         <h2>{t.theme.heading}</h2>
+        <p class="hint" data-panel-intro="theme">{t.theme.intro}</p>
         <ThemeBuilder theme={site.theme} onchange={editTheme} handPicked={page ? countFreeColors(page.blocks) : 0} changed={site.themeChanged} onpublish={publishTheme} />
       {:else if block && def}
         <h2>{t.types[block.type] ?? block.type}</h2>

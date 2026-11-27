@@ -4,8 +4,8 @@
  * that the store and the backups know them without loading the shop.
  */
 import { createHash } from 'node:crypto';
-import { type Coupon, normalizeCoupon } from '../core/index.ts';
-import type { DatabaseKind } from './store.ts';
+import { type Coupon, normalizeCoupon } from '../../core/index.ts';
+import type { DatabaseKind } from '../../site/store.ts';
 
 const MYSQL = 'ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin';
 

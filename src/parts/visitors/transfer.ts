@@ -5,9 +5,9 @@
  * Read and written on the tables themselves, so the accounts' own code is
  * not loaded for it (ADR 0060 d3).
  */
-import { cleanEmail, type Store } from './store.ts';
-import { normalizeVisitorSettings } from './visitor-gate.ts';
-import { visitorSchema } from './visitor-schema.ts';
+import { cleanEmail, type Store } from '../../site/store.ts';
+import { normalizeVisitorSettings } from './gate.ts';
+import { visitorSchema } from './schema.ts';
 
 /** A visitor as the content file holds them: whose address was confirmed, and nothing to sign in with. */
 export interface ContentVisitor {

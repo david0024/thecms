@@ -19,8 +19,8 @@ import { resultsPage, search, SEARCH_MAX_QUERY, type SearchDoc, searchIndex } fr
 import { visits as countVisits, type Visits } from './stats.ts';
 import type { Store } from './store.ts';
 import { siteMailer } from './site-mail.ts';
-import { type VisitorGate, visitorGate } from './visitor-gate.ts';
-import { type ShopGate, shopGate } from './shop-gate.ts';
+import { type VisitorGate, visitorGate } from '../parts/visitors/gate.ts';
+import { type ShopGate, shopGate } from '../parts/shop/gate.ts';
 import { openMailQueue } from './mail-queue.ts';
 import type { EditTarget } from './admin-bar.ts';
 

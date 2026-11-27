@@ -3,9 +3,9 @@
  * the site's own frame and language, without script: each is a form the
  * browser sends by itself. And an order as the text its messages carry.
  */
-import { moneyText, ORDER_STATES, type OrderState, type ShippingMethod, type ShopSettings } from '../core/index.ts';
-import { type Words, wordsFor } from '../blocks/words.ts';
-import { escape } from './framed.ts';
+import { moneyText, ORDER_STATES, type OrderState, type ShippingMethod, type ShopSettings } from '../../core/index.ts';
+import { type Words, wordsFor } from '../../blocks/words.ts';
+import { escape } from '../../site/framed.ts';
 
 /** One line of a cart, as it can be bought now. */
 export interface CartLine {

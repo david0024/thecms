@@ -10,9 +10,9 @@
  */
 import { type Audience, type ContentType, type Form, type Layout, type Level, mediaNameOf, normalizeShopSettings, type Redirect, type Site, slugify, type Theme } from '../core/index.ts';
 import type { Store } from './store.ts';
-import { normalizeVisitorSettings } from './visitor-gate.ts';
-import type { ContentVisitor } from './visitor-transfer.ts';
-import type { ContentOrder, ContentShop } from './shop-transfer.ts';
+import { normalizeVisitorSettings } from '../parts/visitors/gate.ts';
+import type { ContentVisitor } from '../parts/visitors/transfer.ts';
+import type { ContentOrder, ContentShop } from '../parts/shop/transfer.ts';
 import { VERSION } from './version.ts';
 
 export const CONTENT_FORMAT = 'uhlaka.content/1';
@@ -221,10 +221,10 @@ export async function exportContent(store: Store, asked: string[] = [], now = ne
   }
 
   // The visitors, only when chosen by themselves; and the levels, when who sees something or a visitor names one.
-  if (parts.includes(VISITORS_PART)) file.visitors = await (await import('./visitor-transfer.ts')).exportVisitors(store);
+  if (parts.includes(VISITORS_PART)) file.visitors = await (await import('../parts/visitors/transfer.ts')).exportVisitors(store);
   // The shop: its settings, stock and coupons with the site; its orders only when chosen by themselves.
-  if (parts.includes(SHOP_PART)) file.shop = await (await import('./shop-transfer.ts')).exportShop(store);
-  if (parts.includes(ORDERS_PART)) file.orders = await (await import('./shop-transfer.ts')).exportOrders(store);
+  if (parts.includes(SHOP_PART)) file.shop = await (await import('../parts/shop/transfer.ts')).exportShop(store);
+  if (parts.includes(ORDERS_PART)) file.orders = await (await import('../parts/shop/transfer.ts')).exportOrders(store);
   const { levels } = normalizeVisitorSettings(await store.visitorSettings());
   const audienced = [...(file.pages ?? []), ...file.types.flatMap((t) => t.entries)].some((d) => d.audience) || file.types.some((t) => t.audience);
   if (levels.length && (audienced || file.visitors)) file.levels = levels;

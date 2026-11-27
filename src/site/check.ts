@@ -173,8 +173,8 @@ export function checkRedirects(files: Map<string, string | Uint8Array>, redirect
 }
 
 const STATIC: Record<ServerOnly, string> = {
-  forms: 'the contact forms have nowhere to send (set a form service in Site settings)',
-  comments: 'comments cannot be sent (set a form service in Site settings)',
+  forms: 'the contact forms have nowhere to send (set a form service in Site content)',
+  comments: 'comments cannot be sent (set a form service in Site content)',
   search: 'the search field finds nothing',
   locked: 'the pages behind a password cannot be opened',
   members: 'the pages for members cannot be opened',
@@ -194,7 +194,7 @@ const SEO: Record<SeoProblem['problem'], string> = {
   long: `the title "{title}" is longer than ${LONG_TITLE} letters; search engines cut it`,
   duplicate: 'share the title "{title}"; give each its own',
   hidden: 'the home page is hidden from search engines',
-  blocked: 'the lines added in Site settings shut the whole site to search engines (Disallow: /)',
+  blocked: 'the lines added in Site content shut the whole site to search engines (Disallow: /)',
 };
 
 /** The findings in plain lines, for the command line. */

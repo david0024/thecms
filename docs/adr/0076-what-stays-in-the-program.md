@@ -210,6 +210,13 @@ measurement on a small VPS: the start of a process, the memory of one at
 rest and at work, against today's Bun process (Zveltio measured 31 ms and
 about 60 MB). It does not block d4 or payments.
 
+As built (2026-11-27): the shop is in `src/parts/shop/` and visitor accounts
+in `src/parts/visitors/`; the program reaches each through its `gate.ts`, its
+`schema.ts` (the tables' definitions) and its `transfer.ts` (backups and the
+content file), and the admin and extensions name a few of its types. The
+Extensions screen lists both under "Parts of Uhlaka", each turned on or off
+there, with its settings still in Site content.
+
 ## Weighed and not proposed
 
 - **The shop's base as an extension now**: see d2. To revisit if a second

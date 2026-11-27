@@ -74,7 +74,7 @@ import { menuOf, pageSetting, renderBlogList, renderPage, renderPost, STYLESHEET
 import { SCHEME_SCRIPT, SCHEME_SCRIPT_PATH } from './scheme.ts';
 import { checkRedirects, checkSeo, checkSite, describeCheck, type SiteCheck, serverOnly } from './check.ts';
 import { BASE_CSS, shippedFonts } from './shipped.ts';
-import { shopGate } from './shop-gate.ts';
+import { shopGate } from '../parts/shop/gate.ts';
 import { STATS, type Store } from './store.ts';
 import type { EditTarget } from './admin-bar.ts';
 
@@ -354,7 +354,7 @@ export async function buildSite(
   // Each person's picture, beside what they wrote and on their page (ADR 0056 d2).
   for (const post of posts) if (post.author?.picture) shown.push([`the picture of ${post.author.name}`, post.author.picture.src]);
   if (site.logo) shown.push(['the header', site.logo.src]);
-  if (site.shareImage) shown.push(['the picture for sharing, in Site settings', site.shareImage.src]);
+  if (site.shareImage) shown.push(['the picture for sharing, in Site content', site.shareImage.src]);
   for (const [where, src] of shown) {
     const name = mediaNameOf(src);
     if (!name || files.has(src.slice(1))) continue;

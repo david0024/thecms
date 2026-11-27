@@ -120,8 +120,8 @@ import { wordsFor } from '../blocks/words.ts';
 import { DAYS_KEPT, type Kind, KINDS, summed } from '../../extensions/stats/rows.ts';
 import { isIndexNowKey } from './indexnow.ts';
 import type { SearchConsoleSettings } from './search-console.ts';
-import { BACKED_UP_VISITOR_TABLES, visitorSchema, visitorTable } from './visitor-schema.ts';
-import { BACKED_UP_SHOP_TABLES, shopSchema, shopTable } from './shop-schema.ts';
+import { BACKED_UP_VISITOR_TABLES, visitorSchema, visitorTable } from '../parts/visitors/schema.ts';
+import { BACKED_UP_SHOP_TABLES, shopSchema, shopTable } from '../parts/shop/schema.ts';
 import './languages.ts';
 
 /** What is kept with translations: a page, or a section (ADR 0033). */
@@ -1876,7 +1876,7 @@ export class Store {
   async mediaUsedBy(name: string): Promise<string[]> {
     const site = await this.site();
     const titles: string[] = mediaNameOf(site.logo?.src ?? '') === name ? ['the header (logo)'] : [];
-    if (mediaNameOf(site.shareImage?.src ?? '') === name) titles.push('the picture for sharing, in Site settings');
+    if (mediaNameOf(site.shareImage?.src ?? '') === name) titles.push('the picture for sharing, in Site content');
     for (const row of await this.rows<{ draft: string; published: string | null }>('SELECT draft, published FROM pages ORDER BY position, slug')) {
       const copies = [row.draft, row.published].filter((c): c is string => c !== null).map((c) => normalizePage(JSON.parse(c)).page);
       if (copies.some((page) => [...mediaSources(page.blocks), page.shareImage?.src ?? ''].some((src) => mediaNameOf(src) === name))) titles.push((copies[0] as Page).title);

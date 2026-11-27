@@ -13,7 +13,7 @@ import { startRuntime } from '../src/site/runtime.ts';
 import { startEditor } from '../src/site/server.ts';
 import { renderTemplate } from '../src/site/site-mail.ts';
 import { Store } from '../src/site/store.ts';
-import { VISITOR_TABLES } from '../src/site/visitor-schema.ts';
+import { VISITOR_TABLES } from '../src/parts/visitors/schema.ts';
 import plain from '../themes/plain.json';
 
 const dir = await mkdtemp(join(tmpdir(), 'uhlaka-visitors-'));
@@ -413,11 +413,15 @@ describe('what is kept, and given back (ADR 0064 d6)', () => {
 
   test('nothing loads the accounts but the door to them', async () => {
     const { Glob } = await import('bun');
+    const { dirname, join } = await import('node:path');
+    const shut = ['src/parts/visitors/visitors.ts', 'src/parts/visitors/pages.ts'];
     const importers: string[] = [];
     for await (const file of new Glob('src/**/*.{ts,svelte}').scan('.')) {
-      if (file.endsWith('visitor-gate.ts')) continue;
+      if (file === 'src/parts/visitors/gate.ts' || file === 'src/parts/visitors/visitors.ts') continue;
       const source = await Bun.file(file).text();
-      if (/from '\.\/visitors\.ts'|import\(['"]\.\/visitors\.ts['"]\)|from '\.\/visitor-pages\.ts'/.test(source) && !file.endsWith('visitors.ts')) importers.push(file);
+      for (const [, spec] of source.matchAll(/(?:from |import\()['"](\.[^'"]+)['"]/g)) {
+        if (shut.includes(join(dirname(file), spec!))) importers.push(file);
+      }
     }
     expect(importers).toEqual([]);
   });
