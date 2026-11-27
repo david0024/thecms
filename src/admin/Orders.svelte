@@ -175,8 +175,8 @@ onMount(() => void list());
             {/each}
           </ul>
         {/if}
-        {#if o.state !== 'cancelled' && (!made || made.state === 'failed' || (o.state === 'refunded' && made.state === 'made' && !invoices.list.some((i) => i.kind === 'storno' && i.state === 'made')))}
-          <button type="button" onclick={invoiceNow} disabled={running !== ''} aria-busy={running === 'invoice'} data-order-invoice-make>{made?.state === 'failed' ? t.orders.tryAgain : t.orders.makeInvoice}</button>
+        {#if o.state !== 'cancelled' && (!made || made.state === 'waiting' || made.state === 'failed' || (o.state === 'refunded' && made.state === 'made' && !invoices.list.some((i) => i.kind === 'storno' && i.state === 'made')))}
+          <button type="button" onclick={invoiceNow} disabled={running !== ''} aria-busy={running === 'invoice'} data-order-invoice-make>{made && made.state !== 'made' ? t.orders.tryAgain : t.orders.makeInvoice}</button>
         {/if}
       {/if}
     {/if}

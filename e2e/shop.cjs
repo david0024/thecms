@@ -245,11 +245,25 @@ const PORT = 4431;
     const token = new URL(url).hash.match(/token=(\w+)/)[1];
     const invoicer = JSON.stringify({
       format: 'uhlaka.extension/4',
-      manifest: { name: 'invoicer', displayName: 'Invoicer', version: '1.0.0', uses: ['orders'], actions: [{ name: 'invoice', label: 'Make the invoice', on: 'order', uses: ['orders'], files: true }] },
-      code: "export const actions = { invoice: async (input, host) => { await host.files.put({ order: input.order.id, name: 'invoice-' + input.order.number + '.pdf', type: 'application/pdf', data: btoa('%PDF-1.4'), buyer: true }); return 'Invoice made.'; } };",
+      manifest: {
+        name: 'invoicer',
+        displayName: 'Invoicer',
+        version: '1.0.0',
+        egress: ['example.com'],
+        uses: ['orders'],
+        actions: [
+          { name: 'invoice', label: 'Make the invoice', on: 'order', uses: ['orders'], files: true },
+          { name: 'make', label: 'An invoice from the app', uses: ['orders'] },
+        ],
+        // The shop's invoices (ADR 0081 d3): the app refuses the first ask, then makes it.
+        answers: [{ question: 'invoice.make', action: 'make' }],
+      },
+      code: "let asked = 0; export const actions = { invoice: async (input, host) => { await host.files.put({ order: input.order.id, name: 'invoice-' + input.order.number + '.pdf', type: 'application/pdf', data: btoa('%PDF-1.4'), buyer: true }); return 'Invoice made.'; }, make: async (input) => { if (++asked === 1) throw new Error('the app is down'); return { series: 'UH', number: String(input.order.number), link: 'https://example.com/x', pdf: btoa('%PDF-1.4 UH') }; } };",
     });
     const offered = await (await page.request.post(site('/api/extensions/offer'), { headers: { 'x-uhlaka-token': token }, data: invoicer })).json();
     await page.request.post(site(`/api/extensions/install?sha256=${offered.offer.sha256}`), { headers: { 'x-uhlaka-token': token }, data: invoicer });
+    // Invoices only by the button on the order (ADR 0081 d2).
+    await page.request.put(site('/api/shop'), { headers: { 'x-uhlaka-token': token }, data: { invoices: 'manual' } });
 
     // The owner handles it in Orders.
     await page.evaluate(() => history.replaceState(null, "", location.href.replace(/[#&]at=[^&#]*/, ""))); // opened again at its first screen, not the one it was on
@@ -267,11 +281,18 @@ const PORT = 4431;
     await page.locator('[data-order-number]').waitFor();
     await page.locator('[data-order-discount]').waitFor();
     assert(true, 'the order shows its coupon');
+    await page.locator('[data-order-invoice-make]').click();
+    await page.locator('[data-order-invoice="invoice"] .bad').waitFor();
+    assert((await page.locator('[data-order-invoice="invoice"]').textContent()).includes('the app is down'), 'an invoice the app refused says why');
+    await page.locator('[data-order-invoice-make]').click();
+    await page.locator('[data-order-invoice="invoice"] a').waitFor();
+    assert((await page.locator('[data-order-invoice="invoice"]').textContent()).includes('UH1'), 'asked again, the invoice is made, with its number and a link to it');
+    assert((await page.locator('[data-order-invoice-make]').count()) === 0, 'an order with its invoice offers no second one');
     await page.locator('[data-order-action="invoicer.invoice"]').click();
-    await page.locator('[data-order-files] [data-order-file]').waitFor();
-    assert((await page.getByRole('status').textContent()).includes('Invoice made.'), 'an extension\'s action on the order runs, and says what it did');
+    await page.getByRole('status').filter({ hasText: 'Invoice made.' }).waitFor();
+    assert(true, 'an extension\'s action on the order runs, and says what it did');
     const invoice = page.waitForEvent('download');
-    await page.locator('[data-order-files] [data-order-file]').click();
+    await page.locator('[data-order-files] [data-order-file]').filter({ hasText: 'invoice-1.pdf' }).click();
     assert((await invoice).suggestedFilename() === 'invoice-1.pdf', 'the file it put on the order is downloaded');
     await page.locator('select[data-order-state]').selectOption('sent');
     await page.locator('[data-order-tracking]').fill('AWB 123');
