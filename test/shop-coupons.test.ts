@@ -264,8 +264,17 @@ describe('orders for extensions', () => {
       expect((await lent.paid(id)).state).toBe('paid');
       expect(heard.filter((e) => e.name === 'order.paid')).toHaveLength(1);
       expect((await lent.tracking(id, ' AWB  123 ')).tracking).toBe('AWB 123');
-      await call('PUT', '/api/shop/orders', { id, state: 'sent' });
-      expect(heard.some((e) => e.name === 'order.sent')).toBe(true);
+      // A courier moves it on (ADR 0079 d6): sent, with its number, the buyer told once; then completed.
+      const mails = sent.length;
+      expect(await lent.sent(id, 'AWB 456')).toMatchObject({ state: 'sent', tracking: 'AWB 456' });
+      expect((await lent.sent(id, 'AWB 789')).tracking).toBe('AWB 456');
+      expect(heard.filter((e) => e.name === 'order.sent')).toHaveLength(1);
+      await runtime.chores(new Date());
+      expect(sent.slice(mails).filter((m) => m.to === 'ana@example.com' && m.text.includes('AWB 456'))).toHaveLength(1);
+      expect((await lent.completed(id)).state).toBe('completed');
+      // Never back: a completed order is not sent again.
+      expect((await lent.sent(id, 'AWB 1')).state).toBe('completed');
+      expect((await lent.completed(id)).state).toBe('completed');
       expect((await lent.refunded(id)).state).toBe('refunded');
       expect((await lent.refunded(id)).state).toBe('refunded');
       expect(heard.filter((e) => e.name === 'order.refunded')).toHaveLength(1);

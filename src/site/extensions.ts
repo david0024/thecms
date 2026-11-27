@@ -334,11 +334,14 @@ export function extensionHost(store: Store, options: { spawn?: Spawn; fetch?: (u
         const local = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
         if (url.protocol !== 'https:' && !(local && url.protocol === 'http:')) throw new Error('an extension calls out over https');
         if (!egressAllows(extension.manifest.egress, url.hostname)) throw new Error(`${extension.manifest.displayName} did not declare that it calls ${url.hostname}`);
-        const init = (args[1] ?? {}) as { method?: string; headers?: Record<string, string>; body?: string };
+        const init = (args[1] ?? {}) as { method?: string; headers?: Record<string, string>; body?: string; as?: unknown };
         // A redirect could lead anywhere: it is answered as it came, not followed.
         const response = await outbound(url.href, { method: init.method ?? 'GET', headers: init.headers ?? {}, body: init.body, redirect: 'manual', signal: AbortSignal.timeout(action.timeoutSeconds * 1000) });
-        const body = await response.text();
-        if (body.length > FETCH_MAX_BYTES) throw new Error('the answer is larger than 5 MB');
+        // A label's PDF is bytes, not text (ADR 0079 d6): read as such, it is given whole, in base64.
+        const bytes = init.as === 'base64' ? new Uint8Array(await response.arrayBuffer()) : null;
+        if (bytes && bytes.length > FETCH_MAX_BYTES) throw new Error('the answer is larger than 5 MB');
+        const body = bytes ? Buffer.from(bytes).toString('base64') : await response.text();
+        if (!bytes && body.length > FETCH_MAX_BYTES) throw new Error('the answer is larger than 5 MB');
         return { status: response.status, headers: Object.fromEntries(response.headers), body };
       }
       case 'published': {
@@ -361,14 +364,16 @@ export function extensionHost(store: Store, options: { spawn?: Spawn; fetch?: (u
       case 'orders.get':
       case 'orders.paid':
       case 'orders.refunded':
-      case 'orders.tracking': {
+      case 'orders.tracking':
+      case 'orders.sent':
+      case 'orders.completed': {
         // The shop's orders, declared (ADR 0065 d9): one by its id, never a list of them all.
         if (!action.uses.includes('orders')) throw new Error(`the action "${action.name}" did not declare that it uses "orders"`);
         const { shopGate } = await import('../parts/shop/gate.ts');
         const lent = shopGate(store).lent;
         const id = String(args[0] ?? '');
-        if (method === 'orders.tracking') return lent.tracking(id, String(args[1] ?? ''));
-        return lent[method.slice(7) as 'get' | 'paid' | 'refunded'](id);
+        if (method === 'orders.tracking' || method === 'orders.sent') return lent[method.slice(7) as 'tracking' | 'sent'](id, String(args[1] ?? ''));
+        return lent[method.slice(7) as 'get' | 'paid' | 'refunded' | 'completed'](id);
       }
       case 'mail.send': {
         // E-mail to one visitor, declared (ADR 0064 d7): never to an address the extension gives.

@@ -1,10 +1,10 @@
 <script lang="ts">
 /**
  * What the shop adds to an entry of a type that sells (ADR 0065 d2): its
- * price, sale price, code, VAT rate and variants, written and published with
+ * price, sale price, code, weight, VAT rate and variants, written and published with
  * the entry; and its stock, which is not content and is saved at once.
  */
-import { combinations, emptyProduct, moneyOf, type Product, type ProductOption, type ProductVariant, type ShopSettings, typedMoney, MAX_PRODUCT_OPTIONS } from '../core/index.ts';
+import { combinations, emptyProduct, moneyOf, type Product, type ProductOption, type ProductVariant, type ShopSettings, typedMoney, typedWeight, weightOf, MAX_PRODUCT_OPTIONS } from '../core/index.ts';
 import { api } from './api.ts';
 import { say, t } from './messages.ts';
 
@@ -14,8 +14,10 @@ const keys = $derived(combinations(p.options));
 const set = (patch: Partial<Product>): void => onchange({ ...p, ...patch });
 /** A sum as typed: kept as typed only once it reads as a sum; an empty one is no sum. */
 const money = (typed: string): number | null => moneyOf(typed.trim());
+/** A weight as typed, in kilograms; an empty one is none. */
+const kilos = (typed: string): number | null => weightOf(typed.trim());
 const setOption = (i: number, patch: Partial<ProductOption>): void => set({ options: p.options.map((o, j) => (j === i ? { ...o, ...patch } : o)) });
-const variant = (key: string): ProductVariant => p.variants[key] ?? { price: null, sale: null, sku: '' };
+const variant = (key: string): ProductVariant => p.variants[key] ?? { price: null, sale: null, sku: '', weight: null };
 const setVariant = (key: string, patch: Partial<ProductVariant>): void => set({ variants: { ...p.variants, [key]: { ...variant(key), ...patch } } });
 
 /** What is left, by combination ('' for the product itself), as the server keeps it. */
@@ -61,6 +63,8 @@ async function saveStock(): Promise<void> {
       </label>
     {/if}
   </div>
+  <label class="field"><span>{t.shop.weight}</span><input type="text" inputmode="decimal" value={typedWeight(p.weight)} onchange={(e) => set({ weight: kilos(e.currentTarget.value) })} data-product-weight /></label>
+  <small>{t.shop.weightHint}</small>
 
   <h4>{t.shop.options}</h4>
   <small>{t.shop.optionsHint}</small>
@@ -79,7 +83,7 @@ async function saveStock(): Promise<void> {
 
   {#if keys.length}
     <table class="variants">
-      <thead><tr><th>{t.shop.combination}</th><th>{t.shop.price}</th><th>{t.shop.sale}</th><th>{t.shop.sku}</th>{#if p.counted}<th>{t.shop.stock}</th>{/if}</tr></thead>
+      <thead><tr><th>{t.shop.combination}</th><th>{t.shop.price}</th><th>{t.shop.sale}</th><th>{t.shop.sku}</th><th>{t.shop.weight}</th>{#if p.counted}<th>{t.shop.stock}</th>{/if}</tr></thead>
       <tbody>
         {#each keys as key (key)}
           <tr data-product-variant={key}>
@@ -87,6 +91,7 @@ async function saveStock(): Promise<void> {
             <td><input type="text" inputmode="decimal" placeholder={t.shop.sameAsProduct} value={typedMoney(variant(key).price)} onchange={(e) => setVariant(key, { price: money(e.currentTarget.value) })} /></td>
             <td><input type="text" inputmode="decimal" value={typedMoney(variant(key).sale)} onchange={(e) => setVariant(key, { sale: money(e.currentTarget.value) })} /></td>
             <td><input type="text" maxlength="60" placeholder={p.sku} value={variant(key).sku} onchange={(e) => setVariant(key, { sku: e.currentTarget.value })} /></td>
+            <td><input type="text" inputmode="decimal" placeholder={typedWeight(p.weight)} value={typedWeight(variant(key).weight)} onchange={(e) => setVariant(key, { weight: kilos(e.currentTarget.value) })} /></td>
             {#if p.counted}<td><input type="number" min="0" value={stock[key] ?? ''} oninput={(e) => ((stock = { ...stock, [key]: e.currentTarget.value }), (saved = false))} data-product-stock={key} /></td>{/if}
           </tr>
         {/each}

@@ -10,6 +10,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { EXTENSION_FORMAT, EXTENSION_FORMAT_3, extensionAsks, parseExtension } from '../src/core/index.ts';
+import { shopGate } from '../src/parts/shop/gate.ts';
 import { deliveryWays, extensionHost } from '../src/site/extensions.ts';
 import { startRuntime } from '../src/site/runtime.ts';
 import { startEditor } from '../src/site/server.ts';
@@ -32,7 +33,7 @@ const CODE = `export const actions = {
     return 'ok';
   },
   quote: async (input) => [
-    { id: 'courier', name: 'Fast courier', price: input.address ? (input.address.town === 'Cluj-Napoca' ? 1500 : 2500) : 1500 },
+    { id: 'courier', name: 'Fast courier', price: (input.address ? (input.address.town === 'Cluj-Napoca' ? 1500 : 2500) : 1500) + input.weight },
     { id: 'box', name: 'Locker', price: 990, points: [{ id: 'CJ1', name: 'Locker Central', address: 'Piața Unirii 1, Cluj' }, { id: 'bad id!', name: 'x', address: 'y' }] },
     { id: 'BAD', name: 'Wrong', price: 1 },
   ],
@@ -42,6 +43,12 @@ const CODE = `export const actions = {
     await host.orders.tracking(input.order.id, 'AWB123');
     return { message: 'Invoice ' + input.order.number + ' made.' };
   },
+  label: async (input, host) => {
+    const pdf = await host.fetch('https://pay.example/label/' + input.id, { as: 'base64' });
+    await host.files.put({ order: input.id, name: 'label.pdf', type: 'application/pdf', data: pdf.body });
+    return host.orders.sent(input.id, 'AWB9');
+  },
+  done: async (input, host) => host.orders.completed(input.id),
   sneak: async (input, host) => host.files.put({ order: input.order.id, name: 'x.html', type: 'text/html', data: btoa('<script>') }),
 };`;
 
@@ -58,6 +65,8 @@ const manifest = {
     { name: 'quote', label: 'Quote' },
     { name: 'invoice', label: 'Make the invoice', on: 'order', uses: ['orders'], files: true },
     { name: 'sneak', label: 'Sneak', on: 'order', uses: ['orders'], files: true },
+    { name: 'label', label: 'Label', uses: ['orders'], files: true },
+    { name: 'done', label: 'Delivered', uses: ['orders'] },
   ],
   routes: [{ path: 'hook', action: 'hook', methods: ['POST'] }],
   answers: [
@@ -141,7 +150,7 @@ describe('the fourth format at checkout', () => {
       ['checkout.payment', ['card']],
       ['checkout.delivery', []],
     ]);
-    expect(extensionAsks(pkg!.manifest)).toMatchObject({ payments: ['Card'], delivery: true, files: ['Make the invoice', 'Sneak'], shop: true, points: [{ action: 'Make the invoice', on: 'order' }, { action: 'Sneak', on: 'order' }] });
+    expect(extensionAsks(pkg!.manifest)).toMatchObject({ payments: ['Card'], delivery: true, files: ['Make the invoice', 'Sneak', 'Label'], shop: true, points: [{ action: 'Make the invoice', on: 'order' }, { action: 'Sneak', on: 'order' }] });
     const third = parseExtension({ format: EXTENSION_FORMAT_3, manifest, code: CODE }).problems;
     expect(third).toContain('invoice: an action is on block or page, or on its own screen');
     expect(third).toContain('invoice: keeping files needs uhlaka.extension/4');
@@ -291,6 +300,35 @@ describe('the fourth format at checkout', () => {
       host.close();
       expect(await store.orderFiles(id)).toEqual([]);
     } finally {
+      stop();
+    }
+  });
+
+  test('a courier is told what the cart weighs, puts a label read as bytes on the order, and moves it to sent and completed (ADR 0079 d6)', async () => {
+    const { store, call, runtime, stop } = await shopWithPayer('courier');
+    const bytes = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x00, 0xff, 0x80, 0x0a]);
+    const host = extensionHost(store, { fetch: async () => new Response(bytes, { headers: { 'content-type': 'application/pdf' } }) });
+    try {
+      await store.saveEntry('products', { title: 'Mug', product: { price: '50', counted: true, vat: 21, weight: '0,4' } });
+      await store.publishEntry('products', 'mug');
+      const tab = browser((r) => runtime.fetch(r));
+      await tab.go('POST', '/_/cart', { product: 'products/mug', quantity: '2' });
+      await tab.go('POST', '/_/cart', { shipping: 'payer:courier' });
+      const page = await tab.read('GET', '/_/checkout');
+      // 2 × 400 g: the extension's price says the weight it was told.
+      expect(totalIn(page)).toBe(String(10000 + 1500 + 800));
+      await tab.go('POST', '/_/checkout', { ...buyer, shipping: 'payer:courier', payment: 'payer:card', total: totalIn(page) });
+      const [{ id }] = (await call('GET', '/api/shop/orders')).body.orders as [{ id: string }];
+      expect((await shopGate(store).lent.get(id))?.lines[0]).toMatchObject({ weight: 400, quantity: 2 });
+
+      // Waiting for payment, a courier that took the parcel still moves it on.
+      expect(await host.run('payer', 'label', { id })).toMatchObject({ state: 'sent', tracking: 'AWB9' });
+      const [file] = await store.orderFiles(id);
+      expect(file?.name).toBe('label.pdf');
+      expect((await store.extensionFile(file!.id))?.bytes).toEqual(bytes);
+      expect(await host.run('payer', 'done', { id })).toMatchObject({ state: 'completed' });
+    } finally {
+      host.close();
       stop();
     }
   });
