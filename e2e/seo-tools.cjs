@@ -115,7 +115,34 @@ const PORT = 4441;
     await page.locator('[data-search-console-connect]').click();
     await page.locator('[data-search-console] [role="alert"]', { hasText: 'service account' }).waitFor();
     assert(true, 'a key that is not one is said at once');
+
+    // Connected, it shows what Google counted: here answered for Google, as the browser asks the site.
+    const report = {
+      connected: true,
+      email: 'reader@project.iam.gserviceaccount.com',
+      property: 'https://example.com/',
+      report: { from: '2026-10-27', to: '2026-11-23', queries: [{ key: 'oak table', clicks: 12, impressions: 340, ctr: 0.0353, position: 4.3 }], pages: [{ key: 'https://example.com/contact/', clicks: 7, impressions: 90, ctr: 0.0778, position: 2.1 }] },
+    };
+    let asked = 0;
+    await page.route('**/api/search-console**', (route) => {
+      asked += 1;
+      return route.fulfill({ json: route.request().method() === 'DELETE' ? { connected: false } : report });
+    });
+    await page.reload();
+    await page.locator('[data-nav="stats"]').click();
+    await page.locator('[data-search-console-report]').waitFor();
+    const shown = await page.locator('[data-search-console]').innerText();
+    assert(shown.includes('oak table') && shown.includes('/contact/') && shown.includes('3.5%') && shown.includes('reader@project'), 'what people searched for and the pages they found are shown');
     if (shots) await page.screenshot({ path: join(shots, 'seo-tools-console.png') });
+    await page.locator('[data-search-console-refresh]').click();
+    await page.waitForFunction((n) => n > 1, asked);
+    await page.locator('[data-nav="seo"]').click();
+    await page.locator('[data-seo-row="/contact"] [data-seo-google]', { hasText: '7' }).waitFor();
+    assert(true, 'the table shows what Google counted for each page');
+    await page.locator('[data-nav="stats"]').click();
+    await page.locator('[data-search-console-disconnect]').click();
+    await page.locator('[data-search-console-key]').waitFor();
+    assert(true, 'and the owner disconnects it');
   } catch (error) {
     if (shots) await browser.contexts()[0]?.pages()[0]?.screenshot({ path: join(shots, 'failure.png') }).catch(() => {});
     throw error;
