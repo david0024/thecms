@@ -8,7 +8,7 @@ import { afterAll, describe, expect, test } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { combinations, moneyOf, moneyText, normalizeProduct, normalizeRates, normalizeShopSettings, normalizeTypes, paid, priceOf, rateFor, SHOP_OFF, typedMoney } from '../src/core/index.ts';
+import { combinations, moneyOf, moneyText, normalizeProduct, normalizeRates, normalizeShopSettings, normalizeTypes, paid, priceOf, rateFor, SHOP_OFF, typedMoney, typedWeight, weightFor, weightOf } from '../src/core/index.ts';
 import { exportedFiles } from '../src/site/export.ts';
 import { startRuntime } from '../src/site/runtime.ts';
 import { startEditor } from '../src/site/server.ts';
@@ -92,12 +92,34 @@ describe('money and products', () => {
     expect(paid(priceOf(p, 'S / Red'))).toBe(9000);
     // A product with no price yet, or of a type whose rate is gone, still reads.
     const empty = normalizeProduct('nothing');
-    expect(empty).toEqual({ price: null, sale: null, sku: '', vat: null, counted: false, options: [], variants: {} });
+    expect(empty).toEqual({ price: null, sale: null, sku: '', weight: null, vat: null, counted: false, options: [], variants: {} });
     expect(rateFor(empty, [19, 9])).toBe(19);
     expect(rateFor(p, [21, 11])).toBe(11);
     expect(rateFor(p, [21])).toBe(21);
     expect(rateFor(p, [])).toBe(0);
     expect(combinations([])).toEqual([]);
+  });
+
+  test('a weight is typed in kilograms and kept in grams; a combination may have its own (ADR 0079 d6)', () => {
+    expect(weightOf('0,5')).toBe(500);
+    expect(weightOf('1.25 kg')).toBe(1250);
+    expect(weightOf('2')).toBe(2000);
+    expect(weightOf(750)).toBe(750);
+    expect(weightOf('0')).toBeNull();
+    expect(weightOf('-1')).toBeNull();
+    expect(weightOf('1,2345')).toBeNull();
+    expect(weightOf(1.5)).toBeNull();
+    expect(weightOf(2_000_000)).toBeNull();
+    expect(weightOf(null)).toBeNull();
+    expect(typedWeight(500)).toBe('0.5');
+    expect(typedWeight(null)).toBe('');
+    const p = normalizeProduct({ price: '10', weight: '0,3', options: [{ name: 'Size', values: ['S', 'XL'] }], variants: { XL: { weight: '0,45' } } });
+    expect(p.weight).toBe(300);
+    expect(Object.keys(p.variants)).toEqual(['XL']);
+    expect(weightFor(p, 'XL')).toBe(450);
+    expect(weightFor(p, 'S')).toBe(300);
+    expect(weightFor(p)).toBe(300);
+    expect(weightFor(normalizeProduct({}))).toBe(0);
   });
 
   test('a product is sold in at most a hundred combinations', () => {

@@ -20,6 +20,8 @@ export interface ProductVariant {
   price: number | null;
   sale: number | null;
   sku: string;
+  /** In grams (ADR 0079 d6); null: the product's. */
+  weight: number | null;
 }
 
 export interface Product {
@@ -28,6 +30,8 @@ export interface Product {
   /** The price it is sold at for now; null for none. */
   sale: number | null;
   sku: string;
+  /** In grams, for a courier's price and AWB (ADR 0079 d6); null when not given. */
+  weight: number | null;
   /** The VAT rate, as a percentage (ADR 0065 d5); null: the site's first rate, whatever it is then. */
   vat: number | null;
   /** Its stock is counted (in the shop's table, not here); otherwise it is always there. */
@@ -61,6 +65,25 @@ export function moneyOf(value: unknown): number | null {
   if (!match) return null;
   return Number(match[1]) * 100 + Number(((match[2] ?? '') + '00').slice(0, 2));
 }
+
+/** The most a product weighs, in grams: 1 000 kg. */
+export const MAX_WEIGHT = 1_000_000;
+
+/**
+ * A weight as typed, in kilograms (`0,5`, `2`, `1.25`) or stored in grams
+ * (a whole number): `500`. Null for nothing, nought or what is not a weight.
+ */
+export function weightOf(value: unknown): number | null {
+  if (typeof value === 'number') return Number.isSafeInteger(value) && value > 0 && value <= MAX_WEIGHT ? value : null;
+  if (typeof value !== 'string') return null;
+  const match = /^(\d{1,4})(?:[.,](\d{1,3}))?$/.exec(value.replace(/[\s ]/g, '').replace(/kg$/i, ''));
+  if (!match) return null;
+  const grams = Number(match[1]) * 1000 + Number(((match[2] ?? '') + '000').slice(0, 3));
+  return grams > 0 && grams <= MAX_WEIGHT ? grams : null;
+}
+
+/** A weight in grams as typed in a form, in kilograms: `500` → `0.5`. */
+export const typedWeight = (grams: number | null): string => (grams === null ? '' : String(grams / 1000));
 
 /** A sum in the smallest unit as typed in a form: `4999` → `49.99`, `5000` → `50`. */
 export const typedMoney = (value: number | null): string => (value === null ? '' : value % 100 === 0 ? String(value / 100) : (value / 100).toFixed(2));
@@ -133,15 +156,16 @@ export function normalizeProduct(input: unknown): Product {
   const variants: Record<string, ProductVariant> = {};
   for (const [key, given] of Object.entries(isObject(raw.variants) ? raw.variants : {})) {
     if (!keys.has(key) || !isObject(given)) continue;
-    const own = { price: moneyOf(given.price), sale: moneyOf(given.sale), sku: str(given.sku, 60).trim() };
+    const own = { price: moneyOf(given.price), sale: moneyOf(given.sale), sku: str(given.sku, 60).trim(), weight: weightOf(given.weight) };
     const base = own.price ?? price;
     if (own.sale !== null && (base === null || own.sale >= base)) own.sale = null;
-    if (own.price !== null || own.sale !== null || own.sku) variants[key] = own;
+    if (own.price !== null || own.sale !== null || own.sku || own.weight !== null) variants[key] = own;
   }
   return {
     price,
     sale: sale !== null && price !== null && sale < price ? sale : null,
     sku: str(raw.sku, 60).trim(),
+    weight: weightOf(raw.weight),
     vat,
     counted: raw.counted === true,
     options,
@@ -167,6 +191,9 @@ export function priceOf(product: Product, variant = ''): { price: number | null;
   const sale = own.price !== null ? own.sale : (own.sale ?? product.sale);
   return { price, sale: sale !== null && price !== null && sale < price ? sale : null, sku: own.sku || product.sku };
 }
+
+/** What one combination weighs, in grams: its own weight, or the product's; 0 when neither is given. */
+export const weightFor = (product: Product, variant = ''): number => (variant ? product.variants[variant]?.weight : null) ?? product.weight ?? 0;
 
 /** What a visitor pays for one: the sale price when there is one. */
 export const paid = (p: { price: number | null; sale: number | null }): number | null => p.sale ?? p.price;

@@ -113,6 +113,8 @@ export function shopGate(store: Store): ShopGate {
       paid: (id) => lend((l) => l.paid(id)),
       refunded: (id) => lend((l) => l.refunded(id)),
       tracking: (id, tracking) => lend((l) => l.tracking(id, tracking)),
+      sent: (id, tracking) => lend((l) => l.sent(id, tracking)),
+      completed: (id) => lend((l) => l.completed(id)),
     },
     loaded: () => loading !== null,
   };

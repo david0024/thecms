@@ -17,6 +17,8 @@ export interface CartLine {
   /** Where its page is. */
   href: string;
   sku: string;
+  /** What one weighs, in grams (ADR 0079 d6); 0 when not given. */
+  weight: number;
   /** What one costs now, with VAT; null: it can no longer be bought. */
   price: number | null;
   rate: number;
@@ -39,7 +41,8 @@ export interface Totals {
 /** An order as it is kept (ADR 0065 d7): the lines as they were bought, the buyer, and how it is paid and delivered. */
 export interface OrderData {
   buyer: { name: string; email: string; phone: string; street: string; town: string; county: string; postcode: string; company: { name: string; taxCode: string; registration: string } | null };
-  lines: { product: string; variant: string; name: string; sku: string; price: number; quantity: number; rate: number }[];
+  /** `weight` is in grams, for one (ADR 0079 d6); orders placed before it have none. */
+  lines: { product: string; variant: string; name: string; sku: string; weight?: number; price: number; quantity: number; rate: number }[];
   shipping: { id: string; name: string; price: number; pickup: string };
   /**
    * `transfer`, `cod`, or a way to pay an extension offers (ADR 0076 d4.1):
@@ -74,8 +77,11 @@ export interface PayAsk {
 
 /** What a delivery extension is asked (ADR 0076 d4.1): the cart, and the address once it is typed. */
 export interface DeliveryAsk {
-  lines: { product: string; variant: string; name: string; sku: string; price: number; quantity: number }[];
+  /** `weight` in grams, for one (ADR 0079 d6). */
+  lines: { product: string; variant: string; name: string; sku: string; weight: number; price: number; quantity: number }[];
   subtotal: number;
+  /** What the lines weigh together, in grams; 0 when no product says. */
+  weight: number;
   currency: string;
   address: { street: string; town: string; county: string; postcode: string } | null;
 }

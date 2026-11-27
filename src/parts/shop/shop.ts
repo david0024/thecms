@@ -38,6 +38,7 @@ import {
   type Site,
   stockKey,
   vatIn,
+  weightFor,
 } from '../../core/index.ts';
 import { wordsFor } from '../../blocks/words.ts';
 import { openMailQueue } from '../../site/mail-queue.ts';
@@ -108,14 +109,27 @@ export interface LentOrder {
 
 /**
  * What the shop lends an extension that declared `orders` (ADR 0065 d9): an
- * order read by its id, marked paid or refunded, given a tracking number.
- * Marking an order paid twice, as a provider's webhook may, changes nothing.
+ * order read by its id, marked paid or refunded, given a tracking number,
+ * marked sent (with its tracking number) or completed by a courier (ADR 0079
+ * d6). Marking an order paid twice, as a provider's webhook may, changes
+ * nothing; nor does marking one sent or completed that is already so, or past.
  */
 export interface OrdersLent {
   get: (id: string) => Promise<LentOrder | null>;
   paid: (id: string) => Promise<LentOrder>;
   refunded: (id: string) => Promise<LentOrder>;
   tracking: (id: string, tracking: string) => Promise<LentOrder>;
+  sent: (id: string, tracking: string) => Promise<LentOrder>;
+  completed: (id: string) => Promise<LentOrder>;
+}
+
+/** Where an order is on its way: a courier moves it only forward (ADR 0079 d6). */
+const ONWARD: Partial<Record<OrderState, number>> = { waiting: 0, paid: 1, preparing: 1, sent: 2, completed: 3 };
+
+/** What a courier asks of an order: none when it is there already, or past, or cancelled or refunded. */
+export function onward(order: Pick<Order, 'state'>, to: 'sent' | 'completed'): boolean {
+  const now = ONWARD[order.state];
+  return now !== undefined && now < (ONWARD[to] as number);
 }
 
 const lentOrder = (o: Order): LentOrder => ({
@@ -228,7 +242,7 @@ export async function openShop(store: Store): Promise<Shop> {
   const resolve = async (site: Site, settings: ShopSettings, line: Kept): Promise<CartLine> => {
     const [typeId, ...rest] = line.product.split('/');
     const slug = rest.join('/');
-    const gone: CartLine = { ...line, name: line.product, href: '', sku: '', price: null, rate: 0, left: null };
+    const gone: CartLine = { ...line, name: line.product, href: '', sku: '', weight: 0, price: null, rate: 0, left: null };
     const type = site.types.find((t) => t.id === typeId && t.sells);
     const entry = type && slug ? await store.publishedEntry(type.id, slug).catch(() => null) : null;
     const product = entry?.product;
@@ -236,7 +250,7 @@ export async function openShop(store: Store): Promise<Shop> {
     const sold = product.options.length ? combinations(product.options).includes(line.variant) : line.variant === '';
     const price = sold ? paid(priceOf(product, line.variant)) : null;
     const counted = product.counted ? ((await one('SELECT quantity FROM shop_stock WHERE id = ?', [stockId(line.product, line.variant)]))?.quantity ?? 0) : null;
-    return { ...line, name: entry.title, href: entryPath(type, slug), sku: priceOf(product, line.variant).sku, price, rate: rateFor(product, settings.rates), left: counted === null ? null : Number(counted) };
+    return { ...line, name: entry.title, href: entryPath(type, slug), sku: priceOf(product, line.variant).sku, weight: weightFor(product, line.variant), price, rate: rateFor(product, settings.rates), left: counted === null ? null : Number(counted) };
   };
 
   // Carts.
@@ -437,7 +451,7 @@ export async function openShop(store: Store): Promise<Shop> {
       if (!deps.providers || !lines.length) return (offered = []);
       const subtotal = lines.reduce((sum, l) => sum + l.price * l.quantity, 0);
       offered = await deps.providers
-        .deliveries({ lines: lines.map((l) => ({ product: l.product, variant: l.variant, name: l.name, sku: l.sku, price: l.price, quantity: l.quantity })), subtotal, currency, address }, language)
+        .deliveries({ lines: lines.map((l) => ({ product: l.product, variant: l.variant, name: l.name, sku: l.sku, weight: l.weight, price: l.price, quantity: l.quantity })), subtotal, weight: lines.reduce((sum, l) => sum + l.weight * l.quantity, 0), currency, address }, language)
         .catch(() => []);
       return offered;
     };
@@ -658,7 +672,7 @@ export async function openShop(store: Store): Promise<Shop> {
             postcode: chosen.pickup ? '' : (typed.postcode ?? ''),
             company: company ? { name: typed.companyName ?? '', taxCode: typed.taxCode ?? '', registration: typed.registration ?? '' } : null,
           },
-          lines: buying.map((l) => ({ product: l.product, variant: l.variant, name: l.name, sku: l.sku, price: l.price, quantity: l.quantity, rate: settings.vat ? l.rate : 0 })),
+          lines: buying.map((l) => ({ product: l.product, variant: l.variant, name: l.name, sku: l.sku, weight: l.weight, price: l.price, quantity: l.quantity, rate: settings.vat ? l.rate : 0 })),
           shipping: { id: chosen.id, name: chosen.name, price: totals.shipping, pickup: chosen.pickup },
           payment: (paying as PaymentChoice).id,
           ...(byExtension((paying as PaymentChoice).id) ? { paymentName: (paying as PaymentChoice).label } : {}),
@@ -966,6 +980,14 @@ export async function openShop(store: Store): Promise<Shop> {
       paid: (id) => changeFor(id, (o) => (o.state === 'waiting' ? { state: 'paid' } : null)),
       refunded: (id) => changeFor(id, (o) => (o.state === 'refunded' ? null : { state: 'refunded' })),
       tracking: (id, tracking) => changeFor(id, () => ({ tracking: String(tracking) })),
+      sent: (id, tracking) =>
+        changeFor(id, (o) => {
+          const number = String(tracking ?? '').trim();
+          if (onward(o, 'sent')) return { state: 'sent', ...(number ? { tracking: number } : {}) };
+          // Already on its way: only a tracking number it lacks is added.
+          return number && !o.data.tracking && !isFinal(o.state) ? { tracking: number } : null;
+        }),
+      completed: (id) => changeFor(id, (o) => (onward(o, 'completed') ? { state: 'completed' } : null)),
     },
   };
 

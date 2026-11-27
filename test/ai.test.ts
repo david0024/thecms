@@ -109,7 +109,7 @@ function fakeHost(rows: Record<string, unknown>[], answer: (url: string, body: R
     files: { put: async () => '', remove: async () => {} },
     members: { get: async () => null, find: async () => null, levels: async () => [], give: async () => [], take: async () => [] },
     mail: { send: async () => {} },
-    orders: { get: async () => null, paid: async () => ({}), refunded: async () => ({}), tracking: async () => ({}) },
+    orders: { get: async () => null, paid: async () => ({}), refunded: async () => ({}), tracking: async () => ({}), sent: async () => ({}), completed: async () => ({}) },
     fetch: async (url, init) => {
       const body = JSON.parse(init?.body ?? '{}') as Record<string, unknown>;
       sent.push({ url, headers: init?.headers ?? {}, body });

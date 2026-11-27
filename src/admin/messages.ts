@@ -215,6 +215,8 @@ export const en = {
     sale: 'Sale price',
     saleHint: 'Empty for no sale. It must be below the price.',
     sku: 'Code (SKU)',
+    weight: 'Weight (kg)',
+    weightHint: 'Only needed when a courier prices delivery by weight, or for its AWB.',
     vatRate: 'VAT',
     vatFirst: 'The site\'s first rate ({rate}%)',
     counted: 'Count the stock',

@@ -64,8 +64,11 @@ export interface ExtensionHost {
     put(file: { order: string; name: string; type: string; data: string; buyer?: boolean }): Promise<string>;
     remove(id: string): Promise<void>;
   };
-  /** A call to one of the hosts the extension declared. */
-  fetch(url: string, init?: { method?: string; headers?: Record<string, string>; body?: string }): Promise<{ status: number; headers: Record<string, string>; body: string }>;
+  /**
+   * A call to one of the hosts the extension declared. With `as: "base64"`
+   * the answer's body is its bytes in base64 (ADR 0079 d6): a label's PDF.
+   */
+  fetch(url: string, init?: { method?: string; headers?: Record<string, string>; body?: string; as?: 'text' | 'base64' }): Promise<{ status: number; headers: Record<string, string>; body: string }>;
   /** The site's name and languages. */
   site(): Promise<{ name: string; language: string; languages: string[] }>;
   /**
@@ -101,14 +104,18 @@ export interface ExtensionHost {
   /**
    * The shop's orders, for an action that declared `orders` (ADR 0065 d9): one
    * read by its id (the id the `order.*` events carry), marked paid or
-   * refunded, or given a tracking number. Marking an order paid that is not
-   * waiting for payment, or refunded twice, changes nothing.
+   * refunded, or given a tracking number; by a courier, marked sent with its
+   * tracking number (the buyer is told) or completed (ADR 0079 d6). Marking an
+   * order paid that is not waiting for payment, refunded twice, or sent or
+   * completed when it is already so or past, changes nothing.
    */
   orders: {
     get(id: string): Promise<Record<string, unknown> | null>;
     paid(id: string): Promise<Record<string, unknown>>;
     refunded(id: string): Promise<Record<string, unknown>>;
     tracking(id: string, tracking: string): Promise<Record<string, unknown>>;
+    sent(id: string, tracking: string): Promise<Record<string, unknown>>;
+    completed(id: string): Promise<Record<string, unknown>>;
   };
 }
 
@@ -171,6 +178,8 @@ export function runner(send: (message: FromRunner) => void, receive: (handler: (
         paid: (id) => ask('orders.paid', id),
         refunded: (id) => ask('orders.refunded', id),
         tracking: (id, tracking) => ask('orders.tracking', id, tracking),
+        sent: (id, tracking) => ask('orders.sent', id, tracking),
+        completed: (id) => ask('orders.completed', id),
       },
     };
   };

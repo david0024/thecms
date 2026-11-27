@@ -199,6 +199,8 @@
   "admin.shop.sale": "Preț redus",
   "admin.shop.saleHint": "Gol pentru nicio reducere. Trebuie să fie sub preț.",
   "admin.shop.sku": "Cod (SKU)",
+  "admin.shop.weight": "Greutate (kg)",
+  "admin.shop.weightHint": "E nevoie de ea doar când curierul calculează livrarea după greutate sau pentru AWB.",
   "admin.shop.vatRate": "TVA",
   "admin.shop.vatFirst": "Prima cotă a site-ului ({rate}%)",
   "admin.shop.counted": "Numără stocul",

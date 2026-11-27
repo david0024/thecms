@@ -200,6 +200,7 @@ export function contentSchema(): Schema {
           price: ref('money'),
           sale: { ...ref('money'), description: 'The price it is sold at for now; below `price`.' },
           sku: { type: 'string', maxLength: 60 },
+          weight: { anyOf: [{ type: 'integer', minimum: 1, maximum: 1000000, description: 'In grams: 500 is half a kilogram.' }, { type: 'string', pattern: '^\\d{1,4}([.,]\\d{1,3})?$', description: 'In kilograms, as typed: "0.5" or "0,5".' }] },
           vat: { type: 'number', minimum: 0, maximum: 100, description: "One of the shop's rates; left out, the first." },
           counted: { type: 'boolean', description: "Its stock is counted: give it in `shop.stock`." },
           options: {
@@ -208,7 +209,7 @@ export function contentSchema(): Schema {
             description: `What it is sold in: \`{ "name": "Size", "values": ["S", "M"] }\`. At most ${MAX_COMBINATIONS} combinations.`,
             items: { type: 'object', required: ['name', 'values'], properties: { name: { type: 'string', maxLength: 40 }, values: { type: 'array', maxItems: MAX_VALUES, items: { type: 'string', maxLength: 40 } } } },
           },
-          variants: { type: 'object', description: 'By combination (`M / Red`): its own price, sale and sku, when they differ.' },
+          variants: { type: 'object', description: 'By combination (`M / Red`): its own price, sale, sku and weight, when they differ.' },
         },
       },
       shop: {
