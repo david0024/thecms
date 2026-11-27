@@ -122,3 +122,14 @@ hand in the Orders screen.
   (24H) to the door, and `LN` (Locker NextDay) with `lockerLastMile` to an
   easybox; the courier's price is `/api/awb/estimate-cost`. Not yet tried with
   a real account.
+- **Cargus (2026-11-27):** `extensions/cargus`. Ways answered: `cargus:home`
+  and `cargus:locker:<Ship & Go id>`. The settings: the API's subscription
+  key, user, password, and the pick-up point's id (the account's first when
+  empty). Services: Standard (34) to the door, Ship & Go (38) with
+  `DeliveryPudoPoint`; the courier's price is `/ShippingCalculation`'s
+  `GrandTotal`; the label is the PDF in base64 that `/AwbDocuments` answers.
+  Not yet tried with a real account.
+- **All three:** each was written from its courier's documentation and is
+  answered by the tests in the courier's place. Before a shop relies on one,
+  the first AWBs are made with a test account, and what the courier answers
+  differently is corrected in its `index.ts`.

@@ -323,14 +323,15 @@ export function courierActions<S extends CommonSettings>(courier: Courier<S>) {
 /** The response of a courier's API as JSON; what it refused is thrown with its words. */
 export async function call(host: Host, title: string, url: string, init: { method?: string; headers?: Record<string, string>; body?: string } = {}): Promise<unknown> {
   const answer = await host.fetch(url, init);
-  let parsed: unknown = null;
+  // Not JSON (a token some couriers answer bare): the words as they came.
+  let parsed: unknown = answer.body;
   try {
     parsed = JSON.parse(answer.body);
   } catch {
-    // Not JSON: said below by the status.
+    // Kept as text.
   }
   if (answer.status >= 400) {
-    const said = parsed && typeof parsed === 'object' ? ((parsed as { message?: unknown; error?: unknown; Message?: unknown }).message ?? (parsed as { error?: unknown }).error ?? (parsed as { Message?: unknown }).Message) : null;
+    const said = typeof parsed === 'string' ? parsed : parsed && typeof parsed === 'object' ? ((parsed as { message?: unknown; error?: unknown; Message?: unknown }).message ?? (parsed as { error?: unknown }).error ?? (parsed as { Message?: unknown }).Message) : null;
     throw new Error(`${title} answered ${answer.status}: ${line(typeof said === 'string' ? said : JSON.stringify(said ?? answer.body), 200)}`);
   }
   return parsed;
