@@ -1,16 +1,22 @@
 /**
  * The site's content in one open file (ADR 0057 d1): what WordPress gives
- * from Tools → Export, and what another thecms site takes back in from its
+ * from Tools → Export, and what another Uhlaka site takes back in from its
  * import screen. A backup (ADR 0051) puts a whole site back as it was; this
  * moves content between sites, so it holds the content and never the people
  * who sign in, their passwords, the messages visitors sent or the counts.
+ * The visitors are a part of their own, chosen apart from the whole site
+ * (ADR 0064 d6), and even then without anything to sign in with; so are the
+ * shop's orders, which name their buyers (ADR 0065).
  */
-import { type ContentType, type Form, type Layout, mediaNameOf, type Redirect, type Site, slugify, type Theme } from '../core/index.ts';
+import { type Audience, type ContentType, type Form, type Layout, type Level, mediaNameOf, normalizeShopSettings, type Redirect, type Site, slugify, type Theme } from '../core/index.ts';
 import type { Store } from './store.ts';
+import { normalizeVisitorSettings } from './visitor-gate.ts';
+import type { ContentVisitor } from './visitor-transfer.ts';
+import type { ContentOrder, ContentShop } from './shop-transfer.ts';
 import { VERSION } from './version.ts';
 
-export const CONTENT_FORMAT = 'thecms.content/1';
-export const CONTENT_SUFFIX = '.thecms.json';
+export const CONTENT_FORMAT = 'uhlaka.content/1';
+export const CONTENT_SUFFIX = '.uhlaka.json';
 
 /** A page, a section or an entry, as kept: what is being written and what visitors see. */
 export interface ContentDoc {
@@ -22,6 +28,8 @@ export interface ContentDoc {
   scheduled?: string;
   /** Behind a password on the site it came from (ADR 0043). The password is never in the file. */
   locked?: true;
+  /** Who sees it on the site it came from (ADR 0064 d4): visitors signed in, or members of some levels. Absent: everyone. */
+  audience?: Audience;
   /** Who wrote it: a key into `people`. */
   author?: string;
 }
@@ -48,6 +56,8 @@ export interface ContentComment {
 export interface ContentMedia {
   name: string;
   label: string;
+  /** The words a picture is offered with (ADR 0072 d3); left out when it has none. */
+  alt?: string;
   /** The file's bytes, in base64. */
   data: string;
   /** The picture's smaller copies (ADR 0005 d8), in base64. */
@@ -58,6 +68,8 @@ export interface TypePart {
   type: ContentType;
   /** The type's own page (ADR 0015); null: the default one. */
   template: { draft: unknown; published: unknown };
+  /** Who sees the whole type and each of its entries (ADR 0064 d4). Absent: everyone. */
+  audience?: Audience;
   entries: ContentDoc[];
 }
 
@@ -66,7 +78,7 @@ export interface ContentFile {
   /** The program that wrote it, and when. */
   program: string;
   madeAt: string;
-  /** What was asked for (`pages`, `sections`, `forms`, `design`, `type:<id>`). */
+  /** What was asked for (`pages`, `sections`, `forms`, `design`, `type:<id>`, `shop`, `visitors`, `orders`). */
   parts: string[];
   /** Which site it came from, to be shown before it is brought in. */
   from: { name: string; url: string; language: string; languages: string[] };
@@ -79,21 +91,43 @@ export interface ContentFile {
   pages?: ContentDoc[];
   sections?: ContentDoc[];
   forms?: Form[];
+  /** The member levels (ADR 0064 d3), when who sees something or a visitor names one. */
+  levels?: Level[];
+  /** With `visitors`: each visitor whose address was confirmed, without a password (ADR 0064 d6). */
+  visitors?: ContentVisitor[];
+  /** With `shop`: the shop's settings, what is left of each product and the coupons (ADR 0065). */
+  shop?: ContentShop;
+  /** With `orders`: every order, with its buyer, without the secret of their link (ADR 0065). */
+  orders?: ContentOrder[];
   types: TypePart[];
   people: ContentPerson[];
   comments: ContentComment[];
   media: ContentMedia[];
 }
 
-/** Every part a site has, in the order the admin offers them. */
-export async function contentParts(store: Store): Promise<{ id: string; name: string }[]> {
+/** The part of the people who sign in: never in the whole site, only when chosen by itself (ADR 0064 d6). */
+export const VISITORS_PART = 'visitors';
+/** The shop's part, with the whole site; and its orders, which name their buyers, only when chosen by themselves (ADR 0065). */
+export const SHOP_PART = 'shop';
+export const ORDERS_PART = 'orders';
+
+/**
+ * Every part a site has, in the order the admin offers them. The visitors
+ * are offered once the site has had accounts, `apart` from the whole site.
+ */
+export async function contentParts(store: Store): Promise<{ id: string; name: string; apart?: true }[]> {
   const site = await store.site();
+  const accounts = normalizeVisitorSettings(await store.visitorSettings()).on || (await store.hasTable('visitors'));
+  const shop = normalizeShopSettings(await store.shopSettings()).on || (await store.hasTable('shop_orders'));
   return [
     { id: 'pages', name: 'pages' },
     ...site.types.map((t) => ({ id: `type:${t.id}`, name: t.name })),
     { id: 'sections', name: 'sections' },
     { id: 'forms', name: 'forms' },
     { id: 'design', name: 'design' },
+    ...(shop ? [{ id: SHOP_PART, name: 'shop' }] : []),
+    ...(accounts ? [{ id: VISITORS_PART, name: 'visitors', apart: true as const }] : []),
+    ...(shop ? [{ id: ORDERS_PART, name: 'orders', apart: true as const }] : []),
   ];
 }
 
@@ -110,28 +144,37 @@ function mediaIn(value: unknown, into: Set<string>): Set<string> {
 const base64 = (bytes: Uint8Array): string => Buffer.from(bytes).toString('base64');
 
 /**
- * The content file for the parts asked for; every part when none is named.
- * The whole site carries its whole media library; a part carries only the
- * files it shows or links to.
+ * The content file for the parts asked for; every part of the content when
+ * none is named, and the visitors only when they are named. The whole site
+ * carries its whole media library; a part carries only the files it shows
+ * or links to.
  */
 export async function exportContent(store: Store, asked: string[] = [], now = new Date()): Promise<ContentFile> {
-  const all = (await contentParts(store)).map((p) => p.id);
-  const parts = asked.length ? all.filter((id) => asked.includes(id)) : all;
-  if (parts.length === 0) throw new Error(`choose what to export: ${all.join(', ')}`);
+  const offered = await contentParts(store);
+  const all = offered.filter((p) => !p.apart).map((p) => p.id);
+  const parts = asked.length ? offered.map((p) => p.id).filter((id) => asked.includes(id)) : all;
+  if (parts.length === 0) throw new Error(`choose what to export: ${offered.map((p) => p.id).join(', ')}`);
+  const whole = all.every((id) => parts.includes(id));
   const site = await store.site();
   const scheduled = new Map((await store.scheduled()).map((s) => [`${s.kind}/${s.slug}`, s.at]));
   const locked = new Set(await store.lockedPages());
-  const doc = (kind: string, row: { slug: string; draft: unknown; published: unknown }): ContentDoc => ({
-    slug: row.slug,
-    draft: row.draft,
-    published: row.published,
-    ...(scheduled.has(`${kind}/${row.slug}`) ? { scheduled: scheduled.get(`${kind}/${row.slug}`) as string } : {}),
-    ...(kind === 'page' && locked.has(row.slug) ? { locked: true as const } : {}),
-  });
+  const audiences = await store.audiences();
+  const audienceOf = (kind: string, slug: string): Audience | undefined => (kind === 'page' ? audiences.pages[slug] : kind === 'section' ? undefined : audiences.entries[`${kind}/${slug}`]);
+  const doc = (kind: string, row: { slug: string; draft: unknown; published: unknown }): ContentDoc => {
+    const audience = audienceOf(kind, row.slug);
+    return {
+      slug: row.slug,
+      draft: row.draft,
+      published: row.published,
+      ...(scheduled.has(`${kind}/${row.slug}`) ? { scheduled: scheduled.get(`${kind}/${row.slug}`) as string } : {}),
+      ...(kind === 'page' && locked.has(row.slug) ? { locked: true as const } : {}),
+      ...(audience ? { audience } : {}),
+    };
+  };
 
   const file: ContentFile = {
     format: CONTENT_FORMAT,
-    program: `thecms ${VERSION}`,
+    program: `uhlaka ${VERSION}`,
     madeAt: now.toISOString(),
     parts,
     from: { name: site.name, url: site.url, language: site.language, languages: site.languages },
@@ -166,7 +209,8 @@ export async function exportContent(store: Store, asked: string[] = [], now = ne
         }
         return one;
       });
-      file.types.push({ type, template: { draft: await store.template(type.id), published: await store.publishedTemplate(type.id) }, entries: own });
+      const audience = audiences.types[type.id];
+      file.types.push({ type, template: { draft: await store.template(type.id), published: await store.publishedTemplate(type.id) }, ...(audience ? { audience } : {}), entries: own });
     }
     file.people = [...people.values()];
     const ids = new Set(chosen.map((t) => t.id));
@@ -176,9 +220,18 @@ export async function exportContent(store: Store, asked: string[] = [], now = ne
       .map((c) => ({ type: c.type, entry: c.entry, name: c.name, body: c.body, at: c.at, ...(c.language ? { language: c.language } : {}) }));
   }
 
+  // The visitors, only when chosen by themselves; and the levels, when who sees something or a visitor names one.
+  if (parts.includes(VISITORS_PART)) file.visitors = await (await import('./visitor-transfer.ts')).exportVisitors(store);
+  // The shop: its settings, stock and coupons with the site; its orders only when chosen by themselves.
+  if (parts.includes(SHOP_PART)) file.shop = await (await import('./shop-transfer.ts')).exportShop(store);
+  if (parts.includes(ORDERS_PART)) file.orders = await (await import('./shop-transfer.ts')).exportOrders(store);
+  const { levels } = normalizeVisitorSettings(await store.visitorSettings());
+  const audienced = [...(file.pages ?? []), ...file.types.flatMap((t) => t.entries)].some((d) => d.audience) || file.types.some((t) => t.audience);
+  if (levels.length && (audienced || file.visitors)) file.levels = levels;
+
   // The files themselves, last: those the parts name, or the whole library with the whole site.
   const library = await store.media();
-  const wanted = parts.length === all.length ? new Set(library.map((m) => m.name)) : mediaIn(file, new Set());
+  const wanted = whole ? new Set(library.map((m) => m.name)) : mediaIn(file, new Set());
   const sizes = await store.mediaSizes();
   for (const item of library) {
     if (!wanted.has(item.name)) continue;
@@ -189,7 +242,7 @@ export async function exportContent(store: Store, asked: string[] = [], now = ne
       const copy = await store.mediaFile(name);
       if (copy) variants.push(base64(copy.bytes));
     }
-    file.media.push({ name: item.name, label: item.label, data: base64(kept.bytes), variants });
+    file.media.push({ name: item.name, label: item.label, ...(item.alt ? { alt: item.alt } : {}), data: base64(kept.bytes), variants });
   }
   return file;
 }

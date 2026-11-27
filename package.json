@@ -1,12 +1,12 @@
 {
-  "name": "thecms",
-  "version": "0.1.0-alpha.2",
+  "name": "uhlaka",
+  "version": "0.1.0-alpha.11",
   "private": true,
   "type": "module",
   "license": "AGPL-3.0-or-later",
   "packageManager": "bun@1.4.4",
   "bin": {
-    "thecms": "src/site/cli.ts"
+    "uhlaka": "src/site/cli.ts"
   },
   "scripts": {
     "test": "bun test",

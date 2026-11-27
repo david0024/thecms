@@ -7,6 +7,7 @@ import type { Component } from 'svelte';
 import type { Block, BlockType } from '../core/index.ts';
 import Audio from './Audio.svelte';
 import Buttons from './Buttons.svelte';
+import Code from './Code.svelte';
 import Contact from './Contact.svelte';
 import Embed from './Embed.svelte';
 import Archive from './Archive.svelte';
@@ -40,6 +41,7 @@ export const COMPONENTS: Record<BlockType, Component<{ block: Block }>> = {
   search: Search,
   buttons: Buttons,
   table: Table,
+  code: Code,
   embed: Embed,
   video: Video,
   audio: Audio,

@@ -1,5 +1,5 @@
 /**
- * The editing server: `thecms edit site.db`. It serves the admin, the canvas
+ * The editing server: `uhlaka edit site.db`. It serves the admin, the canvas
  * the admin edits on, and a small JSON API over the store.
  *
  * It is a tool for one person on their own computer, so it listens on
@@ -9,16 +9,17 @@
  * page that points its own domain at 127.0.0.1 does not), and must not come
  * from another origin.
  *
- * Given a public address (`thecms serve`), it is a server others reach, and
+ * Given a public address (`uhlaka serve`), it is a server others reach, and
  * it has accounts instead (ADR 0022, src/site/accounts.ts): a session cookie,
  * a header no other site's page can send, and calls only the owner may make.
  */
 import { mediaResponse } from './serve-media.ts';
 import { startClock } from './clock.ts';
 import { backups, type Remote, type S3Settings } from './backup.ts';
-import type { Mailer } from './mail.ts';
+import { isEmail, type Mailer, smtpMailer } from './mail.ts';
+import { defaultTemplate as defaultMail, extensionMailKey, mailAddress, normalizeMailSettings, normalizeTemplates, ORDER_TEMPLATES, siteMailer, type Template, TEMPLATES } from './site-mail.ts';
 import { startRuntime } from './runtime.ts';
-import { RANGES, type Range, statsShown } from './stats.ts';
+import { zoneFor } from './stats.ts';
 import { isValkeyAddress, openShared, type Shared, shownAddress, switchable, testValkey } from './shared.ts';
 
 /** The admin's own addresses; every other is the site's (ADR 0044). */
@@ -26,21 +27,24 @@ const ADMIN_PATHS = new Set(['/admin', '/preview']);
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { compile } from 'svelte/compiler';
-import { prefixOf, typeIn, SECTION_KIND, type Block, cleanSeo, type Form, fillSections, takeWords, withAreas, type Site, siteIn, type PlacedPage, translatedPage, cleanRow, EXTENSION_MAX_BYTES, type ExtensionManifest, extensionAsks, isObject, languageOf, normalizeBlocks, shownRow, str, type ContentType, DISPLAY_NAME, type LanguagePack, defaultTemplate, MEDIA_MAX_BYTES, MEDIA_PREFIX, UPLOAD_MAX_BYTES, EMBED_ORIGINS, normalizePage, type Page, type Post, contentTypes, listPath, type MenuList, normalizePost, parseTheme, pagesIn, POSTS_TYPE, reservedSlugs, slugProblem, type Theme, themeCss } from '../core/index.ts';
+import { prefixOf, typeIn, SECTION_KIND, type Block, cleanSeo, type Form, fillSections, takeWords, withAreas, type Site, siteIn, type PlacedPage, translatedPage, cleanRow, EXTENSION_MAX_BYTES, type ExtensionManifest, extensionAsks, extensionWord, isObject, languageOf, normalizeBlocks, shownRow, uniqueFields, str, type ContentType, DISPLAY_NAME, type LanguagePack, defaultTemplate, MEDIA_MAX_BYTES, MEDIA_PREFIX, UPLOAD_MAX_BYTES, EMBED_ORIGINS, normalizePage, type Page, type Post, contentTypes, listPath, type MenuList, normalizePost, parseTheme, pagesIn, POSTS_TYPE, reservedSlugs, slugProblem, type Theme, themeCss, FONTS_PATH, fontFacesCss } from '../core/index.ts';
 import type { EntryLists } from '../blocks/editing.ts';
 import { type FetchImage, fetchImage as fetchOverNetwork, IMPORT_MAX_BYTES, type ImportReport, runImport } from '../import/run.ts';
 import { type ImportPlan, planImport } from '../import/wxr.ts';
-import { contentPreview, isContentFile, readContentFile, runContentImport } from '../import/thecms.ts';
+import { contentPreview, isContentFile, readContentFile, runContentImport } from '../import/uhlaka.ts';
 import { contentFileName, contentParts, exportContent } from './transfer.ts';
 import { zipFiles } from './zip.ts';
 import { type MenuItem, menuOf, pageSetting, renderParts, renderPostParts } from './document.ts';
 import { languages, packFor } from './languages.ts';
-import { accounts, cleanPublicAddress, ownerOnly, shown } from './accounts.ts';
+import { accounts, cleanPublicAddress, cookieOf, ownerOnly, shown } from './accounts.ts';
+import { backTo, barHtml, barLinks, barWords, SIGN_OUT_PATH, withBar } from './admin-bar.ts';
+import { shopGate } from './shop-gate.ts';
 import { extensionHost, type Spawn } from './extensions.ts';
 import { BUILT_ADMIN } from './built-admin.ts';
-import { BASE_CSS, SHIPPED_THEMES } from './shipped.ts';
-import { type Store, type User, writesAll } from './store.ts';
-import { rowWrites } from '../view/index.ts';
+import { BASE_CSS, SHIPPED_STATS, SHIPPED_THEMES, shippedFonts } from './shipped.ts';
+import { STATS, type Store, type User, writesAll } from './store.ts';
+import { reportsOf, rowWrites } from '../view/index.ts';
+import { newer } from './update.ts';
 import { exportedFiles, fullCheck, publishedSite } from './export.ts';
 import { indexNow } from './indexnow.ts';
 import { seoRows, setSeo } from './seo-table.ts';
@@ -55,11 +59,11 @@ const ADMIN = new URL('../admin/', import.meta.url);
 /**
  * The admin and the canvas script, built for a browser from their sources.
  *
- * With THECMS_COVERAGE set to a folder, the build also writes its source maps
+ * With UHLAKA_COVERAGE set to a folder, the build also writes its source maps
  * there, and the Svelte compiler's own, so that what the browser ran in the
  * end-to-end tests can be counted against the source lines (tools/coverage.ts).
  */
-export async function buildAdmin(coverage = process.env.THECMS_COVERAGE): Promise<Map<string, string>> {
+export async function buildAdmin(coverage = process.env.UHLAKA_COVERAGE): Promise<Map<string, string>> {
   const svelteMaps: Record<string, unknown> = {};
   const result = await Bun.build({
     entrypoints: [new URL('main.ts', ADMIN).pathname, new URL('frame.ts', ADMIN).pathname],
@@ -163,12 +167,12 @@ export interface EditorServer {
 
 /** What an export file would bring, counted, for the owner to look at before anything is written. */
 export interface ImportPreview {
-  /** Where it came from: a WordPress export, or a thecms content export (ADR 0057). */
-  kind?: 'thecms';
+  /** Where it came from: a WordPress export, or a Uhlaka content export (ADR 0057). */
+  kind?: 'uhlaka';
   site: { name: string; url: string };
   pages: number;
   posts: number;
-  /** A thecms content export's sections and forms. */
+  /** A Uhlaka content export's sections and forms. */
   sections?: number;
   forms?: number;
   /** The kinds of entry asked for, as content types. */
@@ -221,7 +225,7 @@ export async function startEditor(
     to?: string;
     from?: string;
     log?: (line: string) => void;
-    /** Valkey's address from THECMS_VALKEY_URL (ADR 0044 d4): it comes before the one saved in Settings → Performance, which cannot change it. */
+    /** Valkey's address from UHLAKA_VALKEY_URL (ADR 0044 d4): it comes before the one saved in Settings → Performance, which cannot change it. */
     valkey?: string;
     /** Where what is kept without Valkey is also written to disk. */
     cacheDir?: string;
@@ -313,14 +317,17 @@ export async function startEditor(
     pages: await store.pages(),
     sections: await store.sections(),
     forms: (await store.forms()).map((f) => ({ name: f.name, title: f.title })),
-    posts: await store.posts(),
+    // A site may have no posts (ADR 0025): it then lists none, rather than failing to open the admin.
+    posts: contentTypes(await store.site()).some((t) => t.id === POSTS_TYPE) ? await store.posts() : [],
     entries: await allEntries(),
     templates: await templates(),
   });
   /** Blocks as the canvas draws them: each section block with its section's drafts, in the language (ADR 0033). */
   /** The site with what its layouts' sections hold (ADR 0035), from the drafts, in its language. */
   const framed = async (site?: Site): Promise<Site> => {
-    const drawn = { ...(site ?? (await store.site())), formDefs: await store.formsByName(), extensionBlocks: await store.extensionBlocks() };
+    // A product's Buy part is drawn on the canvas as the site will show it, while the shop is on (ADR 0065 d3).
+    const selling = await shop.shown();
+    const drawn = { ...(site ?? (await store.site())), formDefs: await store.formsByName(), extensionBlocks: await store.extensionBlocks(), ...(selling ? { shop: selling } : {}) };
     return withAreas(drawn, await store.draftSections(), drawn.language);
   };
   const filled = async (blocks: Block[], language?: string): Promise<Block[]> => fillSections(blocks, await store.draftSections(), language ?? (await store.site()).language);
@@ -347,6 +354,7 @@ export async function startEditor(
   const extensions = extensionHost(store, { spawn: options.spawnExtension, log: options.log });
   const backed = options.backups ? backups(store, { dir: options.backups, remote: options.backupRemote, claim: (key, ms) => shared.claim(key, ms), log: options.log }) : null;
   // The site itself, at the same address as its admin, as WordPress serves both (ADR 0044).
+  const shop = shopGate(store);
   const site = startRuntime(store, { listen: false, extensions, shared, mailer: options.mailer, to: options.to, from: options.from, log: options.log });
   /**
    * The extensions as the admin shows them. The owner sees each one, with what
@@ -356,19 +364,27 @@ export async function startEditor(
   const extensionsFor = async (me: User) =>
     (await store.extensions())
       .filter((e) => me.role === 'owner' || e.enabled)
-      .map(({ manifest, sha256, enabled, installedAt }) => ({
-        name: manifest.name,
-        displayName: manifest.displayName,
-        description: manifest.description,
-        version: manifest.version,
-        publisher: manifest.publisher,
-        enabled,
-        actions: manifest.actions.filter((a) => me.role === 'owner' || a.on).map(({ name, label, on, ask, each }) => ({ name, label, on, ask, each })),
-        messages: manifest.messages,
-        // The blocks it adds to the site's pages (ADR 0062 d6), which any author places.
-        blocks: manifest.blocks.map(({ name, label }) => ({ name, label })),
-        ...(me.role === 'owner' ? { sha256, installedAt, asks: extensionAsks(manifest), views: manifest.views, collections: manifest.collections } : {}),
-      }));
+      .map(({ manifest, sha256, enabled, installedAt }) => {
+        // An editor opens an extension's reports, and runs the actions they name (ADR 0062 d8).
+        const reports = me.role === 'editor' ? reportsOf(manifest) : [];
+        return {
+          name: manifest.name,
+          displayName: manifest.displayName,
+          description: manifest.description,
+          version: manifest.version,
+          publisher: manifest.publisher,
+          enabled,
+          actions: manifest.actions.filter((a) => me.role === 'owner' || a.on || reports.includes(a.name)).map(({ name, label, on, ask, each }) => ({ name, label, on, ask, each })),
+          messages: manifest.messages,
+          // The blocks it adds to the site's pages (ADR 0062 d6), which any author places.
+          blocks: manifest.blocks.map(({ name, label }) => ({ name, label })),
+          ...(me.role === 'owner'
+            ? { sha256, installedAt, asks: extensionAsks(manifest), views: manifest.views, collections: manifest.collections }
+            : reports.length
+              ? { views: manifest.views.filter((v) => v.type === 'report'), collections: [] }
+              : {}),
+        };
+      });
   const state = async (me: User): Promise<unknown> => ({
     extensions: await extensionsFor(me),
     site: await store.site(),
@@ -383,6 +399,8 @@ export async function startEditor(
     shared: shared.status(),
     // A backup that failed is said at the top of the admin until one succeeds (ADR 0051 d6).
     backupFailed: me.role === 'owner' && backed !== null && (await backed.last())?.ok === false,
+    // The shop's settings (ADR 0065 d10): whether to show "sells" on a type and a product's fields.
+    shop: await shop.settings(),
     ...(await lists()),
   });
 
@@ -401,7 +419,7 @@ export async function startEditor(
     // The body is the export file itself. It is read and understood before anything is written.
     const listed = (name: string): string[] => (url.searchParams.get(name) ?? '').split(',').map((value) => value.trim()).filter(Boolean);
     const text = await request.text();
-    // A thecms content export comes back in by the same screen (ADR 0057 d2).
+    // A Uhlaka content export comes back in by the same screen (ADR 0057 d2).
     if (isContentFile(text)) {
       const file = readContentFile(text);
       if (url.pathname === '/api/import/plan') return json(contentPreview(file));
@@ -560,7 +578,7 @@ export async function startEditor(
     if (part === 'run' && request.method === 'POST') {
       const action = installed.manifest.actions.find((a) => a.name === what);
       if (!action) return json({ error: `${installed.manifest.displayName} has no action "${what}"` }, 404);
-      if (!action.on && !owner) return refused;
+      if (!action.on && !owner && !(me.role === 'editor' && reportsOf(installed.manifest).includes(action.name))) return refused;
       const body = (await request.json()) as Record<string, unknown>;
       const site = await store.site();
       const given = isObject(body.ask) ? body.ask : {};
@@ -616,8 +634,83 @@ export async function startEditor(
     if (id && !before) return json({ error: 'no such row' }, 404);
     const { row, problems } = cleanRow(of, body.row, before);
     if (problems.length) return json({ error: problems.join('; ') }, 400);
-    await store.saveExtensionRow(name, of.name, row, id);
+    try {
+      await store.saveExtensionRow(name, of.name, row, id, new Date(), uniqueFields(of));
+    } catch (error) {
+      return json({ error: error instanceof Error ? error.message : String(error) }, 409);
+    }
     return rows();
+  }
+
+  /**
+   * What extensions do on an order (ADR 0076 d4.2, d4.4), for whoever handles
+   * the orders: the actions offered on it, run with the order as `orders`
+   * lends it, and the files they put on it, downloaded.
+   */
+  async function orderExtensions(request: Request, url: URL, me: User, body: Record<string, unknown>): Promise<Response> {
+    const settings = await shop.settings();
+    if (!settings.on) return json({ error: 'the shop is off' }, 404);
+    if (!(me.role === 'owner' || (me.role === 'editor' && settings.editors))) return json({ error: 'only the owner handles orders' }, 403);
+    const what = url.pathname.slice('/api/shop/orders/'.length);
+    const offered = async () => {
+      const out: { extension: string; action: string; label: string }[] = [];
+      for (const e of await store.extensions()) if (e.enabled) for (const a of e.manifest.actions) if (a.on === 'order') out.push({ extension: e.manifest.name, action: a.name, label: extensionWord(e.manifest, (url.searchParams.get('l') ?? '').slice(0, 20) || 'en', a.label) });
+      return out;
+    };
+    const files = async (id: string) => (await store.orderFiles(id)).map(({ id, name, type, size, buyer, extension, createdAt }) => ({ id, name, type, size, buyer, extension, createdAt }));
+    if (what === 'extensions' && request.method === 'GET') {
+      const order = await shop.lent.get(url.searchParams.get('id') ?? '');
+      if (!order) return json({ error: 'there is no such order' }, 404);
+      return json({ actions: await offered(), files: await files(order.id) });
+    }
+    if (what === 'run' && request.method === 'POST') {
+      const order = await shop.lent.get(String(body.id ?? ''));
+      if (!order) return json({ error: 'there is no such order' }, 404);
+      const chosen = (await offered()).find((o) => o.extension === body.extension && o.action === body.action);
+      if (!chosen) return json({ error: 'no extension that is on offers that on an order' }, 404);
+      let answer: unknown;
+      try {
+        answer = await extensions.run(chosen.extension, chosen.action, { order });
+      } catch (error) {
+        return json({ error: error instanceof Error ? error.message : String(error) }, 502);
+      }
+      // What it says back is words for the person, nothing more.
+      const said = typeof answer === 'string' ? answer : isObject(answer) && typeof answer.message === 'string' ? answer.message : '';
+      return json({ said: str(said, 500), order: await shop.lent.get(order.id), files: await files(order.id) });
+    }
+    if (what === 'file' && request.method === 'GET') {
+      const file = await store.extensionFile(url.searchParams.get('id') ?? '');
+      if (!file) return json({ error: 'there is no such file' }, 404);
+      return new Response(file.bytes as Uint8Array<ArrayBuffer>, {
+        headers: { 'content-type': file.type, 'content-disposition': `attachment; filename*=UTF-8''${encodeURIComponent(file.name)}`, 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' },
+      });
+    }
+    return json({ error: 'not found' }, 404);
+  }
+
+  /**
+   * The Statistics screen (ADR 0062 d8): the statistics are an extension the
+   * program carries. Read by the owner and the editors, it says whether it is
+   * installed and on, and offers the owner the packed one when it is not, or
+   * when the program carries a newer one. The owner's browser gives the time
+   * zone the days begin in (ADR 0053 d3).
+   */
+  async function statsApi(request: Request, url: URL, me: User): Promise<Response> {
+    const owner = me.role === 'owner';
+    if (url.pathname === '/api/stats/install') {
+      if (!owner) return json({ error: 'only the owner may do this' }, 403);
+      if (request.method !== 'POST') return json({ error: 'not found' }, 404);
+      await extensions.install(SHIPPED_STATS, url.searchParams.get('sha256') ?? '');
+    } else if (request.method !== 'GET') return json({ error: 'not found' }, 404);
+    const zone = await zoneFor(store, url.searchParams.get('zone') ?? '', owner);
+    const installed = await store.extension(STATS);
+    const offer = owner ? await extensions.offer(SHIPPED_STATS) : null;
+    return json({
+      zone,
+      installed: installed ? { version: installed.manifest.version, enabled: installed.enabled } : null,
+      offer: offer && (!installed || newer(offer.manifest.version, installed.manifest.version)) ? offer : null,
+      extensions: await extensionsFor(me),
+    });
   }
 
   /**
@@ -633,7 +726,8 @@ export async function startEditor(
     const method = request.method;
     const reading = method === 'GET';
     if (path === '/api/me' || path === '/api/state' || path === '/api/check' || path === '/api/render' || path === '/api/versions' || path === '/api/version' || path === '/api/forms') return reading || path === '/api/me' || path === '/api/render' ? null : no();
-    if (path === '/api/media' || path === '/api/media/variant') return method === 'DELETE' ? no('only the owner and the editors delete from the library') : null;
+    if (path === '/api/media/used') return null;
+    if (path === '/api/media' || path === '/api/media/variant') return method === 'DELETE' ? no('only the owner and the editors delete from the library') : method === 'PUT' ? no('only the owner and the editors rename files and describe pictures') : null;
     if (path.startsWith('/api/extensions')) return path.split('/')[4] === 'each' ? no() : null;
     if (path === '/api/locks') return reading ? null : no();
     const body = reading || method === 'DELETE' ? {} : ((await request.clone().json().catch(() => ({}))) as Record<string, unknown>);
@@ -666,7 +760,7 @@ export async function startEditor(
     }
   }
 
-  /** Search Console as the admin shows it: whom it reads as, and its report, kept an hour (ADR 0064 d3). */
+  /** Search Console as the admin shows it: whom it reads as, and its report, kept an hour (ADR 0077 d3). */
   async function searchConsoleState(fresh: boolean): Promise<{ connected: false } | { connected: true; email: string; property: string; report?: SearchReport; error?: string }> {
     const settings = await store.searchConsole();
     if (!settings) return { connected: false };
@@ -682,17 +776,98 @@ export async function startEditor(
     }
   }
 
+  /**
+   * Settings → E-mail (ADR 0064 d5): the site's mail server, the sender, a test
+   * message, and the words of each message to visitors. UHLAKA_SMTP and
+   * UHLAKA_MAIL_FROM are stronger, and the screen says so.
+   */
+  async function mailApi(request: Request, url: URL, me: User, body: Record<string, unknown>): Promise<Response> {
+    const environment = { mailer: options.mailer ?? null, from: options.from };
+    const described = async () => {
+      const { password, ...saved } = normalizeMailSettings(await store.mailSettings());
+      return { settings: { ...saved, passwordSet: password !== '' }, fromEnvironment: { server: Boolean(options.mailer), from: Boolean(options.from) }, ready: (await siteMailer(store, environment)) !== null };
+    };
+    const route = `${request.method} ${url.pathname}`;
+    if (route === 'GET /api/mail') return json(await described());
+    if (route === 'PUT /api/mail') {
+      const before = normalizeMailSettings(await store.mailSettings());
+      // A password not given again is the one saved.
+      const asked = normalizeMailSettings({ ...body, password: typeof body.password === 'string' && body.password ? body.password : before.password });
+      if (!asked.host) asked.password = '';
+      if (typeof body.from === 'string' && body.from.trim() && !isEmail(body.from.trim())) return json({ error: 'the sender is not an email address' }, 400);
+      try {
+        smtpMailer(mailAddress(asked) || undefined);
+      } catch (error) {
+        return json({ error: error instanceof Error ? error.message : String(error) }, 400);
+      }
+      await store.setMailSettings(asked);
+      return json(await described());
+    }
+    if (route === 'POST /api/mail/test') {
+      const to = String(body.to ?? me.email ?? '').trim();
+      if (!isEmail(to)) return json({ error: 'give the address the test is sent to' }, 400);
+      const sending = await siteMailer(store, environment);
+      if (!sending) return json({ error: 'no mail server and sender are set yet' }, 409);
+      const site = await store.site();
+      try {
+        await sending.mailer({ from: sending.from, to, subject: `A test message from ${site.name}`, text: `This message was sent from Settings → E-mail of ${site.name}. Mail to visitors will go the same way.` });
+        return json({ sent: true });
+      } catch (error) {
+        return json({ error: error instanceof Error ? error.message : String(error) }, 502);
+      }
+    }
+    if (url.pathname === '/api/mail/templates') {
+      const site = await store.site();
+      const all = [site.language, ...site.languages];
+      const saved = normalizeTemplates(await store.mailTemplates());
+      // The site's messages, then those the installed extensions declare (ADR 0064), each with the words it has by itself.
+      // The shop's messages are offered only while it is on (ADR 0065 d10).
+      const selling = (await shop.settings()).on;
+      const program = new Map<string, { label: string; words: (language: string) => Template }>(
+        TEMPLATES.filter((n) => selling || !ORDER_TEMPLATES.includes(n)).map((n) => [n, { label: '', words: (l: string) => defaultMail(n, l) }]),
+      );
+      for (const extension of await store.extensions()) {
+        const manifest = extension.manifest;
+        for (const mail of manifest.mails) {
+          program.set(extensionMailKey(manifest.name, mail.name), {
+            label: `${manifest.displayName}: ${extensionWord(manifest, site.language, mail.subject)}`,
+            words: (l) => ({ subject: extensionWord(manifest, l, mail.subject), text: extensionWord(manifest, l, mail.text) }),
+          });
+        }
+      }
+      if (request.method === 'PUT') {
+        const language = String(body.language ?? '');
+        const name = String(body.name ?? '');
+        const known = program.get(name);
+        if (!all.includes(language) || !known) return json({ error: 'no such message' }, 400);
+        const subject = String(body.subject ?? '').trim();
+        const text = String(body.text ?? '');
+        const own = { ...(saved[language] ?? {}) };
+        // Left empty, or the same as the program's (or the extension's), it is theirs again.
+        const theirs = known.words(language);
+        if (!subject || !text.trim() || (subject === theirs.subject && text === theirs.text)) delete own[name];
+        else own[name] = { subject, text };
+        await store.setMailTemplates(normalizeTemplates({ ...saved, [language]: own }));
+      } else if (request.method !== 'GET') return json({ error: 'not found' }, 404);
+      const names = [...program.keys()];
+      return json({
+        languages: all,
+        names,
+        labels: Object.fromEntries([...program].filter(([, p]) => p.label).map(([n, p]) => [n, p.label])),
+        defaults: Object.fromEntries(all.map((l) => [l, Object.fromEntries(names.map((n) => [n, (program.get(n) as { words: (l: string) => Template }).words(l)]))])),
+        saved: normalizeTemplates(await store.mailTemplates()),
+      });
+    }
+    return json({ error: 'not found' }, 404);
+  }
+
   async function api(request: Request, url: URL, me: User): Promise<Response> {
     const refused = await refusedTo(request, url, me);
     if (refused) return refused;
     if (url.pathname === '/api/extensions' || url.pathname.startsWith('/api/extensions/')) return extensionsApi(request, url, me);
     if (url.pathname.startsWith('/api/import')) return importApi(request, url);
     if (url.pathname.startsWith('/api/export/') && request.method === 'GET') return exportApi(url);
-    if (url.pathname === '/api/stats' && request.method === 'GET') {
-      // Read by the owner and the editors; the owner's browser gives the time zone the days begin in (ADR 0053 d3).
-      const range = (RANGES as readonly string[]).includes(url.searchParams.get('range') ?? '') ? (url.searchParams.get('range') as Range) : '30';
-      return json(await statsShown(store, range, { zone: url.searchParams.get('zone') ?? '', owner: me.role === 'owner' }));
-    }
+    if (url.pathname === '/api/stats' || url.pathname === '/api/stats/install') return statsApi(request, url, me);
     if (url.pathname === '/api/backups' || url.pathname.startsWith('/api/backups/')) return backed ? backed.api(request, url) : json({ error: 'backups are not kept here' }, 404);
     if (url.pathname === '/api/messages') {
       const email = url.searchParams.get('email') ?? '';
@@ -721,6 +896,10 @@ export async function startEditor(
       const item = await store.addVariant(url.searchParams.get('name') ?? '', new Uint8Array(await request.arrayBuffer()));
       return json({ item });
     }
+    if (url.pathname === '/api/media/used' && request.method === 'GET') {
+      // Where a file is shown or linked to, as its details say (ADR 0072 d4).
+      return json({ usedBy: await store.mediaUsedBy(url.searchParams.get('name') ?? '') });
+    }
     if (url.pathname === '/api/media') {
       if (request.method === 'GET') return json({ media: await store.media() });
       if (request.method === 'DELETE') {
@@ -735,10 +914,21 @@ export async function startEditor(
       }
     }
     const body = request.method === 'GET' || request.method === 'DELETE' ? {} : ((await request.json()) as Record<string, unknown>);
+    if (url.pathname === '/api/media' && request.method === 'PUT') {
+      // A file renamed, a picture described (ADR 0072 d2, d3).
+      const item = await store.setMediaTexts(url.searchParams.get('name') ?? '', { label: body.label, alt: body.alt });
+      return json({ item, media: await store.media() });
+    }
+    // Settings → Visitor accounts (ADR 0064): nothing of them is loaded until the owner turns them on.
+    if (url.pathname === '/api/visitors' || url.pathname.startsWith('/api/visitors/')) return site.visitors.admin(request, url, me, body);
+    if (url.pathname === '/api/mail' || url.pathname.startsWith('/api/mail/')) return mailApi(request, url, me, body);
+    // The shop (ADR 0065): nothing of it is loaded until the owner turns it on.
+    if (url.pathname.startsWith('/api/shop/orders/')) return orderExtensions(request, url, me, body);
+    if (url.pathname === '/api/shop' || url.pathname.startsWith('/api/shop/')) return shop.admin(request, url, me, body);
     if (url.pathname === '/api/me' && request.method === 'PUT') {
       // Their own name, the few words about them (ADR 0055 d3) and their picture (ADR 0056 d2).
       if (!people) return json({ error: 'accounts are for a served admin' }, 404);
-      await store.setProfile(me.id, body.name, body.bio, body.picture ?? '');
+      await store.setProfile(me.id, body.name, body.bio, body.picture ?? '', body.bar);
       await people.changed();
       return json(await state((await store.user(me.id)) as User));
     }
@@ -762,7 +952,7 @@ export async function startEditor(
         return json({ test: await testValkey(asked && !asked.includes('***') ? asked : fromEnvironment || saved) });
       }
       if (request.method === 'PUT') {
-        if (fromEnvironment) return json({ error: 'Valkey is set by THECMS_VALKEY_URL on the server; change it there' }, 409);
+        if (fromEnvironment) return json({ error: 'Valkey is set by UHLAKA_VALKEY_URL on the server; change it there' }, 409);
         const address = String(body.address ?? '').trim();
         if (address.includes('***') && shownAddress(saved) === address) return json(described());
         if (address && !isValkeyAddress(address)) return json({ error: 'an address starts with redis:// or valkey://' }, 400);
@@ -779,6 +969,20 @@ export async function startEditor(
       if (request.method === 'POST') return json({ locked: await store.lockPage(String(body.slug ?? ''), String(body.password ?? '')) });
       if (request.method === 'DELETE') return json({ locked: await store.lockPage(url.searchParams.get('slug') ?? '', null) });
       return json({ locked: await store.lockedPages() });
+    }
+    if (url.pathname === '/api/audiences') {
+      // Who sees a page, an entry or a whole type (ADR 0064 d4), with the levels to choose from. Nothing of it while the accounts are off (d8).
+      const settings = await site.visitors.settings();
+      // Asked by every page's panel: off is an answer, not an error.
+      if (!settings.on) return request.method === 'GET' ? json({ on: false }) : json({ error: 'visitor accounts are off' }, 404);
+      if (request.method === 'PUT') {
+        const kind = String(body.kind ?? '');
+        if (kind !== 'page' && kind !== 'entry' && kind !== 'type') return json({ error: 'say whether it is a page, an entry or a type' }, 400);
+        // A whole type is the site's settings, which are the owner's.
+        if (kind === 'type' && me.role !== 'owner') return json({ error: 'only the owner may do this' }, 403);
+        await store.setAudience(kind, String(body.key ?? ''), body.audience ?? null);
+      }
+      return json({ audiences: await store.audiences(), levels: settings.levels });
     }
     if (url.pathname === '/api/schedule') {
       // A page or an entry published at a set time (ADR 0039).
@@ -998,7 +1202,7 @@ export async function startEditor(
         return json({ redirects: await store.redirects() });
       case 'PUT /api/redirects':
         return json({ redirects: await store.setRedirects(body.redirects) });
-      // What people searched for on Google, and the pages they found (ADR 0064 d3).
+      // What people searched for on Google, and the pages they found (ADR 0077 d3).
       case 'GET /api/search-console':
         return json(await searchConsoleState(url.searchParams.get('fresh') === '1'));
       case 'PUT /api/search-console': {
@@ -1018,7 +1222,7 @@ export async function startEditor(
         await store.setSearchConsole(null);
         await shared.del(SEARCH_REPORT);
         return json(await searchConsoleState(false));
-      // Every page and entry with what it says to search engines, written in one table (ADR 0064 d2).
+      // Every page and entry with what it says to search engines, written in one table (ADR 0077 d2).
       case 'GET /api/seo':
         return json({ rows: await seoRows(store) });
       case 'PUT /api/seo':
@@ -1053,7 +1257,54 @@ export async function startEditor(
     }
   }
 
+  /**
+   * A page of the site, with the admin bar over it for a person signed in
+   * (ADR 0075). Only a request that carries a session is asked about: a
+   * visitor's page is the one the runtime made, untouched, with its headers.
+   * A page with the bar is that person's alone, so no cache keeps it.
+   */
+  async function barred(request: Request, url: URL, answered: Response): Promise<Response> {
+    if (!people || request.method !== 'GET' || !cookieOf(request)) return answered;
+    if (!(answered.headers.get('content-type') ?? '').startsWith('text/html') || ![200, 403, 404].includes(answered.status)) return answered;
+    const user = await people.user(request).catch(() => null);
+    // Someone who turned the bar off sees the site as a visitor does.
+    if (!user || user.bar === false) return answered;
+    const current = await store.site();
+    const language = current.adminLanguage || current.language;
+    const words = barWords(packFor(language));
+    const target = await site.editTarget(url.pathname);
+    const facts = {
+      target,
+      author: target && target.kind !== 'page' ? await store.entryAuthor(target.kind, target.main).catch(() => null) : null,
+      me: user.id,
+      posts: contentTypes(current).find((type) => type.id === POSTS_TYPE) ?? null,
+      changed: target ? await store.draftChanged(target.kind, target.main).catch(() => false) : false,
+    };
+    // What waits is the owner's and the editors' to see to.
+    // The orders are the owner's, and the editors' when the owner lets them (ADR 0065).
+    const shopNow = await site.shop.settings();
+    const orders = shopNow.on && (user.role === 'owner' || (user.role === 'editor' && shopNow.editors === true));
+    const waiting = writesAll(user.role) ? await store.waiting(orders).catch(() => ({ comments: 0, review: 0, orders: 0 })) : { comments: 0, review: 0, orders: 0 };
+    const person = { name: user.name || user.email, role: user.role };
+    const bar = barHtml(person, barLinks(person, facts, words, language), waiting, words, language, `${url.pathname}${url.search}`);
+    const headers = new Headers(answered.headers);
+    headers.delete('content-length');
+    headers.set('cache-control', 'private, no-store');
+    return new Response(withBar(await answered.text(), bar), { status: answered.status, headers });
+  }
+
+  /**
+   * The admin's own addresses are never for search engines: whatever they answer, a page to
+   * sign in or an error, carries noindex. The site's pages and its media are left as they are.
+   */
   async function handle(request: Request, ip = ''): Promise<Response> {
+    const response = await answer(request, ip);
+    const path = new URL(request.url).pathname;
+    if (ADMIN_PATHS.has(path) || path.startsWith('/admin/') || path.startsWith('/api/')) response.headers.set('x-robots-tag', 'noindex, nofollow');
+    return response;
+  }
+
+  async function answer(request: Request, ip: string): Promise<Response> {
     const url = new URL(request.url);
     // A page that points its own domain at 127.0.0.1 arrives with its own host name.
     const host = request.headers.get('host') ?? url.host;
@@ -1067,13 +1318,13 @@ export async function startEditor(
       try {
         if (people) {
           // A page of another site cannot send this header without asking first, and nothing here answers that question.
-          if (request.headers.get('x-thecms-request') !== '1') return json({ error: 'not a call from the admin' }, 403);
+          if (request.headers.get('x-uhlaka-request') !== '1') return json({ error: 'not a call from the admin' }, 403);
           const open = await people.open(request, url);
           if (open) return open;
           const user = await people.user(request);
           if (!user) return json({ error: 'sign in first', signIn: true }, 401);
           me = user;
-        } else if (!sameToken(request.headers.get('x-thecms-token'), token)) return json({ error: 'no token' }, 401);
+        } else if (!sameToken(request.headers.get('x-uhlaka-token'), token)) return json({ error: 'no token' }, 401);
         if (ownerOnly(request.method, url.pathname) && me.role !== 'owner') return json({ error: 'only the owner may do this' }, 403);
         if (url.pathname.startsWith('/api/users')) return people ? await people.people(request, url, me) : json({ error: 'accounts are for a served admin' }, 404);
         return await api(request, url, me);
@@ -1081,7 +1332,20 @@ export async function startEditor(
         return json({ error: error instanceof Error ? error.message : String(error) }, 400);
       }
     }
-    if (!ADMIN_PATHS.has(url.pathname) && !url.pathname.startsWith('/admin/') && !url.pathname.startsWith(MEDIA_PREFIX)) return site.fetch(request, ip);
+    if (url.pathname.startsWith(FONTS_PATH) && request.method === 'GET') {
+      // The faces Uhlaka carries (ADR 0068 d1), for the canvas as for the site, published or not.
+      const bytes = (await shippedFonts()).get(url.pathname.slice(FONTS_PATH.length));
+      return bytes ? new Response(bytes as Uint8Array<ArrayBuffer>, { headers: { 'content-type': 'font/woff2', 'cache-control': 'public, max-age=86400', 'x-content-type-options': 'nosniff' } }) : json({ error: 'not found' }, 404);
+    }
+    if (!ADMIN_PATHS.has(url.pathname) && !url.pathname.startsWith('/admin/') && !url.pathname.startsWith(MEDIA_PREFIX)) return barred(request, url, await site.fetch(request, ip));
+    if (url.pathname === SIGN_OUT_PATH && request.method === 'POST' && people) {
+      // The admin bar's form (ADR 0075): the session ends, and the person is left on the page, as a visitor.
+      // A form from another site is refused; the cookie is SameSite=Strict, so it would not come with one either.
+      const origin = request.headers.get('origin');
+      if (origin && origin !== publicAddress) return json({ error: 'wrong origin' }, 403);
+      const fields = new URLSearchParams((await request.text()).slice(0, 4096));
+      return new Response(null, { status: 303, headers: { location: backTo(fields.get('back')), 'set-cookie': await people.signOut(request), 'cache-control': 'no-store' } });
+    }
     if (request.method !== 'GET') return json({ error: 'not found' }, 404);
     if (url.pathname.startsWith(MEDIA_PREFIX)) {
       // An <img> cannot carry the token, so a stored file is read without it. Its name is the hash of its bytes.
@@ -1103,7 +1367,7 @@ export async function startEditor(
         return html(previewPage((await store.site()).language));
       case '/admin/site.css':
         // The canvas's: the theme as it is being built. The structure first, the theme after it: where both set the same thing, the theme wins.
-        return text(`${baseCss}${themeCss(await theme())}`, 'text/css');
+        return text(`${fontFacesCss()}${baseCss}${themeCss(await theme(), { preview: true })}`, 'text/css');
       default:
         return json({ error: 'not found' }, 404);
     }
@@ -1125,6 +1389,8 @@ export async function startEditor(
   const jobs = async (now: Date): Promise<void> => {
     if (backed) void backed.tick(now).catch((error: unknown) => (options.log ?? console.log)(`The backup could not be made: ${error instanceof Error ? error.message : String(error)}`));
     await extensions.jobs(now);
+    // What visitor accounts and the shop wait for: mail to send, accounts never confirmed, carts forgotten (ADR 0064, ADR 0065).
+    await site.chores(now);
   };
   const clock = startClock(store, { run: server !== null, jobs, claim: (key, ms) => shared.claim(key, ms) });
   // Search engines told of what is published, when the owner asks for it (ADR 0063 d2).

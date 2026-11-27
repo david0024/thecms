@@ -13,7 +13,7 @@ import { search, searchIndex } from '../src/site/search.ts';
 import { Store } from '../src/site/store.ts';
 import plain from '../themes/plain.json';
 
-const dir = await mkdtemp(join(tmpdir(), 'thecms-search-'));
+const dir = await mkdtemp(join(tmpdir(), 'uhlaka-search-'));
 afterAll(() => rm(dir, { recursive: true, force: true }));
 const theme = parseTheme(plain).theme as Theme;
 const main = (html: string): string => html.slice(html.indexOf('<main'), html.indexOf('</main>'));

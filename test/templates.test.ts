@@ -102,13 +102,13 @@ describe("a type's page in the store, the export and the editing API", () => {
     editor.fetch(
       new Request(`http://${HOST}${path}`, {
         method,
-        headers: { host: HOST, 'x-thecms-token': editor.token, ...(body ? { 'content-type': 'application/json' } : {}) },
+        headers: { host: HOST, 'x-uhlaka-token': editor.token, ...(body ? { 'content-type': 'application/json' } : {}) },
         body: body ? JSON.stringify(body) : undefined,
       }),
     );
 
   beforeEach(async () => {
-    dir = await mkdtemp(join(tmpdir(), 'thecms-tpl-'));
+    dir = await mkdtemp(join(tmpdir(), 'uhlaka-tpl-'));
     store = await Store.open(join(dir, 'site.db'));
     await store.setSite(site);
     await store.setTheme(plain);

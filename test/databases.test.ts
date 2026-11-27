@@ -2,8 +2,8 @@
  * The store on every database it supports (ADR 0013). SQLite always runs; a
  * server runs when its address is given:
  *
- *   THECMS_TEST_POSTGRES=postgres://user:pw@127.0.0.1:5432/thecms
- *   THECMS_TEST_MYSQL=mysql://user:pw@127.0.0.1:3306/thecms
+ *   UHLAKA_TEST_POSTGRES=postgres://user:pw@127.0.0.1:5432/uhlaka
+ *   UHLAKA_TEST_MYSQL=mysql://user:pw@127.0.0.1:3306/uhlaka
  *
  * CI gives both. Each run empties the tables it uses, so give it a database
  * of its own.
@@ -17,17 +17,19 @@ import { runImport } from '../src/import/run.ts';
 import { planImport } from '../src/import/wxr.ts';
 import { exportSite } from '../src/site/export.ts';
 import { databaseKind, shownAddress, Store, VERSIONS_KEPT } from '../src/site/store.ts';
+import type { Mail } from '../src/site/mail.ts';
+import { startRuntime } from '../src/site/runtime.ts';
 import plain from '../themes/plain.json';
 
 const PNG = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='), (c) => c.charCodeAt(0));
 const WXR = await Bun.file(new URL('./fixtures/wordpress.xml', import.meta.url)).text();
 
-const dir = await mkdtemp(join(tmpdir(), 'thecms-db-'));
+const dir = await mkdtemp(join(tmpdir(), 'uhlaka-db-'));
 afterAll(() => rm(dir, { recursive: true, force: true }));
 
 const databases: [string, string][] = [['SQLite', join(dir, 'site.db')]];
-if (process.env.THECMS_TEST_POSTGRES) databases.push(['Postgres', process.env.THECMS_TEST_POSTGRES]);
-if (process.env.THECMS_TEST_MYSQL) databases.push(['MySQL', process.env.THECMS_TEST_MYSQL]);
+if (process.env.UHLAKA_TEST_POSTGRES) databases.push(['Postgres', process.env.UHLAKA_TEST_POSTGRES]);
+if (process.env.UHLAKA_TEST_MYSQL) databases.push(['MySQL', process.env.UHLAKA_TEST_MYSQL]);
 
 test('an address says which database it is, and its password is never shown', () => {
   expect(databaseKind('site.db')).toBe('sqlite');
@@ -46,7 +48,7 @@ for (const [name, address] of databases) {
 
     beforeEach(async () => {
       const old = await Store.open(address);
-      for (const table of ['meta', 'pages', 'entries', 'media', 'messages', 'users', 'sessions', 'links', 'extensions', 'extension_rows', 'versions']) await old.rawForTests(`DROP TABLE IF EXISTS ${table}`);
+      for (const table of ['meta', 'pages', 'entries', 'media', 'messages', 'users', 'sessions', 'links', 'extensions', 'extension_rows', 'versions', 'visitors', 'visitor_sessions', 'visitor_links', 'mail_queue']) await old.rawForTests(`DROP TABLE IF EXISTS ${table}`);
       await old.close();
       store = await Store.open(address);
       await store.setTheme(plain);
@@ -192,6 +194,39 @@ for (const [name, address] of databases) {
       expect(files).toContain('blog/hello-world/index.html');
       expect(files).toContain('product/chair/index.html');
       expect(files.some((f) => f.startsWith('media/'))).toBe(true);
+    });
+
+    test('visitor accounts make their tables only once on, and keep them through a backup (ADR 0064)', async () => {
+      await store.setSite({ name: 'Atelier', url: 'https://example.com' });
+      await store.savePage({ slug: '', title: 'Home', blocks: [] });
+      await store.publish('');
+      const sent: Mail[] = [];
+      const runtime = startRuntime(store, { listen: false, log: () => {}, mailer: async (m) => void sent.push(m), from: 'site@example.com' });
+      const go = (method: string, path: string, fields?: Record<string, string>, cookie = '') =>
+        runtime.fetch(new Request(`https://example.com${path}`, { method, headers: { 'content-type': 'application/x-www-form-urlencoded', cookie }, body: fields ? new URLSearchParams(fields).toString() : undefined }));
+      try {
+        expect((await go('GET', '/_/account')).status).toBe(404);
+        expect(await store.hasTable('visitors')).toBe(false);
+        await store.setVisitorSettings({ on: true, signup: 'open' });
+        expect((await go('POST', '/_/account/signup', { name: 'Ana ăîș', email: 'ana@example.com', password: 'long enough pass', consent: 'yes' })).status).toBe(200);
+        expect(await store.hasTable('visitors')).toBe(true);
+        await runtime.chores(new Date());
+        const k = new URL(/https:\S+/.exec(sent[0]?.text ?? '')?.[0] ?? 'https://x').searchParams.get('k') ?? '';
+        const done = await go('POST', '/_/account/link', { k });
+        expect(done.status).toBe(303);
+        expect((await go('POST', '/_/account/link', { k })).status).toBe(410);
+        const cookie = (done.headers.get('set-cookie') ?? '').split(';')[0] as string;
+        expect(await (await go('GET', '/_/account', undefined, cookie)).text()).toContain('Hello, Ana ăîș');
+        const rows: { table: string; row: Record<string, unknown> }[] = [];
+        for await (const one of store.backupRows()) rows.push(one);
+        expect(rows.filter((r) => r.table === 'visitors')).toHaveLength(1);
+        await store.restoreRows((async function* () {
+          yield* rows;
+        })());
+        expect(await store.database().rows('SELECT id FROM visitors')).toHaveLength(1);
+      } finally {
+        runtime.stop();
+      }
     });
 
     test('closing, then opening again, finds everything where it was', async () => {

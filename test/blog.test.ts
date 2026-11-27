@@ -11,7 +11,8 @@ import { Store } from '../src/site/store.ts';
 import plain from '../themes/plain.json';
 
 /** The page without its data for search engines: the one script element, which no browser runs (ADR 0030). */
-const withoutData = (html: string): string => html.replace(/<script type="application\/ld\+json">[^<]*<\/script>/g, '');
+// Data for search engines, and the switch of colours (ADR 0074 d4): the scripts a page may carry.
+const withoutData = (html: string): string => html.replace(/<script type="application\/ld\+json">[^<]*<\/script>/g, '').replace('<script src="/assets/scheme.js"></script>', '');
 
 const theme = parseTheme(plain).theme as Theme;
 const site = normalizeSite({ ...DEMO_SITE, url: 'https://example.com' });
@@ -155,10 +156,10 @@ describe('posts in the store and the editor', () => {
   let editor: EditorServer;
   const HOST = '127.0.0.1:4321';
   const call = (path: string, method = 'GET', body?: unknown): Promise<Response> =>
-    editor.fetch(new Request(`http://${HOST}${path}`, { method, headers: { host: HOST, 'x-thecms-token': editor.token, ...(body ? { 'content-type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined }));
+    editor.fetch(new Request(`http://${HOST}${path}`, { method, headers: { host: HOST, 'x-uhlaka-token': editor.token, ...(body ? { 'content-type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined }));
 
   beforeEach(async () => {
-    dir = await mkdtemp(join(tmpdir(), 'thecms-'));
+    dir = await mkdtemp(join(tmpdir(), 'uhlaka-'));
     store = await Store.open(join(dir, 'site.db'));
     await store.setSite(DEMO_SITE);
     await store.setTheme(plain);

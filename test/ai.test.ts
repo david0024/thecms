@@ -102,7 +102,14 @@ function fakeHost(rows: Record<string, unknown>[], answer: (url: string, body: R
       update: async (_c, _id, row) => row,
       delete: async () => {},
       add: async (_c, id, numbers) => ({ ...numbers, id }),
+      take: async (_c, id, numbers) => ({ ...numbers, id }),
+      find: async () => ({ rows: [], count: 0 }),
     },
+    later: async () => '',
+    files: { put: async () => '', remove: async () => {} },
+    members: { get: async () => null, find: async () => null, levels: async () => [], give: async () => [], take: async () => [] },
+    mail: { send: async () => {} },
+    orders: { get: async () => null, paid: async () => ({}), refunded: async () => ({}), tracking: async () => ({}) },
     fetch: async (url, init) => {
       const body = JSON.parse(init?.body ?? '{}') as Record<string, unknown>;
       sent.push({ url, headers: init?.headers ?? {}, body });
@@ -303,7 +310,7 @@ describe('search engines and pictures (ADR 0059)', () => {
   });
 });
 
-const dir = await mkdtemp(join(tmpdir(), 'thecms-ai-'));
+const dir = await mkdtemp(join(tmpdir(), 'uhlaka-ai-'));
 afterAll(() => rm(dir, { recursive: true, force: true }));
 
 describe('the package', () => {

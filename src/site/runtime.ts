@@ -6,9 +6,9 @@
  */
 import { timingSafeEqual } from 'node:crypto';
 import type { Mailer } from './mail.ts';
-import { lockOf, publishedSite } from './export.ts';
+import { lockOf, membersOf, publishedSite } from './export.ts';
 import { mediaResponse } from './serve-media.ts';
-import { EMBED_ORIGINS, mediaKindOf } from '../core/index.ts';
+import { EMBED_ORIGINS, LANGUAGE_COOKIE, mediaKindOf, preferredLanguage, prefixOf } from '../core/index.ts';
 import { lockCookie, lockedPage } from './locks.ts';
 import { startClock } from './clock.ts';
 import { type Batches, batches, type DrawPage, type ExtensionHostApi, extensionHost, type Spawn } from './extensions.ts';
@@ -18,15 +18,28 @@ import { localShared, type Shared } from './shared.ts';
 import { resultsPage, search, SEARCH_MAX_QUERY, type SearchDoc, searchIndex } from './search.ts';
 import { visits as countVisits, type Visits } from './stats.ts';
 import type { Store } from './store.ts';
+import { siteMailer } from './site-mail.ts';
+import { type VisitorGate, visitorGate } from './visitor-gate.ts';
+import { type ShopGate, shopGate } from './shop-gate.ts';
+import { openMailQueue } from './mail-queue.ts';
+import type { EditTarget } from './admin-bar.ts';
 
 export interface Runtime {
   url: string;
   port: number;
   fetch: (request: Request, ip?: string) => Promise<Response>;
-  /** What the runtime counts for the statistics (ADR 0053). */
+  /** What the runtime reads of each visit for the extensions that listen (ADR 0053, ADR 0062 d8). */
   visits: Visits;
   /** What visits tell the extensions that listen, in batches (ADR 0062 d2). */
   told: Batches;
+  /** Visitor accounts (ADR 0064), loaded only once the owner turns them on. */
+  visitors: VisitorGate;
+  /** The shop (ADR 0065), loaded only once the owner turns it on. */
+  shop: ShopGate;
+  /** What a page's address is in the editor, for the admin bar (ADR 0075): null for any other address. */
+  editTarget: (pathname: string) => Promise<EditTarget | null>;
+  /** What the site's clock does for the parts the owner turned on: their chores, and the mail they wait to send. */
+  chores: (now: Date) => Promise<void>;
   stop: () => void;
 }
 
@@ -46,11 +59,13 @@ const TYPES: Record<string, string> = {
   xml: 'application/xml; charset=utf-8',
   txt: 'text/plain; charset=utf-8',
   json: 'application/json; charset=utf-8',
+  js: 'text/javascript; charset=utf-8',
   png: 'image/png',
   jpg: 'image/jpeg',
   gif: 'image/gif',
   webp: 'image/webp',
   avif: 'image/avif',
+  woff2: 'font/woff2',
 };
 
 /** What robots ask every site for, to find another software's weak spots: not worth showing the owner. */
@@ -69,10 +84,10 @@ const refererOf = (request: Request): string => {
 /** The export's files no visitor is served: the lists a host reads, and the export's own marker. */
 const HIDDEN = new Set(['_redirects', '.htaccess']);
 
-/** The published site needs no script and loads nothing from elsewhere: the page says so to the browser. */
+/** The published site loads nothing from elsewhere, and no script but its own switch of colours (ADR 0074 d4): the page says so to the browser. */
 const HEADERS = {
   // Sound and video from the site itself; players only from the services a page may show (ADR 0047).
-  'content-security-policy': `default-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:; media-src 'self'; frame-src ${EMBED_ORIGINS.join(' ')}; base-uri 'none'; frame-ancestors 'none'`,
+  'content-security-policy': `default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:; font-src 'self'; media-src 'self'; frame-src ${EMBED_ORIGINS.join(' ')}; base-uri 'none'; frame-ancestors 'none'`,
   'x-content-type-options': 'nosniff',
   'referrer-policy': 'strict-origin-when-cross-origin',
 };
@@ -100,13 +115,14 @@ export function startRuntime(
   // The extensions' routes, jobs and events (ADR 0041): their code runs apart, as in the editor.
   const own = !options.extensions;
   const extensions: ExtensionHostApi = options.extensions ?? extensionHost(store, { spawn: options.spawnExtension, log: options.log });
-  // The statistics (ADR 0053): a page counted as it is sent, apart from everything else here.
-  // What every visit tells the extensions that listen, gathered and told in batches (ADR 0062 d2).
+  // What every visit tells the extensions that listen, gathered and told in batches (ADR 0062 d2):
+  // the statistics are one of them (ADR 0062 d8).
   const told = batches(extensions, { log: options.log });
-  const visits = countVisits(store, shared, { now, log: options.log, told });
+  const visits = countVisits(store, shared, { now, told });
   const forms = startForms(store, { listen: false, mailer: options.mailer, to: options.to, from: options.from, log: options.log, shared, ask: extensions.ask });
   type Files = Map<string, string | Uint8Array>;
-  let built: { version: string; files: Promise<Files>; ready: boolean } | null = null;
+  type Built = { version: string; files: Promise<Files>; ready: boolean; targets: Map<string, EditTarget> };
+  let built: Built | null = null;
   let asked: { at: number; version: Promise<string> } | null = null;
 
   /** The site's version, asked at most once in FRESH_MS. */
@@ -119,7 +135,8 @@ export function startRuntime(
   const site = async (): Promise<Files> => {
     const at = await version();
     if (!built || built.version !== at) {
-      const made: { version: string; files: Promise<Files>; ready: boolean } = { version: at, files: publishedSite(store, true).catch(() => new Map() as Files), ready: false };
+      const targets = new Map<string, EditTarget>();
+      const made: Built = { version: at, files: publishedSite(store, true, targets).catch(() => new Map() as Files), ready: false, targets };
       built = made;
       void made.files.then(async (files) => {
         made.ready = true;
@@ -141,6 +158,19 @@ export function startRuntime(
     return (await site()).get(path);
   };
 
+  /** What an address is in the editor: read from this process's own build, which a person signed in waits for. */
+  const editTarget = async (pathname: string): Promise<EditTarget | null> => {
+    let path: string;
+    try {
+      path = decodeURIComponent(pathname);
+    } catch {
+      return null;
+    }
+    if (path.endsWith('/index.html')) path = path.slice(0, -'index.html'.length);
+    await site();
+    return built?.targets.get(path) ?? null;
+  };
+
   /** What an extension's route answers as a page (ADR 0062 d6), in the frame of the site's pages in that language. */
   const drawPage: DrawPage = async (page, language) => {
     const files = await site();
@@ -151,6 +181,51 @@ export function startRuntime(
     return routePage(frame, { ...(await store.site()), formDefs: await store.formsByName(), extensionBlocks: await store.extensionBlocks() }, theme, page);
   };
 
+  /** The site's frame in a language: its page for a missing address, in which a page of its own is drawn. */
+  const frameFor = async (language: string): Promise<string | null> => {
+    const files = await site();
+    const own = language ? files.get(`${language}/404.html`) : undefined;
+    const frame = typeof own === 'string' ? own : files.get('404.html');
+    return typeof frame === 'string' ? frame : null;
+  };
+  // Visitor accounts (ADR 0064): nothing of them is loaded while the owner has not turned them on (ADR 0060 d3).
+  const mail = { mailer: options.mailer ?? null, from: options.from };
+  const log = options.log ?? ((line: string) => console.log(line));
+  // The shop (ADR 0065): nothing of it is loaded while the owner has not turned it on either.
+  const shop = shopGate(store);
+  const visitors = visitorGate(
+    store,
+    { shared, log, mail, frame: frameFor, headers: HEADERS, orders: (id, language) => shop.ordersOf(id, language) },
+    async () => (await siteMailer(store, mail)) !== null,
+  );
+  /** What the shop is told of the buyer: who is signed in, while visitor accounts are on. */
+  const shopDeps = {
+    frame: frameFor,
+    headers: HEADERS,
+    accounts: async () => (await visitors.settings()).on,
+    // Ways to pay and to deliver the extensions offer (ADR 0076 d4.1).
+    providers: extensions.checkout,
+    visitor: async (request: Request) => {
+      const signed = await visitors.lent.visitor(request);
+      const member = signed ? await visitors.lent.get(signed.id) : null;
+      return member ? { id: member.id, name: member.name, email: member.email } : null;
+    },
+  };
+  /**
+   * What the clock does for the parts the owner turned on (ADR 0060 d3): the
+   * mail they wait to send goes from one queue, the site's (ADR 0065 d7).
+   */
+  const chores = async (at: Date): Promise<void> => {
+    const said = (part: string) => (error: unknown) => log(`${part}: ${error instanceof Error ? error.message : String(error)}`);
+    const accountsOn = (await visitors.settings()).on;
+    const shopOn = (await shop.settings()).on;
+    await visitors.chores(at).catch(said('Visitor accounts'));
+    await shop.chores(at).catch(said('The shop'));
+    if (accountsOn || shopOn) await (await openMailQueue(store, mail, log)).send(at).catch(said('Mail'));
+  };
+  // What they lend extensions (ADR 0064 d7): refused while they are off, and nothing loaded for it.
+  extensions.lend(visitors.lent);
+
   /** Passwords a visitor may try in a window: enough for a person, too few to guess one. */
   const tooMany = async (ip: string): Promise<boolean> => (await shared.hit(`unlock:${ip}`, 10 * 60_000)) > 10;
   const cookieOf = (request: Request, name: string): string => {
@@ -159,6 +234,22 @@ export function startRuntime(
       if (key === name) return value.join('=');
     }
     return '';
+  };
+
+  /**
+   * Where the home page sends a visitor (ADR 0071 d3): null when the site
+   * does not follow the browser; otherwise the home page of the language the
+   * browser prefers, when that is not the main one, it is published, and the
+   * visitor never chose a language with the switcher.
+   */
+  const homeFor = async (request: Request): Promise<{ location: string | null } | null> => {
+    const current = await store.site();
+    if (current.languages.length === 0 || current.visitorLanguage === false) return null;
+    if (cookieOf(request, LANGUAGE_COOKIE)) return { location: null };
+    const wanted = preferredLanguage(request.headers.get('accept-language') ?? '', [current.language, ...current.languages]);
+    if (wanted === null || wanted === current.language) return { location: null };
+    const home = `${prefixOf(wanted)}/index.html`;
+    return { location: (await site()).has(home) ? `/${prefixOf(wanted)}/` : null };
   };
 
   /** What search reads, made once for each build of the site. */
@@ -225,7 +316,24 @@ export function startRuntime(
       page.headers.set('cache-control', 'no-store');
       return page;
     }
-    if (url.pathname === '/_' || url.pathname === '/_/') return new Response('thecms runtime\n', { headers: { 'content-type': 'text/plain; charset=utf-8' } });
+    // The cart, checkout and an order (ADR 0065 d4): not found while the shop is off (d10).
+    if (url.pathname === '/_/cart' || url.pathname === '/_/checkout' || url.pathname.startsWith('/_/order/')) return shop.fetch(request, url, shopDeps);
+    // A visitor's account (ADR 0064 d1): not found while the accounts are off (d8).
+    if (url.pathname === '/_/account' || url.pathname.startsWith('/_/account/')) return visitors.fetch(request, url, ip);
+    if (url.pathname === '/_/language' && (request.method === 'GET' || request.method === 'HEAD')) {
+      // A language chosen with the switcher (ADR 0071 d2): kept, so the home page no longer follows the browser, then the page.
+      const chosen = url.searchParams.get('l') ?? '';
+      const to = url.searchParams.get('to') ?? '/';
+      const next = /^\/(?!\/)[^\s\\#]*$/.test(to) ? to : '/';
+      const current = await store.site();
+      if (![current.language, ...current.languages].includes(chosen)) return new Response(null, { status: 303, headers: { location: next } });
+      const secure = url.protocol === 'https:' || request.headers.get('x-forwarded-proto') === 'https';
+      return new Response(null, {
+        status: 303,
+        headers: { location: next, 'cache-control': 'no-store', 'set-cookie': `${LANGUAGE_COOKIE}=${encodeURIComponent(chosen)}; Path=/; SameSite=Lax; Max-Age=31536000${secure ? '; Secure' : ''}` },
+      });
+    }
+    if (url.pathname === '/_' || url.pathname === '/_/') return new Response('uhlaka runtime\n', { headers: { 'content-type': 'text/plain; charset=utf-8' } });
     if (url.pathname.startsWith('/_/')) return new Response('not found\n', { status: 404, headers: { 'content-type': 'text/plain; charset=utf-8' } });
     if (request.method !== 'GET' && request.method !== 'HEAD') return new Response('a page is read with GET\n', { status: 405, headers: { allow: 'GET, HEAD' } });
 
@@ -237,10 +345,19 @@ export function startRuntime(
     }
     if (path.split('/').some((part) => part === '..' || part.startsWith('.')) || HIDDEN.has(path)) path = '\0';
     const own = path === '' || path.endsWith('/') ? `${path}index.html` : path;
+    // The home page, asked for by a browser that prefers another of the site's languages and by a visitor who chose none (ADR 0071 d3).
+    const greeting = path === '' ? await homeFor(request) : null;
+    if (greeting?.location) return new Response(null, { status: 302, headers: { location: greeting.location, vary: 'Accept-Language, Cookie', 'cache-control': 'private, no-store' } });
     const body = await fileOf(own);
     // An old address the export keeps answers here with a real 301, as Cloudflare and Apache do with its lists (ADR 0036).
     const moved = typeof body === 'string' ? /<meta http-equiv="refresh" content="0; url=([^"]+)">/.exec(body)?.[1] : undefined;
     if (moved) return new Response(null, { status: 301, headers: { location: moved.replaceAll('&amp;', '&') } });
+    // For visitors signed in or for members (ADR 0064 d4): asked of the accounts, and kept by no cache in between.
+    const members = typeof body === 'string' ? membersOf(body) : null;
+    if (members !== null) {
+      const closed = await visitors.guard(request, url, members, /<html lang="([^"]+)"/.exec(body as string)?.[1] ?? '');
+      if (closed) return closed;
+    }
     const locked = typeof body === 'string' ? lockOf(body) : null;
     if (locked !== null) {
       // Behind a password: shown only to a visitor holding its key, and kept by no cache in between.
@@ -260,7 +377,11 @@ export function startRuntime(
     }
     if (body !== undefined) {
       if (own.endsWith('.html')) void visits.seen(request, ip, url.pathname).catch(() => {});
-      return file(own, body);
+      const shown = file(own, body);
+      if (members !== null) shown.headers.set('cache-control', 'private, no-store');
+      // The same address answers by the browser's language and the visitor's choice: a cache in between must keep them apart.
+      if (greeting) shown.headers.set('vary', 'Accept-Language, Cookie');
+      return shown;
     }
     const files = await site();
     // An address without its last slash leads to the page that has one.
@@ -285,7 +406,12 @@ export function startRuntime(
         });
   if (server?.port) port = server.port;
   // The site's clock runs here too: on a server with no editor running, what was set for later is still published (ADR 0039).
-  const clock = startClock(store, { run: server !== null, log: options.log, jobs: extensions.jobs, claim: (key, ms) => shared.claim(key, ms) });
+  // Mail to visitors waits in a queue this clock sends (ADR 0064 d5).
+  const jobs = async (at: Date): Promise<void> => {
+    await extensions.jobs(at);
+    await chores(at);
+  };
+  const clock = startClock(store, { run: server !== null, log: options.log, jobs, claim: (key, ms) => shared.claim(key, ms) });
   const unlisten = own ? extensions.listen() : () => {};
   return {
     url: `http://${options.hostname ?? '127.0.0.1'}:${port}`,
@@ -293,8 +419,12 @@ export function startRuntime(
     fetch: handle,
     visits,
     told,
+    visitors,
+    shop,
+    editTarget,
+    chores,
     stop: () => {
-      void visits.stop().then(() => told.stop());
+      void visits.flush().then(() => told.stop());
       clock.stop();
       unlisten();
       if (own) extensions.close();

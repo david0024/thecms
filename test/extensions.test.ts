@@ -18,7 +18,7 @@ import plain from '../themes/plain.json';
 import { packCommand, packExtension } from '../tools/pack-extension.ts';
 
 const PNG = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='), (c) => c.charCodeAt(0));
-const dir = await mkdtemp(join(tmpdir(), 'thecms-extensions-'));
+const dir = await mkdtemp(join(tmpdir(), 'uhlaka-extensions-'));
 afterAll(() => rm(dir, { recursive: true, force: true }));
 const { file } = await packExtension(join(import.meta.dir, 'fixtures', 'extension'), dir);
 const PACKAGE = await Bun.file(file).text();
@@ -50,6 +50,13 @@ describe('a package', () => {
       answers: [],
       uses: [],
       blocks: [],
+      mails: [],
+      accounts: false,
+      shop: false,
+      later: [],
+      files: [],
+      payments: [],
+      delivery: false,
     });
     expect(extensionWord(m, 'ro', 'Louder')).toBe('Mai tare');
     expect(extensionWord(m, 'ro-MD', 'Settings')).toBe('Setări');
@@ -64,7 +71,7 @@ describe('a package', () => {
       manifest: {
         name: 'Bad Name',
         version: 'one',
-        thecmsMinVersion: 'x',
+        uhlakaMinVersion: 'x',
         egress: ['https://x.example/path', 'ok.example'],
         collections: [
           { name: 'rows', fields: [{ key: 'id', kind: 'text' }, { key: 'a', kind: 'colour' }, { key: 'b', kind: 'choice' }, { key: 'B!', kind: 'text' }] },
@@ -74,23 +81,23 @@ describe('a package', () => {
           'nonsense',
         ],
         actions: [{ name: 'go', on: 'everywhere', reads: ['users'], writes: ['rows'] }, { name: 'go' }, { name: 'each', on: 'block', each: 'language' }, { name: 'no-dash' }, 7],
-        views: [{ spec: 'thecms.view/1', id: 'bad.users', title: 'Users', type: 'list', collection: 'users' }],
+        views: [{ spec: 'uhlaka.view/1', id: 'bad.users', title: 'Users', type: 'list', collection: 'users' }],
       },
     });
     expect(bad.pkg).toBeNull();
     expect(bad.problems).toEqual([
       'an extension\'s name is lower case letters, digits and - ("Bad Name")',
       'its version is like 1.0.0 ("one")',
-      'thecmsMinVersion is like 0.1.0 ("x")',
+      'uhlakaMinVersion is like 0.1.0 ("x")',
       '"https://x.example/path" is not a host name it may call',
       'rows.id: a field\'s key is used once, and never "id"',
-      'rows.a: a field is one of text, longtext, number, boolean, choice, secret, url',
+      'rows.a: a field is one of text, longtext, number, boolean, choice, secret, url, date, datetime',
       'rows.b: a choice needs its options',
       'rows: a field\'s key is lower case letters, digits and _ ("B!")',
       'the collection "rows" is declared twice',
       'empty: a collection has at least one field',
       'a collection\'s name is lower case letters, digits and _ ("Nope")',
-      'go: an action is on block or page, or on its own screen',
+      'go: an action is on block or page or order, or on its own screen',
       'go: it reads "users", which is not one of its collections',
       'the action "go" is declared twice',
       'each: an action runs for each language only on a page',
@@ -140,12 +147,12 @@ describe('an extension installed and run', () => {
     try {
       const offer = await host.offer(PACKAGE);
       expect(offer.replaces).toBeNull();
-      expect(describeOffer(offer)).toContain('Shout 1.0.0 by thecms tests\nSays everything louder');
+      expect(describeOffer(offer)).toContain('Shout 1.0.0 by uhlaka tests\nSays everything louder');
       expect(describeOffer(offer)).toContain('  hold secrets: Settings: Key\n  call api.shout.example, *.cdn.example\n  offer "Louder" on a block in the editor\n  offer "Louder title" on a page in the editor');
       await expect(host.install(PACKAGE, 'another')).rejects.toThrow('not the file that was accepted');
       expect(await store.extensions()).toEqual([]);
       await expect(host.offer('{')).rejects.toThrow('not an extension file');
-      await expect(host.offer(JSON.stringify(manifest({ thecmsMinVersion: '99.0.0' })))).rejects.toThrow('needs version 99.0.0 of this program');
+      await expect(host.offer(JSON.stringify(manifest({ uhlakaMinVersion: '99.0.0' })))).rejects.toThrow('needs version 99.0.0 of this program');
       await expect(host.offer(JSON.stringify(manifest({ name: 'X' })))).rejects.toThrow('lower case letters');
       await expect(host.offer('x'.repeat(6 * 1024 * 1024))).rejects.toThrow('at most 5 MB');
       await host.install(PACKAGE, offer.sha256);
@@ -219,7 +226,7 @@ describe('extensions in the editor', () => {
       const response = await editor.fetch(
         new Request(`http://127.0.0.1:4321${path}`, {
           method,
-          headers: { host: '127.0.0.1:4321', 'x-thecms-token': editor.token, 'content-type': 'application/json' },
+          headers: { host: '127.0.0.1:4321', 'x-uhlaka-token': editor.token, 'content-type': 'application/json' },
           body: body === undefined ? undefined : raw ? String(body) : JSON.stringify(body),
         }),
       );
@@ -360,12 +367,12 @@ describe('who may do what with extensions', () => {
     await store.saveExtensionRow('shout', 'settings', { name: 'Main', key: 'k', loud: true, style: 'caps' });
     const editor = await startEditor(store, { listen: false, public: 'https://cms.example.com' });
     const ion = await store.addUser({ email: 'ion@example.com', role: 'editor', password: 'a long password' });
-    const cookie = `thecms_session=${await store.startSession(ion.id)}`;
+    const cookie = `uhlaka_session=${await store.startSession(ion.id)}`;
     const call = async (method: string, path: string, body?: unknown) => {
       const response = await editor.fetch(
         new Request(`https://cms.example.com${path}`, {
           method,
-          headers: { host: 'cms.example.com', origin: 'https://cms.example.com', 'x-thecms-request': '1', cookie, 'content-type': 'application/json' },
+          headers: { host: 'cms.example.com', origin: 'https://cms.example.com', 'x-uhlaka-request': '1', cookie, 'content-type': 'application/json' },
           body: body === undefined ? undefined : typeof body === 'string' ? body : JSON.stringify(body),
         }),
       );
@@ -497,7 +504,7 @@ describe('the runner', () => {
     await Bun.write(join(empty, 'manifest.json'), JSON.stringify({ name: 'data-only', version: '1.0.0', collections: [{ name: 'notes', fields: [{ key: 'text', kind: 'text' }] }] }));
     const said: string[] = [];
     await packCommand([empty], (line) => void said.push(line));
-    expect(said[0]).toEndWith(join(empty, 'data-only-1.0.0.thecms-extension'));
+    expect(said[0]).toEndWith(join(empty, 'data-only-1.0.0.uhlaka-extension'));
     expect(JSON.parse(await Bun.file((await packExtension(empty)).file).text()).code).toBe('');
     await expect(packCommand([])).rejects.toThrow('usage');
     const broken = join(dir, 'broken');
@@ -507,11 +514,11 @@ describe('the runner', () => {
     await Bun.write(join(broken, 'index.ts'), 'export const actions = {};');
     await Bun.write(join(broken, 'manifest.json'), JSON.stringify({ name: 'Broken', version: '1.0.0' }));
     await expect(packExtension(broken)).rejects.toThrow('lower case letters');
-    // A screen that is not thecms.view/1, or names what is not there, is refused before it is packed.
-    const screen = { spec: 'thecms.view/1', id: 'data-only.notes', title: 'Notes', type: 'list', collection: 'notes' };
+    // A screen that is not uhlaka.view/1, or names what is not there, is refused before it is packed.
+    const screen = { spec: 'uhlaka.view/1', id: 'data-only.notes', title: 'Notes', type: 'list', collection: 'notes' };
     await Bun.write(join(empty, 'manifest.json'), JSON.stringify({ name: 'data-only', version: '1.0.0', collections: [{ name: 'notes', fields: [{ key: 'text', kind: 'text' }] }], views: [{ ...screen, fields: ['colour'] }] }));
     await expect(packExtension(empty)).rejects.toThrow('"notes" has no field "colour"');
     await Bun.write(join(empty, 'manifest.json'), JSON.stringify({ name: 'data-only', version: '1.0.0', collections: [{ name: 'notes', fields: [{ key: 'text', kind: 'text' }] }], views: [{ ...screen, css: 'red' }] }));
-    await expect(packExtension(empty)).rejects.toThrow('"css" is not part of thecms.view/1');
+    await expect(packExtension(empty)).rejects.toThrow('"css" is not part of uhlaka.view/1');
   });
 });

@@ -1,0 +1,2526 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "A Uhlaka content file (uhlaka.content/1)",
+  "description": "A site, or part of one, in one file: what `uhlaka import <site.db> <file>` and the import screen take. Made from src/core by tools/content-schema.ts; do not edit by hand. Every value is cleaned again by the program when it comes in: what this schema forbids is dropped there, not trusted.",
+  "type": "object",
+  "required": [
+    "format",
+    "from",
+    "types",
+    "people",
+    "comments",
+    "media"
+  ],
+  "properties": {
+    "format": {
+      "const": "uhlaka.content/1"
+    },
+    "program": {
+      "type": "string",
+      "description": "What wrote it: `uhlaka 0.1.0`, or the name of the tool or agent."
+    },
+    "madeAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "parts": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "`pages`, `sections`, `forms`, `design`, `type:<id>`, `shop`, `orders`. Shown on the import screen."
+    },
+    "from": {
+      "type": "object",
+      "required": [
+        "name",
+        "language"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "language": {
+          "type": "string",
+          "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$"
+        },
+        "languages": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$"
+          }
+        }
+      }
+    },
+    "settings": {
+      "$ref": "#/$defs/settings"
+    },
+    "theme": {
+      "type": "object",
+      "description": "Taken only into a site with no pages yet. A theme is a document: start from one in themes/.",
+      "properties": {
+        "draft": {
+          "anyOf": [
+            {
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "published": {
+          "anyOf": [
+            {
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "layouts": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "The site's layouts (ADR 0035). Leave it out for the ready ones."
+    },
+    "redirects": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "from",
+          "to"
+        ],
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "pages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "description": "A page.",
+        "required": [
+          "slug",
+          "draft"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "slug": {
+            "type": "string",
+            "description": "The address. '' is the home page (pages only)."
+          },
+          "draft": {
+            "$ref": "#/$defs/page"
+          },
+          "published": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/page"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What visitors see. Usually the same as `draft`; null or absent leaves it a draft."
+          },
+          "scheduled": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Published then, by the site."
+          },
+          "author": {
+            "type": "string",
+            "description": "A key into `people`."
+          }
+        }
+      }
+    },
+    "sections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "description": "Blocks written once and shown on many pages by a `section` block (ADR 0033).",
+        "required": [
+          "slug",
+          "draft"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "slug": {
+            "type": "string",
+            "description": "The address. '' is the home page (pages only)."
+          },
+          "draft": {
+            "$ref": "#/$defs/section"
+          },
+          "published": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/section"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What visitors see. Usually the same as `draft`; null or absent leaves it a draft."
+          },
+          "scheduled": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Published then, by the site."
+          },
+          "author": {
+            "type": "string",
+            "description": "A key into `people`."
+          }
+        }
+      }
+    },
+    "forms": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/form"
+      }
+    },
+    "types": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/typePart"
+      },
+      "description": "Each kind of entry with its entries. `posts` is in every site; give it here to bring posts."
+    },
+    "people": {
+      "type": "array",
+      "description": "Who wrote the entries, as the site shows them. Never an account or a password.",
+      "items": {
+        "type": "object",
+        "required": [
+          "key",
+          "email",
+          "name"
+        ],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "bio": {
+            "type": "string"
+          },
+          "picture": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "comments": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "Approved comments. Usually empty in a new site."
+    },
+    "shop": {
+      "$ref": "#/$defs/shop"
+    },
+    "orders": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      },
+      "description": "The shop's orders, as another Uhlaka site exported them (states: waiting, paid, preparing, sent, completed, cancelled, refunded). They name their buyers: never write them by hand."
+    },
+    "media": {
+      "type": "array",
+      "description": "Files carried in the file. A new site may leave it empty and use https addresses for pictures.",
+      "items": {
+        "type": "object",
+        "required": [
+          "label",
+          "data"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "alt": {
+            "type": "string",
+            "description": "For a picture: the words offered for people who cannot see it (ADR 0072)."
+          },
+          "data": {
+            "type": "string",
+            "contentEncoding": "base64"
+          },
+          "variants": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "contentEncoding": "base64"
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "image": {
+      "type": "object",
+      "required": [
+        "src",
+        "alt"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "src": {
+          "type": "string",
+          "pattern": "^(https?://|/)",
+          "description": "https://… or /media/…"
+        },
+        "alt": {
+          "type": "string",
+          "maxLength": 300,
+          "description": "What the picture shows, for someone who cannot see it."
+        }
+      }
+    },
+    "link": {
+      "type": "object",
+      "required": [
+        "label",
+        "href"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "href": {
+          "type": "string",
+          "description": "/a-page/, https://…, mailto:, tel:"
+        },
+        "nofollow": {
+          "const": true
+        }
+      }
+    },
+    "file": {
+      "type": "object",
+      "required": [
+        "src",
+        "label"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "src": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        }
+      }
+    },
+    "table": {
+      "type": "object",
+      "required": [
+        "header",
+        "rows"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "header": {
+          "type": "boolean",
+          "description": "The first row is the headings."
+        },
+        "rows": {
+          "type": "array",
+          "maxItems": 60,
+          "items": {
+            "type": "array",
+            "maxItems": 8,
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "span": {
+      "type": "object",
+      "required": [
+        "text"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "text": {
+          "type": "string",
+          "minLength": 1
+        },
+        "marks": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "bold",
+              "italic",
+              "code"
+            ]
+          }
+        },
+        "href": {
+          "type": "string"
+        },
+        "nofollow": {
+          "const": true
+        }
+      }
+    },
+    "richText": {
+      "type": "array",
+      "description": "Text as typed nodes, never HTML.",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "type",
+              "children"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "type": {
+                "const": "paragraph"
+              },
+              "children": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/span"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "type",
+              "level",
+              "children"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "type": {
+                "const": "heading"
+              },
+              "level": {
+                "enum": [
+                  2,
+                  3,
+                  4
+                ]
+              },
+              "children": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/span"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "type",
+              "children"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "type": {
+                "const": "quote"
+              },
+              "children": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/span"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "type",
+              "ordered",
+              "items"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "type": {
+                "const": "list"
+              },
+              "ordered": {
+                "type": "boolean"
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/span"
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "block": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/block-hero"
+        },
+        {
+          "$ref": "#/$defs/block-text"
+        },
+        {
+          "$ref": "#/$defs/block-image"
+        },
+        {
+          "$ref": "#/$defs/block-services"
+        },
+        {
+          "$ref": "#/$defs/block-contact"
+        },
+        {
+          "$ref": "#/$defs/block-form"
+        },
+        {
+          "$ref": "#/$defs/block-extension"
+        },
+        {
+          "$ref": "#/$defs/block-search"
+        },
+        {
+          "$ref": "#/$defs/block-buttons"
+        },
+        {
+          "$ref": "#/$defs/block-table"
+        },
+        {
+          "$ref": "#/$defs/block-code"
+        },
+        {
+          "$ref": "#/$defs/block-embed"
+        },
+        {
+          "$ref": "#/$defs/block-video"
+        },
+        {
+          "$ref": "#/$defs/block-audio"
+        },
+        {
+          "$ref": "#/$defs/block-files"
+        },
+        {
+          "$ref": "#/$defs/block-gallery"
+        },
+        {
+          "$ref": "#/$defs/block-faq"
+        },
+        {
+          "$ref": "#/$defs/block-testimonials"
+        },
+        {
+          "$ref": "#/$defs/block-pricing"
+        },
+        {
+          "$ref": "#/$defs/block-entries"
+        },
+        {
+          "$ref": "#/$defs/block-archive"
+        },
+        {
+          "$ref": "#/$defs/block-entry"
+        },
+        {
+          "$ref": "#/$defs/block-section"
+        },
+        {
+          "$ref": "#/$defs/block-group"
+        }
+      ]
+    },
+    "block-hero": {
+      "type": "object",
+      "required": [
+        "type",
+        "content"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Optional: made when absent."
+        },
+        "type": {
+          "const": "hero"
+        },
+        "content": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "eyebrow": {
+              "type": "string",
+              "maxLength": 120
+            },
+            "title": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "subtitle": {
+              "type": "string",
+              "maxLength": 600,
+              "description": "Line breaks are kept."
+            },
+            "image": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/image"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "action": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/link"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "secondaryAction": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/link"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        },
+        "variant": {
+          "type": "string",
+          "description": "One of the theme's variants for this type."
+        },
+        "style": {
+          "type": "object",
+          "description": "How the block departs from the theme (theme tokens only). Leave it out: the theme's look is the point."
+        }
+      }
+    },
+    "block-text": {
+      "type": "object",
+      "required": [
+        "type",
+        "content"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Optional: made when absent."
+        },
+        "type": {
+          "const": "text"
+        },
+        "content": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "body": {
+              "$ref": "#/$defs/richText"
+            }
+          }
+        },
+        "variant": {
+          "type": "string",
+          "description": "One of the theme's variants for this type."
+        },
+        "style": {
+          "type": "object",
+          "description": "How the block departs from the theme (theme tokens only). Leave it out: the theme's look is the point."
+        }
+      }
+    },
+    "block-image": {
+      "type": "object",
+      "required": [
+        "type",
+        "content"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Optional: made when absent."
+        },
+        "type": {
+          "const": "image"
+        },
+        "content": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "image": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/image"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "caption": {
+              "type": "string",
+              "maxLength": 300
+            }
+          }
+        },
+        "variant": {
+          "type": "string",
+          "description": "One of the theme's variants for this type."
+        },
+        "style": {
+          "type": "object",
+          "description": "How the block departs from the theme (theme tokens only). Leave it out: the theme's look is the point."
+        }
+      }
+    },
+    "block-services": {
+      "type": "object",
+      "required": [
+        "type",
+        "content"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Optional: made when absent."
+        },
+        "type": {
+          "const": "services"
+        },
+        "content": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "title": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "intro": {
+              "type": "string",
+              "maxLength": 600,
+              "description": "Line breaks are kept."
+            },
+            "items": {
+              "type": "array",
+              "maxItems": 24,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "maxLength": 120
+                  },
+                  "text": {
+                    "type": "string",
+                    "maxLength": 600,
+                    "description": "Line breaks are kept."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "variant": {
+          "type": "string",
+          "description": "One of the theme's variants for this type."
+        },
+        "style": {
+          "type": "object",
+          "description": "How the block departs from the theme (theme tokens only). Leave it out: the theme's look is the point."
+        }
+      }
+    },
+    "block-contact": {
+      "type": "object",
+      "required": [
+        "type",
+        "content"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Optional: made when absent."
+        },
+        "type": {
+          "const": "contact"
+        },
+        "content": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "title": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "text": {
+              "type": "string",
+              "maxLength": 600,
+              "description": "Line breaks are kept."
+            },
+            "email": {
+              "type": "string",
+              "maxLength": 254
+            },
+            "phone": {
+              "type": "string",
+              "maxLength": 40
+            },
+            "address": {
+              "type": "string",
+              "maxLength": 300,
+              "description": "Line breaks are kept."
+            }
+          }
+        },
+        "variant": {
+          "type": "string",
+          "description": "One of the theme's variants for this type."
+        },
+        "style": {
+          "type": "object",
+          "description": "How the block departs from the theme (theme tokens only). Leave it out: the theme's look is the point."
+        }
+      }
+    },
+    "block-form": {
+      "type": "object",
+      "required": [
+        "type",
+        "content"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Optional: made when absent."
+        },
+        "type": {
+          "const": "form"
+        },
+        "content": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "form": {
+              "type": "string",
+              "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+              "maxLength": 60,
+              "description": "The name of a form in `forms`; `contact` is made for every site."
+            },
+            "title": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "intro": {
+              "type": "string",
+              "maxLength": 600,
+              "description": "Line breaks are kept."
+            }
+          }
+        },
+        "variant": {
+          "type": "string",
+          "description": "One of the theme's variants for this type."
+        },
+        "style": {
+          "type": "object",
+          "description": "How the block departs from the theme (theme tokens only). Leave it out: the theme's look is the point."
+        }
+      }
+    },
+    "block-extension": {
+      "type": "object",
+      "required": [
+        "type",
+        "content"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Optional: made when absent."
+        },
+        "type": {
+          "const": "extension"
+        },
+        "content": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "block": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]{1,39}/[a-z][a-z0-9-]{1,39}$",
+              "description": "`<extension>/<block>`, from an extension installed on the site."
+            },
+            "title": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "intro": {
+              "type": "string",
+              "maxLength": 600,
+              "description": "Line breaks are kept."
+            }
+          }
+        },
+        "variant": {
+          "type": "string",
+          "description": "One of the theme's variants for this type."
+        },
+        "style": {
+          "type": "object",
+          "description": "How the block departs from the theme (theme tokens only). Leave it out: the theme's look is the point."
+        }
+      }
+    },
+    "block-search": {
+      "type": "object",
+      "required": [
+        "type",
+        "content"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Optional: made when absent."
+        },
+        "type": {
+          "const": "search"
+        },
+        "content": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "title": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "placeholder": {
+              "type": "string",
+              "maxLength": 120
+            },
+            "button": {
+              "type": "string",
+              "maxLength": 60
+            }
+          }
+        },
+        "variant": {
+          "type": "string",
+          "description": "One of the theme's variants for this type."
+        },
+        "style": {
+          "type": "object",
+          "description": "How the block departs from the theme (theme tokens only). Leave it out: the theme's look is the point."
+        }
+      }
+    },
+    "block-buttons": {
+      "type": "object",
+      "required": [
+        "type",
+        "content"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Optional: made when absent."
+        },
+        "type": {
+          "const": "buttons"
+        },
+        "content": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "items": {
+              "type": "array",
+              "maxItems": 6,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "action": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/$defs/link"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "variant": {
+          "type": "string",
+          "description": "One of the theme's variants for this type."
+        },
+        "style": {
+          "type": "object",
+          "description": "How the block departs from the theme (theme tokens only). Leave it out: the theme's look is the point."
+        }
+      }
+    },
+    "block-table": {
+      "type": "object",
+      "required": [
+        "type",
+        "content"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Optional: made when absent."
+        },
+        "type": {
+          "const": "table"
+        },
+        "content": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "title": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "table": {
+              "$ref": "#/$defs/table"
+            },
+            "caption": {
+              "type": "string",
+              "maxLength": 300
+            }
+          }
+        },
+        "variant": {
+          "type": "string",
+          "description": "One of the theme's variants for this type."
+        },
+        "style": {
+          "type": "object",
+          "description": "How the block departs from the theme (theme tokens only). Leave it out: the theme's look is the point."
+        }
+      }
+    },
+    "block-code": {
+      "type": "object",
+      "required": [
+        "type",
+        "content"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Optional: made when absent."
+        },
+        "type": {
+          "const": "code"
+        },
+        "content": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "title": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "code": {
+              "type": "string",
+              "maxLength": 20000,
+              "description": "Kept line by line, in a fixed-width font; never translated."
+            },
+            "language": {
+              "type": "string",
+              "maxLength": 40
+            },
+            "caption": {
+              "type": "string",
+              "maxLength": 300
+            }
+          }
+        },
+        "variant": {
+          "type": "string",
+          "description": "One of the theme's variants for this type."
+        },
+        "style": {
+          "type": "object",
+          "description": "How the block departs from the theme (theme tokens only). Leave it out: the theme's look is the point."
+        }
+      }
+    },
+    "block-embed": {
+      "type": "object",
+      "required": [
+        "type",
+        "content"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Optional: made when absent."
+        },
+        "type": {
+          "const": "embed"
+        },
+        "content": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "url": {
+              "type": "string",
+              "maxLength": 2000
+            },
+            "title": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "caption": {
+              "type": "string",
+              "maxLength": 300
+            }
+          }
+        },
+        "variant": {
+          "type": "string",
+          "description": "One of the theme's variants for this type."
+        },
+        "style": {
+          "type": "object",
+          "description": "How the block departs from the theme (theme tokens only). Leave it out: the theme's look is the point."
+        }
+      }
+    },
+    "block-video": {
+      "type": "object",
+      "required": [
+        "type",
+        "content"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Optional: made when absent."
+        },
+        "type": {
+          "const": "video"
+        },
+        "content": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "video": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/file",
+                  "description": "A video file from the library, or the address of a page on a service that plays it."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "poster": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/image"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "caption": {
+              "type": "string",
+              "maxLength": 300
+            }
+          }
+        },
+        "variant": {
+          "type": "string",
+          "description": "One of the theme's variants for this type."
+        },
+        "style": {
+          "type": "object",
+          "description": "How the block departs from the theme (theme tokens only). Leave it out: the theme's look is the point."
+        }
+      }
+    },
+    "block-audio": {
+      "type": "object",
+      "required": [
+        "type",
+        "content"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Optional: made when absent."
+        },
+        "type": {
+          "const": "audio"
+        },
+        "content": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "audio": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/file",
+                  "description": "A audio file from the library, or the address of a page on a service that plays it."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "caption": {
+              "type": "string",
+              "maxLength": 300
+            }
+          }
+        },
+        "variant": {
+          "type": "string",
+          "description": "One of the theme's variants for this type."
+        },
+        "style": {
+          "type": "object",
+          "description": "How the block departs from the theme (theme tokens only). Leave it out: the theme's look is the point."
+        }
+      }
+    },
+    "block-files": {
+      "type": "object",
+      "required": [
+        "type",
+        "content"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Optional: made when absent."
+        },
+        "type": {
+          "const": "files"
+        },
+        "content": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "title": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "intro": {
+              "type": "string",
+              "maxLength": 600,
+              "description": "Line breaks are kept."
+            },
+            "items": {
+              "type": "array",
+              "maxItems": 30,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "file": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/$defs/file",
+                        "description": "A document from the library, or any address."
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "text": {
+                    "type": "string",
+                    "maxLength": 300,
+                    "description": "Line breaks are kept."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "variant": {
+          "type": "string",
+          "description": "One of the theme's variants for this type."
+        },
+        "style": {
+          "type": "object",
+          "description": "How the block departs from the theme (theme tokens only). Leave it out: the theme's look is the point."
+        }
+      }
+    },
+    "block-gallery": {
+      "type": "object",
+      "required": [
+        "type",
+        "content"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Optional: made when absent."
+        },
+        "type": {
+          "const": "gallery"
+        },
+        "content": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "title": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "intro": {
+              "type": "string",
+              "maxLength": 600,
+              "description": "Line breaks are kept."
+            },
+            "images": {
+              "type": "array",
+              "maxItems": 48,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "image": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/$defs/image"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "caption": {
+                    "type": "string",
+                    "maxLength": 300
+                  }
+                }
+              }
+            }
+          }
+        },
+        "variant": {
+          "type": "string",
+          "description": "One of the theme's variants for this type."
+        },
+        "style": {
+          "type": "object",
+          "description": "How the block departs from the theme (theme tokens only). Leave it out: the theme's look is the point."
+        }
+      }
+    },
+    "block-faq": {
+      "type": "object",
+      "required": [
+        "type",
+        "content"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Optional: made when absent."
+        },
+        "type": {
+          "const": "faq"
+        },
+        "content": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "title": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "intro": {
+              "type": "string",
+              "maxLength": 600,
+              "description": "Line breaks are kept."
+            },
+            "items": {
+              "type": "array",
+              "maxItems": 40,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "question": {
+                    "type": "string",
+                    "maxLength": 300
+                  },
+                  "answer": {
+                    "type": "string",
+                    "maxLength": 3000,
+                    "description": "Line breaks are kept."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "variant": {
+          "type": "string",
+          "description": "One of the theme's variants for this type."
+        },
+        "style": {
+          "type": "object",
+          "description": "How the block departs from the theme (theme tokens only). Leave it out: the theme's look is the point."
+        }
+      }
+    },
+    "block-testimonials": {
+      "type": "object",
+      "required": [
+        "type",
+        "content"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Optional: made when absent."
+        },
+        "type": {
+          "const": "testimonials"
+        },
+        "content": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "title": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "items": {
+              "type": "array",
+              "maxItems": 24,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "quote": {
+                    "type": "string",
+                    "maxLength": 1000,
+                    "description": "Line breaks are kept."
+                  },
+                  "name": {
+                    "type": "string",
+                    "maxLength": 120
+                  },
+                  "role": {
+                    "type": "string",
+                    "maxLength": 120
+                  },
+                  "photo": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/$defs/image"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "variant": {
+          "type": "string",
+          "description": "One of the theme's variants for this type."
+        },
+        "style": {
+          "type": "object",
+          "description": "How the block departs from the theme (theme tokens only). Leave it out: the theme's look is the point."
+        }
+      }
+    },
+    "block-pricing": {
+      "type": "object",
+      "required": [
+        "type",
+        "content"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Optional: made when absent."
+        },
+        "type": {
+          "const": "pricing"
+        },
+        "content": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "title": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "intro": {
+              "type": "string",
+              "maxLength": 600,
+              "description": "Line breaks are kept."
+            },
+            "plans": {
+              "type": "array",
+              "maxItems": 6,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "maxLength": 120
+                  },
+                  "price": {
+                    "type": "string",
+                    "maxLength": 40
+                  },
+                  "period": {
+                    "type": "string",
+                    "maxLength": 40
+                  },
+                  "text": {
+                    "type": "string",
+                    "maxLength": 600,
+                    "description": "Line breaks are kept."
+                  },
+                  "features": {
+                    "type": "string",
+                    "maxLength": 2000,
+                    "description": "Line breaks are kept."
+                  },
+                  "action": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/$defs/link"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "variant": {
+          "type": "string",
+          "description": "One of the theme's variants for this type."
+        },
+        "style": {
+          "type": "object",
+          "description": "How the block departs from the theme (theme tokens only). Leave it out: the theme's look is the point."
+        }
+      }
+    },
+    "block-entries": {
+      "type": "object",
+      "required": [
+        "type",
+        "content"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Optional: made when absent."
+        },
+        "type": {
+          "const": "entries"
+        },
+        "content": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "title": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "source": {
+              "type": "string",
+              "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+              "description": "A content type's id: `posts`, or one the file or the site defines."
+            },
+            "count": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 24
+            },
+            "more": {
+              "type": "string",
+              "maxLength": 80
+            },
+            "related": {
+              "type": "boolean"
+            }
+          }
+        },
+        "variant": {
+          "type": "string",
+          "description": "One of the theme's variants for this type."
+        },
+        "style": {
+          "type": "object",
+          "description": "How the block departs from the theme (theme tokens only). Leave it out: the theme's look is the point."
+        }
+      }
+    },
+    "block-archive": {
+      "type": "object",
+      "required": [
+        "type",
+        "content"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Optional: made when absent."
+        },
+        "type": {
+          "const": "archive"
+        },
+        "content": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "title": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "source": {
+              "type": "string",
+              "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+              "description": "A content type's id: `posts`, or one the file or the site defines."
+            },
+            "years": {
+              "type": "boolean"
+            }
+          }
+        },
+        "variant": {
+          "type": "string",
+          "description": "One of the theme's variants for this type."
+        },
+        "style": {
+          "type": "object",
+          "description": "How the block departs from the theme (theme tokens only). Leave it out: the theme's look is the point."
+        }
+      }
+    },
+    "block-entry": {
+      "type": "object",
+      "required": [
+        "type",
+        "content"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Optional: made when absent."
+        },
+        "type": {
+          "const": "entry"
+        },
+        "content": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "part": {
+              "type": "string",
+              "pattern": "^(header|title|meta|cover|fields|body|related|buy|field:[a-z0-9_]{1,40})$"
+            }
+          }
+        },
+        "variant": {
+          "type": "string",
+          "description": "One of the theme's variants for this type."
+        },
+        "style": {
+          "type": "object",
+          "description": "How the block departs from the theme (theme tokens only). Leave it out: the theme's look is the point."
+        }
+      }
+    },
+    "block-section": {
+      "type": "object",
+      "required": [
+        "type",
+        "content"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Optional: made when absent."
+        },
+        "type": {
+          "const": "section"
+        },
+        "content": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "section": {
+              "type": "string",
+              "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+              "description": "The slug of a section in `sections`."
+            }
+          }
+        },
+        "variant": {
+          "type": "string",
+          "description": "One of the theme's variants for this type."
+        },
+        "style": {
+          "type": "object",
+          "description": "How the block departs from the theme (theme tokens only). Leave it out: the theme's look is the point."
+        }
+      }
+    },
+    "block-group": {
+      "type": "object",
+      "required": [
+        "type",
+        "content"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Optional: made when absent."
+        },
+        "type": {
+          "const": "group"
+        },
+        "content": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {}
+        },
+        "variant": {
+          "type": "string",
+          "description": "One of the theme's variants for this type."
+        },
+        "style": {
+          "type": "object",
+          "description": "How the block departs from the theme (theme tokens only). Leave it out: the theme's look is the point."
+        },
+        "children": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/block"
+          }
+        }
+      }
+    },
+    "page": {
+      "type": "object",
+      "required": [
+        "title",
+        "blocks"
+      ],
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string",
+          "description": "For search engines and previews; empty: taken from the words."
+        },
+        "inMenu": {
+          "type": "boolean",
+          "description": "In the menu the site makes while `settings.menu` is null."
+        },
+        "blocks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/block"
+          }
+        },
+        "layout": {
+          "type": "string"
+        },
+        "translations": {
+          "type": "object",
+          "description": "The page in the other languages, by language (ADR 0032)."
+        },
+        "seoTitle": {
+          "type": "string",
+          "maxLength": 70,
+          "description": "The title search engines and previews show, when it differs from the title."
+        },
+        "shareImage": {
+          "$ref": "#/$defs/image"
+        },
+        "noindex": {
+          "const": true
+        }
+      }
+    },
+    "section": {
+      "type": "object",
+      "required": [
+        "blocks"
+      ],
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "blocks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/block"
+          }
+        }
+      }
+    },
+    "money": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": 0,
+          "description": "In the smallest unit: 4999 is 49.99."
+        },
+        {
+          "type": "string",
+          "pattern": "^\\d{1,9}([.,]\\d{1,2})?$",
+          "description": "As typed: \"49.99\" or \"49,99\"."
+        }
+      ]
+    },
+    "product": {
+      "type": "object",
+      "description": "What an entry of a type that `sells` is sold at (ADR 0065 d2). Prices include VAT.",
+      "properties": {
+        "price": {
+          "$ref": "#/$defs/money"
+        },
+        "sale": {
+          "$ref": "#/$defs/money",
+          "description": "The price it is sold at for now; below `price`."
+        },
+        "sku": {
+          "type": "string",
+          "maxLength": 60
+        },
+        "vat": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "One of the shop's rates; left out, the first."
+        },
+        "counted": {
+          "type": "boolean",
+          "description": "Its stock is counted: give it in `shop.stock`."
+        },
+        "options": {
+          "type": "array",
+          "maxItems": 3,
+          "description": "What it is sold in: `{ \"name\": \"Size\", \"values\": [\"S\", \"M\"] }`. At most 100 combinations.",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "values"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "maxLength": 40
+              },
+              "values": {
+                "type": "array",
+                "maxItems": 20,
+                "items": {
+                  "type": "string",
+                  "maxLength": 40
+                }
+              }
+            }
+          }
+        },
+        "variants": {
+          "type": "object",
+          "description": "By combination (`M / Red`): its own price, sale and sku, when they differ."
+        }
+      }
+    },
+    "shop": {
+      "type": "object",
+      "description": "The shop (ADR 0065): its settings, taken with the old site's settings; what is left of each product counted, and the coupons, brought into a shop that is on.",
+      "properties": {
+        "settings": {
+          "type": "object",
+          "description": "Settings → Shop.",
+          "properties": {
+            "on": {
+              "type": "boolean"
+            },
+            "vat": {
+              "type": "boolean",
+              "description": "The site charges VAT."
+            },
+            "rates": {
+              "type": "array",
+              "items": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              }
+            },
+            "transfer": {
+              "type": "object",
+              "description": "Paying by bank transfer.",
+              "properties": {
+                "on": {
+                  "type": "boolean"
+                },
+                "holder": {
+                  "type": "string"
+                },
+                "iban": {
+                  "type": "string"
+                },
+                "bank": {
+                  "type": "string"
+                }
+              }
+            },
+            "cod": {
+              "type": "boolean",
+              "description": "Cash on delivery."
+            },
+            "shipping": {
+              "type": "array",
+              "maxItems": 10,
+              "items": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "maxLength": 80
+                  },
+                  "price": {
+                    "$ref": "#/$defs/money"
+                  },
+                  "free": {
+                    "$ref": "#/$defs/money",
+                    "description": "Free from this much."
+                  },
+                  "pickup": {
+                    "type": "string",
+                    "description": "Picked up at this address."
+                  }
+                }
+              }
+            },
+            "terms": {
+              "type": "string",
+              "description": "The terms page, as /terms/."
+            }
+          }
+        },
+        "stock": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "product",
+              "variant",
+              "quantity"
+            ],
+            "properties": {
+              "product": {
+                "type": "string",
+                "description": "`<type>/<slug>`"
+              },
+              "variant": {
+                "type": "string",
+                "description": "A combination (`M / Red`), or '' for the product."
+              },
+              "quantity": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        },
+        "coupons": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "code",
+              "kind",
+              "value"
+            ],
+            "description": "A code a buyer types in the cart (ADR 0065 d8). One coupon an order; it takes off the products, never delivery.",
+            "properties": {
+              "code": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]+$",
+                "maxLength": 40
+              },
+              "kind": {
+                "enum": [
+                  "percent",
+                  "amount"
+                ],
+                "description": "`percent`: `value` from 1 to 100; `amount`: `value` is a sum in the smallest unit."
+              },
+              "value": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "ends": {
+                "type": "string",
+                "format": "date",
+                "description": "The last day it is taken; left out, it does not end."
+              },
+              "uses": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "How many orders may use it; null for no limit."
+              },
+              "minimum": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "The smallest sum of products, in the smallest unit."
+              }
+            }
+          }
+        }
+      }
+    },
+    "entry": {
+      "type": "object",
+      "required": [
+        "title"
+      ],
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "date": {
+          "type": "string",
+          "format": "date",
+          "description": "YYYY-MM-DD, for a dated type."
+        },
+        "excerpt": {
+          "type": "string"
+        },
+        "cover": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/image"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "categories": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "fields": {
+          "type": "object",
+          "description": "Values for the type's fields, by key."
+        },
+        "product": {
+          "$ref": "#/$defs/product"
+        },
+        "blocks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/block"
+          }
+        },
+        "seoTitle": {
+          "type": "string",
+          "maxLength": 70,
+          "description": "The title search engines and previews show, when it differs from the title."
+        },
+        "shareImage": {
+          "$ref": "#/$defs/image"
+        },
+        "noindex": {
+          "const": true
+        }
+      }
+    },
+    "contentType": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "singular",
+        "path"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "name": {
+          "type": "string",
+          "description": "\"Projects\""
+        },
+        "singular": {
+          "type": "string",
+          "description": "\"Project\""
+        },
+        "path": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+          "description": "Its entries are at /<path>/<slug>/."
+        },
+        "dated": {
+          "type": "boolean"
+        },
+        "categories": {
+          "type": "boolean"
+        },
+        "feed": {
+          "type": "boolean"
+        },
+        "comments": {
+          "const": true
+        },
+        "sells": {
+          "type": "boolean",
+          "description": "Its entries are products, each with a `product` (ADR 0065 d1). Only while the shop is on."
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "key",
+              "label",
+              "kind"
+            ],
+            "properties": {
+              "key": {
+                "type": "string",
+                "pattern": "^[a-z0-9_]{1,40}$"
+              },
+              "label": {
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "text",
+                  "longtext",
+                  "number",
+                  "date",
+                  "yesno",
+                  "choice",
+                  "image",
+                  "file",
+                  "link",
+                  "entries"
+                ]
+              },
+              "options": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "to": {
+                "type": "string"
+              },
+              "many": {
+                "const": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "typePart": {
+      "type": "object",
+      "required": [
+        "type",
+        "entries"
+      ],
+      "properties": {
+        "type": {
+          "$ref": "#/$defs/contentType"
+        },
+        "template": {
+          "type": "object",
+          "description": "The type's own page as blocks; null for the default one.",
+          "properties": {
+            "draft": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/block"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "published": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/block"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        },
+        "entries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "description": "An entry of the type.",
+            "required": [
+              "slug",
+              "draft"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "slug": {
+                "type": "string",
+                "description": "The address. '' is the home page (pages only)."
+              },
+              "draft": {
+                "$ref": "#/$defs/entry"
+              },
+              "published": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/entry"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "What visitors see. Usually the same as `draft`; null or absent leaves it a draft."
+              },
+              "scheduled": {
+                "type": "string",
+                "format": "date-time",
+                "description": "Published then, by the site."
+              },
+              "author": {
+                "type": "string",
+                "description": "A key into `people`."
+              }
+            }
+          }
+        }
+      }
+    },
+    "form": {
+      "type": "object",
+      "required": [
+        "name",
+        "title",
+        "fields",
+        "consent",
+        "button",
+        "sent",
+        "failed"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+          "maxLength": 60
+        },
+        "title": {
+          "type": "string"
+        },
+        "fields": {
+          "type": "array",
+          "maxItems": 30,
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "kind",
+              "label",
+              "required"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,39}$",
+                "not": {
+                  "enum": [
+                    "back",
+                    "form",
+                    "website",
+                    "consent"
+                  ]
+                }
+              },
+              "kind": {
+                "enum": [
+                  "text",
+                  "textarea",
+                  "email",
+                  "phone",
+                  "number",
+                  "date",
+                  "select",
+                  "radio",
+                  "checkboxes"
+                ]
+              },
+              "label": {
+                "type": "string"
+              },
+              "required": {
+                "type": "boolean"
+              },
+              "options": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "consent": {
+          "type": "string",
+          "description": "What the visitor agrees to, ticked before anything is sent."
+        },
+        "button": {
+          "type": "string"
+        },
+        "sent": {
+          "type": "string"
+        },
+        "failed": {
+          "type": "string"
+        },
+        "translations": {
+          "type": "object"
+        }
+      }
+    },
+    "settings": {
+      "type": "object",
+      "description": "The site's settings (the `Site` of src/core/page.ts). Taken only into a site with no pages yet; what is left out keeps its default.",
+      "required": [
+        "name",
+        "language"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "language": {
+          "type": "string",
+          "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$"
+        },
+        "languages": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$"
+          },
+          "description": "The other languages, after `language`."
+        },
+        "url": {
+          "type": "string",
+          "description": "https://example.com, no trailing slash."
+        },
+        "logo": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/image"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "action": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/link"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The one button in the header."
+        },
+        "footer": {
+          "type": "string"
+        },
+        "footerLinks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/link"
+          }
+        },
+        "menu": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            }
+          ],
+          "description": "null: the site makes the menu from the pages marked inMenu."
+        },
+        "types": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/contentType"
+          }
+        },
+        "shareImage": {
+          "$ref": "#/$defs/image"
+        },
+        "business": {
+          "type": "object",
+          "description": "The business as a place people come to: address, hours (ADR 0061 d2)."
+        }
+      }
+    }
+  }
+}

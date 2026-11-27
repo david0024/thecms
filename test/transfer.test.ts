@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { inflateRawSync } from 'node:zlib';
 import { postsType } from '../src/core/index.ts';
-import { contentPreview, isContentFile, readContentFile, runContentImport } from '../src/import/thecms.ts';
+import { contentPreview, isContentFile, readContentFile, runContentImport } from '../src/import/uhlaka.ts';
 import { exportedFiles, publishedSite } from '../src/site/export.ts';
 import { startRuntime } from '../src/site/runtime.ts';
 import { type EditorServer, type ImportPreview, type ImportProgress, startEditor } from '../src/site/server.ts';
@@ -106,7 +106,7 @@ describe('the content in one file (ADR 0057 d1)', () => {
   test('holds the content, and never the accounts, the messages, a waiting comment or a password', async () => {
     const file = await exportContent(store, [], new Date('2026-11-22T10:00:00Z'));
     expect(file).toMatchObject({ format: CONTENT_FORMAT, madeAt: '2026-11-22T10:00:00.000Z', parts: ['pages', 'type:posts', 'type:projects', 'sections', 'forms', 'design'], from: { name: 'Atelier Pop', language: 'en', languages: ['ro'] } });
-    expect(file.program).toStartWith('thecms ');
+    expect(file.program).toStartWith('uhlaka ');
     expect(file.pages?.map((p) => p.slug)).toEqual(['', 'about', 'members', 'soon']);
     const about = file.pages?.find((p) => p.slug === 'about');
     expect(about?.draft).toMatchObject({ title: 'About us' });
@@ -143,8 +143,8 @@ describe('the content in one file (ADR 0057 d1)', () => {
     expect(posts.media).toEqual([]);
     expect(posts.people).toEqual([]);
     await expect(exportContent(store, ['nothing'])).rejects.toThrow('choose what to export: pages, type:posts, type:projects, sections, forms, design');
-    expect(contentFileName({ name: 'Atelier Pop, Brașov!' }, new Date('2026-11-22T10:00:00Z'))).toBe('atelier-pop-brasov-2026-11-22.thecms.json');
-    expect(contentFileName({ name: '***' }, new Date('2026-11-22T10:00:00Z'))).toBe('site-2026-11-22.thecms.json');
+    expect(contentFileName({ name: 'Atelier Pop, Brașov!' }, new Date('2026-11-22T10:00:00Z'))).toBe('atelier-pop-brasov-2026-11-22.uhlaka.json');
+    expect(contentFileName({ name: '***' }, new Date('2026-11-22T10:00:00Z'))).toBe('site-2026-11-22.uhlaka.json');
   });
 
   test('is read back only when it is one, and is shown counted first', async () => {
@@ -152,14 +152,14 @@ describe('the content in one file (ADR 0057 d1)', () => {
     const words = JSON.stringify(file);
     expect(isContentFile(words)).toBe(true);
     expect(isContentFile('<?xml version="1.0"?><rss></rss>')).toBe(false);
-    expect(() => readContentFile('{ "format": "thecms.content/1", ')).toThrow('it is not JSON that can be read');
-    expect(() => readContentFile('{"format":"thecms.backup/1"}')).toThrow('this file is not a thecms content export (thecms.content/1)');
+    expect(() => readContentFile('{ "format": "uhlaka.content/1", ')).toThrow('it is not JSON that can be read');
+    expect(() => readContentFile('{"format":"uhlaka.backup/1"}')).toThrow('this file is not a Uhlaka content export (uhlaka.content/1)');
     // What does not have the shape is left out, not trusted.
     const odd = readContentFile(JSON.stringify({ format: CONTENT_FORMAT, pages: [{ slug: 'x' }, 'no', { slug: 'y', draft: { title: 'Y' }, published: 'no' }], types: [{ type: { nope: 1 } }, 'x'], people: ['x'], comments: [3], media: [{ name: 'a' }] }));
     expect(odd.pages).toEqual([{ slug: 'y', draft: { title: 'Y' }, published: null }]);
     expect(odd).toMatchObject({ program: '', madeAt: '', parts: [], from: { name: '', url: '', language: '', languages: [] }, types: [], people: [], comments: [], media: [] });
     const preview = contentPreview(readContentFile(words));
-    expect(preview).toMatchObject({ kind: 'thecms', site: { name: 'Atelier Pop', url: 'https://atelier.example' }, pages: 4, posts: 1, types: [{ id: 'projects', name: 'Projects', count: 1 }], images: 2, redirects: 1, menu: true, sections: 1, forms: 2 });
+    expect(preview).toMatchObject({ kind: 'uhlaka', site: { name: 'Atelier Pop', url: 'https://atelier.example' }, pages: 4, posts: 1, types: [{ id: 'projects', name: 'Projects', count: 1 }], images: 2, redirects: 1, menu: true, sections: 1, forms: 2 });
     expect(preview.notes.join(' ')).toContain('One page was behind a password there');
     const two = contentPreview({ ...readContentFile(words), pages: [{ slug: 'a', draft: {}, published: null, locked: true }, { slug: 'b', draft: {}, published: null, locked: true }], settings: undefined, redirects: undefined, sections: undefined, forms: undefined });
     expect(two).toMatchObject({ pages: 2, menu: false, redirects: 0, sections: 0, forms: 0 });
@@ -291,7 +291,7 @@ describe('the site\'s data as JSON (ADR 0057 d3)', () => {
 
   test('each page, entry and list beside its HTML, and site.json naming them, never a page behind a password', async () => {
     const files = await publishedSite(store);
-    expect(json(files, 'about/index.json')).toMatchObject({ format: 'thecms.data/1', kind: 'page', path: '/about/', language: 'en', title: 'About', blocks: [{ type: 'text' }] });
+    expect(json(files, 'about/index.json')).toMatchObject({ format: 'uhlaka.data/1', kind: 'page', path: '/about/', language: 'en', title: 'About', blocks: [{ type: 'text' }] });
     expect(json(files, 'about/index.json').html).toContain('Who we are');
     expect(json(files, 'about/index.json').html).not.toContain('<header');
     expect(json(files, 'ro/despre/index.json')).toMatchObject({ language: 'ro', title: 'Despre' });
@@ -368,10 +368,10 @@ describe('from the admin (ADR 0057)', () => {
   const cookies: Record<string, string> = {};
 
   const call = (who: string, method: string, path: string, body?: string) =>
-    editor.fetch(new Request(`${PUBLIC}${path}`, { method, headers: { host: 'cms.example.com', origin: PUBLIC, 'x-thecms-request': '1', cookie: cookies[who] ?? '' }, body }));
+    editor.fetch(new Request(`${PUBLIC}${path}`, { method, headers: { host: 'cms.example.com', origin: PUBLIC, 'x-uhlaka-request': '1', cookie: cookies[who] ?? '' }, body }));
 
   beforeEach(async () => {
-    dir = await mkdtemp(join(tmpdir(), 'thecms-transfer-'));
+    dir = await mkdtemp(join(tmpdir(), 'uhlaka-transfer-'));
     store = await Store.open(join(dir, 'site.db'));
     await fullSite(store);
     editor = await startEditor(store, { listen: false, public: PUBLIC });
@@ -380,7 +380,7 @@ describe('from the admin (ADR 0057)', () => {
       ['editor', 'editor'],
     ] as const) {
       const user = await store.addUser({ email: `${who}@example.com`, role, password: 'a long password here' });
-      cookies[who] = `thecms_session=${await store.startSession(user.id)}`;
+      cookies[who] = `uhlaka_session=${await store.startSession(user.id)}`;
     }
   });
   afterEach(async () => {
@@ -394,7 +394,7 @@ describe('from the admin (ADR 0057)', () => {
     expect(parts.parts.map((p) => p.id)).toEqual(['pages', 'type:posts', 'type:projects', 'sections', 'forms', 'design']);
     const content = await call('owner', 'GET', '/api/export/content?parts=pages,forms');
     expect(content.status).toBe(200);
-    expect(content.headers.get('content-disposition')).toMatch(/^attachment; filename="atelier-pop-\d{4}-\d{2}-\d{2}\.thecms\.json"$/);
+    expect(content.headers.get('content-disposition')).toMatch(/^attachment; filename="atelier-pop-\d{4}-\d{2}-\d{2}\.uhlaka\.json"$/);
     expect(((await content.json()) as ContentFile).parts).toEqual(['pages', 'forms']);
     expect((await call('owner', 'GET', '/api/export/content?parts=none')).status).toBe(400);
     const zip = await call('owner', 'GET', '/api/export/files');
@@ -417,10 +417,10 @@ describe('from the admin (ADR 0057)', () => {
     const words = JSON.stringify(await exportContent(store));
     const other = await Store.open(join(dir, 'other.db'));
     const there = await startEditor(other, { listen: false });
-    const ask = (path: string, method = 'GET', body?: string) => there.fetch(new Request(`http://127.0.0.1:4321${path}`, { method, headers: { host: '127.0.0.1:4321', 'x-thecms-token': there.token }, body }));
+    const ask = (path: string, method = 'GET', body?: string) => there.fetch(new Request(`http://127.0.0.1:4321${path}`, { method, headers: { host: '127.0.0.1:4321', 'x-uhlaka-token': there.token }, body }));
     try {
       const preview = (await (await ask('/api/import/plan', 'POST', words)).json()) as ImportPreview;
-      expect(preview).toMatchObject({ kind: 'thecms', pages: 4, sections: 1, forms: 2 });
+      expect(preview).toMatchObject({ kind: 'uhlaka', pages: 4, sections: 1, forms: 2 });
       expect((await ask('/api/import/elsewhere', 'POST', words)).status).toBe(404);
       expect((await ask('/api/import/run?settings=1', 'POST', words)).status).toBe(202);
       expect((await ask('/api/import/run', 'POST', words)).status).toBe(409);
@@ -431,7 +431,7 @@ describe('from the admin (ADR 0057)', () => {
       }
       expect(progress).toMatchObject({ status: 'done', report: { pages: 4, entries: 1, menu: true } });
       expect((await other.site()).name).toBe('Atelier Pop');
-      const failed = await ask('/api/import/run', 'POST', '{"format":"thecms.content/1", "media": [{"data": 5}], "types": [{"type": {"id": "x"}}], "pages": "x"}');
+      const failed = await ask('/api/import/run', 'POST', '{"format":"uhlaka.content/1", "media": [{"data": 5}], "types": [{"type": {"id": "x"}}], "pages": "x"}');
       expect(failed.status).toBe(202);
       for (let i = 0; i < 200 && progress.status !== 'idle'; i++) {
         await Bun.sleep(5);

@@ -12,7 +12,7 @@ import { FRESH_MS, startRuntime } from '../src/site/runtime.ts';
 import { Store } from '../src/site/store.ts';
 import plain from '../themes/plain.json';
 
-const dir = await mkdtemp(join(tmpdir(), 'thecms-runtime-'));
+const dir = await mkdtemp(join(tmpdir(), 'uhlaka-runtime-'));
 afterAll(() => rm(dir, { recursive: true, force: true }));
 
 const PNG = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='), (c) => c.charCodeAt(0));
@@ -52,6 +52,10 @@ describe('the runtime', () => {
       const moved = await get('/old/');
       expect([moved.status, moved.headers.get('location')]).toEqual([301, '/about/']);
       expect((await get('/assets/site.css')).headers.get('content-type')).toBe('text/css; charset=utf-8');
+      // The switch of colours (ADR 0074 d4): its script, from the site itself, and nothing else may run.
+      expect(home.headers.get('content-security-policy')).toContain("script-src 'self';");
+      expect(html).toContain('<script src="/assets/scheme.js"></script>');
+      expect((await get('/assets/scheme.js')).headers.get('content-type')).toBe('text/javascript; charset=utf-8');
       expect((await get(image.path)).headers.get('cache-control')).toContain('immutable');
       for (const hidden of ['/_redirects', '/.htaccess', '/x/%2e%2e%2fabout/', '/%E0%A4%A']) expect((await get(hidden)).status).toBe(404);
       const missing = await get('/nowhere/');
@@ -60,7 +64,7 @@ describe('the runtime', () => {
       expect((await get('/', { method: 'POST' })).status).toBe(405);
 
       // What cannot be static is under /_/.
-      expect(await (await get('/_/')).text()).toBe('thecms runtime\n');
+      expect(await (await get('/_/')).text()).toBe('uhlaka runtime\n');
       expect((await get('/_/nothing')).status).toBe(404);
       const sent = await get('/_/send', {
         method: 'POST',
@@ -81,7 +85,7 @@ describe('the runtime', () => {
     const store = await Store.open(join(dir, 'listen.db'));
     const runtime = startRuntime(store, { port: 0, log: () => {} });
     try {
-      expect(await (await fetch(`${runtime.url}/_/`)).text()).toBe('thecms runtime\n');
+      expect(await (await fetch(`${runtime.url}/_/`)).text()).toBe('uhlaka runtime\n');
     } finally {
       runtime.stop();
       await store.close();

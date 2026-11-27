@@ -38,7 +38,7 @@ function edit(db, port) {
 }
 
 (async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'thecms-e2e-export-'));
+  const dir = mkdtempSync(join(tmpdir(), 'uhlaka-e2e-export-'));
   const shots = process.argv[2];
   cli('init', join(dir, 'a.db'));
   cli('init', join(dir, 'b.db'));
@@ -57,7 +57,7 @@ function edit(db, port) {
     assert(about.ok() && (await about.json()).title === 'About', 'a page is read as JSON at its address');
     // A page behind a password is something a static host cannot do.
     const token = (await first.url).split('#token=')[1];
-    const locked = await page.request.post('http://127.0.0.1:4431/api/locks', { headers: { 'x-thecms-token': token }, data: { slug: 'contact', password: 'open sesame' } });
+    const locked = await page.request.post('http://127.0.0.1:4431/api/locks', { headers: { 'x-uhlaka-token': token }, data: { slug: 'contact', password: 'open sesame' } });
     assert(locked.ok(), 'a page is put behind a password');
     let hidden = 200;
     for (let i = 0; i < 20 && hidden === 200; i++) {
@@ -77,8 +77,8 @@ function edit(db, port) {
     await screen.locator('[data-export-part="design"]').uncheck();
     assert(!(await screen.locator('[data-export-all]').isChecked()), 'a part left out leaves "The whole site" unticked');
     let [download] = await Promise.all([page.waitForEvent('download'), screen.locator('[data-export-content]').click()]);
-    await download.saveAs(join(dir, 'some.thecms.json'));
-    const some = JSON.parse(readFileSync(join(dir, 'some.thecms.json'), 'utf8'));
+    await download.saveAs(join(dir, 'some.uhlaka.json'));
+    const some = JSON.parse(readFileSync(join(dir, 'some.uhlaka.json'), 'utf8'));
     assert(!some.parts.includes('design') && some.parts.includes('pages'), 'the content file holds the parts chosen');
     await screen.locator('[data-export-all]').check();
     await screen.locator('[data-export-all]').uncheck();
@@ -86,13 +86,31 @@ function edit(db, port) {
     await screen.locator('[data-export-part="pages"]').check();
     await screen.locator('[data-export-all]').check();
     [download] = await Promise.all([page.waitForEvent('download'), screen.locator('[data-export-content]').click()]);
-    assert(download.suggestedFilename().endsWith('.thecms.json'), 'the content is downloaded as a .thecms.json file');
-    const saved = join(dir, 'all.thecms.json');
+    assert(download.suggestedFilename().endsWith('.uhlaka.json'), 'the content is downloaded as a .uhlaka.json file');
+    const saved = join(dir, 'all.uhlaka.json');
     await download.saveAs(saved);
     assert(JSON.parse(readFileSync(saved, 'utf8')).parts.length === 5, 'the whole site holds every part');
     [download] = await Promise.all([page.waitForEvent('download'), screen.locator('[data-export-files]').click()]);
     await download.saveAs(join(dir, 'site.zip'));
     assert(readFileSync(join(dir, 'site.zip')).subarray(0, 2).toString() === 'PK', 'the site as files is downloaded as a ZIP');
+
+    // With visitor accounts on, the visitors are offered apart: never with the whole site, only when ticked (ADR 0064 d6).
+    assert((await screen.locator('[data-export-apart]').count()) === 0, 'a site that never had accounts offers no visitors');
+    const on = await page.request.put('http://127.0.0.1:4431/api/visitors', { headers: { 'x-uhlaka-token': token }, data: { on: true, signup: 'invite' } });
+    assert(on.ok(), 'visitor accounts are turned on');
+    await page.locator('[data-nav="pages"]').click();
+    await page.locator('[data-nav="export"]').click();
+    const apart = screen.locator('[data-export-apart="visitors"]');
+    await apart.waitFor();
+    assert((await apart.isChecked()) === false && (await screen.locator('[data-export-all]').isChecked()), 'the visitors are offered unticked, apart from the whole site');
+    assert((await screen.locator('[data-export-part]').count()) === 5, 'and are not one of its parts');
+    if (shots) await page.screenshot({ path: join(shots, 'export-visitors.png'), fullPage: true });
+    await apart.check();
+    [download] = await Promise.all([page.waitForEvent('download'), screen.locator('[data-export-content]').click()]);
+    await download.saveAs(join(dir, 'visitors.uhlaka.json'));
+    const withVisitors = JSON.parse(readFileSync(join(dir, 'visitors.uhlaka.json'), 'utf8'));
+    assert(withVisitors.parts.length === 6 && withVisitors.parts.includes('visitors') && Array.isArray(withVisitors.visitors), 'ticked, the whole site comes with the visitors');
+    await apart.uncheck();
 
     // Turned off in the settings, the data is not there, and the screen says where to turn it on.
     await page.locator('[data-nav="settings"]').click();

@@ -15,7 +15,7 @@ import { startRuntime } from '../src/site/runtime.ts';
 import { Store } from '../src/site/store.ts';
 import plain from '../themes/plain.json';
 
-const dir = await mkdtemp(join(tmpdir(), 'thecms-ext-server-'));
+const dir = await mkdtemp(join(tmpdir(), 'uhlaka-ext-server-'));
 afterAll(() => rm(dir, { recursive: true, force: true }));
 
 const CODE = `export const actions = {
@@ -95,11 +95,11 @@ describe('a package in the second format', () => {
     ]);
     const asks = extensionAsks(pkg!.manifest);
     expect([asks.routes[0], asks.jobs, asks.events]).toEqual(['/_/x/notices/stripe/confirm', [{ action: 'Sync stock', everyMinutes: 15 }], ['page.published', 'comment.created']]);
-    const said = describeOffer({ manifest: pkg!.manifest, sha256: 'x', asks, replaces: null });
+    const said = describeOffer({ manifest: pkg!.manifest, sha256: 'x', asks, replaces: null, accountsOff: false, shopOff: false });
     expect(said).toContain('answer visitors at /_/x/notices/stripe/confirm');
     expect(said).toContain('do "Sync stock" every 15 minutes');
     expect(said).toContain('be told when: page.published, comment.created');
-    expect(describeOffer({ manifest: pkg!.manifest, sha256: 'x', asks: { ...asks, jobs: [{ action: 'Tick', everyMinutes: 1 }] }, replaces: null })).toContain('do "Tick" every minute');
+    expect(describeOffer({ manifest: pkg!.manifest, sha256: 'x', asks: { ...asks, jobs: [{ action: 'Tick', everyMinutes: 1 }] }, replaces: null, accountsOff: false, shopOff: false })).toContain('do "Tick" every minute');
   });
 
   test('in the first format, has none of them', () => {
@@ -136,7 +136,7 @@ describe('on the runtime', () => {
     const runtime = startRuntime(store, { listen: false, log: (line) => lines.push(line) });
     const call = (path: string, init: RequestInit = {}) => runtime.fetch(new Request(`http://site.local${path}`, init), '1.1.1.1');
     try {
-      const paid = await call('/_/x/notices/stripe/confirm?ref=7', { method: 'POST', headers: { cookie: 'thecms_session=secret', 'content-type': 'text/plain' }, body: 'paid' });
+      const paid = await call('/_/x/notices/stripe/confirm?ref=7', { method: 'POST', headers: { cookie: 'uhlaka_session=secret', 'content-type': 'text/plain' }, body: 'paid' });
       expect(paid.status).toBe(202);
       expect(paid.headers.get('content-type')).toBe('application/json; charset=utf-8');
       expect(await paid.json()).toEqual({ ok: true, sawCookie: false, sawType: 'text/plain' });

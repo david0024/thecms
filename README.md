@@ -1,15 +1,15 @@
-# thecms
+# Uhlaka
 
 **A website builder you own.** Open source, for any kind of site: a business
 card, a portfolio, a blog, a catalogue, and soon a shop, memberships and courses.
 You build it by arranging blocks on the real page, and change its look without
 ever breaking it.
 
-> thecms is in **alpha**. It stays in alpha until everything planned for it is
+> Uhlaka is in **alpha**. It stays in alpha until everything planned for it is
 > built, then goes to beta for testing, and only then to a stable release
 > ([ADR 0045](docs/adr/0045-versions.md)). Try it, and expect changes.
 
-## Why thecms
+## Why Uhlaka
 
 - **You edit the page itself.** No form next to a preview: you click on the
   text and type, drag blocks where you want them, and see the page as it will
@@ -33,12 +33,16 @@ ever breaking it.
 
 **Pages and design**
 - Blocks for headings, text, images, galleries, services, prices, testimonials,
-  questions and answers, buttons, tables, video, sound, documents, and players
+  questions and answers, buttons, tables, code, video, sound, documents, and players
   from YouTube, Vimeo, Spotify, SoundCloud, Google Maps and OpenStreetMap,
   made from the address you paste.
 - A header, a footer and menus (with sub-menus and wide menus), from the site's
   settings and the theme.
 - Sections written once and shown on many pages.
+- Light and dark: every theme Uhlaka ships has both, and a site follows what
+  the visitor's phone or computer is set to, with a sun or a moon in the header
+  to turn it. That switch is the one small script a site carries, from the site
+  itself; it keeps the choice only in the visitor's browser.
 
 **Content**
 - Your own kinds of content: a blog, projects, a team, events, each with its
@@ -84,6 +88,8 @@ ever breaking it.
 - AI writing as an extension, with your own key (Claude, OpenAI or Ollama): a
   block written or rewritten, a page translated, a description suggested. Each
   comes back as a change for you to accept.
+- A whole site written by an AI agent as one file, from a schema made from the
+  blocks themselves, and imported with one command: see [AGENTS.md](AGENTS.md).
 
 **Backups**
 - The whole site in one file, made by itself every night (or every week), the
@@ -109,7 +115,7 @@ ever breaking it.
 - Bring a WordPress site from its export file: pages, posts, images, menu and
   categories, with links rewritten and old addresses still working. You see
   what would come over before anything is written.
-- Take the content of a thecms site to another in one file, from Export to
+- Take the content of a Uhlaka site to another in one file, from Export to
   Import: pages, entries, sections, forms, pictures, the theme and settings.
 
 Part by part, with what is still missing: [docs/status.md](docs/status.md).
@@ -123,16 +129,16 @@ Fly.io) ([ADR 0048](docs/adr/0048-the-installer-in-steps.md)).
 On Linux or macOS:
 
 ```sh
-curl -fsSL https://github.com/david0024/thecms/releases/download/v0.1.0-alpha.2/install.sh | sh
+curl -fsSL https://github.com/uhlaka-devs/uhlaka/releases/download/v0.1.0-alpha.11/install.sh | sh
 ```
 
 On Windows, in PowerShell, for this computer:
 
 ```powershell
-irm https://github.com/david0024/thecms/releases/download/v0.1.0-alpha.2/install.ps1 | iex
+irm https://github.com/uhlaka-devs/uhlaka/releases/download/v0.1.0-alpha.11/install.ps1 | iex
 ```
 
-- **This computer:** in a folder for your site, run `thecms`. It makes a sample
+- **This computer:** in a folder for your site, run `uhlaka`. It makes a sample
   site and opens it, with its editor at `/admin/`.
 - **A server** (Linux with systemd, as root): it installs the database you
   choose (SQLite, PostgreSQL, MySQL or MariaDB), or connects to one of yours
@@ -147,11 +153,11 @@ language and make your account. Every question also has an option, for
 scripts:
 
 ```sh
-curl -fsSL https://github.com/david0024/thecms/releases/download/v0.1.0-alpha.2/install.sh \
+curl -fsSL https://github.com/uhlaka-devs/uhlaka/releases/download/v0.1.0-alpha.11/install.sh \
   | sh -s -- --host=server --database=postgres --public=https://cms.example.com
 ```
 
-`thecms update`, or the installer run again, brings the newest release and
+`uhlaka update`, or the installer run again, brings the newest release and
 leaves the site as it is.
 
 ## What comes next
@@ -172,7 +178,7 @@ Four stages, each ending with something you can use
 
 ## For developers
 
-thecms is TypeScript on [Bun](https://bun.sh), with Svelte 5 for the blocks and
+Uhlaka is TypeScript on [Bun](https://bun.sh), with Svelte 5 for the blocks and
 the editor. A site lives in SQLite, PostgreSQL or MySQL, chosen by its address,
 and the program ships as a single file for each platform.
 
@@ -184,7 +190,7 @@ bun run check                 # types, then tests
 ```
 
 More: [working from the sources](docs/development.md), the
-[decisions behind thecms](docs/adr/README.md), each with its reason, and
+[decisions behind Uhlaka](docs/adr/README.md), each with its reason, and
 [how to contribute](CONTRIBUTING.md).
 
 ## Licence

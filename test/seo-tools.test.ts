@@ -1,5 +1,5 @@
 /**
- * Tools for a large site (ADR 0064): links a page could add, every page's
+ * Tools for a large site (ADR 0077): links a page could add, every page's
  * title and description in one table, and Google Search Console.
  */
 import { afterAll, describe, expect, test } from 'bun:test';
@@ -13,13 +13,13 @@ import { startEditor } from '../src/site/server.ts';
 import { Store } from '../src/site/store.ts';
 import plain from '../themes/plain.json';
 
-const dir = await mkdtemp(join(tmpdir(), 'thecms-seo-tools-'));
+const dir = await mkdtemp(join(tmpdir(), 'uhlaka-seo-tools-'));
 afterAll(() => rm(dir, { recursive: true, force: true }));
 
 const text = (body: string, href?: string): Block =>
   normalizeBlocks([{ type: 'text', content: { body: [{ type: 'paragraph', children: [{ text: body, ...(href ? { href } : {}) }] }] } }]).blocks[0] as Block;
 
-describe('links a page could add (ADR 0064 d1)', () => {
+describe('links a page could add (ADR 0077 d1)', () => {
   const targets = [
     { title: 'Home', path: '/' },
     { title: 'Oak tables', path: '/oak-tables/' },
@@ -45,7 +45,7 @@ describe('links a page could add (ADR 0064 d1)', () => {
   });
 });
 
-describe('every title and description in one table (ADR 0064 d2)', () => {
+describe('every title and description in one table (ADR 0077 d2)', () => {
   test('read, written, and published again when nothing else waited', async () => {
     const store = await Store.open(join(dir, 'table.db'));
     await store.setTheme(plain);
@@ -59,7 +59,7 @@ describe('every title and description in one table (ADR 0064 d2)', () => {
     await store.publishEntry(type, 'fair');
     const editor = await startEditor(store, { listen: false, log: () => {} });
     const call = (method: string, body?: unknown) =>
-      editor.fetch(new Request('http://127.0.0.1:4321/api/seo', { method, headers: { host: '127.0.0.1:4321', 'x-thecms-token': editor.token, ...(body ? { 'content-type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined }));
+      editor.fetch(new Request('http://127.0.0.1:4321/api/seo', { method, headers: { host: '127.0.0.1:4321', 'x-uhlaka-token': editor.token, ...(body ? { 'content-type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined }));
     try {
       const { rows } = (await (await call('GET')).json()) as { rows: { type: string; slug: string; auto: string; path: string; published: boolean }[] };
       expect(rows.map((r) => `${r.type}/${r.slug}`)).toEqual(['/about', '/draft', `${type}/fair`]);
@@ -90,7 +90,7 @@ describe('every title and description in one table (ADR 0064 d2)', () => {
   });
 });
 
-describe('Google Search Console (ADR 0064 d3)', () => {
+describe('Google Search Console (ADR 0077 d3)', () => {
   const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
   const key = JSON.stringify({ type: 'service_account', client_email: 'reader@project.iam.gserviceaccount.com', private_key: privateKey.export({ type: 'pkcs8', format: 'pem' }) });
 
@@ -138,7 +138,7 @@ describe('Google Search Console (ADR 0064 d3)', () => {
     const asked: { url: string; body: string }[] = [];
     const editor = await startEditor(store, { listen: false, log: () => {}, searchConsoleFetch: (url, init) => google(asked, fail)(url, init) });
     const call = (method: string, body?: unknown, query = '') =>
-      editor.fetch(new Request(`http://127.0.0.1:4321/api/search-console${query}`, { method, headers: { host: '127.0.0.1:4321', 'x-thecms-token': editor.token, ...(body ? { 'content-type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined }));
+      editor.fetch(new Request(`http://127.0.0.1:4321/api/search-console${query}`, { method, headers: { host: '127.0.0.1:4321', 'x-uhlaka-token': editor.token, ...(body ? { 'content-type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined }));
     try {
       expect(await (await call('GET')).json()).toEqual({ connected: false });
       expect((await call('PUT', { key: 'no' })).status).toBe(400);

@@ -1,7 +1,7 @@
 <script lang="ts">
 /**
  * Every page and entry with what it says to search engines, in one table
- * (ADR 0064 d2): the title for search engines and the description, written
+ * (ADR 0077 d2): the title for search engines and the description, written
  * here; those still missing written by an extension's AI, one after another.
  */
 import { onMount } from 'svelte';
@@ -13,7 +13,7 @@ let { extensions, onopen }: { extensions: ExtensionInfo[]; onopen: (slug: string
 
 let rows = $state<SeoRow[] | null>(null);
 let missingOnly = $state(false);
-/** What Google counted for each page, by its path, when Search Console is connected (ADR 0064 d3). */
+/** What Google counted for each page, by its path, when Search Console is connected (ADR 0077 d3). */
 let found = $state<Map<string, SearchRow>>(new Map());
 let problem = $state('');
 /** What the AI is writing: which, how far along, and whether it was asked to stop. */

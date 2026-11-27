@@ -199,7 +199,7 @@ describe('forms on the server', () => {
   const SITE = 'https://example.com';
 
   beforeEach(async () => {
-    dir = await mkdtemp(join(tmpdir(), 'thecms-form-builder-'));
+    dir = await mkdtemp(join(tmpdir(), 'uhlaka-form-builder-'));
     store = await Store.open(join(dir, 'site.db'));
     await store.setSite({ name: 'Atelier', url: SITE, languages: ['ro'] });
   });
@@ -255,7 +255,7 @@ describe('forms on the server', () => {
     await store.setTheme(plain);
     const editor: EditorServer = await startEditor(store, { listen: false });
     const call = async (method: string, body?: unknown) =>
-      editor.fetch(new Request('http://127.0.0.1:4321/api/forms', { method, headers: { host: '127.0.0.1:4321', 'x-thecms-token': editor.token, 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined }));
+      editor.fetch(new Request('http://127.0.0.1:4321/api/forms', { method, headers: { host: '127.0.0.1:4321', 'x-uhlaka-token': editor.token, 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined }));
     try {
       await store.savePage({ slug: 'contact', title: 'Contact', blocks: normalizeBlocks([{ type: 'form', content: { form: 'contact' } }]).blocks });
       await store.addMessage({ form: 'contact', page: '/contact/', name: 'A', email: 'a@example.org', body: 'x', consent: 'c' });
@@ -269,7 +269,7 @@ describe('forms on the server', () => {
       expect(((await refused.json()) as { error: string }).error).toContain('/contact/');
       expect(((await (await call('PUT', { forms: added.forms.slice(0, 1) })).json()) as { forms: Form[] }).forms.map((f) => f.name)).toEqual(['contact']);
       // A block chooses among them; the page is drawn with the form it names.
-      const state = (await (await editor.fetch(new Request('http://127.0.0.1:4321/api/state', { headers: { host: '127.0.0.1:4321', 'x-thecms-token': editor.token } }))).json()) as { forms: { name: string; title: string }[] };
+      const state = (await (await editor.fetch(new Request('http://127.0.0.1:4321/api/state', { headers: { host: '127.0.0.1:4321', 'x-uhlaka-token': editor.token } }))).json()) as { forms: { name: string; title: string }[] };
       expect(state.forms).toEqual([{ name: 'contact', title: 'Contact' }]);
     } finally {
       editor.stop();
@@ -279,7 +279,7 @@ describe('forms on the server', () => {
 
 describe('a site from before forms were built', () => {
   test('its contact form becomes the ready one, with the words its owner wrote, and its messages Contact\'s', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'thecms-form-old-'));
+    const dir = await mkdtemp(join(tmpdir(), 'uhlaka-form-old-'));
     const file = join(dir, 'site.db');
     try {
       const store = await Store.open(file);

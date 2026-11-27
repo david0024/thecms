@@ -1,5 +1,5 @@
 /**
- * `thecms update`: the newest release from GitHub Releases, put in place of
+ * `uhlaka update`: the newest release from GitHub Releases, put in place of
  * the program that runs it. The file is checked against the release's
  * `checksums.sha256` before anything is replaced; a file that does not match
  * is thrown away, and the program stays as it was.
@@ -44,6 +44,31 @@ export function newer(a: string, b: string): boolean {
   return false;
 }
 
+/** GitHub's list of releases: the program's and its extensions', in an order of GitHub's own. */
+export const RELEASES = `https://api.github.com/repos/${REPOSITORY}/releases?per_page=100`;
+
+interface Listed {
+  tag_name?: string;
+  draft?: boolean;
+}
+
+/**
+ * The program's newest release, a pre-release among them: while it is in
+ * alpha or beta, those are all there is (ADR 0045). GitHub does not list
+ * releases newest first (0.1.0-alpha.10 came after alpha.4), and an
+ * extension's release (`ai-v1.2.0`) is in the same list, so the version is
+ * compared, not the place.
+ */
+export function newestTag(list: Listed[]): string {
+  let best = '';
+  for (const one of list) {
+    const tag = String(one?.tag_name ?? '');
+    if (one?.draft || !/^v\d+\.\d+/.test(tag)) continue;
+    if (!best || newer(tag, best)) best = tag;
+  }
+  return best;
+}
+
 export interface UpdateOptions {
   /** Where the releases are: GitHub's, unless a test gives its own. */
   api?: string;
@@ -68,9 +93,8 @@ export async function update(options: UpdateOptions = {}): Promise<'newest' | 'a
     if (!response.ok) throw new Error(`${url} answered ${response.status}`);
     return response;
   };
-  // The newest release, a pre-release among them: while the program is in alpha or beta, those are all there is (ADR 0045).
-  const list = (await (await asked(options.api ?? `https://api.github.com/repos/${REPOSITORY}/releases?per_page=1`)).json()) as { tag_name?: string }[];
-  const tag = String((Array.isArray(list) ? list[0]?.tag_name : '') ?? '');
+  const list = (await (await asked(options.api ?? RELEASES)).json()) as Listed[];
+  const tag = newestTag(Array.isArray(list) ? list : []);
   if (!tag) throw new Error('the newest release has no version');
   if (!newer(tag, current)) {
     say(`${NAME} ${current} is the newest.`);

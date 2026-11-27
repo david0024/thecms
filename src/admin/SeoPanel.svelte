@@ -28,7 +28,7 @@ let {
   /** The picture a preview shows when the page has none: the cover, or the site's. */
   fallback?: ImageValue | null;
   translation?: boolean;
-  /** Pages and entries its words name that it does not link to yet (ADR 0064 d1). */
+  /** Pages and entries its words name that it does not link to yet (ADR 0077 d1). */
   suggestions?: LinkTarget[];
   onchange: (seo: Seo) => void;
 } = $props();

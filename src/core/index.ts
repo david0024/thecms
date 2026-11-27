@@ -4,6 +4,7 @@
  * `test/gates.test.ts` holds it to that.
  */
 export * from './archive.ts';
+export * from './audience.ts';
 export * from './blocks.ts';
 export * from './links.ts';
 export * from './structured.ts';
@@ -27,8 +28,10 @@ export * from './relations.ts';
 export * from './richtext.ts';
 export * from './section.ts';
 export * from './seo.ts';
+export * from './shop.ts';
 export * from './style.ts';
 export * from './theme.ts';
+export * from './contrast.ts';
 export * from './translation.ts';
 export * from './tree.ts';
 export * from './types.ts';

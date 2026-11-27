@@ -21,18 +21,18 @@ jobs:
       # The store is tested on every database it supports (ADR 0013).
       - name: Start Postgres and MySQL
         run: |
-          docker run -d --name pg -e POSTGRES_USER=thecms -e POSTGRES_PASSWORD=pw -e POSTGRES_DB=thecms -p 5432:5432 postgres:16 -c max_connections=300
-          docker run -d --name my -e MYSQL_ROOT_PASSWORD=pw -e MYSQL_DATABASE=thecms -e MYSQL_USER=thecms -e MYSQL_PASSWORD=pw -p 3306:3306 mysql:8.4 --mysql-native-password=ON --authentication-policy=mysql_native_password
+          docker run -d --name pg -e POSTGRES_USER=uhlaka -e POSTGRES_PASSWORD=pw -e POSTGRES_DB=uhlaka -p 5432:5432 postgres:16 -c max_connections=300
+          docker run -d --name my -e MYSQL_ROOT_PASSWORD=pw -e MYSQL_DATABASE=uhlaka -e MYSQL_USER=uhlaka -e MYSQL_PASSWORD=pw -p 3306:3306 mysql:8.4 --mysql-native-password=ON --authentication-policy=mysql_native_password
           for i in $(seq 1 90); do
-            docker exec my mysqladmin ping -h127.0.0.1 -uthecms -ppw >/dev/null 2>&1 && docker exec pg pg_isready -h 127.0.0.1 -U thecms >/dev/null 2>&1 && exit 0
+            docker exec my mysqladmin ping -h127.0.0.1 -uuhlaka -ppw >/dev/null 2>&1 && docker exec pg pg_isready -h 127.0.0.1 -U uhlaka >/dev/null 2>&1 && exit 0
             sleep 2
           done
           exit 1
       # Coverage is counted from the unit tests here and from the browser in the end-to-end tests below (tools/coverage.ts).
       - run: bun test --coverage --coverage-reporter=lcov --coverage-dir=coverage
         env:
-          THECMS_TEST_POSTGRES: postgres://thecms:pw@127.0.0.1:5432/thecms
-          THECMS_TEST_MYSQL: mysql://thecms:pw@127.0.0.1:3306/thecms
+          UHLAKA_TEST_POSTGRES: postgres://uhlaka:pw@127.0.0.1:5432/uhlaka
+          UHLAKA_TEST_MYSQL: mysql://uhlaka:pw@127.0.0.1:3306/uhlaka
       # The command people run, on a real file, checked by what it wrote.
       - name: Export the sample site
         run: |
@@ -51,15 +51,15 @@ jobs:
       # The content in one file, brought into a new site, published the same (ADR 0057).
       - name: Export the content and bring it back
         run: |
-          bun run cms export "$RUNNER_TEMP/site.db" "$RUNNER_TEMP/site.thecms.json"
-          bun run cms import "$RUNNER_TEMP/copy.db" "$RUNNER_TEMP/site.thecms.json"
+          bun run cms export "$RUNNER_TEMP/site.db" "$RUNNER_TEMP/site.uhlaka.json"
+          bun run cms import "$RUNNER_TEMP/copy.db" "$RUNNER_TEMP/site.uhlaka.json"
           bun run cms export "$RUNNER_TEMP/copy.db" "$RUNNER_TEMP/copy"
-          diff -r --exclude=.thecms-export "$RUNNER_TEMP/out" "$RUNNER_TEMP/copy"
+          diff -r --exclude=.uhlaka-export "$RUNNER_TEMP/out" "$RUNNER_TEMP/copy"
           grep -q '"title": "About"' "$RUNNER_TEMP/copy/about/index.json"
       # The editor in a real browser, from the first click to the exported files.
       - name: Editor end to end
         env:
-          THECMS_COVERAGE: coverage
+          UHLAKA_COVERAGE: coverage
         run: |
           npm install --no-save --no-package-lock playwright
           npx playwright install --with-deps chromium
@@ -78,6 +78,8 @@ jobs:
           node e2e/seo-more.cjs
           node e2e/structured-data.cjs
           node e2e/not-found.cjs
+          node e2e/seo-tools.cjs
+          node e2e/visitors.cjs
           node e2e/backups.cjs
           node e2e/relations.cjs
           node e2e/stats.cjs
@@ -85,6 +87,9 @@ jobs:
           node e2e/authors.cjs
           node e2e/archives.cjs
           node e2e/export.cjs
+          node e2e/shop.cjs
+          node e2e/dark-mode.cjs
+          node e2e/admin-bar.cjs
       # The whole source tree, both kinds of test together. Below the floor, or a file no test measures, fails the build.
       - name: Coverage
         shell: bash

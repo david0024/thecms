@@ -1,5 +1,5 @@
 /**
- * Google Search Console (ADR 0064 d3): what people searched for when Google
+ * Google Search Console (ADR 0077 d3): what people searched for when Google
  * showed the site, and which pages they found, read with a service account the
  * owner adds to the site's property. Nothing is sent to Google but the asking.
  */

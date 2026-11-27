@@ -14,7 +14,7 @@ import { localShared } from '../src/site/shared.ts';
 import { Store, type SiteEvent } from '../src/site/store.ts';
 import plain from '../themes/plain.json';
 
-const dir = await mkdtemp(join(tmpdir(), 'thecms-ext3-'));
+const dir = await mkdtemp(join(tmpdir(), 'uhlaka-ext3-'));
 afterAll(() => rm(dir, { recursive: true, force: true }));
 
 const CHROME = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36';
@@ -231,18 +231,18 @@ const CHECKER_PACKAGE = JSON.stringify({ format: EXTENSION_FORMAT, manifest: che
 describe('a question the program waits for', () => {
   test('is declared, shown before installing, and only in the third format', () => {
     const { pkg } = parseExtension(JSON.parse(CHECKER_PACKAGE));
-    expect(pkg?.manifest.answers).toEqual([{ question: 'comment.check', action: 'check' }]);
+    expect(pkg?.manifest.answers).toEqual([{ question: 'comment.check', action: 'check', methods: [] }]);
     expect(extensionAsks(pkg!.manifest)).toMatchObject({ answers: ['comment.check'], uses: ['published'] });
     expect(parseExtension({ format: EXTENSION_FORMAT_2, manifest: checker, code: CHECKER }).pkg?.manifest.answers).toEqual([]);
     const wrong = parseExtension({
       format: EXTENSION_FORMAT,
-      manifest: { ...checker, uses: ['orders'], answers: [{ question: 'order.pay', action: 'check' }, { question: 'comment.check', action: 'nothing' }] },
+      manifest: { ...checker, uses: ['payments'], answers: [{ question: 'order.pay', action: 'check' }, { question: 'comment.check', action: 'nothing' }] },
       code: CHECKER,
     });
     expect(wrong.problems).toEqual([
-      'an extension reads published of the program\'s data ("orders")',
+      'an extension reads published, members, mail, orders of the program\'s data ("payments")',
       'list: it reads "published", which the extension does not declare in "uses"',
-      'an extension answers one of comment.check ("order.pay")',
+      'an extension answers one of comment.check, checkout.payment, checkout.delivery ("order.pay")',
       'answering comment.check runs "nothing", which is not one of its actions',
     ]);
   });

@@ -21,7 +21,7 @@ const assert = (condition, message) => {
 const PORT = 4397;
 
 (async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'thecms-e2e-extensions-'));
+  const dir = mkdtempSync(join(tmpdir(), 'uhlaka-e2e-extensions-'));
   const db = join(dir, 'site.db');
   const shots = process.argv[2];
   cli('init', db);
@@ -178,20 +178,28 @@ const PORT = 4397;
     assert(true, 'run there, it changes that translation as a change to look at');
 
     // A block an extension adds to the site's pages (ADR 0062 d6): offered in the list by its own name, drawn on the page.
-    const news = join(dir, 'news.thecms-extension');
+    const news = join(dir, 'news.uhlaka-extension');
     writeFileSync(
       news,
       JSON.stringify({
-        format: 'thecms.extension/3',
+        format: 'uhlaka.extension/3',
         manifest: {
           name: 'news',
           displayName: 'Newsletter',
           version: '1.0.0',
-          actions: [{ name: 'signup', label: 'Sign up' }],
+          collections: [{ name: 'events', label: 'Events', fields: [{ key: 'title', label: 'Title', kind: 'text', required: true }, { key: 'starts', label: 'Starts', kind: 'datetime' }] }],
+          actions: [{ name: 'signup', label: 'Sign up' }, { name: 'numbers', label: 'Numbers' }],
           routes: [{ path: 'signup', action: 'signup', methods: ['POST'] }],
+          views: [
+            { spec: 'uhlaka.view/1', id: 'news.report', title: 'Report', type: 'report', action: 'numbers' },
+            { spec: 'uhlaka.view/1', id: 'news.calendar', title: 'Calendar', type: 'calendar', collection: 'events', date: 'starts', name: 'title' },
+          ],
           blocks: [{ name: 'signup', label: 'Newsletter sign-up', fields: [{ key: 'email', label: 'E-mail', kind: 'email', required: true }, { key: 'agree', label: 'I want it', kind: 'consent' }], submit: 'Sign up', route: 'signup' }],
         },
-        code: 'export const actions = { signup: async () => null };',
+        code: `export const actions = {
+          signup: async () => null,
+          numbers: async (input) => ({ totals: [{ label: 'Visitors', value: input.range === '7' ? 7 : 1 }], chart: { labels: ['Mon', 'Tue'], series: [{ label: 'Visitors', values: [1, 2] }] }, lists: [{ title: 'Pages', rows: [{ label: '/', value: 3 }] }] }),
+        };`,
       }),
     );
     await page.locator('[data-back]').click();
@@ -208,6 +216,32 @@ const PORT = 4397;
     if (shots) await page.screenshot({ path: join(shots, 'extension-public-block.png') });
     await page.locator('button[title="Undo"]').click();
     await canvas.locator('form[data-extension-block]').waitFor({ state: 'detached' });
+
+    // Its screens (ADR 0062 d7): a report from what an action answers, for the time chosen; a calendar of its rows by month.
+    await page.locator('[data-back]').click();
+    await page.locator('[data-nav="extensions"]').click();
+    await page.locator('[data-extension-view="news.report"]').click();
+    await page.locator('[data-report-total="0"]', { hasText: '1' }).waitFor();
+    await page.locator('[data-report-range="7"]').click();
+    await page.locator('[data-report-total="0"]', { hasText: '7' }).waitFor();
+    assert((await page.locator('[data-report-chart] rect').count()) === 2 && (await page.locator('[data-report-list="0"]').innerText()).includes('/'), 'a report shows its numbers, chart and lists for the time chosen');
+    if (shots) await page.screenshot({ path: join(shots, 'extension-report.png') });
+    await page.locator('[data-nav="extensions"]').click();
+    await page.locator('[data-extension-view="news.calendar"]').click();
+    const today = new Date().toISOString().slice(0, 10);
+    await page.locator(`[data-calendar-add="${today}"]`).click();
+    assert((await page.locator('[data-field="starts"]').inputValue()) === `${today}T09:00`, 'a row added on a day starts on that day');
+    await page.locator('[data-field="title"]').fill('Workshop');
+    await page.locator('[data-extension-save]').click();
+    await page.locator(`[data-day="${today}"] [data-calendar-row]`, { hasText: '09:00 Workshop' }).waitFor();
+    await page.locator('[data-calendar-later]').click();
+    await page.locator('[data-calendar-row]').waitFor({ state: 'detached' });
+    await page.locator('[data-calendar-earlier]').click();
+    await page.locator('[data-calendar-row]').click();
+    assert((await page.locator('[data-field="title"]').inputValue()) === 'Workshop', 'a calendar shows its rows on their days, by month, and opens them');
+    if (shots) await page.screenshot({ path: join(shots, 'extension-calendar.png') });
+    await page.locator('[data-nav="pages"]').click();
+    await page.locator('button[data-open="about"]').click();
 
     // Removed, with what it kept.
     await page.locator('[data-back]').click();

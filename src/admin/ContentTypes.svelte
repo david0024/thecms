@@ -5,6 +5,7 @@
  * about it is code.
  */
 import { type ContentType, contentTypes, ENTRY_SCHEMAS, type EntrySchema, type FieldMeaning, meaningsFor, languageName, prefixOf, READY_LAYOUTS, type TypeTranslation, STANDARD, type Site, slugify, TYPE_FIELD_KINDS, type TypeField, type TypeFieldKind } from '../core/index.ts';
+import Audience from './Audience.svelte';
 import { layoutName } from './layouts.ts';
 import { say, t } from './messages.ts';
 
@@ -15,8 +16,11 @@ let {
   terms = {},
   onsave,
   ondesign,
+  shop = false,
 }: {
   site: Site;
+  /** The shop is on (ADR 0065 d10): a type may sell. */
+  shop?: boolean;
   counts: Record<string, number>;
   /** Which types have a page of their own (ADR 0015). */
   templates?: Record<string, { custom: boolean }>;
@@ -121,6 +125,7 @@ async function remove(): Promise<void> {
       <label class="check"><input type="checkbox" checked={draft.categories} onchange={(e) => patch({ categories: e.currentTarget.checked })} data-type-categories /><span>{t.ctypes.categories}</span></label>
       <label class="check" class:off={!draft.dated}><input type="checkbox" disabled={!draft.dated} checked={draft.feed} onchange={(e) => patch({ feed: e.currentTarget.checked })} /><span>{t.ctypes.feed}</span></label>
       <label class="check"><input type="checkbox" checked={draft.comments === true} onchange={(e) => patch({ comments: e.currentTarget.checked ? true : undefined })} data-type-comments /><span>{t.ctypes.comments}</span></label>
+      {#if editing}{#key editing}<Audience kind="type" key={editing} />{/key}{/if}
 
       <label class="field">
         <span>{t.layouts.ofType}</span>
@@ -129,6 +134,11 @@ async function remove(): Promise<void> {
         </select>
       </label>
 
+      {#if shop || draft.sells}
+        <label class="check"><input type="checkbox" checked={draft.sells === true} onchange={(e) => patch(e.currentTarget.checked ? { sells: true, schema: 'product' } : { sells: undefined })} data-type-sells /><span>{t.shop.sells}</span></label>
+        <small>{t.shop.sellsHint}</small>
+      {/if}
+      {#if !draft.sells}
       <label class="field">
         <span>{t.ctypes.schema}</span>
         <select value={draft.schema ?? ''} onchange={(e) => patch({ schema: (e.currentTarget.value || undefined) as EntrySchema | undefined })} data-type-schema>
@@ -137,6 +147,7 @@ async function remove(): Promise<void> {
         </select>
         <small>{t.ctypes.schemaHint}</small>
       </label>
+      {/if}
 
       <h2>{t.ctypes.fields}</h2>
       <p class="hint">{t.ctypes.fieldsHint}</p>

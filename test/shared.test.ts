@@ -15,7 +15,7 @@ import { ANSWER_MS, isValkeyAddress, localShared, openShared, RETRY_MS, shownAdd
 import { Store } from '../src/site/store.ts';
 import plain from '../themes/plain.json';
 
-const dir = await mkdtemp(join(tmpdir(), 'thecms-shared-'));
+const dir = await mkdtemp(join(tmpdir(), 'uhlaka-shared-'));
 afterAll(() => rm(dir, { recursive: true, force: true }));
 
 /** Valkey as the tests play it: a map, answering until it is told to stop. */
@@ -181,10 +181,10 @@ describe('Valkey', () => {
     shared.close();
   });
 
-  // A real Valkey (or Redis), when one is given: THECMS_TEST_VALKEY=redis://127.0.0.1:6379.
-  test.skipIf(!process.env.THECMS_TEST_VALKEY)('a real one answers through Bun\'s client', async () => {
-    const shared = openShared(process.env.THECMS_TEST_VALKEY as string, { log: () => {} });
-    const key = `thecms-test:${crypto.randomUUID()}`;
+  // A real Valkey (or Redis), when one is given: UHLAKA_TEST_VALKEY=redis://127.0.0.1:6379.
+  test.skipIf(!process.env.UHLAKA_TEST_VALKEY)('a real one answers through Bun\'s client', async () => {
+    const shared = openShared(process.env.UHLAKA_TEST_VALKEY as string, { log: () => {} });
+    const key = `uhlaka-test:${crypto.randomUUID()}`;
     await shared.set(key, 'x', 5000);
     expect(await shared.get(key)).toBe('x');
     expect([await shared.claim(`${key}:c`, 5000), await shared.claim(`${key}:c`, 5000)]).toEqual([true, false]);
@@ -192,7 +192,7 @@ describe('Valkey', () => {
     await shared.del(key);
     expect(await shared.get(key)).toBeNull();
     expect(shared.status().up).toBe(true);
-    expect((await testValkey(process.env.THECMS_TEST_VALKEY as string)).ok).toBe(true);
+    expect((await testValkey(process.env.UHLAKA_TEST_VALKEY as string)).ok).toBe(true);
     shared.close();
   });
 });
@@ -245,7 +245,7 @@ describe('the site', () => {
       const response = await editor.fetch(
         new Request('http://127.0.0.1:4321/api/performance', {
           method,
-          headers: { host: '127.0.0.1:4321', 'x-thecms-token': editor.token, 'content-type': 'application/json' },
+          headers: { host: '127.0.0.1:4321', 'x-uhlaka-token': editor.token, 'content-type': 'application/json' },
           body: body === undefined ? undefined : JSON.stringify(body),
         }),
       );
@@ -273,7 +273,7 @@ describe('the site', () => {
     const fixed = await startEditor(store, { listen: false, valkey: 'redis://127.0.0.1:1', log: () => {} });
     try {
       const response = await fixed.fetch(
-        new Request('http://127.0.0.1:4321/api/performance', { method: 'PUT', headers: { host: '127.0.0.1:4321', 'x-thecms-token': fixed.token, 'content-type': 'application/json' }, body: '{"address":""}' }),
+        new Request('http://127.0.0.1:4321/api/performance', { method: 'PUT', headers: { host: '127.0.0.1:4321', 'x-uhlaka-token': fixed.token, 'content-type': 'application/json' }, body: '{"address":""}' }),
       );
       expect(response.status).toBe(409);
     } finally {

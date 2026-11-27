@@ -9,9 +9,12 @@
  * within what the extension declared.
  */
 import { join } from 'node:path';
-import { ANSWER_SECONDS, cleanBlockPost, cleanRow, contentTypes, egressAllows, entryIn, entryPath, type ExtensionAction, type ExtensionEventName, pagePath, type Question, QUESTIONS, typeIn, type ExtensionManifest, extensionAsks, EXTENSION_MAX_BYTES, mediaKindOf, mediaNameOf, parseExtension, variantOf } from '../core/index.ts';
+import { type ShippingMethod, ANSWER_SECONDS, extensionWord, cleanBlockPost, cleanFind, cleanRow, findRows, LATER_TRIES, uniqueFields, contentTypes, egressAllows, entryIn, entryPath, type ExtensionAction, type ExtensionEventName, pagePath, type Question, QUESTIONS, typeIn, type ExtensionManifest, extensionAsks, EXTENSION_MAX_BYTES, mediaKindOf, mediaNameOf, parseExtension, variantOf } from '../core/index.ts';
 import { type FromRunner, lines, type ToRunner } from './extension-runner.ts';
+import type { PaymentChoice, ShopProviders } from './shop-pages.ts';
 import type { InstalledExtension, SiteEvent, Store } from './store.ts';
+import type { AccountsLent } from './visitor-gate.ts';
+import { extensionMailKey, normalizeTemplates, withoutExtension } from './site-mail.ts';
 import { isCompiled, newer } from './update.ts';
 import { VERSION } from './version.ts';
 
@@ -25,10 +28,52 @@ const IDLE_MS = 5 * 60_000;
 const LISTENING_MS = 10_000;
 /** The name an extension gives a row it adds to. */
 const ROW_ID = /^[A-Za-z0-9._:-]{1,40}$/;
+/** Work queued once (ADR 0076 d4.3): at most this far ahead, this large, and this many waiting for one extension. */
+const LATER_MAX_MINUTES = 30 * 24 * 60;
+const LATER_INPUT_BYTES = 64 * 1024;
+const LATER_WAITING_MAX = 1000;
+/** Files an extension keeps for an order (ADR 0076 d4.4): of these kinds, each at most 10 MB. */
+export const FILE_TYPES: readonly string[] = ['application/pdf', 'image/png', 'image/jpeg', 'application/xml', 'text/xml', 'text/plain', 'text/csv', 'application/zip'];
+const FILE_MAX_BYTES = 10 * 1024 * 1024;
+/** How long the buyer waits for a payment extension to say where to pay. */
+const PAY_SECONDS = 20;
+/** Of what a delivery extension answers, at most this many ways, and places to pick up each. */
+const WAYS_MAX = 10;
+const POINTS_MAX = 20;
+const WAY_ID = /^[a-z0-9-]{1,40}$/;
+const POINT_ID = /^[A-Za-z0-9._-]{1,40}$/;
+
+/** The ways to deliver an extension answered (ADR 0076 d4.1), as the shop's own: checked, and named `<extension>:<option>[:<point>]`. */
+export function deliveryWays(extension: string, answer: unknown[]): ShippingMethod[] {
+  const out: ShippingMethod[] = [];
+  const line = (value: unknown, max: number): string => String(value ?? '').replace(/[\u0000-\u001f\u007f]+/g, ' ').trim().slice(0, max);
+  for (const raw of answer.slice(0, WAYS_MAX)) {
+    if (!raw || typeof raw !== 'object') continue;
+    const way = raw as { id?: unknown; name?: unknown; price?: unknown; points?: unknown };
+    const id = String(way.id ?? '');
+    const name = line(way.name, 80);
+    const price = Number(way.price);
+    if (!WAY_ID.test(id) || !name || !Number.isInteger(price) || price < 0 || price > 100_000_000) continue;
+    if (!Array.isArray(way.points)) {
+      out.push({ id: `${extension}:${id}`, name, price, free: null, pickup: '' });
+      continue;
+    }
+    for (const p of way.points.slice(0, POINTS_MAX)) {
+      if (!p || typeof p !== 'object') continue;
+      const point = p as { id?: unknown; name?: unknown; address?: unknown };
+      const pid = String(point.id ?? '');
+      const address = line(point.address, 200);
+      if (!POINT_ID.test(pid) || !address) continue;
+      out.push({ id: `${extension}:${id}:${pid}`, name: `${name}: ${line(point.name, 80) || pid}`, price, free: null, pickup: address });
+    }
+  }
+  return out;
+}
+
 /** What a visitor may send to an extension's route: a provider's notice, not a file. */
 export const ROUTE_MAX_BYTES = 64 * 1024;
 /** Headers a route's action is not given: the editor's session and key are not the extension's. */
-const UNSAID = new Set(['cookie', 'x-thecms-token']);
+const UNSAID = new Set(['cookie', 'x-uhlaka-token']);
 /** Headers a route's answer may set. */
 const SAID = ['content-type', 'location', 'cache-control'];
 
@@ -48,6 +93,10 @@ export interface ExtensionOffer {
   asks: ReturnType<typeof extensionAsks>;
   /** The version installed now, when this one replaces it. */
   replaces: string | null;
+  /** It works with visitor accounts, and they are off (ADR 0064 d7): the owner is told before installing. */
+  accountsOff: boolean;
+  /** It works with the shop, and it is off (ADR 0065 d9): the owner is told before installing. */
+  shopOff: boolean;
 }
 
 /** How a process for an extension is started: the program again, as the runner. */
@@ -77,7 +126,7 @@ export const spawnRunner: Spawn = () => {
 /**
  * On a server, a runner is started by systemd for each connection to its
  * socket, under a user of its own with no network and no way into the site's
- * files (install.sh --server). `THECMS_EXTENSION_RUNNER` names the socket.
+ * files (install.sh --server). `UHLAKA_EXTENSION_RUNNER` names the socket.
  */
 export const socketRunner = (path: string): Spawn => () => {
   let handler: (message: FromRunner) => void = () => {};
@@ -131,10 +180,16 @@ interface Running {
 
 export function extensionHost(store: Store, options: { spawn?: Spawn; fetch?: (url: string, init: RequestInit) => Promise<Response>; log?: (line: string) => void } = {}) {
   const log = options.log ?? ((line: string) => console.error(line));
-  const spawn = options.spawn ?? (process.env.THECMS_EXTENSION_RUNNER ? socketRunner(process.env.THECMS_EXTENSION_RUNNER) : spawnRunner);
+  const spawn = options.spawn ?? (process.env.UHLAKA_EXTENSION_RUNNER ? socketRunner(process.env.UHLAKA_EXTENSION_RUNNER) : spawnRunner);
   const outbound = options.fetch ?? ((url, init) => fetch(url, init));
   const running = new Map<string, Running>();
   let runs = 0;
+  /** What visitor accounts lend (ADR 0064 d7), given by the runtime that serves them. */
+  let accounts: AccountsLent | null = null;
+  const lent = (): AccountsLent => {
+    if (!accounts) throw new Error('visitor accounts are not reachable here');
+    return accounts;
+  };
 
   /** Reads a package file and says what it asks for. Nothing is kept. */
   async function offer(text: string): Promise<ExtensionOffer> {
@@ -147,9 +202,12 @@ export function extensionHost(store: Store, options: { spawn?: Spawn; fetch?: (u
     }
     const { pkg, problems } = parseExtension(raw);
     if (!pkg) throw new Error(problems.join('; '));
-    if (newer(pkg.manifest.thecmsMinVersion, VERSION.split('-')[0] as string)) throw new Error(`${pkg.manifest.displayName} needs version ${pkg.manifest.thecmsMinVersion} of this program; this is ${VERSION} (update it first)`);
+    if (newer(pkg.manifest.uhlakaMinVersion, VERSION.split('-')[0] as string)) throw new Error(`${pkg.manifest.displayName} needs version ${pkg.manifest.uhlakaMinVersion} of this program; this is ${VERSION} (update it first)`);
     const before = await store.extension(pkg.manifest.name);
-    return { manifest: pkg.manifest, sha256: sha256(text), asks: extensionAsks(pkg.manifest), replaces: before?.manifest.version ?? null };
+    const asks = extensionAsks(pkg.manifest);
+    const accountsOff = asks.accounts && (await store.visitorSettings().then((v) => (v as { on?: unknown } | null)?.on !== true));
+    const shopOff = asks.shop && (await store.shopSettings().then((v) => (v as { on?: unknown } | null)?.on !== true));
+    return { manifest: pkg.manifest, sha256: sha256(text), asks, replaces: before?.manifest.version ?? null, accountsOff, shopOff };
   }
 
   /** Installs the file the owner accepted: the same bytes, or nothing. */
@@ -191,7 +249,7 @@ export function extensionHost(store: Store, options: { spawn?: Spawn; fetch?: (u
         if (id !== null && !before) throw new Error('no such row');
         const { row, problems } = cleanRow(of, args[method === 'update' ? 2 : 1], before);
         if (problems.length) throw new Error(problems.join('; '));
-        return store.saveExtensionRow(name, of.name, row, id);
+        return store.saveExtensionRow(name, of.name, row, id, new Date(), uniqueFields(of));
       }
       case 'add': {
         // Numbers added to, not written over (ADR 0062 d5): two processes counting at once lose nothing.
@@ -207,7 +265,63 @@ export function extensionHost(store: Store, options: { spawn?: Spawn; fetch?: (u
         }
         const { row, problems } = cleanRow(of, args[3] ?? {}, null);
         if (problems.length) throw new Error(problems.join('; '));
+        // A unique value is kept only by insert and update, where it is checked.
+        if (uniqueFields(of).some((key) => row[key] !== null && row[key] !== '')) throw new Error(`a row of ${of.name}, which has a unique field, is made with insert`);
         return store.addToExtensionRow(name, of.name, id, row, numbers);
+      }
+      case 'take': {
+        // Taken only while enough is left (ADR 0076 d4.6), in one step.
+        const of = collectionOf(args[0], true);
+        const by = (args[2] ?? {}) as Record<string, unknown>;
+        const numbers: Record<string, number> = {};
+        for (const [key, value] of Object.entries(by)) {
+          if (of.fields.find((f) => f.key === key)?.kind !== 'number') throw new Error(`"${key}" is not a number of ${of.name}`);
+          if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) throw new Error(`what is taken from "${key}" is a number, 0 or more`);
+          numbers[key] = value;
+        }
+        if (!Object.keys(numbers).length) throw new Error('take names at least one number to take');
+        return store.takeFromExtensionRow(name, of.name, String(args[1]), numbers);
+      }
+      case 'find': {
+        // A search the program writes (ADR 0076 d4.5): a value of a unique field is looked up, the rest read and filtered.
+        const of = collectionOf(args[0], false);
+        const { query, problems } = cleanFind(of, args[1]);
+        if (problems.length) throw new Error(problems.join('; '));
+        const unique = Object.entries(query.where).find(([key, test]) => of.fields.find((f) => f.key === key)?.unique && (typeof test === 'string' || typeof test === 'number'));
+        const rows = unique ? [await store.extensionRowBy(name, of.name, unique[0], unique[1])].filter((r) => r !== null) : await store.extensionRows(name, of.name);
+        return findRows(rows, query);
+      }
+      case 'later': {
+        // Queued once (ADR 0076 d4.3): only an action it declared as such, and not without end.
+        const wanted = String(args[0] ?? '');
+        if (!extension.manifest.later.includes(wanted)) throw new Error(`"${wanted.slice(0, 40)}" is not one of its jobs queued once`);
+        const minutes = Number(args[2] ?? 0);
+        if (!Number.isFinite(minutes) || minutes < 0 || minutes > LATER_MAX_MINUTES) throw new Error(`a job is queued 0 to ${LATER_MAX_MINUTES} minutes from now`);
+        if (JSON.stringify(args[1] ?? null).length > LATER_INPUT_BYTES) throw new Error('what a job queued once is given is at most 64 KB');
+        if ((await store.laterCount(name)) >= LATER_WAITING_MAX) throw new Error(`${extension.manifest.displayName} has ${LATER_WAITING_MAX} jobs waiting already`);
+        return store.queueLater(name, wanted, args[1] ?? null, new Date(Date.now() + minutes * 60_000));
+      }
+      case 'files.put':
+      case 'files.remove': {
+        // Files for an order (ADR 0076 d4.4), declared: the order must be one of the shop's.
+        if (!action.files) throw new Error(`the action "${action.name}" did not declare that it keeps files`);
+        if (method === 'files.remove') {
+          if (!(await store.deleteExtensionFile(name, String(args[0] ?? '')))) throw new Error('it has no such file');
+          return null;
+        }
+        if (!action.uses.includes('orders')) throw new Error(`the action "${action.name}" did not declare that it uses "orders"`);
+        const file = (args[0] && typeof args[0] === 'object' ? args[0] : {}) as { order?: unknown; name?: unknown; type?: unknown; data?: unknown; buyer?: unknown };
+        const { shopGate } = await import('./shop-gate.ts');
+        const order = await shopGate(store).lent.get(String(file.order ?? ''));
+        if (!order) throw new Error('there is no such order');
+        const type = String(file.type ?? '').toLowerCase();
+        if (!FILE_TYPES.includes(type)) throw new Error(`a file is one of ${FILE_TYPES.join(', ')}`);
+        const fileName = String(file.name ?? '').replace(/[\/\\\u0000-\u001f"<>]/g, '').trim().slice(0, 120);
+        if (!fileName) throw new Error('a file has a name');
+        if (typeof file.data !== 'string' || file.data.length > (FILE_MAX_BYTES * 4) / 3 + 4) throw new Error('a file is its bytes in base64, at most 10 MB');
+        const bytes = new Uint8Array(Buffer.from(file.data, 'base64'));
+        if (!bytes.length || bytes.length > FILE_MAX_BYTES) throw new Error('a file is its bytes in base64, at most 10 MB');
+        return store.saveExtensionFile({ extension: name, order: order.id, name: fileName, type, buyer: file.buyer === true, bytes });
       }
       case 'delete':
         return store.deleteExtensionRow(name, collectionOf(args[0], true).name, String(args[1]));
@@ -232,6 +346,49 @@ export function extensionHost(store: Store, options: { spawn?: Spawn; fetch?: (u
         if (!action.uses.includes('published')) throw new Error(`the action "${action.name}" did not declare that it reads "published"`);
         return publishedFor(store);
       }
+      case 'members.get':
+      case 'members.find':
+      case 'members.levels':
+      case 'members.give':
+      case 'members.take': {
+        // The members, declared (ADR 0064 d7): read by one id or one address, never all of them.
+        if (!action.uses.includes('members')) throw new Error(`the action "${action.name}" did not declare that it uses "members"`);
+        const what = method.slice(8) as 'get' | 'find' | 'levels' | 'give' | 'take';
+        if (what === 'levels') return (await lent().levels()).map((l) => ({ id: l.id, name: l.name }));
+        if (what === 'get' || what === 'find') return lent()[what](String(args[0] ?? ''));
+        return lent()[what](String(args[0] ?? ''), String(args[1] ?? ''));
+      }
+      case 'orders.get':
+      case 'orders.paid':
+      case 'orders.refunded':
+      case 'orders.tracking': {
+        // The shop's orders, declared (ADR 0065 d9): one by its id, never a list of them all.
+        if (!action.uses.includes('orders')) throw new Error(`the action "${action.name}" did not declare that it uses "orders"`);
+        const { shopGate } = await import('./shop-gate.ts');
+        const lent = shopGate(store).lent;
+        const id = String(args[0] ?? '');
+        if (method === 'orders.tracking') return lent.tracking(id, String(args[1] ?? ''));
+        return lent[method.slice(7) as 'get' | 'paid' | 'refunded'](id);
+      }
+      case 'mail.send': {
+        // E-mail to one visitor, declared (ADR 0064 d7): never to an address the extension gives.
+        if (!action.uses.includes('mail')) throw new Error(`the action "${action.name}" did not declare that it uses "mail"`);
+        const asked = String(args[1] ?? '');
+        const own = extension.manifest.mails.find((m) => m.name === asked);
+        if (asked !== 'welcome' && !own) throw new Error(`"${asked.slice(0, 40)}" is not one of its messages, nor the site's welcome`);
+        const values = (args[2] && typeof args[2] === 'object' ? args[2] : {}) as { link?: unknown };
+        const link = await linkFor(extension, typeof values.link === 'string' ? values.link : asked === 'welcome' ? '/_/account' : '');
+        const manifest = extension.manifest;
+        if (!own) return lent().send(String(args[0] ?? ''), 'welcome', link);
+        // The owner's words where they changed them in Settings → E-mail, else the extension's, translated.
+        const key = extensionMailKey(name, own.name);
+        const saved = normalizeTemplates(await store.mailTemplates());
+        return lent().send(
+          String(args[0] ?? ''),
+          { what: key, words: (language) => saved[language]?.[key] ?? { subject: extensionWord(manifest, language, own.subject), text: extensionWord(manifest, language, own.text) } },
+          link,
+        );
+      }
       case 'picture': {
         if (!action.pictures) throw new Error(`the action "${action.name}" did not declare that it sees the site's pictures`);
         const name = mediaNameOf(String(args[0]));
@@ -247,6 +404,42 @@ export function extensionHost(store: Store, options: { spawn?: Spawn; fetch?: (u
       default:
         throw new Error(`there is no "${method}"`);
     }
+  }
+
+  /**
+   * The link a message to a visitor carries (ADR 0064 d7): an address of the
+   * site, made whole with the site's own address, or one on a host the
+   * extension declared. Nothing else, so a message from the site never leads
+   * somewhere the owner did not accept.
+   */
+  async function linkFor(extension: InstalledExtension, link: string): Promise<string> {
+    if (link === '') return '';
+    if (link.length > 2000 || /[\s<>"]/.test(link)) throw new Error('a link is an address of the site, or of a host it declared');
+    if (/^\/(?!\/)/.test(link)) {
+      let origin = '';
+      try {
+        const own = new URL((await store.site()).url);
+        if (own.protocol === 'https:' || own.protocol === 'http:') origin = own.origin;
+      } catch {
+        // No address set.
+      }
+      if (!origin) throw new Error("the site's own address is not set, so a link of the site cannot be made");
+      return `${origin}${link}`;
+    }
+    let url: URL;
+    try {
+      url = new URL(link);
+    } catch {
+      throw new Error('a link is an address of the site, or of a host it declared');
+    }
+    let site = '';
+    try {
+      site = new URL((await store.site()).url).hostname;
+    } catch {
+      // No address set.
+    }
+    if (url.protocol !== 'https:' || !(url.hostname === site || egressAllows(extension.manifest.egress, url.hostname))) throw new Error(`a link leads to the site, or over https to a host it declared (${url.hostname})`);
+    return url.href;
   }
 
   function start(extension: InstalledExtension): Running {
@@ -349,12 +542,22 @@ export function extensionHost(store: Store, options: { spawn?: Spawn; fetch?: (u
       if (problems.length) return new Response(null, { status: 303, headers: { location: `${to}${anchor ? `${anchor}-failed` : ''}` } });
       sent = { block: block.name, fields };
     }
+    // The visitor signed in, by id and levels, never the cookie (ADR 0064 d7); null while accounts are off.
+    let visitor: { id: string; levels: string[] } | null = null;
+    if (accounts) {
+      try {
+        visitor = await accounts.visitor(request);
+      } catch (error) {
+        log(`Visitor accounts could not say who is signed in: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
     const input = {
       method,
       path: found.path,
       query: Object.fromEntries(url.searchParams),
       headers: Object.fromEntries([...request.headers].filter(([key]) => !UNSAID.has(key.toLowerCase()))),
       body,
+      visitor,
       ...(sent ?? {}),
     };
     let answer: unknown;
@@ -401,7 +604,56 @@ export function extensionHost(store: Store, options: { spawn?: Spawn; fetch?: (u
         );
       }
     }
+    ran.push(...(await queued(now)));
     return (await Promise.all(ran)).filter((x): x is string => x !== null);
+  }
+
+  /**
+   * Runs the work queued once that is due (ADR 0076 d4.3), each claimed first
+   * so that one clock runs it. The action is given `{ input, tries, at }`.
+   * What fails waits 2, 4, 8… minutes and is tried again; after LATER_TRIES it
+   * is said in the log and dropped. An extension turned off keeps its work
+   * for when it is on again.
+   */
+  async function queued(now: Date): Promise<Promise<string | null>[]> {
+    const ran: Promise<string | null>[] = [];
+    for (const one of await store.laterDue(now)) {
+      const extension = await store.extension(one.extension);
+      const action = extension?.manifest.later.includes(one.action) ? extension.manifest.actions.find((a) => a.name === one.action) : undefined;
+      if (!extension || !action) {
+        // Uninstalled, or a new version that no longer queues it.
+        if (extension) log(`${extension.manifest.displayName} no longer has the job "${one.action}"; what was queued for it is dropped`);
+        await store.laterRan(one.id, null);
+        continue;
+      }
+      if (!extension.enabled) {
+        await store.claimLater(one.id, one.dueAt, new Date(now.getTime() + 60 * 60_000));
+        continue;
+      }
+      // Held while it runs: another clock that looks meanwhile does not run it too.
+      if (!(await store.claimLater(one.id, one.dueAt, new Date(now.getTime() + (action.timeoutSeconds + 60) * 1000)))) continue;
+      ran.push(
+        run(one.extension, one.action, { input: one.input, tries: one.tries, at: now.toISOString() }).then(
+          async () => {
+            await store.laterRan(one.id, null);
+            return `${one.extension}.${one.action}`;
+          },
+          async (error: unknown) => {
+            const tries = one.tries + 1;
+            const why = error instanceof Error ? error.message : String(error);
+            if (tries >= LATER_TRIES) {
+              log(`${extension.manifest.displayName} could not do "${one.action}" after ${tries} tries, and gave it up: ${why}`);
+              await store.laterRan(one.id, null);
+            } else {
+              log(`${extension.manifest.displayName} could not do "${one.action}" (try ${tries} of ${LATER_TRIES}): ${why}`);
+              await store.laterRan(one.id, { tries, due: new Date(Date.now() + 2 ** tries * 60_000) });
+            }
+            return null;
+          },
+        ),
+      );
+    }
+    return ran;
   }
 
   /** Tells each extension that listens what happened. What one does with it is its own; a failure is said and goes no further. */
@@ -451,6 +703,78 @@ export function extensionHost(store: Store, options: { spawn?: Spawn; fetch?: (u
     return (await Promise.all(asked)).filter((a): a is string => a !== null);
   }
 
+  /** Runs an action, and gives up waiting after `seconds`. */
+  const within = <T>(work: Promise<T>, seconds: number): Promise<T> => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const late = new Promise<never>((_, reject) => (timer = setTimeout(() => reject(new Error(`no answer within ${seconds} seconds`)), seconds * 1000)));
+    return Promise.race([work, late]).finally(() => timer && clearTimeout(timer));
+  };
+
+  /**
+   * What the extensions offer at checkout (ADR 0076 d4.1): the shop asks,
+   * and nothing an extension answers is taken without being checked.
+   */
+  const checkout: ShopProviders = {
+    async payments(language) {
+      const out: PaymentChoice[] = [];
+      for (const extension of await store.extensions()) {
+        if (!extension.enabled) continue;
+        for (const answer of extension.manifest.answers.filter((a) => a.question === 'checkout.payment'))
+          for (const m of answer.methods) out.push({ id: `${extension.manifest.name}:${m.id}`, label: extensionWord(extension.manifest, language, m.label), hint: '' });
+      }
+      return out;
+    },
+    /**
+     * Where the buyer is sent to pay: the extension answers an address, or
+     * `{ redirect }`, over https on a host it declared. It is told the order
+     * as `orders` lends it, and the buyer's page of the order to come back to.
+     */
+    async pay(id, asked) {
+      const [name = '', method = ''] = id.split(':');
+      const extension = await store.extension(name);
+      const answering = extension?.enabled ? extension.manifest.answers.find((a) => a.question === 'checkout.payment' && a.methods.some((m) => m.id === method)) : undefined;
+      if (!extension || !answering) throw new Error(`no extension that is on offers "${id}"`);
+      try {
+        const answer = await within(run(name, answering.action, { question: 'checkout.payment', method, ...asked }), PAY_SECONDS);
+        const given = typeof answer === 'string' ? answer : answer && typeof answer === 'object' ? (answer as { redirect?: unknown }).redirect : undefined;
+        let url: URL;
+        try {
+          url = new URL(String(given ?? ''));
+        } catch {
+          throw new Error('it did not answer where to pay');
+        }
+        if (url.protocol !== 'https:' || !egressAllows(extension.manifest.egress, url.hostname)) throw new Error(`it sends the buyer to ${url.hostname}, which is not a host it declared, over https`);
+        return url.href;
+      } catch (error) {
+        log(`${extension.manifest.displayName} could not start the payment of order ${asked.order.number}: ${error instanceof Error ? error.message : String(error)}`);
+        throw error;
+      }
+    },
+    /**
+     * The ways to deliver a cart (ADR 0076 d4.1): each extension that answers
+     * gives a list of `{ id, name, price }`, `price` in the smallest unit with
+     * VAT, and `points` where it is picked up (each `{ id, name, address }`).
+     * What one does not answer in time, or answers wrong, is said and left out.
+     */
+    async deliveries(asked, language) {
+      const out: ShippingMethod[] = [];
+      for (const extension of await store.extensions()) {
+        if (!extension.enabled) continue;
+        const answering = extension.manifest.answers.find((a) => a.question === 'checkout.delivery');
+        if (!answering) continue;
+        const name = extension.manifest.name;
+        try {
+          const answer = await within(run(name, answering.action, { question: 'checkout.delivery', language, ...asked }), ANSWER_SECONDS);
+          if (!Array.isArray(answer)) throw new Error('it did not answer a list');
+          out.push(...deliveryWays(name, answer));
+        } catch (error) {
+          log(`${extension.manifest.displayName} did not answer checkout.delivery: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+      return out;
+    },
+  };
+
   /** Which events an extension that is on listens to, asked at most once in LISTENING_MS. */
   let listening: { at: number; names: Promise<Set<string>> } | null = null;
   async function listens(event: ExtensionEventName): Promise<boolean> {
@@ -473,6 +797,11 @@ export function extensionHost(store: Store, options: { spawn?: Spawn; fetch?: (u
     deliver,
     listens,
     ask,
+    checkout,
+    /** What visitor accounts lend extensions (ADR 0064 d7), from the runtime that serves them. */
+    lend(given: AccountsLent): void {
+      accounts = given;
+    },
     /** From now on, what happens in the site is told to the extensions that listen. Returns how to stop. */
     listen(): () => void {
       return store.onEvent((event) => void deliver(event));
@@ -487,6 +816,10 @@ export function extensionHost(store: Store, options: { spawn?: Spawn; fetch?: (u
       stop(name);
       listening = null;
       await store.uninstallExtension(name);
+      // The owner's words for its messages go with it, as what it kept does.
+      const templates = normalizeTemplates(await store.mailTemplates());
+      const left = withoutExtension(templates, name);
+      if (JSON.stringify(left) !== JSON.stringify(templates)) await store.setMailTemplates(left);
     },
     /** Stops every extension's process. */
     close(): void {
@@ -565,19 +898,23 @@ export type Batches = ReturnType<typeof batches>;
 /**
  * The published pages and entries, newest first (ADR 0062 d4): each with its
  * address, title, description, language, type and date. A page behind a
- * password is not one of them; nor is anything in draft.
+ * password or for members is not one of them; nor is anything in draft.
  */
 export async function publishedFor(store: Store): Promise<{ address: string; title: string; description: string; language: string; type: string; date: string }[]> {
   const site = await store.site();
   const locked = new Set(await store.lockedPages());
+  // Nor is what is only for members (ADR 0064 d4).
+  const audiences = await store.audiences();
   const times = await store.publishedTimes();
   const out: { address: string; title: string; description: string; language: string; type: string; date: string }[] = [];
   for (const page of await store.published()) {
-    if (locked.has(page.of) || locked.has(page.slug)) continue;
+    if (locked.has(page.of) || locked.has(page.slug) || audiences.pages[page.of]) continue;
     out.push({ address: pagePath(page.slug), title: page.title, description: page.description, language: page.language, type: 'page', date: (times.pages[page.of] ?? '').slice(0, 10) });
   }
   for (const type of contentTypes(site)) {
+    if (audiences.types[type.id]) continue;
     for (const entry of await store.publishedEntries(type.id)) {
+      if (audiences.entries[`${type.id}/${entry.slug}`]) continue;
       for (const language of [site.language, ...site.languages.filter((l) => l !== site.language)]) {
         const shown = language === site.language ? entry : entryIn(site, type, entry, language);
         if (!shown) continue;

@@ -31,7 +31,7 @@ import { Store } from '../src/site/store.ts';
 import plain from '../themes/plain.json';
 
 const theme = parseTheme(plain).theme as Theme;
-const dir = await mkdtemp(join(tmpdir(), 'thecms-translations-'));
+const dir = await mkdtemp(join(tmpdir(), 'uhlaka-translations-'));
 afterAll(() => rm(dir, { recursive: true, force: true }));
 
 const node = (id: string, target: MenuNode['target'], label = '', children: MenuNode[] = []): MenuNode => ({ id, label, target, children });
@@ -129,7 +129,7 @@ describe('the published site in more than one language', () => {
     expect(roAbout).toContain('<link rel="alternate" hreflang="en" href="https://atelier.example/about/">');
     expect(roAbout).toContain('<link rel="alternate" hreflang="ro" href="https://atelier.example/ro/about/">');
     expect(roAbout).not.toContain('hreflang="pt-BR" href');
-    expect(roAbout).toMatch(/<nav class="site-languages" aria-label="Limbi">.*href="\/about\/" hreflang="en" lang="en">English<\/a>.*aria-current="true">Română<\/a>.*href="\/pt-br\/"/s);
+    expect(roAbout).toMatch(/<nav class="site-languages" aria-label="Limbi">.*href="\/about\/" hreflang="en" lang="en"><span class="lang-long">English<\/span>.*aria-current="true"><span class="lang-long">Română<\/span>.*href="\/pt-br\/"/s);
     // The Romanian menu has the Romanian pages, and no blog: posts are in the main language.
     expect(roAbout).toContain('href="/ro/about/"');
     expect(roAbout).not.toContain('href="/blog/"');
@@ -155,7 +155,7 @@ describe('the store and the editor with more than one language', () => {
       const response = await editor.fetch(
         new Request(`http://127.0.0.1:4321${path}`, {
           method,
-          headers: { host: '127.0.0.1:4321', 'x-thecms-token': editor.token, ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
+          headers: { host: '127.0.0.1:4321', 'x-uhlaka-token': editor.token, ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
           body: body === undefined ? undefined : JSON.stringify(body),
         }),
       );

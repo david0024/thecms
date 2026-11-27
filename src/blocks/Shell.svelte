@@ -14,7 +14,7 @@
  */
 import { getContext, type Snippet } from 'svelte';
 import type { Alternate, MenuLink, Site } from '../core/index.ts';
-import { areaBlock, holdsCurrent, isLink, isMega, layoutOf, measureFor } from '../core/index.ts';
+import { areaBlock, choicePath, holdsCurrent, isLink, isMega, layoutOf, measureFor, menuLeadsAway } from '../core/index.ts';
 import BlockView from './BlockView.svelte';
 import { type EntryLists, marker, setEditing, setLists, setMeasure, setSite } from './editing.ts';
 import { ALTERNATES, wordsFor } from './words.ts';
@@ -54,6 +54,7 @@ const footerLinks = $derived(site.footerLinks.filter(isLink));
 const others: Alternate[] = getContext(ALTERNATES) ?? [];
 const home = others.find((a) => a.current)?.home ?? '/';
 const frame = $derived(layoutOf(site.layouts, layout));
+const hasMenu = $derived(menuLeadsAway(menu, home));
 /** A place of the layout, with what its section holds in this language; nothing when it shows none. */
 const area = (section: string) => (section ? { ...areaBlock(section), children: site.areas?.[section] ?? [] } : null);
 const top = $derived(area(frame.top));
@@ -67,11 +68,11 @@ const bottom = $derived(area(frame.bottom));
     <a class="site-name" href={home}>
       {#if site.logo}<img class="site-logo" src={site.logo.src} alt={site.logo.alt || site.name} />{:else}{site.name}{/if}
     </a>
-    {#if menu.length > 1 || isLink(site.action)}
+    {#if hasMenu || isLink(site.action)}
       <input class="menu-check" type="checkbox" id="site-menu" aria-label={words.menu} />
       <label class="menu-button" for="site-menu">{words.menu}</label>
       <div class="site-nav">
-        {#if menu.length > 1}
+        {#if hasMenu}
           <nav aria-label={words.mainMenu}>
             <ul class="menu">
               {#each menu as item}
@@ -108,8 +109,15 @@ const bottom = $derived(area(frame.bottom));
     {/if}
     {#if others.length > 1}
       <nav class="site-languages" aria-label={words.languages}>
-        {#each others as other}<a href={other.href} hreflang={other.language} lang={other.language} aria-current={other.current ? 'true' : undefined}>{other.name}</a>{/each}
+        {#each others as other}<a href={site.served && !editing ? choicePath(other.language, other.href) : other.href} hreflang={other.language} lang={other.language} aria-current={other.current ? 'true' : undefined}><span class="lang-long">{other.name}</span><span class="lang-short" aria-hidden="true">{other.language.toUpperCase()}</span></a>{/each}
       </nav>
+    {/if}
+    {#if site.schemeSwitch}
+      <!-- Shown by the site's one script, which turns the colours (ADR 0074 d4); without it, the device decides. -->
+      <button class="scheme-switch" type="button" hidden={!editing}>
+        <span class="scheme-to-dark"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z" /></svg><span class="scheme-label">{words.schemeDark}</span></span>
+        <span class="scheme-to-light"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.5" /><path d="M12 1.5v3M12 19.5v3M1.5 12h3M19.5 12h3M4.6 4.6l2.1 2.1M17.3 17.3l2.1 2.1M4.6 19.4l2.1-2.1M17.3 6.7l2.1-2.1" /></svg><span class="scheme-label">{words.schemeLight}</span></span>
+      </button>
     {/if}
   </div>
 </header>

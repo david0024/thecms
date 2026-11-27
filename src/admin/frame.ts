@@ -26,10 +26,14 @@ interface Render {
   selected: string | null;
   /** Bumped when the theme changed, so the stylesheet is fetched again. */
   themeVersion: number;
+  /** The scheme to show the page in (ADR 0074 d5); null: what the theme starts in. */
+  scheme: 'light' | 'dark' | null;
+  /** The theme panel is open: the header behaves as on the site, sticky included. */
+  themeMode: boolean;
   labels: { types: Record<string, string>; fields: Record<string, string>; empty: Record<string, string>; actions: Record<string, string>; format: Record<string, string> };
 }
 
-const post = (message: Up): void => parent.postMessage({ thecms: true, ...message }, location.origin);
+const post = (message: Up): void => parent.postMessage({ uhlaka: true, ...message }, location.origin);
 
 const root = document.getElementById('cms-root') as HTMLElement;
 const own = document.getElementById('cms-own') as HTMLStyleElement;
@@ -45,8 +49,9 @@ style.textContent = `
 [data-b]:hover:not(:has([data-b]:hover)){outline:1px dashed #6d5dfc;outline-offset:-1px}
 [data-frozen] [data-b]:not([data-live] [data-b]):hover{outline:none}
 [data-b].cms-selected{outline:2px solid #6d5dfc!important;outline-offset:-2px}
-/* While editing, a header that would stay on screen does not: it would cover the block being worked on. */
-.site-header{position:static!important}
+/* While editing blocks, a header that would stay on screen does not: it would cover the block being worked on.
+   With the theme panel open it does, so that the setting can be seen. */
+:root:not([data-cms-theme]) .site-header{position:static!important}
 [data-site]{cursor:pointer}
 [data-site]:hover{outline:1px dashed #6d5dfc;outline-offset:-1px}
 [data-edit],[data-edit-rich]{cursor:text;min-width:1ch}
@@ -157,6 +162,9 @@ window.addEventListener('message', (event) => {
     themeVersion = message.themeVersion;
     themeLink.href = `/admin/site.css?v=${themeVersion}`;
   }
+  if (message.scheme) document.documentElement.dataset.scheme = message.scheme;
+  else delete document.documentElement.dataset.scheme;
+  document.documentElement.toggleAttribute('data-cms-theme', message.themeMode);
   prepare();
   showSelection();
   if (rich && !rich.isConnected) leaveRich();
@@ -477,8 +485,8 @@ exec('defaultParagraphSeparator', 'p');
 // the admin's list. The page only says where it was dropped: which container
 // and at which place in it. The admin moves it in the document.
 
-const BLOCK_MIME = 'application/x-thecms-block';
-const TYPE_MIME = 'application/x-thecms-type';
+const BLOCK_MIME = 'application/x-uhlaka-block';
+const TYPE_MIME = 'application/x-uhlaka-type';
 
 interface Place {
   parent: string | null;

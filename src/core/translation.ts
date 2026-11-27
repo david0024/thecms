@@ -129,6 +129,8 @@ function menuIn(site: Site, language: string, nodes: MenuNode[], pages: Placed[]
     if (node.target.kind === 'url') return [{ ...node, children }];
     // A list of entries is there in its type's name in that language, when it has entries there (ADR 0054).
     if (node.target.kind === 'type') return [{ ...node, label: '', children }];
+    // "My account" says so in each language's words.
+    if (node.target.kind === 'account') return [{ ...node, label: '', children }];
     if (node.target.kind === 'none') return [{ ...node, children }];
     return children;
   });
@@ -153,4 +155,37 @@ export function siteIn(site: Site, language: string, pages: Placed[] = []): Site
     // Each type with its name and address in that language (ADR 0054).
     types: site.types.map((type) => typeIn(site, type, language)),
   };
+}
+
+/** The cookie that keeps the language a visitor chose with the switcher (ADR 0071 d2). It holds that language and nothing else. */
+export const LANGUAGE_COOKIE = 'uhlaka-lang';
+
+/** Where the switcher leads on a served site: an address that keeps the choice, then goes on to the page (ADR 0071 d2). */
+export const choicePath = (language: string, to: string): string => `/_/language?l=${encodeURIComponent(language)}&to=${encodeURIComponent(to)}`;
+
+/**
+ * The language a browser asks for, among the site's (ADR 0071 d3): the first
+ * of `Accept-Language`, by weight, that the site has, by its whole tag
+ * (`pt-BR`) or by its first part (`ro-RO` is `ro`, `pt` is `pt-BR`). Null when
+ * the browser says nothing, or asks for none of them.
+ */
+export function preferredLanguage(accept: string, languages: string[]): string | null {
+  const asked = accept
+    .split(',')
+    .slice(0, 20)
+    .map((part, order) => {
+      const [tag = '', ...params] = part.trim().split(';');
+      const q = params.map((p) => /^\s*q=([0-9.]+)\s*$/.exec(p)?.[1]).find((v) => v !== undefined);
+      return { tag: tag.trim().toLowerCase(), weight: q === undefined ? 1 : Number(q), order };
+    })
+    .filter((a) => a.tag && a.tag !== '*' && a.weight > 0 && Number.isFinite(a.weight))
+    .sort((a, b) => b.weight - a.weight || a.order - b.order);
+  const first = (tag: string): string => tag.split('-')[0] ?? tag;
+  for (const { tag } of asked) {
+    const whole = languages.find((l) => l.toLowerCase() === tag);
+    if (whole) return whole;
+    const part = languages.find((l) => first(l.toLowerCase()) === first(tag));
+    if (part) return part;
+  }
+  return null;
 }

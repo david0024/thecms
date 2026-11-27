@@ -16,13 +16,15 @@ import {
   listPath,
   type MenuList,
   POSTS_TYPE,
-  BLOCK_TYPES,
   ENTRY_PARTS,
   type BlockDef,
   BLOCKS,
   type BlockStyle,
   type BlockType,
   countFreeValues,
+  countFreeColors,
+  otherPalette,
+  shownBy,
   createBlock,
   duplicate,
   findById,
@@ -58,6 +60,7 @@ import { api, signedIn, type Doc, type Kind, type PostInfo, type State, type Tra
 import ContentList from './ContentList.svelte';
 import Layouts from './Layouts.svelte';
 import { layoutName } from './layouts.ts';
+import { BLOCK_GROUPS, BLOCK_WORDS, matches } from './blockGroups.ts';
 import Extensions from './Extensions.svelte';
 import ExtensionScreen from './ExtensionScreen.svelte';
 import { findView } from '../view/index.ts';
@@ -68,6 +71,7 @@ import Schedule from './Schedule.svelte';
 import Versions from './Versions.svelte';
 import ContentTypes from './ContentTypes.svelte';
 import EntryFieldsForm from './EntryFieldsForm.svelte';
+import ProductForm from './ProductForm.svelte';
 import ImageField from './ImageField.svelte';
 import ImportScreen from './ImportScreen.svelte';
 import ExportScreen from './ExportScreen.svelte';
@@ -76,11 +80,14 @@ import People from './People.svelte';
 import Profile from './Profile.svelte';
 import Reviews from './Reviews.svelte';
 import Messages from './Messages.svelte';
+import Orders from './Orders.svelte';
+import Coupons from './Coupons.svelte';
 import Backups from './Backups.svelte';
 import Stats from './Stats.svelte';
 import Forms from './Forms.svelte';
 import Comments from './Comments.svelte';
 import PageLock from './PageLock.svelte';
+import Audience from './Audience.svelte';
 import Fields from './Fields.svelte';
 import { adminLanguage, say, t } from './messages.ts';
 import { setPath } from './paths.ts';
@@ -99,7 +106,7 @@ let kind = $state<Kind>('page');
 let translation = $state<TranslationInfo | null>(null);
 /**
  * The published pages and entries in the language being written, that a page
- * could link to (ADR 0064 d1).
+ * could link to (ADR 0077 d1).
  */
 const linkTargets = $derived.by((): LinkTarget[] => {
   if (!site) return [];
@@ -118,7 +125,7 @@ const linkTargets = $derived.by((): LinkTarget[] => {
 });
 const fixed = $derived(translation !== null && !translation.split);
 /** Which section of the admin is showing: a list, or the builder with one page or post open. */
-let view = $state<'pages' | 'sections' | 'forms' | 'layouts' | 'media' | 'messages' | 'backups' | 'stats' | 'seo' | 'comments' | 'people' | 'me' | 'review' | 'types' | 'import' | 'export' | 'extensions' | 'edit' | `list:${string}` | `ext:${string}`>('pages');
+let view = $state<'pages' | 'sections' | 'forms' | 'layouts' | 'media' | 'messages' | 'orders' | 'coupons' | 'backups' | 'stats' | 'seo' | 'comments' | 'people' | 'me' | 'review' | 'types' | 'import' | 'export' | 'extensions' | 'edit' | `list:${string}` | `ext:${string}`>('pages');
 let selected = $state<string | null>(null);
 /** The form the Forms screen opens on, when a form block asked for it (ADR 0049). */
 let formAsked = $state('');
@@ -133,6 +140,14 @@ let future = $state.raw<Block[][]>([]);
 let frame: HTMLIFrameElement | undefined = $state();
 let frameReady = false;
 let themeVersion = 0;
+/** The scheme the canvas shows the page in (ADR 0074 d5): null, what the theme starts in. */
+let previewScheme = $state<'light' | 'dark' | null>(null);
+/** What the canvas shows: the scheme chosen above it, or what the site shows on this computer. */
+const canvasScheme = $derived.by(() => {
+  if (previewScheme) return previewScheme;
+  const shows = site ? shownBy(site.theme) : 'light';
+  return shows !== 'visitor' ? shows : matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+});
 /** The canvas as a phone or a tablet shows the page: the same page, narrower. */
 const DEVICES = ['wide', 'tablet', 'phone'] as const;
 const WIDTHS: Record<(typeof DEVICES)[number], string | undefined> = { wide: undefined, tablet: '820px', phone: '390px' };
@@ -183,6 +198,16 @@ let returnNote = $state('');
 /** How many entries wait to be read (ADR 0055 d4). */
 const waiting = $derived(site ? Object.values(site.entries).flat().filter((e) => e.review?.state === 'waiting').length : 0);
 const freeOnPage = $derived(page ? countFreeValues(page.blocks) : 0);
+/** Where visitors find what is open: none for a section or a content type's own page, which have no address. */
+const publicPath = $derived(
+  !page || !site || designing || sectioning
+    ? ''
+    : type
+      ? translation
+        ? entryPath(typeIn(site.site, type, translation.language), page.slug.slice(prefixOf(translation.language).length + 1))
+        : entryPath(type, page.slug)
+      : pagePath(page.slug),
+);
 
 /** The site's languages, as a question of an extension offers them. */
 const siteLanguages = $derived(site ? [site.site.language, ...site.site.languages].map((language) => ({ language, name: languageName(language) })) : []);
@@ -239,7 +264,7 @@ async function draw(): Promise<void> {
   try {
     const { body, css } = await api.render(page, kind);
     frame.contentWindow.postMessage(
-      { type: 'render', body, css, selected, themeVersion, labels: { types: t.types, fields: t.fields, empty: t.empty, actions: t.actions, format: t.format } },
+      { type: 'render', body, css, selected, themeVersion, scheme: previewScheme, themeMode, labels: { types: t.types, fields: t.fields, empty: t.empty, actions: t.actions, format: t.format } },
       location.origin,
     );
   } catch (error) {
@@ -343,6 +368,20 @@ const extensionBlocks = $derived(
     .flatMap((e) => (e.blocks ?? []).map((b) => ({ id: `${e.name}/${b.name}`, label: e.messages[adminLanguage()]?.[b.label] || e.messages[adminLanguage().split('-')[0] ?? '']?.[b.label] || b.label }))),
 );
 
+/** What is typed in the search over "Add a block" (ADR 0073). */
+let blockQuery = $state('');
+/** The blocks offered, group by group, as the search leaves them; a group left empty is not shown. */
+const blockGroups = $derived(
+  [
+    ...BLOCK_GROUPS.map((group) => ({
+      id: group.id,
+      types: group.types.filter((ty) => (ty !== 'entry' || designing) && matches(blockQuery, t.types[ty] ?? ty, t.blockNames[ty] ?? '', t.blockHints[ty] ?? '', BLOCK_WORDS[ty] ?? '', ty)),
+      extensions: [] as { id: string; label: string }[],
+    })),
+    { id: 'extensions', types: [] as BlockType[], extensions: extensionBlocks.filter((one) => matches(blockQuery, one.label, one.id)) },
+  ].filter((group) => group.types.length + group.extensions.length > 0),
+);
+
 /** A block dropped at a place on the page. `index` counts the blocks there with the moved one left out. */
 function move(id: string, parent: string | null, index: number): void {
   if (layoutFixed()) return;
@@ -378,7 +417,7 @@ const patch = (id: string, fn: (b: Block) => Block, options?: { redraw?: boolean
 };
 
 function onFrameMessage(event: MessageEvent): void {
-  if (event.origin !== location.origin || event.source !== frame?.contentWindow || event.data?.thecms !== true) return;
+  if (event.origin !== location.origin || event.source !== frame?.contentWindow || event.data?.uhlaka !== true) return;
   const message = event.data as { type: string; id: string | null; path: string; value: unknown; action: 'up'; parent: string | null; index: number; blockType: string };
   const place = (): boolean => (message.parent === null || typeof message.parent === 'string') && Number.isInteger(message.index);
   if (message.type === 'ready') {
@@ -435,6 +474,73 @@ async function panel(which: 'site' | 'theme'): Promise<void> {
   view = 'edit';
   if (which === 'site' && !siteMode) await toggleSite();
   if (which === 'theme' && !themeMode) await toggleTheme();
+}
+
+/**
+ * Each screen has an address of its own, after the key in the address's end:
+ * `#at=media`, `#at=edit/page/about`. Reloading keeps the screen, Back goes to
+ * the one before, and a screen opens in a new tab. The key stays where it is.
+ */
+const AT = 'at';
+const SCREENS = new Set(['pages', 'sections', 'forms', 'layouts', 'media', 'messages', 'orders', 'coupons', 'backups', 'stats', 'comments', 'people', 'me', 'review', 'types', 'import', 'export', 'extensions']);
+/** A list asked to start a new page or entry at once (`#at=new/page`), until it has. */
+let adding = $state('');
+/** Set while an address is being followed, so following it does not write a new one. */
+let following = false;
+/** Addresses are written once the one the admin was opened at has been followed. */
+let routed = $state(false);
+const here = $derived(view !== 'edit' ? view : siteMode ? 'settings' : themeMode ? 'theme' : page ? `edit/${kind}/${page.slug}` : 'pages');
+
+$effect(() => {
+  const at = here;
+  if (!routed || following) return;
+  const params = new URLSearchParams(location.hash.slice(1));
+  if (params.get(AT) === at) return;
+  // An address that only asks for something new (from the bar over the site) is not one to go back to.
+  const first = !params.has(AT) || (params.get(AT) ?? '').startsWith('new/');
+  params.delete(AT);
+  // Written by hand so the address reads as it is: `at=edit/page/about`, not `at=edit%2Fpage%2Fabout`.
+  const rest = params.toString();
+  const next = `${location.pathname}${location.search}#${rest ? `${rest}&` : ''}${AT}=${encodeURIComponent(at).replaceAll('%2F', '/').replaceAll('%3A', ':')}`;
+  if (first) history.replaceState(history.state, '', next);
+  else history.pushState(history.state, '', next);
+});
+
+/** Opens the screen an address names; one it does not know, or that is not this person's, leaves things as they are. */
+async function follow(): Promise<void> {
+  const at = new URLSearchParams(location.hash.slice(1)).get(AT);
+  if (!at || at === here || !site) return;
+  following = true;
+  try {
+    if (at === 'settings' || at === 'theme') {
+      if (owner) await panel(at === 'settings' ? 'site' : 'theme');
+    } else if (at.startsWith('edit/')) {
+      const rest = at.slice('edit/'.length);
+      const cut = rest.indexOf('/');
+      const next = (cut < 0 ? rest : rest.slice(0, cut)) as Kind;
+      const slug = cut < 0 ? '' : rest.slice(cut + 1);
+      if (siteMode) await toggleSite();
+      themeMode = false;
+      if (!page || next !== kind || slug !== page.slug) await open(slug, next);
+      view = 'edit';
+    } else if (at.startsWith('new/')) {
+      // From the bar over the site (ADR 0075): the list, with the title of a new one asked at once.
+      const wanted = at.slice('new/'.length);
+      const listed = wanted === 'page' ? ((site.me.role === 'owner' || site.me.role === 'editor') ? 'pages' : '') : types.some((ty) => ty.id === wanted) ? `list:${wanted}` : '';
+      if (listed) {
+        if (siteMode) await toggleSite();
+        themeMode = false;
+        adding = wanted;
+        view = listed as typeof view;
+      }
+    } else if (SCREENS.has(at) || (at.startsWith('list:') && types.some((ty) => `list:${ty.id}` === at)) || (at.startsWith('ext:') && site.extensions.some((e) => at.startsWith(`ext:${e.name}/`)))) {
+      if (siteMode) await toggleSite();
+      themeMode = false;
+      view = at as typeof view;
+    }
+  } finally {
+    following = false;
+  }
 }
 
 async function createPage(title: string, newKind: Kind, layout = ''): Promise<void> {
@@ -693,6 +799,7 @@ async function toggleTheme(): Promise<void> {
   const next = !themeMode;
   if (siteMode) await toggleSite();
   themeMode = next;
+  await draw();
 }
 
 async function publishTheme(): Promise<void> {
@@ -714,6 +821,7 @@ function onKey(event: KeyboardEvent): void {
 
 onMount(() => {
   window.addEventListener('message', onFrameMessage);
+  window.addEventListener('popstate', follow);
   (async () => {
     try {
       site = await api.state();
@@ -721,11 +829,16 @@ onMount(() => {
       // An author and a contributor start at their own entries: the pages are not theirs (ADR 0055 d1).
       signedIn.staff = staff;
       if (!staff) view = `list:${types.find((ty) => ty.id === POSTS_TYPE)?.id ?? types[0]?.id ?? ''}`;
+      await follow();
+      routed = true;
     } catch (error) {
       fail(error);
     }
   })();
-  return () => window.removeEventListener('message', onFrameMessage);
+  return () => {
+    window.removeEventListener('message', onFrameMessage);
+    window.removeEventListener('popstate', follow);
+  };
 });
 </script>
 
@@ -737,7 +850,8 @@ onMount(() => {
   <div class="editor admin" class:building={view === 'edit'}>
     <!-- Like a page builder elsewhere, the builder takes the whole window: the page needs the width. -->
     <nav class="rail" aria-label={t.nav.label} hidden={view === 'edit'}>
-      <strong>{site.site.name}</strong>
+      <!-- The way out to the site, as visitors see it, in a tab of its own (like the admin bar elsewhere). -->
+      <a class="site" href="/" target="_blank" rel="noopener" data-view-site><strong>{site.site.name}</strong><small>{t.nav.viewSite} ↗</small></a>
       {#if staff}
       <button type="button" aria-current={view === 'pages' ? 'page' : undefined} onclick={() => (view = 'pages')} data-nav="pages">{t.nav.pages}</button>
       {/if}
@@ -755,6 +869,10 @@ onMount(() => {
       {/if}
       {#if staff && types.some((ty) => ty.comments)}
         <button type="button" aria-current={view === 'comments' ? 'page' : undefined} onclick={() => (view = 'comments')} data-nav="comments">{t.nav.comments}</button>
+      {/if}
+      {#if site.shop.on && (owner || (staff && site.shop.editors))}
+        <button type="button" aria-current={view === 'orders' ? 'page' : undefined} onclick={() => (view = 'orders')} data-nav="orders">{t.nav.orders}</button>
+        <button type="button" aria-current={view === 'coupons' ? 'page' : undefined} onclick={() => (view = 'coupons')} data-nav="coupons">{t.nav.coupons}</button>
       {/if}
       {#if owner}
         <button type="button" aria-current={view === 'forms' ? 'page' : undefined} onclick={() => ((formAsked = ''), (view = 'forms'))} data-nav="forms">{t.nav.forms}</button>
@@ -781,7 +899,7 @@ onMount(() => {
 
     {#if view === 'pages'}
       <div class="stack">
-        <ContentList kind="page" items={site.pages} site={site.site} onopen={(slug) => edit(slug, 'page')} layouts={site.site.layouts ?? READY_LAYOUTS} oncreate={(title, layout) => createPage(title, 'page', layout)} ontranslate={translatePage} />
+        <ContentList kind="page" items={site.pages} site={site.site} adding={adding === 'page'} onadding={() => (adding = '')} onopen={(slug) => edit(slug, 'page')} layouts={site.site.layouts ?? READY_LAYOUTS} oncreate={(title, layout) => createPage(title, 'page', layout)} ontranslate={translatePage} />
         <SiteCheck />
       </div>
     {:else if view === 'sections'}
@@ -789,12 +907,12 @@ onMount(() => {
     {:else if view === 'layouts'}
       <Layouts site={site.site} sections={site.sections} onsave={saveLayouts} />
     {:else if view === 'types'}
-      <ContentTypes site={site.site} counts={Object.fromEntries(types.map((ty) => [ty.id, site?.entries[ty.id]?.length ?? 0]))} templates={site.templates} terms={Object.fromEntries(types.map((ty) => [ty.id, [...new Set((site?.entries[ty.id] ?? []).flatMap((e) => e.terms ?? []))]]))} onsave={saveTypes} ondesign={(id) => edit(id, `template:${id}`)} />
+      <ContentTypes site={site.site} shop={site.shop.on} counts={Object.fromEntries(types.map((ty) => [ty.id, site?.entries[ty.id]?.length ?? 0]))} templates={site.templates} terms={Object.fromEntries(types.map((ty) => [ty.id, [...new Set((site?.entries[ty.id] ?? []).flatMap((e) => e.terms ?? []))]]))} onsave={saveTypes} ondesign={(id) => edit(id, `template:${id}`)} />
     {:else if view.startsWith('list:')}
       {@const listed = types.find((ty) => `list:${ty.id}` === view)}
       {#if listed}
         {#key listed.id}
-          <ContentList kind={listed.id} type={listed} items={listedOf(listed.id)} people={site.people} site={site.site} onopen={(slug) => edit(slug, listed.id)} oncreate={(title) => createPage(title, listed.id)} ontranslate={(slug, language) => translatePage(slug, language, listed.id)} />
+          <ContentList kind={listed.id} type={listed} adding={adding === listed.id} onadding={() => (adding = '')} items={listedOf(listed.id)} people={site.people} site={site.site} onopen={(slug) => edit(slug, listed.id)} oncreate={(title) => createPage(title, listed.id)} ontranslate={(slug, language) => translatePage(slug, language, listed.id)} />
         {/key}
       {/if}
     {:else if view === 'media'}
@@ -803,10 +921,14 @@ onMount(() => {
       {#key formAsked}<Forms site={site.site} open={formAsked} onchange={(forms) => site && (site = { ...site, forms: forms.map((f) => ({ name: f.name, title: f.title })) })} />{/key}
     {:else if view === 'messages'}
       <Messages />
+    {:else if view === 'orders'}
+      <Orders />
+    {:else if view === 'coupons'}
+      <Coupons currency={site.site.business?.currency || 'RON'} />
     {:else if view === 'backups'}
       <Backups />
     {:else if view === 'stats'}
-      <Stats />
+      <Stats onchange={(next) => site && (site = { ...site, extensions: next })} />
       <SearchConsole {owner} />
     {:else if view === 'seo'}
       <SeoTable extensions={site.extensions} onopen={(slug, kind) => edit(slug, kind)} />
@@ -846,6 +968,11 @@ onMount(() => {
       <span class="devices" role="group" aria-label={t.bar.device}>
         {#each DEVICES as d (d)}<button type="button" aria-pressed={device === d} onclick={() => (device = d)} data-device={d}>{t.bar[d]}</button>{/each}
       </span>
+      {#if otherPalette(site.theme)}
+        <span class="devices" role="group" aria-label={t.theme.schemes.preview}>
+          {#each ['light', 'dark'] as const as scheme (scheme)}<button type="button" aria-pressed={canvasScheme === scheme} onclick={() => { previewScheme = scheme; draw(); }} data-preview-scheme={scheme}>{scheme === 'light' ? t.theme.schemes.previewLight : t.theme.schemes.previewDark}</button>{/each}
+        </span>
+      {/if}
       <span class="status" data-state={saving} role="status">{failure && saving === 'error' ? `${t.bar.error}: ${failure}` : t.bar[saving]}</span>
       <span class="grow"></span>
       {#if owner}
@@ -860,6 +987,7 @@ onMount(() => {
       <button type="button" onclick={toggleTheme} aria-pressed={themeMode} data-theme-mode>{themeMode ? t.theme.done : t.theme.edit}</button>
       {#if site.themeChanged}<button type="button" onclick={publishTheme} title={t.theme.changed} data-publish-theme>{t.theme.publish}</button>{/if}
       {/if}
+      {#if publicPath && info?.published}<a class="out" href={publicPath} target="_blank" rel="noopener" title={t.bar.viewPageHint} data-view-page>{t.bar.viewPage} ↗</a>{/if}
       <span class="sep"></span>
       <span class="state" data-review-state={review?.state ?? ''}>{review ? (review.state === 'waiting' ? t.review.waiting : t.review.returned) : !info?.published ? t.bar.draft : info.changed || saving !== 'saved' ? t.bar.changed : t.bar.published}</span>
       {#if contributor}
@@ -871,34 +999,44 @@ onMount(() => {
 
     <aside class="left">
       <h2>{t.app.blocks}</h2>
-      <ul class="library">
-        {#each BLOCK_TYPES.filter((ty) => ty !== 'extension' && (ty !== 'entry' || designing)) as type (type)}
-          <li>
-            <button
-              type="button"
-              draggable="true"
-              ondragstart={(e) => {
-                e.dataTransfer?.setData('application/x-thecms-type', type);
-                if (e.dataTransfer) e.dataTransfer.effectAllowed = 'copy';
-              }}
-              onclick={() => add(type)}
-              data-add={type}>{t.types[type] ?? type}</button>
-          </li>
-        {/each}
-        {#each extensionBlocks as one (one.id)}
-          <li>
-            <button
-              type="button"
-              draggable="true"
-              ondragstart={(e) => {
-                e.dataTransfer?.setData('application/x-thecms-type', `extension:${one.id}`);
-                if (e.dataTransfer) e.dataTransfer.effectAllowed = 'copy';
-              }}
-              onclick={() => add('extension', { block: one.id })}
-              data-add-extension={one.id}>{one.label}</button>
-          </li>
-        {/each}
-      </ul>
+      <input type="search" class="find" placeholder={t.app.blockSearch} aria-label={t.app.blockSearch} bind:value={blockQuery} data-block-search />
+      {#each blockGroups as group (group.id)}
+        <details class="blocks" open data-block-group={group.id}>
+          <summary>{t.blockGroups[group.id] ?? group.id}</summary>
+          <ul class="library">
+            {#each group.types as type (type)}
+              <li>
+                <button
+                  type="button"
+                  draggable="true"
+                  title={t.blockHints[type] ?? ''}
+                  ondragstart={(e) => {
+                    e.dataTransfer?.setData('application/x-uhlaka-type', type);
+                    if (e.dataTransfer) e.dataTransfer.effectAllowed = 'copy';
+                  }}
+                  onclick={() => add(type)}
+                  data-add={type}>{t.blockNames[type] ?? t.types[type] ?? type}</button>
+              </li>
+            {/each}
+            {#each group.extensions as one (one.id)}
+              <li>
+                <button
+                  type="button"
+                  draggable="true"
+                  title={one.label}
+                  ondragstart={(e) => {
+                    e.dataTransfer?.setData('application/x-uhlaka-type', `extension:${one.id}`);
+                    if (e.dataTransfer) e.dataTransfer.effectAllowed = 'copy';
+                  }}
+                  onclick={() => add('extension', { block: one.id })}
+                  data-add-extension={one.id}>{one.label}</button>
+              </li>
+            {/each}
+          </ul>
+        </details>
+      {:else}
+        <p class="hint" data-no-block>{t.app.noBlock}</p>
+      {/each}
       <p class="hint">{t.app.blocksHint}</p>
     </aside>
 
@@ -909,10 +1047,10 @@ onMount(() => {
     <aside class="right">
       {#if siteMode}
         <h2>{t.site.heading}</h2>
-        <SitePanel site={site.site} pages={pagesIn(site.site, site.site.language, site.pages)} lists={menuLists} languages={site.languages} onchange={editSite} onadminlanguage={setAdminLanguage} />
+        <SitePanel site={site.site} pages={pagesIn(site.site, site.site.language, site.pages)} lists={menuLists} languages={site.languages} onchange={editSite} onadminlanguage={setAdminLanguage} shop={site.shop} onshop={reload} />
       {:else if themeMode}
         <h2>{t.theme.heading}</h2>
-        <ThemeBuilder theme={site.theme} onchange={editTheme} />
+        <ThemeBuilder theme={site.theme} onchange={editTheme} handPicked={page ? countFreeColors(page.blocks) : 0} changed={site.themeChanged} onpublish={publishTheme} />
       {:else if block && def}
         <h2>{t.types[block.type] ?? block.type}</h2>
         <div class="tabs" role="tablist">
@@ -1063,6 +1201,9 @@ onMount(() => {
             <ImageField label={t.posts.cover} value={post.cover} onchange={(cover) => change({ ...post, cover: cover.src ? cover : null }, { step: false })} />
           </div>
           <EntryFieldsForm {type} {types} entries={site.entries} own={post.slug} values={post.fields} onchange={(fields) => change({ ...post, fields }, { step: false })} />
+          {#if type.sells && site.shop.on}
+            <ProductForm product={post.product} shop={site.shop} kind={type.id} slug={post.slug} onchange={(product) => change({ ...post, product }, { step: false })} />
+          {/if}
           {@const entry = info as PostInfo | undefined}
           {#if staff && site.accounts}
             <label class="field">
@@ -1140,6 +1281,7 @@ onMount(() => {
         {#if !designing && !sectioning && !translation && !contributor}
           {#key `${kind}/${page.slug}`}<Schedule slug={page.slug} {kind} />{/key}
           {#if kind === 'page' && page.slug !== ''}{#key page.slug}<PageLock slug={page.slug} />{/key}{/if}
+          {#if type || page.slug !== ''}{#key `${kind}/${page.slug}`}<Audience kind={type ? 'entry' : 'page'} key={type ? `${kind}/${page.slug}` : page.slug} />{/key}{/if}
         {/if}
         {#if !designing && !(type && translation)}
           {#key `${kind}/${page.slug}`}<Versions slug={page.slug} {kind} onrestore={(doc) => change(doc)} />{/key}
@@ -1165,9 +1307,14 @@ onMount(() => {
   .rail[hidden] { display: none; }
   .rail { display: flex; flex-direction: column; gap: 0.25rem; padding: 0.9rem 0.6rem; background: #1c1b22; color: #fff; }
   .rail .me { padding: 0 0.5rem; color: #a9a6bd; overflow-wrap: anywhere; }
-  .rail strong { padding: 0 0.5rem 0.8rem; overflow-wrap: anywhere; }
+  .rail .site { display: grid; gap: 0.1rem; padding: 0.3rem 0.5rem 0.5rem; margin-bottom: 0.4rem; border-radius: 6px; color: #fff; text-decoration: none; overflow-wrap: anywhere; }
+  .rail .site small { color: #a9a6bd; }
+  .rail .site:hover { background: #2e2c3a; }
+  .rail .site:hover small { color: #fff; text-decoration: underline; }
+  .out { padding: 0.4rem 0.7rem; border: 1px solid #cfccdc; border-radius: 6px; color: inherit; text-decoration: none; white-space: nowrap; }
+  .out:hover { border-color: #6d5dfc; }
   :global(.editor .rail button) { border-color: transparent; background: none; color: #d9d7e6; text-align: start; }
-  :global(.editor .rail button:hover:not(:disabled)) { border-color: transparent; background: #2e2c3a; }
+  :global(.editor .rail button:hover:not(:disabled):not([aria-current='page'])) { border-color: transparent; background: #2e2c3a; }
   :global(.editor .rail button[aria-current='page']) { background: #6d5dfc; color: #fff; font-weight: 600; }
   :global(.editor .screen) { overflow-y: auto; padding: 1.5rem 2rem; }
   .stack { min-width: 0; overflow-y: auto; }
@@ -1195,14 +1342,18 @@ onMount(() => {
   h2 { margin: 1.1rem 0 0.5rem; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: #6a6880; }
   h2:first-child { margin-top: 0; }
   ul { list-style: none; margin: 0 0 0.6rem; padding: 0; display: grid; gap: 0.25rem; }
-  .library { grid-template-columns: 1fr 1fr; }
+  .library { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .find { width: 100%; margin-bottom: 0.6rem; padding: 0.4rem 0.5rem; border: 1px solid #cfccdc; border-radius: 6px; background: #fff; color: inherit; font: inherit; }
+  .blocks { margin-bottom: 0.4rem; }
+  .blocks summary { cursor: pointer; padding: 0.25rem 0; font-size: 12.5px; font-weight: 600; color: #4b4960; }
+  .blocks .library { margin-top: 0.3rem; }
   :global(.editor button) { padding: 0.4rem 0.7rem; border: 1px solid #cfccdc; border-radius: 6px; background: #fff; color: inherit; font: inherit; cursor: pointer; }
   :global(.editor button:hover:not(:disabled)) { border-color: #6d5dfc; }
   :global(.editor button:disabled) { opacity: 0.45; cursor: default; }
   :global(.editor button.primary) { background: #6d5dfc; border-color: #6d5dfc; color: #fff; font-weight: 600; }
   :global(.editor button.quiet) { border-color: transparent; color: #6a6880; }
   :global(.editor button.danger) { color: #b3261e; margin-top: 1rem; }
-  .library button { width: 100%; text-align: start; }
+  .library button { width: 100%; height: 100%; padding-inline: 0.5rem; text-align: start; font-size: 13px; line-height: 1.25; }
   .tabs { display: flex; gap: 0.25rem; margin-bottom: 0.8rem; }
   .tabs button { flex: 1; }
   .tabs button[aria-selected='true'] { background: #f1efff; border-color: #6d5dfc; font-weight: 600; }

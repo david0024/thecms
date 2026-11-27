@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 /**
- * `thecms.view/1`: how an extension describes its screens (ADR 0031), on the
+ * `uhlaka.view/1`: how an extension describes its screens (ADR 0031), on the
  * model of Zveltio's `zveltio.view/2`.
  *
  * A view is semantic. It names the extension's collections, their fields and
@@ -11,15 +11,22 @@
  *
  * This module stands on its own: it imports nothing, so another front end, a
  * tool that writes views or the packer can take it as it is. Additions within
- * `thecms.view/1` are new optional keys or view kinds; removing or narrowing
- * anything is `thecms.view/2`.
+ * `uhlaka.view/1` are new optional keys or view kinds; removing or narrowing
+ * anything is `uhlaka.view/2`.
  */
 
-export const VIEW_SPEC = 'thecms.view/1';
+export const VIEW_SPEC = 'uhlaka.view/1';
 
-/** The kinds of view. A kind is added within `thecms.view/1` only with a front end that draws it. */
-export const VIEW_KINDS = ['list', 'form', 'tabs'] as const;
+/** The kinds of view. A kind is added within `uhlaka.view/1` only with a front end that draws it. */
+export const VIEW_KINDS = ['list', 'form', 'tabs', 'report', 'calendar'] as const;
 export type ViewKind = (typeof VIEW_KINDS)[number];
+
+/** The times a report offers (ADR 0062 d7): today, and the last 7, 30 and 365 days. */
+export const REPORT_RANGES = ['today', '7', '30', '365'] as const;
+export type ReportRange = (typeof REPORT_RANGES)[number];
+
+/** The kinds of field a calendar places its rows by. */
+export const DATE_KINDS: readonly string[] = ['date', 'datetime'];
 
 /** How a value or a button is marked: what it means, never what it looks like. */
 export const TONES = ['neutral', 'success', 'warning', 'danger', 'muted'] as const;
@@ -102,14 +109,39 @@ export interface TabsView extends ViewBase {
   views: View[];
 }
 
-export type View = ListView | FormView | TabsView;
+/**
+ * Numbers, a chart and lists (ADR 0062 d7), from what an action answers. The
+ * action is given `{ range, timeZone }` and answers a `ReportAnswer`.
+ */
+export interface ReportView extends ViewBase {
+  type: 'report';
+  action: string;
+  /** The times offered, the first shown first. Absent: all of them. */
+  ranges?: ReportRange[];
+}
+
+/**
+ * The rows of a collection by month (ADR 0062 d7), each on the day of its
+ * `date` field (a date or a date and time), named by its `name` field. A row
+ * opens the collection's form; `create` and `edit` as for a list.
+ */
+export interface CalendarView extends ViewBase {
+  type: 'calendar';
+  collection: string;
+  date: string;
+  name: string;
+  create?: boolean;
+  edit?: boolean;
+}
+
+export type View = ListView | FormView | TabsView | ReportView | CalendarView;
 
 /** A screen as the manifest lists it: a view with the spec, an id and a title. */
 export type ViewDocument = View & { spec: typeof VIEW_SPEC; id: string; title: string };
 
 /** What a view may name: the extension's own collections and actions. */
 export interface ViewScope {
-  collections: { name: string; fields: { key: string }[] }[];
+  collections: { name: string; fields: { key: string; kind?: string }[] }[];
   /** `on` set: the action runs in the editor, on a block or a page, and no screen runs it. */
   actions: { name: string; ask: { key: string }[]; on?: string | null }[];
 }
@@ -148,7 +180,7 @@ class Checker {
     if (typeof value !== 'string' || !value.trim() || value.length > 200) this.say(at, `"${key}" is a short text`);
   }
 
-  collection(at: string, name: unknown): { name: string; fields: { key: string }[] } | null {
+  collection(at: string, name: unknown): { name: string; fields: { key: string; kind?: string }[] } | null {
     const found = this.scope.collections.find((c) => c.name === name);
     if (!found) this.say(at, `"${String(name)}" is not one of the extension's collections`);
     return found ?? null;
@@ -287,6 +319,28 @@ class Checker {
           if (isObject(v) && v.title === undefined) this.say(`${at}.views[${i}]`, 'a tab has a title');
           this.view(`${at}.views[${i}]`, v, false);
         });
+        if (raw.actions !== undefined) this.buttons(`${at}.actions`, raw.actions, null);
+        return;
+      }
+      case 'report': {
+        this.keys(at, raw, [...base, 'action', 'ranges'], ['action']);
+        this.action(at, raw.action);
+        if (raw.ranges !== undefined) {
+          const ranges = raw.ranges;
+          if (!Array.isArray(ranges) || ranges.length === 0 || !ranges.every((r) => REPORT_RANGES.includes(r as ReportRange)) || new Set(ranges).size !== ranges.length)
+            this.say(at, `"ranges" lists some of ${REPORT_RANGES.join(', ')}, each once`);
+        }
+        if (raw.actions !== undefined) this.buttons(`${at}.actions`, raw.actions, null);
+        return;
+      }
+      case 'calendar': {
+        this.keys(at, raw, [...base, 'collection', 'date', 'name', 'create', 'edit'], ['collection', 'date', 'name']);
+        const of = this.collection(at, raw.collection);
+        this.field(`${at}.date`, of, raw.date);
+        this.field(`${at}.name`, of, raw.name);
+        const kind = of?.fields.find((f) => f.key === raw.date)?.kind;
+        if (of && kind !== undefined && !DATE_KINDS.includes(kind)) this.say(`${at}.date`, `"${String(raw.date)}" is not a date or a date and time`);
+        for (const key of ['create', 'edit']) if (raw[key] !== undefined && typeof raw[key] !== 'boolean') this.say(at, `"${key}" is true or false`);
         if (raw.actions !== undefined) this.buttons(`${at}.actions`, raw.actions, null);
         return;
       }

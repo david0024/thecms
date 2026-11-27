@@ -54,7 +54,7 @@ function png(width, height) {
 }
 
 (async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'thecms-e2e-archives-'));
+  const dir = mkdtempSync(join(tmpdir(), 'uhlaka-e2e-archives-'));
   const db = join(dir, 'site.db');
   const shots = process.argv[2];
   cli('init', db);

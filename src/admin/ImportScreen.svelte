@@ -1,7 +1,7 @@
 <script lang="ts">
 /**
  * Bringing in a WordPress site from the admin (ADR 0012), or a content file
- * another thecms site made (ADR 0057 d2). The file is read first and nothing
+ * another Uhlaka site made (ADR 0057 d2). The file is read first and nothing
  * is written: the owner sees what would come over and what would not,
  * chooses, and only then starts it.
  */
@@ -139,11 +139,11 @@ onMount(() =>
           <li><strong>{preview.pages}</strong> {t.imp.pages}</li>
           <li><strong>{preview.posts}</strong> {t.imp.posts}</li>
           {#each preview.types as type (type.id)}<li><strong>{type.count}</strong> {type.name}</li>{/each}
-          {#if preview.kind === 'thecms'}
+          {#if preview.kind === 'uhlaka'}
             <li><strong>{preview.sections ?? 0}</strong> {t.imp.sectionCount}</li>
             <li><strong>{preview.forms ?? 0}</strong> {t.imp.formCount}</li>
           {/if}
-          <li><strong>{preview.images}</strong> {preview.kind === 'thecms' ? t.imp.files : t.imp.images}</li>
+          <li><strong>{preview.images}</strong> {preview.kind === 'uhlaka' ? t.imp.files : t.imp.images}</li>
           <li><strong>{preview.redirects}</strong> {t.imp.redirects}</li>
         </ul>
 
@@ -163,8 +163,8 @@ onMount(() =>
           {/each}
         {/if}
 
-        {#if preview.kind !== 'thecms' || preview.menu}<h3>{t.imp.choices}</h3>{/if}
-        {#if preview.kind === 'thecms'}
+        {#if preview.kind !== 'uhlaka' || preview.menu}<h3>{t.imp.choices}</h3>{/if}
+        {#if preview.kind === 'uhlaka'}
           {#if preview.menu}
             <label class="check"><input type="checkbox" bind:checked={settings} data-import-settings /> {t.imp.settingsContent}</label>
             <p class="hint">{t.imp.settingsContentHint}</p>

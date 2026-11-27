@@ -37,7 +37,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ inputs.version }}
         run: |
-          gh release download "$TAG" --dir docker --clobber --pattern 'thecms-linux-*' --pattern checksums.sha256 --pattern install.sh
+          gh release download "$TAG" --dir docker --clobber --pattern 'uhlaka-linux-*' --pattern checksums.sha256 --pattern install.sh
           echo "VERSION=${TAG#v}" >> "$GITHUB_ENV"
           echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
       - uses: docker/setup-qemu-action@v3

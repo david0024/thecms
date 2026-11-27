@@ -13,7 +13,7 @@ import { FRESH_MS, startRuntime } from '../src/site/runtime.ts';
 import { Store } from '../src/site/store.ts';
 import plain from '../themes/plain.json';
 
-const dir = await mkdtemp(join(tmpdir(), 'thecms-xblocks-'));
+const dir = await mkdtemp(join(tmpdir(), 'uhlaka-xblocks-'));
 afterAll(() => rm(dir, { recursive: true, force: true }));
 
 const CODE = `export const actions = {

@@ -12,7 +12,7 @@ h1{font-size:min(var(--t-size-3xl),11vw)}
 h2{font-size:min(var(--t-size-2xl),9vw)}
 h3{font-size:var(--t-size-lg)}
 p{margin:0 0 var(--t-space-sm)}
-a{color:var(--t-color-primary)}
+a{color:var(--t-color-link,var(--t-color-primary))}
 img{max-width:100%;height:auto;display:block}
 .lead{font-size:var(--t-size-lg);color:var(--t-color-muted)}
 .lines{white-space:pre-line}
@@ -30,6 +30,15 @@ img{max-width:100%;height:auto;display:block}
 .site-languages a{color:inherit;text-decoration:none;opacity:.75}
 .site-languages a:hover{text-decoration:underline}
 .site-languages a[aria-current]{opacity:1;font-weight:700}
+.lang-short{display:none}
+/* The switch between light and dark colours (ADR 0074 d4): it offers the scheme the page is not in; the theme's stylesheet says which. */
+.scheme-switch{display:inline-flex;align-items:center;justify-content:center;width:2.25rem;height:2.25rem;padding:0;border:1px solid color-mix(in srgb,currentColor 35%,transparent);border-radius:999px;background:none;color:inherit;cursor:pointer}
+.scheme-switch[hidden]{display:none}
+.scheme-switch:hover{border-color:currentColor}
+.scheme-switch:focus-visible{outline:2px solid currentColor;outline-offset:2px}
+.scheme-switch svg{width:1.15rem;height:1.15rem;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.scheme-to-light,.scheme-to-dark{display:inline-flex}
+.scheme-label{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 .site-footer p{margin:0}
 
 /* A layout (ADR 0035): how wide the blocks run, and a sidebar beside them. A block's own width still wins. */
@@ -52,7 +61,8 @@ img{max-width:100%;height:auto;display:block}
 .b .b{padding-inline:0}
 .b-section>.b-in>[data-frozen]>.section>.b,.b-section>.b-in>.section>.b{padding-inline:var(--t-space-md)}
 
-.button{display:inline-block;padding:.7em 1.3em;border-radius:var(--t-radius-md);background:var(--t-color-primary);color:var(--t-color-on-primary);font-weight:600;text-decoration:none}
+/* ADR 0068: a block may set its buttons' colours; a theme may give buttons corners of their own (radius token "button"). */
+.button{display:inline-block;padding:.7em 1.3em;border-radius:var(--t-radius-button,var(--t-radius-md));background:var(--b-button-bg,var(--t-color-primary));color:var(--b-button-fg,var(--t-color-on-primary));font-weight:600;text-decoration:none}
 .button.quiet{background:transparent;color:inherit;box-shadow:inset 0 0 0 1px currentColor}
 .actions{margin:var(--t-space-md) -.35rem 0}
 .actions .button{margin:.35rem}
@@ -60,12 +70,14 @@ img{max-width:100%;height:auto;display:block}
 .hero{display:grid;gap:var(--b-gap);align-items:center}
 .hero.has-image{grid-template-columns:repeat(auto-fit,minmax(min(100%,20rem),1fr))}
 .hero-image{border-radius:var(--t-radius-lg);width:100%}
-.eyebrow{font-size:var(--t-size-sm);font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--t-color-primary)}
+/* A hero in its theme's colours: its lead follows the hero's text colour, a little softer (ADR 0068 d2). */
+.hero .lead{color:color-mix(in srgb,currentColor 82%,transparent)}
+.eyebrow{font-size:var(--t-size-sm);font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--t-color-link,var(--t-color-primary))}
 .b-hero{--b-width:var(--t-width-wide);padding-block:var(--t-space-xl)}
 
 .prose>:last-child{margin-bottom:0}
 .prose h2,.prose h3,.prose h4{margin-top:var(--t-space-md)}
-.prose blockquote{margin:var(--t-space-md) 0;padding-inline-start:var(--t-space-md);border-inline-start:3px solid var(--t-color-primary);color:var(--t-color-muted)}
+.prose blockquote{margin:var(--t-space-md) 0;padding-inline-start:var(--t-space-md);border-inline-start:3px solid var(--t-color-link,var(--t-color-primary));color:var(--t-color-muted)}
 .prose code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.9em;background:var(--t-color-surface);padding:.1em .35em;border-radius:var(--t-radius-sm)}
 .b-text{--b-width:var(--t-width-narrow)}
 
@@ -79,6 +91,13 @@ img{max-width:100%;height:auto;display:block}
 .table caption{caption-side:bottom;text-align:start;padding-top:var(--t-space-xs);color:var(--t-color-muted)}
 .table th,.table td{padding:.5em .75em;border-bottom:1px solid var(--t-color-border);text-align:start;vertical-align:top}
 .table thead th{border-bottom-width:2px}
+.b-code{--b-width:var(--t-width-narrow)}
+/* Text, code and tables one after another read as one text: they sit at a paragraph's distance, not a section's. */
+:is(.b-text,.b-code,.b-table):has(+:is(.b-text,.b-code,.b-table)){padding-bottom:0}
+:is(.b-text,.b-code,.b-table)+:is(.b-text,.b-code,.b-table){padding-top:var(--t-space-sm)}
+/* ADR 0067: code keeps its lines and scrolls sideways inside itself. */
+.code{margin:var(--t-space-sm) 0 0;padding:var(--t-space-sm) var(--t-space-md);overflow-x:auto;background:var(--t-color-surface);border:1px solid var(--t-color-border);border-radius:var(--t-radius-md);font-family:ui-monospace,Menlo,Consolas,monospace;font-size:var(--t-size-sm);line-height:1.6;tab-size:2;white-space:pre}
+.code code{font:inherit;white-space:inherit}
 .embed iframe,.video{display:block;width:100%;border:0;border-radius:var(--t-radius-md);background:var(--t-color-surface)}
 .embed-video iframe,.video{aspect-ratio:16/9}
 .embed-map iframe{aspect-ratio:4/3}
@@ -94,6 +113,11 @@ img{max-width:100%;height:auto;display:block}
 .cards{list-style:none;margin:var(--t-space-md) 0 0;padding:0;display:grid;gap:var(--b-gap);grid-template-columns:repeat(auto-fit,minmax(min(100%,15rem),1fr));text-align:start}
 .card{padding:var(--t-space-md);border:1px solid var(--t-color-border);border-radius:var(--t-radius-md);background:var(--t-color-surface)}
 .card>:last-child{margin-bottom:0}
+/* ADR 0068 d3: where a theme defines the colours tint-1 to tint-4, the cards of a services block wear them in turn. */
+.b-services .card:nth-child(4n+1){background:var(--t-color-tint-1,var(--t-color-surface));border-color:var(--t-color-tint-1,var(--t-color-border))}
+.b-services .card:nth-child(4n+2){background:var(--t-color-tint-2,var(--t-color-surface));border-color:var(--t-color-tint-2,var(--t-color-border))}
+.b-services .card:nth-child(4n+3){background:var(--t-color-tint-3,var(--t-color-surface));border-color:var(--t-color-tint-3,var(--t-color-border))}
+.b-services .card:nth-child(4n+4){background:var(--t-color-tint-4,var(--t-color-surface));border-color:var(--t-color-tint-4,var(--t-color-border))}
 .entry-card img{width:100%;aspect-ratio:2;object-fit:cover;border-radius:var(--t-radius-md);margin-bottom:var(--t-space-sm)}
 .entry-card h3 a{color:inherit;text-decoration:none}
 .entry-card h3 a:hover{text-decoration:underline}
@@ -105,17 +129,17 @@ img{max-width:100%;height:auto;display:block}
 .form p{margin:0}
 .form-field{display:grid;gap:.3em}
 .form-field label{font-weight:600}
-.form input[type=text],.form input[type=email],.form input[type=tel],.form input[type=number],.form input[type=date],.form select,.form textarea{font:inherit;color:inherit;background:var(--t-color-background);border:1px solid var(--t-color-border);border-radius:var(--t-radius-sm);padding:.6em .75em;width:100%}
-.form input:focus-visible,.form select:focus-visible,.form textarea:focus-visible{outline:2px solid var(--t-color-primary);outline-offset:1px}
+.form input[type=text],.form input[type=password],.form input[type=email],.form input[type=tel],.form input[type=number],.form input[type=date],.form select,.form textarea{font:inherit;color:inherit;background:var(--t-color-background);border:1px solid var(--t-color-border);border-radius:var(--t-radius-sm);padding:.6em .75em;width:100%}
+.form input:focus-visible,.form select:focus-visible,.form textarea:focus-visible{outline:2px solid var(--t-color-link,var(--t-color-primary));outline-offset:1px}
 .form fieldset{border:0;margin:0;padding:0;display:grid;gap:.3em}
 .form legend{font-weight:600;padding:0;margin-bottom:.2em}
 .form-choice{display:flex;gap:.5em;align-items:baseline;font-weight:400}
-.form-required{color:var(--t-color-primary);margin-inline-start:.2em}
+.form-required{color:var(--t-color-link,var(--t-color-primary));margin-inline-start:.2em}
 .form-consent{display:flex;gap:.6em;align-items:flex-start;font-size:var(--t-size-sm)}
 .form-consent input{margin-top:.3em}
 .form button{font:inherit;border:0;cursor:pointer}
 .form-trap{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
-.form-note{display:none;padding:var(--t-space-sm) var(--t-space-md);border-radius:var(--t-radius-md);background:var(--t-color-surface);border-inline-start:3px solid var(--t-color-primary);margin:var(--t-space-sm) 0 0}
+.form-note{display:none;padding:var(--t-space-sm) var(--t-space-md);border-radius:var(--t-radius-md);background:var(--t-color-surface);border-inline-start:3px solid var(--t-color-link,var(--t-color-primary));margin:var(--t-space-sm) 0 0}
 .form-note:target,.form-note.shown{display:block}
 .form-failed{border-color:currentColor}
 .b-form,.b-extension{--b-width:var(--t-width-narrow)}
@@ -211,7 +235,7 @@ summary.faq-question{cursor:pointer}
 .menu li{position:relative}
 .menu li.mega{position:static}
 .menu a,.menu summary{color:inherit;text-decoration:none}
-.menu a[aria-current],.menu summary.current{color:var(--t-color-primary)}
+.menu a[aria-current],.menu summary.current{color:var(--t-color-link,var(--t-color-primary))}
 .menu summary{cursor:pointer;list-style:none}
 .menu summary::-webkit-details-marker{display:none}
 .menu summary::after{content:"";display:inline-block;margin-inline-start:.4em;border:.3em solid transparent;border-top-color:currentColor;border-bottom:0;vertical-align:middle}
@@ -229,11 +253,37 @@ summary.faq-question{cursor:pointer}
 [data-sidebar="left"] .layout-aside{order:0}
 .menu-check{display:block;position:absolute;opacity:0;width:1px;height:1px}
 .menu-button{display:inline-block;cursor:pointer;padding:.4em .9em;border:1px solid var(--t-color-border);border-radius:var(--t-radius-sm)}
-.menu-check:focus-visible+.menu-button{outline:2px solid var(--t-color-primary);outline-offset:2px}
+.menu-check:focus-visible+.menu-button{outline:2px solid var(--t-color-link,var(--t-color-primary));outline-offset:2px}
 .site-in{flex-direction:row;justify-content:space-between;align-items:center}
 .site-nav{display:none;flex-basis:100%;flex-direction:column;align-items:stretch;text-align:start}
 .menu-check:checked~.site-nav{display:flex}
+/* The languages stay in the header's row, as short codes, between the name and the menu button (ADR 0071 d2). */
+.site-name{order:0;margin-inline-end:auto}
+.site-languages{order:1;flex-wrap:nowrap;gap:var(--t-space-sm)}
+.scheme-switch{order:1}
+.menu-check,.menu-button{order:2}
+.site-nav{order:3}
+.site-languages .lang-long{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.site-languages .lang-short{display:inline;letter-spacing:.04em}
 .menu{flex-direction:column;align-items:stretch}
 .sub,.mega .sub{position:static;margin-top:var(--t-space-xs)}
 .menu details[open]>summary::before{content:none}
 }
+.b-account h2,.b-shop h2{margin-top:var(--t-space-lg)}
+.cart-lines,.cart-totals{width:100%;border-collapse:collapse;margin:var(--t-space-sm) 0}
+.cart-lines th,.cart-lines td,.cart-totals th,.cart-totals td{text-align:start;padding:.45em .5em;border-bottom:1px solid var(--t-color-border);vertical-align:top}
+.cart-lines th:nth-child(n+2),.cart-lines td:nth-child(n+2),.cart-totals td{text-align:end;white-space:nowrap}
+.cart-lines input[type=number]{width:5em}
+.cart-totals{max-width:24rem;margin-inline-start:auto}
+.cart-total{font-weight:600}
+.cart-gone{opacity:.6}
+.cart-remove{background:none;border:0;padding:0;color:inherit;text-decoration:underline;cursor:pointer;font:inherit}
+.buy{display:grid;gap:var(--t-space-sm);justify-items:start;margin:var(--t-space-md) 0}
+.buy-price{font-size:1.4em;font-weight:600;margin:0}
+.buy-price del{font-weight:400;opacity:.65}
+.buy-price ins{text-decoration:none}
+.buy-price small{display:block;font-size:.55em;font-weight:400;opacity:.75}
+.buy-said{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.buy-stock{margin:0}
+.buy label{display:grid;gap:.25em}
+.buy-quantity input{width:6em}

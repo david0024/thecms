@@ -16,9 +16,10 @@ import {
   TOKEN_GROUPS,
   type TokenGroup,
 } from './style.ts';
+import { fromOldName } from './name.ts';
 import { type Issue, isObject, str } from './util.ts';
 
-export const THEME_SPEC = 'thecms.theme/1';
+export const THEME_SPEC = 'uhlaka.theme/1';
 
 export type Tokens = Record<TokenGroup, Record<string, string>>;
 
@@ -45,10 +46,34 @@ export interface ThemeLayout {
 
 export const DEFAULT_LAYOUT: ThemeLayout = { header: { arrangement: 'inline', sticky: false }, footer: { arrangement: 'inline' }, menu: {} };
 
+/** Light or dark: what a palette is made for (ADR 0074). */
+export const SCHEMES = ['light', 'dark'] as const;
+export type Scheme = (typeof SCHEMES)[number];
+
+/**
+ * What a site shows (ADR 0074 d2): only its light colours, only its dark ones,
+ * or what the visitor's device asks for, with a switch in the header.
+ */
+export const SHOWS = ['light', 'dark', 'visitor'] as const;
+export type Shows = (typeof SHOWS)[number];
+
+/** The colours of the theme's other scheme: only tokens the theme has; one left out keeps its value. */
+export interface Palette {
+  color: Record<string, string>;
+}
+
 export interface Theme {
   spec: typeof THEME_SPEC;
   name: string;
+  /** What the theme's own colours (`tokens.color`) are made for. Absent: light. */
+  scheme?: 'dark';
   tokens: Tokens;
+  /** The colours for the dark, on a theme whose own are light (ADR 0074 d1). */
+  dark?: Palette;
+  /** The colours for the light, on a theme whose own are dark. */
+  light?: Palette;
+  /** What the site shows. Absent: the theme's own scheme, as before ADR 0074. */
+  shows?: Shows;
   blocks: Partial<Record<BlockType, BlockTheme>>;
   /** Always present once parsed; a theme file written before ADR 0006 gets the default. */
   layout: ThemeLayout;
@@ -94,7 +119,7 @@ function checkStyleTokens(theme: Theme, style: BlockStyle, path: string, issues:
 export function parseTheme(input: unknown): { theme: Theme | null; issues: Issue[] } {
   const issues: Issue[] = [];
   if (!isObject(input)) return { theme: null, issues: [{ path: '', message: 'a theme is an object' }] };
-  if (input.spec !== THEME_SPEC) issues.push({ path: 'spec', message: `expected "${THEME_SPEC}"` });
+  if (fromOldName(input.spec) !== THEME_SPEC) issues.push({ path: 'spec', message: `expected "${THEME_SPEC}"` });
 
   const name = str(input.name, 80).trim();
   if (!name) issues.push({ path: 'name', message: 'a theme has a name' });
@@ -124,6 +149,7 @@ export function parseTheme(input: unknown): { theme: Theme | null; issues: Issue
   }
 
   const theme: Theme = { spec: THEME_SPEC, name, tokens, blocks: {}, layout: structuredClone(DEFAULT_LAYOUT) };
+  parseSchemes(input, theme, issues);
   const rawBlocks = isObject(input.blocks) ? input.blocks : {};
   for (const [type, raw] of Object.entries(rawBlocks)) {
     const at = `blocks.${type}`;
@@ -192,6 +218,65 @@ export function parseTheme(input: unknown): { theme: Theme | null; issues: Issue
   }
 
   return issues.length ? { theme: null, issues } : { theme, issues };
+}
+
+/** The scheme a theme's own colours are made for. */
+export const ownScheme = (theme: Theme): Scheme => theme.scheme ?? 'light';
+/** The scheme its second palette is for. */
+export const otherScheme = (theme: Theme): Scheme => (ownScheme(theme) === 'light' ? 'dark' : 'light');
+/** The second palette's colours, when the theme has one. */
+export const otherPalette = (theme: Theme): Record<string, string> | undefined => theme[otherScheme(theme)]?.color;
+
+/** What the site shows under this theme: what the owner chose, if the theme can show it, and otherwise its own scheme. */
+export function shownBy(theme: Theme): Shows {
+  const shows = theme.shows ?? ownScheme(theme);
+  return shows === ownScheme(theme) || otherPalette(theme) ? shows : ownScheme(theme);
+}
+
+/** Does the site carry the switch between light and dark (ADR 0074 d4)? Only while it follows the visitor. */
+export const hasSchemeSwitch = (theme: Theme): boolean => shownBy(theme) === 'visitor';
+
+/** A theme's colours in one scheme: its own, or its own with the second palette over them. */
+export function colorsFor(theme: Theme, scheme: Scheme): Record<string, string> {
+  return scheme === ownScheme(theme) ? { ...theme.tokens.color } : { ...theme.tokens.color, ...otherPalette(theme) };
+}
+
+/** The scheme of the theme's colours, its second palette, and what the site shows (ADR 0074 d1, d2). */
+function parseSchemes(input: Record<string, unknown>, theme: Theme, issues: Issue[]): void {
+  if (input.scheme !== undefined) {
+    if (input.scheme === 'dark') theme.scheme = 'dark';
+    else if (input.scheme !== 'light') issues.push({ path: 'scheme', message: 'light or dark' });
+  }
+  for (const scheme of SCHEMES) {
+    const raw = input[scheme];
+    if (raw === undefined) continue;
+    if (scheme === ownScheme(theme)) {
+      issues.push({ path: scheme, message: `the theme's own colours are ${scheme}: they are its tokens` });
+      continue;
+    }
+    if (!isObject(raw)) {
+      issues.push({ path: scheme, message: 'a palette is an object' });
+      continue;
+    }
+    for (const key of Object.keys(raw)) if (key !== 'color') issues.push({ path: `${scheme}.${key}`, message: 'a palette holds only colours' });
+    if (raw.color !== undefined && !isObject(raw.color)) issues.push({ path: `${scheme}.color`, message: 'an object' });
+    const colors = isObject(raw.color) ? raw.color : {};
+    const entries = Object.entries(colors);
+    if (entries.length > MAX_TOKENS) issues.push({ path: `${scheme}.color`, message: `at most ${MAX_TOKENS} colours` });
+    const palette: Record<string, string> = {};
+    for (const [token, value] of entries.slice(0, MAX_TOKENS)) {
+      const at = `${scheme}.color.${token}`;
+      if (!Object.hasOwn(theme.tokens.color, token)) issues.push({ path: at, message: 'not a colour token of this theme' });
+      else if (!isFreeValue('color', value)) issues.push({ path: at, message: 'not a color value' });
+      else palette[token] = value;
+    }
+    theme[scheme] = { color: palette };
+  }
+  if (input.shows !== undefined) {
+    if (typeof input.shows !== 'string' || !(SHOWS as readonly string[]).includes(input.shows)) issues.push({ path: 'shows', message: `one of: ${SHOWS.join(', ')}` });
+    else if (input.shows !== ownScheme(theme) && !otherPalette(theme)) issues.push({ path: 'shows', message: `needs the colours for the ${otherScheme(theme)} ("${otherScheme(theme)}")` });
+    else if (input.shows !== ownScheme(theme)) theme.shows = input.shows as Shows;
+  }
 }
 
 /** The variants a block of this type may wear under this theme. */

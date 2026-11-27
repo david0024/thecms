@@ -3,8 +3,8 @@
   "displayName": "AI writing",
   "description": "Writes and rewrites a block's words, translates a page into its language or into every language of the site, writes a page's description and its title for search engines, and describes a block's pictures from the pictures themselves, with Claude, OpenAI or a model of your own through Ollama. What it writes comes back as a change, to look at before saving.",
   "version": "1.2.0",
-  "publisher": "thecms",
-  "thecmsMinVersion": "0.1.0",
+  "publisher": "uhlaka",
+  "uhlakaMinVersion": "0.1.0",
   "egress": ["api.anthropic.com", "api.openai.com", "localhost", "127.0.0.1"],
   "collections": [
     { "name": "providers", "label": "Providers", "fields": [
@@ -31,8 +31,8 @@
     { "name": "pictures", "label": "Describe the pictures", "on": "block", "pictures": true, "reads": ["providers"], "writes": ["usage"], "timeoutSeconds": 180 }
   ],
   "views": [
-    { "spec": "thecms.view/1", "id": "ai.providers", "title": "AI providers", "type": "list", "collection": "providers", "fields": ["name", { "field": "kind", "display": "badge" }, "model", "api_key", "default"] },
-    { "spec": "thecms.view/1", "id": "ai.usage", "title": "AI usage", "type": "list", "collection": "usage", "fields": ["action", "provider", "model", "input_tokens", "output_tokens"], "create": false, "edit": false }
+    { "spec": "uhlaka.view/1", "id": "ai.providers", "title": "AI providers", "type": "list", "collection": "providers", "fields": ["name", { "field": "kind", "display": "badge" }, "model", "api_key", "default"] },
+    { "spec": "uhlaka.view/1", "id": "ai.usage", "title": "AI usage", "type": "list", "collection": "usage", "fields": ["action", "provider", "model", "input_tokens", "output_tokens"], "create": false, "edit": false }
   ],
   "messages": {
     "ro": {

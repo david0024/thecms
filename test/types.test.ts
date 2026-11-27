@@ -166,7 +166,7 @@ describe('the store keeps every type', () => {
 
 describe('a site made before there were content types', () => {
   let dir: string;
-  beforeEach(async () => void (dir = await mkdtemp(join(tmpdir(), 'thecms-types-'))));
+  beforeEach(async () => void (dir = await mkdtemp(join(tmpdir(), 'uhlaka-types-'))));
   afterEach(() => rm(dir, { recursive: true, force: true }));
 
   test('its posts are still its posts', async () => {
@@ -244,7 +244,7 @@ describe('the editing API', () => {
   let store: Store;
   let editor: EditorServer;
   const call = (path: string, init: RequestInit = {}): Promise<Response> =>
-    editor.fetch(new Request(`http://127.0.0.1:${editor.port}${path}`, { ...init, headers: { 'x-thecms-token': editor.token, host: `127.0.0.1:${editor.port}`, 'content-type': 'application/json' } }));
+    editor.fetch(new Request(`http://127.0.0.1:${editor.port}${path}`, { ...init, headers: { 'x-uhlaka-token': editor.token, host: `127.0.0.1:${editor.port}`, 'content-type': 'application/json' } }));
   beforeEach(async () => {
     store = await Store.open(':memory:');
     await store.setSite(site);
@@ -271,6 +271,15 @@ describe('the editing API', () => {
     await call('/api/publish', { method: 'POST', body: JSON.stringify({ kind: 'projects', slug: 'a-kitchen' }) });
     expect((await store.publishedEntries('projects')).map((e) => e.title)).toEqual(['A kitchen']);
     expect((await call('/api/page', { method: 'PUT', body: JSON.stringify({ kind: 'projects', create: true, page: { title: 'A kitchen' } }) })).status).toBe(409);
+  });
+
+  test('a site without posts opens in the admin, its other types listed', async () => {
+    await store.setSite({ ...site, types: site.types.filter((t) => t.id !== 'posts') });
+    const state = await call('/api/state');
+    expect(state.status).toBe(200);
+    const data = (await state.json()) as { posts: unknown[]; entries: Record<string, unknown[]> };
+    expect(data.posts).toEqual([]);
+    expect(Object.keys(data.entries)).not.toContain('posts');
   });
 
   test('a type the site does not have is refused; a page may not take a type\'s address; a type in use is not removed', async () => {

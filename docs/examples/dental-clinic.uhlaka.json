@@ -1,0 +1,565 @@
+{
+  "format": "uhlaka.content/1",
+  "program": "written by hand, as an example for docs/content-schema.json",
+  "madeAt": "2026-11-24T00:00:00.000Z",
+  "parts": [
+    "pages",
+    "forms",
+    "design",
+    "type:posts"
+  ],
+  "from": {
+    "name": "Linden Dental",
+    "url": "",
+    "language": "en",
+    "languages": []
+  },
+  "settings": {
+    "name": "Linden Dental",
+    "language": "en",
+    "languages": [],
+    "url": "",
+    "logo": null,
+    "action": {
+      "label": "Book a visit",
+      "href": "/contact/"
+    },
+    "footer": "© Linden Dental · 12 Linden Street",
+    "footerLinks": [
+      {
+        "label": "Prices",
+        "href": "/prices/"
+      },
+      {
+        "label": "Contact",
+        "href": "/contact/"
+      }
+    ],
+    "menu": null,
+    "types": [
+      {
+        "id": "posts",
+        "name": "News",
+        "singular": "Article",
+        "path": "blog",
+        "dated": true,
+        "categories": true,
+        "feed": true,
+        "fields": []
+      }
+    ]
+  },
+  "pages": [
+    {
+      "slug": "",
+      "draft": {
+        "title": "Home",
+        "description": "A family dental practice on Linden Street: check-ups, cleaning, fillings and gentle care for children.",
+        "inMenu": true,
+        "blocks": [
+          {
+            "type": "hero",
+            "content": {
+              "eyebrow": "Family dental practice",
+              "title": "Calm, careful dentistry for the whole family",
+              "subtitle": "Check-ups, cleaning and treatment on Linden Street, with appointments that start on time.",
+              "action": {
+                "label": "Book a visit",
+                "href": "/contact/"
+              },
+              "secondaryAction": {
+                "label": "See our prices",
+                "href": "/prices/"
+              }
+            }
+          },
+          {
+            "type": "services",
+            "content": {
+              "title": "What we do",
+              "intro": "Everything a family needs, in one place.",
+              "items": [
+                {
+                  "title": "Check-ups",
+                  "text": "A look at teeth and gums every six months, with an X-ray when it is needed."
+                },
+                {
+                  "title": "Cleaning",
+                  "text": "Scale and polish by our hygienist, in about forty minutes."
+                },
+                {
+                  "title": "Children",
+                  "text": "Short, friendly first visits that make the next ones easy."
+                }
+              ]
+            }
+          },
+          {
+            "type": "testimonials",
+            "content": {
+              "title": "What patients say",
+              "items": [
+                {
+                  "quote": "The first dentist my son was not afraid of.",
+                  "name": "Ana M.",
+                  "role": "Parent"
+                },
+                {
+                  "quote": "On time, clear about the cost, and gentle.",
+                  "name": "Radu P.",
+                  "role": "Patient since 2021"
+                }
+              ]
+            }
+          },
+          {
+            "type": "faq",
+            "content": {
+              "title": "Questions people ask",
+              "items": [
+                {
+                  "question": "Do you see children?",
+                  "answer": "Yes, from their first tooth."
+                },
+                {
+                  "question": "Can I pay by card?",
+                  "answer": "Yes, by card or in cash, at the end of each visit."
+                }
+              ]
+            }
+          },
+          {
+            "type": "entries",
+            "content": {
+              "title": "News",
+              "source": "posts",
+              "count": 3,
+              "more": "All news"
+            }
+          }
+        ]
+      },
+      "published": {
+        "title": "Home",
+        "description": "A family dental practice on Linden Street: check-ups, cleaning, fillings and gentle care for children.",
+        "inMenu": true,
+        "blocks": [
+          {
+            "type": "hero",
+            "content": {
+              "eyebrow": "Family dental practice",
+              "title": "Calm, careful dentistry for the whole family",
+              "subtitle": "Check-ups, cleaning and treatment on Linden Street, with appointments that start on time.",
+              "action": {
+                "label": "Book a visit",
+                "href": "/contact/"
+              },
+              "secondaryAction": {
+                "label": "See our prices",
+                "href": "/prices/"
+              }
+            }
+          },
+          {
+            "type": "services",
+            "content": {
+              "title": "What we do",
+              "intro": "Everything a family needs, in one place.",
+              "items": [
+                {
+                  "title": "Check-ups",
+                  "text": "A look at teeth and gums every six months, with an X-ray when it is needed."
+                },
+                {
+                  "title": "Cleaning",
+                  "text": "Scale and polish by our hygienist, in about forty minutes."
+                },
+                {
+                  "title": "Children",
+                  "text": "Short, friendly first visits that make the next ones easy."
+                }
+              ]
+            }
+          },
+          {
+            "type": "testimonials",
+            "content": {
+              "title": "What patients say",
+              "items": [
+                {
+                  "quote": "The first dentist my son was not afraid of.",
+                  "name": "Ana M.",
+                  "role": "Parent"
+                },
+                {
+                  "quote": "On time, clear about the cost, and gentle.",
+                  "name": "Radu P.",
+                  "role": "Patient since 2021"
+                }
+              ]
+            }
+          },
+          {
+            "type": "faq",
+            "content": {
+              "title": "Questions people ask",
+              "items": [
+                {
+                  "question": "Do you see children?",
+                  "answer": "Yes, from their first tooth."
+                },
+                {
+                  "question": "Can I pay by card?",
+                  "answer": "Yes, by card or in cash, at the end of each visit."
+                }
+              ]
+            }
+          },
+          {
+            "type": "entries",
+            "content": {
+              "title": "News",
+              "source": "posts",
+              "count": 3,
+              "more": "All news"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "slug": "prices",
+      "draft": {
+        "title": "Prices",
+        "description": "What a check-up, a cleaning and a filling cost at Linden Dental.",
+        "inMenu": true,
+        "blocks": [
+          {
+            "type": "pricing",
+            "content": {
+              "title": "Prices",
+              "intro": "What most visits cost. You are told the price before any treatment.",
+              "plans": [
+                {
+                  "name": "Check-up",
+                  "price": "€40",
+                  "period": "per visit",
+                  "features": "Examination\nAdvice\nX-ray if needed"
+                },
+                {
+                  "name": "Cleaning",
+                  "price": "€60",
+                  "period": "per visit",
+                  "features": "Scale and polish\nAbout 40 minutes"
+                }
+              ]
+            }
+          },
+          {
+            "type": "table",
+            "content": {
+              "title": "Opening hours",
+              "table": {
+                "header": true,
+                "rows": [
+                  [
+                    "Day",
+                    "Hours"
+                  ],
+                  [
+                    "Monday to Friday",
+                    "8:00 – 19:00"
+                  ],
+                  [
+                    "Saturday",
+                    "9:00 – 13:00"
+                  ]
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "published": {
+        "title": "Prices",
+        "description": "What a check-up, a cleaning and a filling cost at Linden Dental.",
+        "inMenu": true,
+        "blocks": [
+          {
+            "type": "pricing",
+            "content": {
+              "title": "Prices",
+              "intro": "What most visits cost. You are told the price before any treatment.",
+              "plans": [
+                {
+                  "name": "Check-up",
+                  "price": "€40",
+                  "period": "per visit",
+                  "features": "Examination\nAdvice\nX-ray if needed"
+                },
+                {
+                  "name": "Cleaning",
+                  "price": "€60",
+                  "period": "per visit",
+                  "features": "Scale and polish\nAbout 40 minutes"
+                }
+              ]
+            }
+          },
+          {
+            "type": "table",
+            "content": {
+              "title": "Opening hours",
+              "table": {
+                "header": true,
+                "rows": [
+                  [
+                    "Day",
+                    "Hours"
+                  ],
+                  [
+                    "Monday to Friday",
+                    "8:00 – 19:00"
+                  ],
+                  [
+                    "Saturday",
+                    "9:00 – 13:00"
+                  ]
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "slug": "contact",
+      "draft": {
+        "title": "Contact",
+        "description": "Book a visit at Linden Dental by phone or with the form.",
+        "inMenu": true,
+        "blocks": [
+          {
+            "type": "contact",
+            "content": {
+              "title": "Find us",
+              "text": "Two minutes from the Linden Street tram stop.",
+              "email": "hello@linden-dental.example",
+              "phone": "+40 21 000 0000",
+              "address": "12 Linden Street\nBucharest"
+            }
+          },
+          {
+            "type": "form",
+            "content": {
+              "form": "appointment",
+              "title": "Ask for an appointment",
+              "intro": "We answer within one working day."
+            }
+          }
+        ]
+      },
+      "published": {
+        "title": "Contact",
+        "description": "Book a visit at Linden Dental by phone or with the form.",
+        "inMenu": true,
+        "blocks": [
+          {
+            "type": "contact",
+            "content": {
+              "title": "Find us",
+              "text": "Two minutes from the Linden Street tram stop.",
+              "email": "hello@linden-dental.example",
+              "phone": "+40 21 000 0000",
+              "address": "12 Linden Street\nBucharest"
+            }
+          },
+          {
+            "type": "form",
+            "content": {
+              "form": "appointment",
+              "title": "Ask for an appointment",
+              "intro": "We answer within one working day."
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "forms": [
+    {
+      "name": "appointment",
+      "title": "Appointment",
+      "fields": [
+        {
+          "id": "name",
+          "kind": "text",
+          "label": "Your name",
+          "required": true,
+          "options": []
+        },
+        {
+          "id": "phone",
+          "kind": "phone",
+          "label": "Phone",
+          "required": true,
+          "options": []
+        },
+        {
+          "id": "reason",
+          "kind": "select",
+          "label": "What for",
+          "required": false,
+          "options": [
+            "Check-up",
+            "Cleaning",
+            "Pain",
+            "Other"
+          ]
+        },
+        {
+          "id": "message",
+          "kind": "textarea",
+          "label": "Anything we should know",
+          "required": false,
+          "options": []
+        }
+      ],
+      "consent": "I agree that Linden Dental keeps what I wrote to answer me.",
+      "button": "Send",
+      "sent": "Thank you. We will call you within one working day.",
+      "failed": "This could not be sent. Please call us instead.",
+      "translations": {}
+    }
+  ],
+  "types": [
+    {
+      "type": {
+        "id": "posts",
+        "name": "News",
+        "singular": "Article",
+        "path": "blog",
+        "dated": true,
+        "categories": true,
+        "feed": true,
+        "fields": []
+      },
+      "template": {
+        "draft": null,
+        "published": null
+      },
+      "entries": [
+        {
+          "slug": "saturday-mornings",
+          "draft": {
+            "title": "Open on Saturday mornings",
+            "date": "2026-11-20",
+            "excerpt": "From December we see patients on Saturdays too.",
+            "cover": null,
+            "categories": [
+              "News"
+            ],
+            "tags": [],
+            "fields": {},
+            "blocks": [
+              {
+                "type": "text",
+                "content": {
+                  "body": [
+                    {
+                      "type": "paragraph",
+                      "children": [
+                        {
+                          "text": "From December the practice is open on "
+                        },
+                        {
+                          "text": "Saturdays from 9:00 to 13:00",
+                          "marks": [
+                            "bold"
+                          ]
+                        },
+                        {
+                          "text": "."
+                        }
+                      ]
+                    },
+                    {
+                      "type": "paragraph",
+                      "children": [
+                        {
+                          "text": "Book a Saturday visit from the "
+                        },
+                        {
+                          "text": "contact page",
+                          "href": "/contact/"
+                        },
+                        {
+                          "text": "."
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          "published": {
+            "title": "Open on Saturday mornings",
+            "date": "2026-11-20",
+            "excerpt": "From December we see patients on Saturdays too.",
+            "cover": null,
+            "categories": [
+              "News"
+            ],
+            "tags": [],
+            "fields": {},
+            "blocks": [
+              {
+                "type": "text",
+                "content": {
+                  "body": [
+                    {
+                      "type": "paragraph",
+                      "children": [
+                        {
+                          "text": "From December the practice is open on "
+                        },
+                        {
+                          "text": "Saturdays from 9:00 to 13:00",
+                          "marks": [
+                            "bold"
+                          ]
+                        },
+                        {
+                          "text": "."
+                        }
+                      ]
+                    },
+                    {
+                      "type": "paragraph",
+                      "children": [
+                        {
+                          "text": "Book a Saturday visit from the "
+                        },
+                        {
+                          "text": "contact page",
+                          "href": "/contact/"
+                        },
+                        {
+                          "text": "."
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "people": [],
+  "comments": [],
+  "media": []
+}

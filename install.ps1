@@ -1,16 +1,16 @@
-# Installs thecms on Windows from its GitHub releases, checked against the
+# Installs Uhlaka on Windows from its GitHub releases, checked against the
 # release's checksums before anything is put in place.
 #
-#   irm https://github.com/david0024/thecms/releases/download/v0.1.0-alpha.2/install.ps1 | iex
+#   irm https://github.com/uhlaka-devs/uhlaka/releases/download/v0.1.0-alpha.11/install.ps1 | iex
 #
-# The program goes in %LOCALAPPDATA%\thecms\bin, which is added to your PATH.
+# The program goes in %LOCALAPPDATA%\uhlaka\bin, which is added to your PATH.
 # Run again to update. $env:INSTALL_VERSION picks a version; $env:RELEASE_URL
 # a folder of release files, to try a build.
 $ErrorActionPreference = 'Stop'
 
 # The product's name, as in src/core/name.ts (a test keeps them the same).
-$Name = 'thecms'
-$Repository = 'david0024/thecms'
+$Name = 'uhlaka'
+$Repository = 'uhlaka-devs/uhlaka'
 
 if (-not [Environment]::Is64BitOperatingSystem) { throw "$Name needs 64-bit Windows" }
 $File = "$Name-windows-x64.exe"
@@ -18,9 +18,18 @@ if ($env:RELEASE_URL) { $Base = $env:RELEASE_URL }
 elseif ($env:INSTALL_VERSION) { $Base = "https://github.com/$Repository/releases/download/v$($env:INSTALL_VERSION.TrimStart('v'))" }
 else {
   # The newest release, a pre-release among them: during alpha and beta those are all there is (ADR 0045).
-  $Listed = @(Invoke-RestMethod -UseBasicParsing -Uri "https://api.github.com/repos/$Repository/releases?per_page=1")
-  if (-not $Listed -or -not $Listed[0].tag_name) { throw "GitHub lists no release of $Repository yet" }
-  $Base = "https://github.com/$Repository/releases/download/$($Listed[0].tag_name)"
+  # GitHub does not list them newest first, and extensions' releases (ai-v1.2.0) are among them: the version is compared.
+  $Listed = @(Invoke-RestMethod -UseBasicParsing -Uri "https://api.github.com/repos/$Repository/releases?per_page=100")
+  # A version as something to sort by: its numbers, then 1 for a release (after its pre-releases), then each part of the pre-release.
+  $Key = {
+    $Core, $Pre = ($_.tag_name -replace '^v', '') -split '-', 2
+    $Parts = @($Core -split '\.' | ForEach-Object { '{0:D9}' -f [int]$_ })
+    if ($Pre) { $Parts += '0'; $Parts += @($Pre -split '\.' | ForEach-Object { if ($_ -match '^\d+$') { '0{0:D9}' -f [int]$_ } else { "1$_" } }) } else { $Parts += '1' }
+    $Parts -join '.'
+  }
+  $Newest = $Listed | Where-Object { -not $_.draft -and $_.tag_name -match '^v\d+\.\d+' } | Sort-Object -Property @{ Expression = $Key } -Descending | Select-Object -First 1
+  if (-not $Newest) { throw "GitHub lists no release of $Repository yet" }
+  $Base = "https://github.com/$Repository/releases/download/$($Newest.tag_name)"
 }
 
 $Work = Join-Path ([IO.Path]::GetTempPath()) ([Guid]::NewGuid())

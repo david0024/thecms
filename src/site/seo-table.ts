@@ -1,6 +1,6 @@
 /**
  * Every page and entry with what it says to search engines, in one table
- * (ADR 0064 d2): its title for search engines and its description, written
+ * (ADR 0077 d2): its title for search engines and its description, written
  * here without opening each one.
  */
 import { cleanSeo, contentTypes, entryPath, normalizePage, normalizePost, pageDescription, pagePath, postDescription, str } from '../core/index.ts';

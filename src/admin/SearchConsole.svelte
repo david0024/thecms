@@ -1,6 +1,6 @@
 <script lang="ts">
 /**
- * Google Search Console beside the statistics (ADR 0064 d3): what people
+ * Google Search Console beside the statistics (ADR 0077 d3): what people
  * searched for when Google showed the site, and the pages they found. The
  * owner connects it once with a service account; everyone on the staff reads it.
  */

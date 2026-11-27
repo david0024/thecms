@@ -9,6 +9,7 @@ import type { Pictures } from './media.ts';
 import { type Business, cleanBusiness, cleanSeo, type Seo } from './seo.ts';
 import { pageSlug, prefixOf } from './translation.ts';
 import { BLOG_SLUG, type ContentType, normalizeTypes, POSTS_TYPE, postsType, RESERVED_SLUGS } from './types.ts';
+import type { ShopShown } from './shop.ts';
 import { type Issue, isObject, safeHref, slugify, str } from './util.ts';
 
 export interface Page extends Seo {
@@ -71,6 +72,12 @@ export interface Site {
   shareImage?: ImageValue;
   /** False: the breadcrumbs are said to search engines and not shown (ADR 0050 d4). Absent: shown. */
   breadcrumbs?: false;
+  /** False: the home page always opens in the main language (ADR 0071 d4). Absent: a first visit opens it in the visitor's language. */
+  visitorLanguage?: false;
+  /** True while the theme follows the visitor (ADR 0074 d4): the header has the switch, and the page the script that turns it. Filled in to draw a page, never kept. */
+  schemeSwitch?: true;
+  /** True on a site its own server serves (ADR 0071 d2): the language switcher remembers the visitor's choice. Filled in to draw a page, never kept. */
+  served?: boolean;
   /** The codes Google and Bing give to prove the site is the owner's (ADR 0058 d4): each absent until set. */
   verify?: { google?: string; bing?: string };
   /** The owner's own lines for `robots.txt`, after the program's (ADR 0058 d5). Absent: none. */
@@ -83,6 +90,10 @@ export interface Site {
   data?: false;
   /** The stored pictures' sizes and smaller copies (ADR 0005 d8): filled in to draw a page for export, never kept. */
   pictures?: Pictures;
+  /** True while visitor accounts are on (ADR 0064 d8): the menu's "My account" is drawn only then. Filled in to draw a page, never kept. */
+  accounts?: boolean;
+  /** While the shop is on (ADR 0065 d3): its currency and what was in stock. Filled in to draw a page, never kept. */
+  shop?: ShopShown;
 }
 
 /** The site's own words in another language: the footer and the header's button. */
@@ -158,6 +169,7 @@ export function normalizeSite(input: unknown): Site {
     ...(Array.isArray(raw.layouts) ? { layouts: normalizeLayouts(raw.layouts) } : {}),
     ...(cleanImage(raw.shareImage) ? { shareImage: cleanImage(raw.shareImage) as ImageValue } : {}),
     ...(raw.breadcrumbs === false ? { breadcrumbs: false as const } : {}),
+    ...(raw.visitorLanguage === false ? { visitorLanguage: false as const } : {}),
     ...cleanVerify(raw.verify),
     ...(cleanRobots(raw.robots) ? { robots: cleanRobots(raw.robots) } : {}),
     ...(cleanBusiness(raw.business) ? { business: cleanBusiness(raw.business) } : {}),

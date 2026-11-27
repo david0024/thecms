@@ -4,7 +4,7 @@
  * in the header, the footer's words and links. How these are laid out is the
  * theme's (ADR 0006), so nothing here is a colour or a position.
  */
-import { type Business, BUSINESS_KINDS, cleanBusiness, WEEKDAYS, cleanRobots, type LinkValue, languageName, MAX_LANGUAGES, type MenuList, prefixOf, type Site, type SiteText, verificationCode } from '../core/index.ts';
+import { type Business, BUSINESS_KINDS, cleanBusiness, WEEKDAYS, cleanRobots, type LinkValue, languageName, MAX_LANGUAGES, type MenuList, prefixOf, type ShopSettings, type Site, type SiteText, verificationCode } from '../core/index.ts';
 import type { LanguageInfo, PageInfo } from './api.ts';
 import ImageField from './ImageField.svelte';
 import MenuBuilder from './MenuBuilder.svelte';
@@ -17,6 +17,8 @@ let {
   languages = [],
   onchange,
   onadminlanguage,
+  shop,
+  onshop,
 }: {
   site: Site;
   pages: PageInfo[];
@@ -25,6 +27,9 @@ let {
   onchange: (site: Site) => void;
   /** The admin's words are read when it starts, so choosing its language saves and opens it again. */
   onadminlanguage?: (language: string) => void;
+  /** The shop's settings (ADR 0065), and what to do once they are saved: the site is read again. */
+  shop?: ShopSettings;
+  onshop?: () => void;
 } = $props();
 const named = (l: LanguageInfo): string => (l.coverage < 1 ? `${l.name} (${say(t.site.partial, { count: Math.floor(l.coverage * 100) })})` : l.name);
 
@@ -38,6 +43,8 @@ const setFooterLink = (i: number, patch: Partial<LinkValue>): void => set({ foot
 const own = (language: string): SiteText => site.translations[language] ?? { footer: '', action: null, footerLinks: [] };
 const setOwn = (language: string, patch: Partial<SiteText>): void => set({ translations: { ...site.translations, [language]: { ...own(language), ...patch } } });
 let adding = $state('');
+/** Whether visitor accounts are on: the menu may then lead to "My account" (ADR 0064 d4, d8). */
+let accounts = $state(false);
 const addLanguage = (): void => {
   const language = adding.trim();
   if (!language) return;
@@ -45,6 +52,9 @@ const addLanguage = (): void => {
   adding = '';
 };
 import Performance from './Performance.svelte';
+import ShopSettingsPanel from './ShopSettings.svelte';
+import Visitors from './Visitors.svelte';
+import EmailSettings from './EmailSettings.svelte';
 import Redirects from './Redirects.svelte';
 </script>
 
@@ -74,6 +84,13 @@ import Redirects from './Redirects.svelte';
   {/if}
   <small>{t.site.otherLanguagesHint}</small>
 </fieldset>
+{#if site.languages.length}
+  <label class="check">
+    <input type="checkbox" checked={site.visitorLanguage !== false} onchange={(e) => set({ visitorLanguage: e.currentTarget.checked ? undefined : false })} data-site-visitor-language />
+    <span>{t.site.visitorLanguage}</span>
+  </label>
+  <small>{t.site.visitorLanguageHint}</small>
+{/if}
 <label class="field">
   <span>{t.site.adminLanguage}</span>
   <select
@@ -163,7 +180,7 @@ import Redirects from './Redirects.svelte';
 
 <h3>{t.menu.title}</h3>
 <div class="field" data-menu-builder>
-  <MenuBuilder {site} {pages} {lists} nodes={site.menu} onchange={(menu) => set({ menu })} />
+  <MenuBuilder {site} {pages} {lists} {accounts} nodes={site.menu} onchange={(menu) => set({ menu })} />
 </div>
 
 <h3>{t.site.footer}</h3>
@@ -216,6 +233,12 @@ import Redirects from './Redirects.svelte';
   </fieldset>
   <small>{t.site.inLanguageHint}</small>
 {/each}
+
+<Visitors languages={[site.language, ...site.languages]} onswitch={(on) => (accounts = on)} />
+
+{#if shop}<ShopSettingsPanel settings={shop} onchange={() => onshop?.()} />{/if}
+
+<EmailSettings />
 
 <Redirects />
 

@@ -38,7 +38,7 @@ const started = (child, pattern) =>
   });
 
 (async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'thecms-e2e-forms-'));
+  const dir = mkdtempSync(join(tmpdir(), 'uhlaka-e2e-forms-'));
   const db = join(dir, 'site.db');
   const out = join(dir, 'out');
   const shots = process.argv[2];
@@ -81,7 +81,8 @@ const started = (child, pattern) =>
     page.on('pageerror', (error) => errors.push(error.message));
     await page.goto(`http://127.0.0.1:${SITE_PORT}/contact/`);
     const form = page.locator('form.form');
-    assert((await page.locator('script').count()) === 0, 'the page with the form has no script');
+    // The one script is the switch of colours (ADR 0074 d4): the form works without any.
+    assert((await page.locator('script:not([src="/assets/scheme.js"])').count()) === 0, 'the page with the form has no script but the switch of colours');
     assert(!(await page.locator('.form-sent').isVisible()), 'before sending, the words that say it was sent are hidden');
     await form.getByLabel('Name').fill('Ana Pop');
     await form.getByLabel('Email').fill('ana@example.org');

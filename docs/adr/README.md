@@ -1,6 +1,6 @@
 # Decisions
 
-Every decision that shapes thecms is written down, with its reason, before the
+Every decision that shapes Uhlaka is written down, with its reason, before the
 work it decides. A new one that changes an old one says so at its top.
 
 - [ADR 0001 — Foundations](0001-foundations.md)
@@ -65,3 +65,17 @@ work it decides. A new one that changes an old one says so at its top.
 - [ADR 0061 — More data for search engines: questions, the business, events and products](0061-more-data-for-search-engines.md)
 - [ADR 0062 — Extensions 3: what the program tells, asks and lends an extension](0062-extensions-3.md)
 - [ADR 0063 — Addresses not found, and IndexNow](0063-addresses-not-found-and-indexnow.md)
+- [ADR 0064 — Visitor accounts, members, and e-mail to visitors](0064-visitor-accounts-and-members.md)
+- [ADR 0065 — The shop](0065-the-shop.md)
+- [ADR 0066 — The name: Uhlaka](0066-the-name-uhlaka.md)
+- [ADR 0067 — A block of code, and tables imported as tables](0067-a-block-of-code.md)
+- [ADR 0068 — Typefaces that ship with Uhlaka, button colours, and the Atelier theme](0068-faces-buttons-and-atelier.md)
+- [ADR 0069 — A contract for AI: AGENTS.md and the schema of a content file](0069-a-contract-for-ai.md)
+- [ADR 0070 — One structure, made for AI to write; screens over it, made for people](0070-structure-for-ai-screens-for-people.md)
+- [ADR 0071 — The visitor's language](0071-the-visitors-language.md)
+- [ADR 0072 — The details of a file in the media library, and a way out to the site](0072-details-of-a-file.md)
+- [ADR 0073 — "Add a block" in groups, with a search](0073-add-a-block-in-groups.md)
+- [ADR 0074 — Dark mode: a second palette in each theme, and a switch on the site](0074-dark-mode.md)
+- [ADR 0075 — The admin bar over the site](0075-the-admin-bar.md)
+- [ADR 0076 — What stays in the program, and what an extension needs to take the rest](0076-what-stays-in-the-program.md)
+- [ADR 0077 — Tools for a large site: links to add, every title in one table, Search Console](0077-tools-for-a-large-site.md)

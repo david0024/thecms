@@ -70,6 +70,9 @@ import {
   normalizePost,
   normalizeRedirects,
   normalizeSite,
+  normalizeAudience,
+  normalizeAudiences,
+  type Audiences,
   variantName,
   variantOf,
   wantedWidths,
@@ -114,8 +117,11 @@ import {
   type Theme,
 } from '../core/index.ts';
 import { wordsFor } from '../blocks/words.ts';
+import { DAYS_KEPT, type Kind, KINDS, summed } from '../../extensions/stats/rows.ts';
 import { isIndexNowKey } from './indexnow.ts';
 import type { SearchConsoleSettings } from './search-console.ts';
+import { BACKED_UP_VISITOR_TABLES, visitorSchema, visitorTable } from './visitor-schema.ts';
+import { BACKED_UP_SHOP_TABLES, shopSchema, shopTable } from './shop-schema.ts';
 import './languages.ts';
 
 /** What is kept with translations: a page, or a section (ADR 0033). */
@@ -129,6 +135,26 @@ export interface InstalledExtension extends ExtensionPackage {
 }
 /** A row an extension keeps: its fields and an id. */
 export type ExtensionRow = Record<string, unknown> & { id: string };
+
+/** A file an extension kept for an order (ADR 0076 d4.4), as it is listed. */
+export interface ExtensionFile {
+  id: string;
+  extension: string;
+  order: string;
+  name: string;
+  type: string;
+  /** The buyer sees it on the order's page. */
+  buyer: boolean;
+  size: number;
+  createdAt: string;
+}
+
+/** A unique field's value as it is kept (ADR 0076 d4.5): text up to 255 characters; empty is not kept. */
+const uniqueValue = (value: unknown): string | null => {
+  if (value === null || value === undefined || value === '') return null;
+  const text = typeof value === 'number' ? String(value) : typeof value === 'string' ? value : null;
+  return text === null ? null : text.slice(0, 255);
+};
 
 /** A publication set for later (ADR 0039): a page (`page`) or an entry of a type, by its address, at an ISO time. */
 export interface Scheduled {
@@ -145,8 +171,12 @@ export interface MediaItem {
   path: string;
   type: string;
   size: number;
-  /** The file name it was uploaded under: only a label for the author. */
+  /** The file's name in the library: the name it was uploaded under, until someone renames it (ADR 0072 d2). */
   label: string;
+  /** The words for people who cannot see the picture, offered when it is put on a page (ADR 0072 d3); '' for none. */
+  alt: string;
+  /** When it was uploaded. */
+  uploadedAt: string;
   /** How wide and high it is, when its bytes say (ADR 0005 d8); 0 when they do not. */
   width: number;
   height: number;
@@ -189,6 +219,7 @@ const SQLITE: Dialect = {
     'CREATE TABLE IF NOT EXISTS extension_rows (extension TEXT NOT NULL, collection TEXT NOT NULL, id TEXT NOT NULL, data TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY (extension, collection, id))',
     'CREATE TABLE IF NOT EXISTS versions (kind TEXT NOT NULL, slug TEXT NOT NULL, at TEXT NOT NULL, doc TEXT NOT NULL, PRIMARY KEY (kind, slug, at))',
     'CREATE TABLE IF NOT EXISTS media_sizes (name TEXT PRIMARY KEY, width INTEGER NOT NULL, height INTEGER NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS media_texts (name TEXT PRIMARY KEY, alt TEXT NOT NULL)',
     'CREATE TABLE IF NOT EXISTS schedule (kind TEXT NOT NULL, slug TEXT NOT NULL, at TEXT NOT NULL, PRIMARY KEY (kind, slug))',
     'CREATE TABLE IF NOT EXISTS media_variants (name TEXT PRIMARY KEY, original TEXT NOT NULL, width INTEGER NOT NULL, bytes BLOB NOT NULL)',
     'CREATE TABLE IF NOT EXISTS page_locks (slug TEXT PRIMARY KEY, hash TEXT NOT NULL)',
@@ -196,12 +227,15 @@ const SQLITE: Dialect = {
     'CREATE TABLE IF NOT EXISTS comments (id TEXT PRIMARY KEY, type TEXT NOT NULL, entry TEXT NOT NULL, name TEXT NOT NULL, email TEXT NOT NULL, body TEXT NOT NULL, consent TEXT NOT NULL, at TEXT NOT NULL, approved INTEGER NOT NULL)',
     'CREATE TABLE IF NOT EXISTS message_answers (id TEXT PRIMARY KEY, answers TEXT NOT NULL)',
     'CREATE TABLE IF NOT EXISTS comment_languages (id TEXT PRIMARY KEY, language TEXT NOT NULL)',
-    'CREATE TABLE IF NOT EXISTS visits (day TEXT NOT NULL, kind TEXT NOT NULL, name TEXT NOT NULL, hits INTEGER NOT NULL, PRIMARY KEY (day, kind, name))',
     'CREATE TABLE IF NOT EXISTS entry_authors (type TEXT NOT NULL, slug TEXT NOT NULL, user_id TEXT NOT NULL, PRIMARY KEY (type, slug))',
     'CREATE TABLE IF NOT EXISTS entry_reviews (type TEXT NOT NULL, slug TEXT NOT NULL, state TEXT NOT NULL, note TEXT NOT NULL, at TEXT NOT NULL, PRIMARY KEY (type, slug))',
     'CREATE TABLE IF NOT EXISTS user_bios (id TEXT PRIMARY KEY, bio TEXT NOT NULL)',
     'CREATE TABLE IF NOT EXISTS user_pictures (id TEXT PRIMARY KEY, src TEXT NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS user_bar (id TEXT PRIMARY KEY, shown INTEGER NOT NULL)',
     'CREATE TABLE IF NOT EXISTS not_found (path TEXT PRIMARY KEY, hits INTEGER NOT NULL, last_at TEXT NOT NULL, referrer TEXT NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS extension_unique (extension TEXT NOT NULL, collection TEXT NOT NULL, field TEXT NOT NULL, value TEXT NOT NULL, id TEXT NOT NULL, PRIMARY KEY (extension, collection, field, value))',
+    'CREATE TABLE IF NOT EXISTS extension_later (id TEXT PRIMARY KEY, extension TEXT NOT NULL, action TEXT NOT NULL, input TEXT NOT NULL, due_at TEXT NOT NULL, tries INTEGER NOT NULL, made_at TEXT NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS extension_files (id TEXT PRIMARY KEY, extension TEXT NOT NULL, order_id TEXT NOT NULL, name TEXT NOT NULL, type TEXT NOT NULL, buyer INTEGER NOT NULL, size INTEGER NOT NULL, bytes BLOB NOT NULL, created_at TEXT NOT NULL)',
   ],
   params: (query) => query,
   upsert: (table, columns, key, update) =>
@@ -228,6 +262,7 @@ const POSTGRES: Dialect = {
     'CREATE TABLE IF NOT EXISTS extension_rows (extension VARCHAR(64) NOT NULL, collection VARCHAR(64) NOT NULL, id VARCHAR(40) NOT NULL, data TEXT NOT NULL, updated_at VARCHAR(40) NOT NULL, PRIMARY KEY (extension, collection, id))',
     'CREATE TABLE IF NOT EXISTS versions (kind VARCHAR(64) NOT NULL, slug VARCHAR(255) NOT NULL, at VARCHAR(40) NOT NULL, doc TEXT NOT NULL, PRIMARY KEY (kind, slug, at))',
     'CREATE TABLE IF NOT EXISTS media_sizes (name VARCHAR(255) PRIMARY KEY, width INTEGER NOT NULL, height INTEGER NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS media_texts (name VARCHAR(255) PRIMARY KEY, alt TEXT NOT NULL)',
     'CREATE TABLE IF NOT EXISTS schedule (kind VARCHAR(64) NOT NULL, slug VARCHAR(255) NOT NULL, at VARCHAR(40) NOT NULL, PRIMARY KEY (kind, slug))',
     'CREATE TABLE IF NOT EXISTS media_variants (name VARCHAR(255) PRIMARY KEY, original VARCHAR(255) NOT NULL, width INTEGER NOT NULL, bytes BYTEA NOT NULL)',
     'CREATE TABLE IF NOT EXISTS page_locks (slug VARCHAR(255) PRIMARY KEY, hash TEXT NOT NULL)',
@@ -235,12 +270,15 @@ const POSTGRES: Dialect = {
     'CREATE TABLE IF NOT EXISTS comments (id VARCHAR(40) PRIMARY KEY, type VARCHAR(255) NOT NULL, entry VARCHAR(255) NOT NULL, name TEXT NOT NULL, email TEXT NOT NULL, body TEXT NOT NULL, consent TEXT NOT NULL, at VARCHAR(40) NOT NULL, approved INTEGER NOT NULL)',
     'CREATE TABLE IF NOT EXISTS message_answers (id VARCHAR(40) PRIMARY KEY, answers TEXT NOT NULL)',
     'CREATE TABLE IF NOT EXISTS comment_languages (id VARCHAR(40) PRIMARY KEY, language VARCHAR(20) NOT NULL)',
-    'CREATE TABLE IF NOT EXISTS visits (day VARCHAR(10) NOT NULL, kind VARCHAR(20) NOT NULL, name VARCHAR(255) NOT NULL, hits INTEGER NOT NULL, PRIMARY KEY (day, kind, name))',
     'CREATE TABLE IF NOT EXISTS entry_authors (type VARCHAR(255) NOT NULL, slug VARCHAR(255) NOT NULL, user_id VARCHAR(40) NOT NULL, PRIMARY KEY (type, slug))',
     'CREATE TABLE IF NOT EXISTS entry_reviews (type VARCHAR(255) NOT NULL, slug VARCHAR(255) NOT NULL, state VARCHAR(20) NOT NULL, note TEXT NOT NULL, at VARCHAR(40) NOT NULL, PRIMARY KEY (type, slug))',
     'CREATE TABLE IF NOT EXISTS user_bios (id VARCHAR(40) PRIMARY KEY, bio TEXT NOT NULL)',
     'CREATE TABLE IF NOT EXISTS user_pictures (id VARCHAR(40) PRIMARY KEY, src TEXT NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS user_bar (id VARCHAR(40) PRIMARY KEY, shown INTEGER NOT NULL)',
     'CREATE TABLE IF NOT EXISTS not_found (path VARCHAR(255) PRIMARY KEY, hits INTEGER NOT NULL, last_at VARCHAR(40) NOT NULL, referrer VARCHAR(255) NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS extension_unique (extension VARCHAR(64) NOT NULL, collection VARCHAR(64) NOT NULL, field VARCHAR(64) NOT NULL, value VARCHAR(255) NOT NULL, id VARCHAR(40) NOT NULL, PRIMARY KEY (extension, collection, field, value))',
+    'CREATE TABLE IF NOT EXISTS extension_later (id VARCHAR(40) PRIMARY KEY, extension VARCHAR(64) NOT NULL, action VARCHAR(64) NOT NULL, input TEXT NOT NULL, due_at VARCHAR(40) NOT NULL, tries INTEGER NOT NULL, made_at VARCHAR(40) NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS extension_files (id VARCHAR(40) PRIMARY KEY, extension VARCHAR(64) NOT NULL, order_id VARCHAR(64) NOT NULL, name VARCHAR(255) NOT NULL, type VARCHAR(100) NOT NULL, buyer INTEGER NOT NULL, size INTEGER NOT NULL, bytes BYTEA NOT NULL, created_at VARCHAR(40) NOT NULL)',
   ],
   params: (query) => {
     let n = 0;
@@ -266,6 +304,7 @@ const MYSQL: Dialect = {
     `CREATE TABLE IF NOT EXISTS extension_rows (extension VARCHAR(64) NOT NULL, collection VARCHAR(64) NOT NULL, id VARCHAR(40) NOT NULL, data LONGTEXT NOT NULL, updated_at VARCHAR(40) NOT NULL, PRIMARY KEY (extension, collection, id)) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS versions (kind VARCHAR(64) NOT NULL, slug VARCHAR(255) NOT NULL, at VARCHAR(40) NOT NULL, doc LONGTEXT NOT NULL, PRIMARY KEY (kind, slug, at)) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS media_sizes (name VARCHAR(255) PRIMARY KEY, width INTEGER NOT NULL, height INTEGER NOT NULL) ${MYSQL_TABLE}`,
+    `CREATE TABLE IF NOT EXISTS media_texts (name VARCHAR(255) PRIMARY KEY, alt TEXT NOT NULL) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS schedule (kind VARCHAR(64) NOT NULL, slug VARCHAR(255) NOT NULL, at VARCHAR(40) NOT NULL, PRIMARY KEY (kind, slug)) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS media_variants (name VARCHAR(255) PRIMARY KEY, original VARCHAR(255) NOT NULL, width INTEGER NOT NULL, bytes LONGBLOB NOT NULL) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS page_locks (slug VARCHAR(255) PRIMARY KEY, hash TEXT NOT NULL) ${MYSQL_TABLE}`,
@@ -273,12 +312,15 @@ const MYSQL: Dialect = {
     `CREATE TABLE IF NOT EXISTS comments (id VARCHAR(40) PRIMARY KEY, type VARCHAR(255) NOT NULL, entry VARCHAR(255) NOT NULL, name TEXT NOT NULL, email TEXT NOT NULL, body TEXT NOT NULL, consent TEXT NOT NULL, at VARCHAR(40) NOT NULL, approved INTEGER NOT NULL) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS message_answers (id VARCHAR(40) PRIMARY KEY, answers LONGTEXT NOT NULL) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS comment_languages (id VARCHAR(40) PRIMARY KEY, language VARCHAR(20) NOT NULL) ${MYSQL_TABLE}`,
-    `CREATE TABLE IF NOT EXISTS visits (day VARCHAR(10) NOT NULL, kind VARCHAR(20) NOT NULL, name VARCHAR(255) NOT NULL, hits INTEGER NOT NULL, PRIMARY KEY (day, kind, name)) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS entry_authors (type VARCHAR(255) NOT NULL, slug VARCHAR(255) NOT NULL, user_id VARCHAR(40) NOT NULL, PRIMARY KEY (type, slug)) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS entry_reviews (type VARCHAR(255) NOT NULL, slug VARCHAR(255) NOT NULL, state VARCHAR(20) NOT NULL, note TEXT NOT NULL, at VARCHAR(40) NOT NULL, PRIMARY KEY (type, slug)) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS user_bios (id VARCHAR(40) PRIMARY KEY, bio TEXT NOT NULL) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS user_pictures (id VARCHAR(40) PRIMARY KEY, src TEXT NOT NULL) ${MYSQL_TABLE}`,
+    `CREATE TABLE IF NOT EXISTS user_bar (id VARCHAR(40) PRIMARY KEY, shown INTEGER NOT NULL) ${MYSQL_TABLE}`,
     `CREATE TABLE IF NOT EXISTS not_found (path VARCHAR(255) PRIMARY KEY, hits INTEGER NOT NULL, last_at VARCHAR(40) NOT NULL, referrer VARCHAR(255) NOT NULL) ${MYSQL_TABLE}`,
+    `CREATE TABLE IF NOT EXISTS extension_unique (extension VARCHAR(64) NOT NULL, collection VARCHAR(64) NOT NULL, field VARCHAR(64) NOT NULL, value VARCHAR(255) NOT NULL, id VARCHAR(40) NOT NULL, PRIMARY KEY (extension, collection, field, value)) ${MYSQL_TABLE}`,
+    `CREATE TABLE IF NOT EXISTS extension_later (id VARCHAR(40) PRIMARY KEY, extension VARCHAR(64) NOT NULL, action VARCHAR(64) NOT NULL, input LONGTEXT NOT NULL, due_at VARCHAR(40) NOT NULL, tries INTEGER NOT NULL, made_at VARCHAR(40) NOT NULL) ${MYSQL_TABLE}`,
+    `CREATE TABLE IF NOT EXISTS extension_files (id VARCHAR(40) PRIMARY KEY, extension VARCHAR(64) NOT NULL, order_id VARCHAR(64) NOT NULL, name VARCHAR(255) NOT NULL, type VARCHAR(100) NOT NULL, buyer INTEGER NOT NULL, size INTEGER NOT NULL, bytes LONGBLOB NOT NULL, created_at VARCHAR(40) NOT NULL) ${MYSQL_TABLE}`,
   ],
   params: (query) => query,
   upsert: (table, columns, _key, update) =>
@@ -322,15 +364,13 @@ export interface Message {
 }
 
 /**
- * One total of the statistics (ADR 0053): on a day, how many visitors, pages
- * seen, times a page was read, arrivals from a source, visitors on a kind of
- * device, or times a search was made. Nothing else is kept.
+ * One total the program kept before the statistics were an extension (ADR
+ * 0053): read from an old database or an old backup, and moved into the
+ * extension's rows (ADR 0062 d8).
  */
 export interface VisitRow {
-  /** YYYY-MM-DD, in the owner's time zone. */
   day: string;
-  kind: 'visitors' | 'views' | 'page' | 'source' | 'device' | 'search';
-  /** The page's address, the source, the device or the words searched; empty for the day's totals. */
+  kind: Kind;
   name: string;
   hits: number;
 }
@@ -395,6 +435,8 @@ export interface User {
   bio?: string;
   /** Their picture, an image of the media library (ADR 0056 d2); '' for none. */
   picture?: string;
+  /** Whether the admin bar is shown to them over the site (ADR 0075); on unless they turned it off. */
+  bar?: boolean;
 }
 /** What a one-time link is for: the first owner, someone invited, a new password. */
 export type LinkKind = 'setup' | 'invite' | 'reset';
@@ -439,6 +481,15 @@ export class Store {
     return () => this.listeners.delete(listener);
   }
 
+  /**
+   * Tells what visitor accounts (ADR 0064 d7) and the shop (ADR 0065 d9) did:
+   * they keep their tables apart and are loaded only while on, so they say it
+   * themselves.
+   */
+  tell(name: 'account.made' | 'account.removed' | 'member.changed' | OrderEvent, data: Record<string, unknown>): void {
+    this.emit(name, data);
+  }
+
   /** Tells whoever listens. A listener's failure is its own: what happened has happened. */
   private emit(name: ExtensionEventName, data: Record<string, unknown>): void {
     for (const listener of this.listeners) {
@@ -475,6 +526,47 @@ export class Store {
     }
     await this.moveCopies();
     await this.keepOldContactForm();
+    await this.moveVisits();
+  }
+
+  /**
+   * The totals kept before the statistics were an extension (ADR 0062 d8):
+   * moved into its rows, where it finds them once it is installed, and the
+   * table goes. A database that never had them has nothing to move.
+   */
+  private async moveVisits(): Promise<void> {
+    let rows: VisitRow[];
+    try {
+      rows = await this.rows<VisitRow>('SELECT day, kind, name, hits FROM visits');
+    } catch {
+      return;
+    }
+    await this.sql.begin(async (tx) => {
+      const run = (query: string, params: unknown[] = []) => tx.unsafe(this.dialect.params(query), params);
+      await this.addStatsRows(run, rows);
+      await run('DROP TABLE visits');
+    });
+  }
+
+  /**
+   * Adds old totals to the statistics' rows: every month's, and the days'
+   * that the extension still keeps. Its own code adds the same way, to rows of
+   * the same names (`extensions/stats/rows.ts`).
+   */
+  private async addStatsRows(run: (query: string, params?: unknown[]) => Promise<unknown>, rows: readonly VisitRow[], now = Date.now()): Promise<void> {
+    const oldest = new Date(now - (DAYS_KEPT + 1) * 86_400_000).toISOString().slice(0, 10);
+    const totals = rows.filter((r) => (KINDS as readonly string[]).includes(r.kind) && /^\d{4}-\d{2}-\d{2}$/.test(r.day)).map((r) => ({ day: r.day, kind: r.kind, name: r.name, hits: Number(r.hits) || 0 }));
+    const at = new Date(now).toISOString();
+    for (const one of summed(totals)) {
+      if (one.collection === 'days' && (one.row as { day: string }).day < oldest) continue;
+      const [before] = (await run('SELECT data FROM extension_rows WHERE extension = ? AND collection = ? AND id = ?', [STATS, one.collection, one.id])) as { data: string }[];
+      if (before) {
+        const data = JSON.parse(before.data) as Record<string, unknown>;
+        await run('UPDATE extension_rows SET data = ?, updated_at = ? WHERE extension = ? AND collection = ? AND id = ?', [JSON.stringify({ ...data, hits: (Number(data.hits) || 0) + one.hits }), at, STATS, one.collection, one.id]);
+      } else {
+        await run('INSERT INTO extension_rows (extension, collection, id, data, updated_at) VALUES (?, ?, ?, ?, ?)', [STATS, one.collection, one.id, JSON.stringify({ ...one.row, hits: one.hits }), at]);
+      }
+    }
   }
 
   /**
@@ -817,6 +909,13 @@ export class Store {
     await this.run('UPDATE versions SET slug = ? WHERE kind = ? AND slug = ?', [to, 'page', from]);
     await this.run('UPDATE page_locks SET slug = ? WHERE slug = ?', [to, from]);
     await this.run('UPDATE schedule SET slug = ? WHERE kind = ? AND slug = ?', [to, 'page', from]);
+    // Who sees it goes with the page (ADR 0064 d4).
+    const audiences = await this.audiences();
+    if (audiences.pages[from]) {
+      audiences.pages[to] = audiences.pages[from];
+      delete audiences.pages[from];
+      await this.setMeta(AUDIENCES, audiences);
+    }
     // The menu names a page by its address: it follows the page.
     if (site.menu) {
       const follow = (nodes: MenuNode[]): MenuNode[] => nodes.map((n) => ({ ...n, target: n.target.kind === 'page' && n.target.slug === from ? { kind: 'page', slug: to } : n.target, children: follow(n.children) }));
@@ -983,6 +1082,7 @@ export class Store {
     await this.run('DELETE FROM versions WHERE kind = ? AND slug = ?', ['page', slug]);
     await this.run('DELETE FROM schedule WHERE kind = ? AND slug = ?', ['page', slug]);
     await this.run('DELETE FROM page_locks WHERE slug = ?', [slug]);
+    await this.forgetAudience('pages', slug);
   }
 
   // Pages behind a password (ADR 0043).
@@ -1002,6 +1102,51 @@ export class Store {
       await this.run(this.dialect.upsert('page_locks', ['slug', 'hash'], ['slug'], ['hash']), [slug, await Bun.password.hash(password, { algorithm: 'argon2id' })]);
     }
     return this.lockedPages();
+  }
+
+  // Who sees a page, an entry or a whole type (ADR 0064 d4). Kept beside the content, not in it:
+  // it applies at once to what is published, as a password does.
+
+  /** Each page, entry and type that is not for everyone, with who sees it. */
+  async audiences(): Promise<Audiences> {
+    return normalizeAudiences(await this.getMeta(AUDIENCES));
+  }
+
+  /**
+   * Who sees a page (by any of its addresses: it goes with each translation),
+   * an entry (`type/entry`) or a type (its id); null is everyone. The home
+   * page is for everyone.
+   */
+  async setAudience(kind: 'page' | 'entry' | 'type', key: string, audience: unknown): Promise<Audiences> {
+    const all = await this.audiences();
+    const clean = normalizeAudience(audience);
+    let at = key;
+    let part: keyof Audiences;
+    if (kind === 'page') {
+      const found = await this.locate(key);
+      at = found?.translated ? found.of : key;
+      if (at === '') throw new Error('the home page is for everyone');
+      if (!(await this.row('SELECT 1 AS found FROM pages WHERE slug = ?', [at]))) throw new Error(`no page "${at}"`);
+      part = 'pages';
+    } else if (kind === 'entry') {
+      const [typeId = '', slug = ''] = key.split('/');
+      if (!(await this.row('SELECT 1 AS found FROM entries WHERE type = ? AND slug = ?', [typeId, slug]))) throw new Error(`no entry "${key}"`);
+      part = 'entries';
+    } else {
+      await this.type(key);
+      part = 'types';
+    }
+    if (clean) all[part][at] = clean;
+    else delete all[part][at];
+    await this.setMeta(AUDIENCES, all);
+    return all;
+  }
+
+  private async forgetAudience(part: keyof Audiences, key: string): Promise<void> {
+    const all = await this.audiences();
+    if (!all[part][key]) return;
+    delete all[part][key];
+    await this.setMeta(AUDIENCES, all);
   }
 
   /** The pages behind a password, by the address of their main language. */
@@ -1312,6 +1457,26 @@ export class Store {
     return (await this.row('SELECT 1 AS found FROM entries WHERE type = ? AND slug = ? AND published IS NOT NULL', [typeId, slug])) !== null;
   }
 
+  /** Whether a page (by its main address) or an entry (by its type and main address) has a draft that is not what visitors see (ADR 0075). */
+  async draftChanged(kind: string, slug: string): Promise<boolean> {
+    const row =
+      kind === 'page'
+        ? await this.row<Row>('SELECT draft, published FROM pages WHERE slug = ?', [slug])
+        : await this.row<Row>('SELECT draft, published FROM entries WHERE type = ? AND slug = ?', [kind, slug]);
+    return row !== null && row.published !== null && row.published !== undefined && row.published !== row.draft;
+  }
+
+  /** What waits for the owner and the editors, as numbers for the admin bar (ADR 0075): comments to approve, entries sent for review, orders to see to. */
+  async waiting(shop: boolean): Promise<{ comments: number; review: number; orders: number }> {
+    const count = async (query: string, params: unknown[] = []): Promise<number> => Number((await this.row<{ n: number | string }>(query, params))?.n ?? 0);
+    return {
+      comments: await count('SELECT COUNT(*) AS n FROM comments WHERE approved = 0'),
+      review: await count("SELECT COUNT(*) AS n FROM entry_reviews WHERE state = 'waiting'"),
+      // The shop's tables are there only once it was turned on (ADR 0065 d10).
+      orders: shop ? await count("SELECT COUNT(*) AS n FROM shop_orders WHERE state IN ('waiting', 'paid')").catch(() => 0) : 0,
+    };
+  }
+
   /** Every entry in review, the oldest sent first. */
   async reviews(): Promise<Review[]> {
     return (await this.rows<Row>('SELECT type, slug, state, note, at FROM entry_reviews ORDER BY at, type, slug')).map((r) => ({
@@ -1509,6 +1674,7 @@ export class Store {
     await this.run('DELETE FROM schedule WHERE kind = ? AND slug = ?', [typeId, slug]);
     await this.run('DELETE FROM comments WHERE type = ? AND entry = ?', [typeId, slug]);
     await this.run('DELETE FROM comment_languages WHERE id NOT IN (SELECT id FROM comments)');
+    await this.forgetAudience('entries', `${typeId}/${slug}`);
   }
 
   /**
@@ -1562,6 +1728,13 @@ export class Store {
     const type = await this.type(typeId);
     const rows = await this.rows<{ published: string }>('SELECT published FROM entries WHERE type = ? AND published IS NOT NULL', [typeId]);
     return listed(type, rows.map((row) => normalizePost(JSON.parse(row.published), undefined, type).post));
+  }
+
+  /** One entry as visitors see it: what was last published, or null. The shop reads a product's price here (ADR 0065 d3). */
+  async publishedEntry(typeId: string, slug: string): Promise<Post | null> {
+    const type = await this.type(typeId);
+    const row = await this.row('SELECT published FROM entries WHERE type = ? AND slug = ? AND published IS NOT NULL', [typeId, slug]);
+    return row ? normalizePost(JSON.parse(String(row.published)), undefined, type).post : null;
   }
 
   // Posts are the content type every site has; these say so by name.
@@ -1637,10 +1810,13 @@ export class Store {
   async media(): Promise<MediaItem[]> {
     const sizes = await this.sizes();
     const variants = await this.variantWidths();
-    return (await this.rows<{ name: string; label: string; size: number | string }>('SELECT name, label, size FROM media ORDER BY created_at DESC, name')).map((row) => ({
+    const texts = new Map((await this.rows<{ name: string; alt: string }>('SELECT name, alt FROM media_texts')).map((r) => [r.name, r.alt]));
+    return (await this.rows<{ name: string; label: string; size: number | string; created_at: string }>('SELECT name, label, size, created_at FROM media ORDER BY created_at DESC, name')).map((row) => ({
       name: row.name,
       kind: mediaKindOf(row.name),
       label: row.label,
+      alt: texts.get(row.name) ?? '',
+      uploadedAt: String(row.created_at),
       size: Number(row.size),
       path: mediaPath(row.name),
       type: MEDIA_TYPES[row.name.split('.').pop() as MediaExt],
@@ -1717,12 +1893,34 @@ export class Store {
     return titles;
   }
 
+  /**
+   * Renames a file in the library and sets the words a picture is offered with
+   * (ADR 0072). Neither changes a page that already shows it: a page keeps the
+   * words it was given, and the file's address stays the same.
+   */
+  async setMediaTexts(name: string, texts: { label?: unknown; alt?: unknown }): Promise<MediaItem> {
+    if (!(await this.hasMedia(name))) throw new Error('no such file');
+    if (texts.label !== undefined) {
+      const label = str(texts.label, 200).trim();
+      if (!label) throw new Error('a file in the library has a name');
+      await this.run('UPDATE media SET label = ? WHERE name = ?', [label, name]);
+    }
+    if (texts.alt !== undefined) {
+      const alt = str(texts.alt, 300).trim();
+      if (alt && mediaKindOf(name) !== 'image') throw new Error('only a picture has words for people who cannot see it');
+      if (alt) await this.run(this.dialect.upsert('media_texts', ['name', 'alt'], ['name'], ['alt']), [name, alt]);
+      else await this.run('DELETE FROM media_texts WHERE name = ?', [name]);
+    }
+    return (await this.media()).find((m) => m.name === name) as MediaItem;
+  }
+
   /** Deletes a file nothing shows or links to. One that a page still uses is refused, with the page named. */
   async deleteMedia(name: string): Promise<void> {
     const used = await this.mediaUsedBy(name);
     if (used.length) throw new Error(`this ${mediaKindOf(name) === 'image' ? 'image' : 'file'} is used on: ${used.join(', ')}`);
     await this.run('DELETE FROM media WHERE name = ?', [name]);
     await this.run('DELETE FROM media_sizes WHERE name = ?', [name]);
+    await this.run('DELETE FROM media_texts WHERE name = ?', [name]);
     await this.run('DELETE FROM media_variants WHERE original = ?', [name]);
   }
 
@@ -1932,7 +2130,9 @@ export class Store {
   // Accounts (ADR 0022).
 
   async users(): Promise<User[]> {
-    const rows = await this.rows<Row>('SELECT u.id, u.email, u.name, u.role, u.password, u.created_at, b.bio, p.src FROM users u LEFT JOIN user_bios b ON b.id = u.id LEFT JOIN user_pictures p ON p.id = u.id ORDER BY u.created_at, u.email');
+    const rows = await this.rows<Row>(
+      'SELECT u.id, u.email, u.name, u.role, u.password, u.created_at, b.bio, p.src, ub.shown FROM users u LEFT JOIN user_bios b ON b.id = u.id LEFT JOIN user_pictures p ON p.id = u.id LEFT JOIN user_bar ub ON ub.id = u.id ORDER BY u.created_at, u.email',
+    );
     return rows.map((r) => ({
       id: String(r.id),
       email: String(r.email),
@@ -1942,6 +2142,7 @@ export class Store {
       createdAt: String(r.created_at),
       bio: r.bio ? String(r.bio) : '',
       picture: r.src ? String(r.src) : '',
+      bar: r.shown === null || r.shown === undefined || Number(r.shown) !== 0,
     }));
   }
 
@@ -1997,7 +2198,7 @@ export class Store {
   }
 
   /** Someone's name and the few words about them (ADR 0055 d3), set by themselves. */
-  async setProfile(id: string, name: unknown, bio: unknown, picture?: unknown): Promise<User> {
+  async setProfile(id: string, name: unknown, bio: unknown, picture?: unknown, bar?: unknown): Promise<User> {
     if (!(await this.user(id))) throw new Error('nobody has that account');
     const before = authorSlugs(await this.users());
     await this.run('UPDATE users SET name = ? WHERE id = ?', [str(name, 120).trim(), id]);
@@ -2009,6 +2210,8 @@ export class Store {
       if (name) await this.run(this.dialect.upsert('user_pictures', ['id', 'src'], ['id'], ['src']), [id, mediaPath(name)]);
       else await this.run('DELETE FROM user_pictures WHERE id = ?', [id]);
     }
+    // The admin bar over the site (ADR 0075): left out, it stays as it was.
+    if (typeof bar === 'boolean') await this.run(this.dialect.upsert('user_bar', ['id', 'shown'], ['id'], ['shown']), [id, bar ? 1 : 0]);
     await this.keepAuthorAddresses(before);
     // Shown on every post of theirs at once, without publishing them again (ADR 0055 d3).
     await this.touch();
@@ -2051,6 +2254,7 @@ export class Store {
     else await this.run('DELETE FROM entry_authors WHERE user_id = ?', [id]);
     await this.run('DELETE FROM user_bios WHERE id = ?', [id]);
     await this.run('DELETE FROM user_pictures WHERE id = ?', [id]);
+    await this.run('DELETE FROM user_bar WHERE id = ?', [id]);
     await this.run('DELETE FROM sessions WHERE user_id = ?', [id]);
     await this.run('DELETE FROM links WHERE user_id = ?', [id]);
     await this.run('DELETE FROM users WHERE id = ?', [id]);
@@ -2154,6 +2358,8 @@ export class Store {
       await tx.unsafe(this.dialect.params('DELETE FROM extension_rows WHERE extension = ?'), [name]);
       await tx.unsafe(this.dialect.params('DELETE FROM extensions WHERE name = ?'), [name]);
       await tx.unsafe(this.dialect.params('DELETE FROM extension_jobs WHERE extension = ?'), [name]);
+      // What the fourth format keeps goes with it too (ADR 0076 d4): its unique values, its queued work and its files.
+      for (const table of ['extension_unique', 'extension_later', 'extension_files']) await tx.unsafe(this.dialect.params(`DELETE FROM ${table} WHERE extension = ?`), [name]);
     });
     if (blocks) await this.touch();
   }
@@ -2182,13 +2388,127 @@ export class Store {
     return row ? { ...(JSON.parse(row.data) as Record<string, unknown>), id } : null;
   }
 
-  /** Keeps a row, already cleaned by its collection's fields. A new one gets an id that sorts after the ones before it. */
-  async saveExtensionRow(extension: string, collection: string, data: Record<string, unknown>, id: string | null = null, at = new Date()): Promise<ExtensionRow> {
+  /**
+   * Keeps a row, already cleaned by its collection's fields. A new one gets an
+   * id that sorts after the ones before it. The fields named `unique` (ADR 0076
+   * d4.5) are kept in the same step: a value another row has refuses the row.
+   */
+  async saveExtensionRow(extension: string, collection: string, data: Record<string, unknown>, id: string | null = null, at = new Date(), unique: readonly string[] = []): Promise<ExtensionRow> {
     const key = id ?? `${at.getTime().toString(36).padStart(9, '0')}${crypto.randomUUID().replace(/-/g, '').slice(0, 8)}`;
     if (id !== null && !(await this.extensionRow(extension, collection, id))) throw new Error('no such row');
     const { id: _ignored, ...rest } = data;
-    await this.run(this.dialect.upsert('extension_rows', ['extension', 'collection', 'id', 'data', 'updated_at'], ['extension', 'collection', 'id'], ['data', 'updated_at']), [extension, collection, key, JSON.stringify(rest), at.toISOString()]);
+    await this.sql.begin(async (tx) => {
+      const run = (query: string, params: unknown[]) => tx.unsafe(this.dialect.params(query), params);
+      await run(this.dialect.upsert('extension_rows', ['extension', 'collection', 'id', 'data', 'updated_at'], ['extension', 'collection', 'id'], ['data', 'updated_at']), [extension, collection, key, JSON.stringify(rest), at.toISOString()]);
+      if (!unique.length) return;
+      await run('DELETE FROM extension_unique WHERE extension = ? AND collection = ? AND id = ?', [extension, collection, key]);
+      for (const field of unique) {
+        const value = uniqueValue(rest[field]);
+        if (value === null) continue;
+        const kept = Number(((await run(this.dialect.insertNew('extension_unique', ['extension', 'collection', 'field', 'value', 'id']), [extension, collection, field, value, key])) as { count?: number }).count ?? 0);
+        if (kept !== 1) throw new Error(`another row already has ${field} "${value.slice(0, 80)}"`);
+      }
+    });
     return { ...rest, id: key };
+  }
+
+  /** The row whose unique field has this value (ADR 0076 d4.5), or null. */
+  async extensionRowBy(extension: string, collection: string, field: string, value: unknown): Promise<ExtensionRow | null> {
+    const asKept = uniqueValue(value);
+    if (asKept === null) return null;
+    const found = await this.row<{ id: string }>('SELECT id FROM extension_unique WHERE extension = ? AND collection = ? AND field = ? AND value = ?', [extension, collection, field, asKept]);
+    return found ? this.extensionRow(extension, collection, found.id) : null;
+  }
+
+  /**
+   * Takes from the number fields of a row (ADR 0076 d4.6), only if each stays
+   * at zero or above: in one step, so two buyers never take the last seat both.
+   * Like `addToExtensionRow`, each try writes only over the row as it was read.
+   */
+  async takeFromExtensionRow(extension: string, collection: string, id: string, by: Record<string, number>, at = new Date()): Promise<ExtensionRow> {
+    for (let tries = 0; tries < 50; tries++) {
+      const row = await this.row<{ data: string }>('SELECT data FROM extension_rows WHERE extension = ? AND collection = ? AND id = ?', [extension, collection, id]);
+      if (!row) throw new Error('no such row');
+      const next = JSON.parse(row.data) as Record<string, unknown>;
+      for (const [key, value] of Object.entries(by)) {
+        const left = (Number(next[key]) || 0) - value;
+        if (left < 0) throw new Error(`not enough ${key} left`);
+        next[key] = left;
+      }
+      const kept = await this.changed('UPDATE extension_rows SET data = ?, updated_at = ? WHERE extension = ? AND collection = ? AND id = ? AND data = ?', [JSON.stringify(next), at.toISOString(), extension, collection, id, row.data]);
+      if (kept === 1) return { ...next, id };
+    }
+    throw new Error('the row is changed by too many at once; try again');
+  }
+
+  /** Queues an action of an extension to run once, when `due` (ADR 0076 d4.3). */
+  async queueLater(extension: string, action: string, input: unknown, due: Date, now = new Date()): Promise<string> {
+    const id = `${now.getTime().toString(36).padStart(9, '0')}${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`;
+    await this.run('INSERT INTO extension_later (id, extension, action, input, due_at, tries, made_at) VALUES (?, ?, ?, ?, ?, ?, ?)', [id, extension, action, JSON.stringify(input ?? null), due.toISOString(), 0, now.toISOString()]);
+    return id;
+  }
+
+  /** How many of an extension's actions wait to run once. */
+  async laterCount(extension: string): Promise<number> {
+    const row = await this.row<{ n: number | string }>('SELECT COUNT(*) AS n FROM extension_later WHERE extension = ?', [extension]);
+    return Number(row?.n ?? 0);
+  }
+
+  /** The work queued once that is due, oldest first. */
+  async laterDue(now = new Date(), limit = 20): Promise<{ id: string; extension: string; action: string; input: unknown; dueAt: string; tries: number }[]> {
+    const rows = await this.rows<{ id: string; extension: string; action: string; input: string; due_at: string; tries: number | string }>(`SELECT id, extension, action, input, due_at, tries FROM extension_later WHERE due_at <= ? ORDER BY due_at, id LIMIT ${Math.max(1, Math.floor(limit))}`, [now.toISOString()]);
+    return rows.map((r) => ({ id: r.id, extension: r.extension, action: r.action, input: JSON.parse(r.input) as unknown, dueAt: r.due_at, tries: Number(r.tries) }));
+  }
+
+  /**
+   * Claims one run of work queued once: true when this process moved it from
+   * when it was due to `until`, so another clock does not run it meanwhile.
+   */
+  async claimLater(id: string, dueAt: string, until: Date): Promise<boolean> {
+    return (await this.changed('UPDATE extension_later SET due_at = ? WHERE id = ? AND due_at = ?', [until.toISOString(), id, dueAt])) === 1;
+  }
+
+  /** Work queued once that ran: gone. That failed: tried again at `due`, or gone when `due` is null. */
+  async laterRan(id: string, retry: { tries: number; due: Date } | null): Promise<void> {
+    if (retry) await this.run('UPDATE extension_later SET tries = ?, due_at = ? WHERE id = ?', [retry.tries, retry.due.toISOString(), id]);
+    else await this.run('DELETE FROM extension_later WHERE id = ?', [id]);
+  }
+
+  /** Keeps a file an extension made for an order (ADR 0076 d4.4); its id. */
+  async saveExtensionFile(file: { extension: string; order: string; name: string; type: string; buyer: boolean; bytes: Uint8Array }, at = new Date()): Promise<string> {
+    const id = `${at.getTime().toString(36).padStart(9, '0')}${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`;
+    await this.run('INSERT INTO extension_files (id, extension, order_id, name, type, buyer, size, bytes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', [
+      id,
+      file.extension,
+      file.order,
+      file.name,
+      file.type,
+      file.buyer ? 1 : 0,
+      file.bytes.length,
+      file.bytes,
+      at.toISOString(),
+    ]);
+    return id;
+  }
+
+  /** The files kept for an order, without their bytes, oldest first. */
+  async orderFiles(order: string): Promise<ExtensionFile[]> {
+    const rows = await this.rows<{ id: string; extension: string; order_id: string; name: string; type: string; buyer: number | string; size: number | string; created_at: string }>(
+      'SELECT id, extension, order_id, name, type, buyer, size, created_at FROM extension_files WHERE order_id = ? ORDER BY id',
+      [order],
+    );
+    return rows.map((r) => ({ id: r.id, extension: r.extension, order: r.order_id, name: r.name, type: r.type, buyer: Number(r.buyer) === 1, size: Number(r.size), createdAt: r.created_at }));
+  }
+
+  /** One file an extension kept, with its bytes. */
+  async extensionFile(id: string): Promise<(ExtensionFile & { bytes: Uint8Array }) | null> {
+    const r = await this.row<{ id: string; extension: string; order_id: string; name: string; type: string; buyer: number | string; size: number | string; created_at: string; bytes: Uint8Array }>('SELECT * FROM extension_files WHERE id = ?', [id]);
+    return r ? { id: r.id, extension: r.extension, order: r.order_id, name: r.name, type: r.type, buyer: Number(r.buyer) === 1, size: Number(r.size), createdAt: r.created_at, bytes: new Uint8Array(r.bytes) } : null;
+  }
+
+  /** Removes one of an extension's files; another's is left. */
+  async deleteExtensionFile(extension: string, id: string): Promise<boolean> {
+    return (await this.changed('DELETE FROM extension_files WHERE extension = ? AND id = ?', [extension, id])) === 1;
   }
 
   /**
@@ -2219,6 +2539,7 @@ export class Store {
 
   async deleteExtensionRow(extension: string, collection: string, id: string): Promise<void> {
     await this.run('DELETE FROM extension_rows WHERE extension = ? AND collection = ? AND id = ?', [extension, collection, id]);
+    await this.run('DELETE FROM extension_unique WHERE extension = ? AND collection = ? AND id = ?', [extension, collection, id]);
   }
 
   async rawForTests(query: string, params: unknown[] = []): Promise<void> {
@@ -2239,13 +2560,76 @@ export class Store {
     await this.setMeta('published:version', crypto.randomUUID());
   }
 
-  /** Valkey's address set in Settings → Performance (ADR 0044 d4); THECMS_VALKEY_URL, when set, comes first. */
+  /** Valkey's address set in Settings → Performance (ADR 0044 d4); UHLAKA_VALKEY_URL, when set, comes first. */
   async valkeyAddress(): Promise<string> {
     return String((await this.getMeta('valkey')) ?? '');
   }
 
   async setValkeyAddress(address: string): Promise<void> {
     await this.setMeta('valkey', address);
+  }
+
+  /**
+   * Plain queries, for a part of the program that is off until the owner turns
+   * it on (ADR 0060 d3): it makes its own tables the first time, and only then.
+   */
+  database(): Database {
+    return {
+      kind: this.kind,
+      rows: <T = Row>(query: string, params: unknown[] = []) => this.rows<T>(query, params),
+      run: (query: string, params: unknown[] = []) => this.run(query, params),
+      changed: (query: string, params: unknown[] = []) => this.changed(query, params),
+      upsert: (table: string, columns: string[], key: string[], update: string[]) => this.dialect.upsert(table, columns, key, update),
+      make: async (statements: string[]) => {
+        for (const statement of statements) await this.sql.unsafe(statement);
+      },
+    };
+  }
+
+  /** Whether a table is there: a part that is off has none (ADR 0060 d3). */
+  async hasTable(table: string): Promise<boolean> {
+    const query =
+      this.kind === 'sqlite'
+        ? "SELECT 1 AS found FROM sqlite_master WHERE type = 'table' AND name = ?"
+        : this.kind === 'postgres'
+          ? 'SELECT 1 AS found FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = ?'
+          : 'SELECT 1 AS found FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?';
+    return (await this.rows(query, [table])).length > 0;
+  }
+
+  /** Visitor accounts' settings as saved (ADR 0064 d2, d8); the accounts read them whole. */
+  async visitorSettings(): Promise<unknown> {
+    return this.getMeta(VISITOR_SETTINGS);
+  }
+
+  async setVisitorSettings(value: unknown): Promise<void> {
+    await this.setMeta(VISITOR_SETTINGS, value);
+  }
+
+  /** The shop's settings as saved (ADR 0065 d10); the shop reads them whole. */
+  async shopSettings(): Promise<unknown> {
+    return this.getMeta(SHOP_SETTINGS);
+  }
+
+  async setShopSettings(value: unknown): Promise<void> {
+    await this.setMeta(SHOP_SETTINGS, value);
+  }
+
+  /** The mail server set in Settings → E-mail (ADR 0064 d5), and the owner's words for each message to visitors. */
+  async mailSettings(): Promise<unknown> {
+    return this.getMeta(MAIL_SETTINGS);
+  }
+
+  async setMailSettings(value: unknown): Promise<void> {
+    await this.setMeta(MAIL_SETTINGS, value);
+  }
+
+  async mailTemplates(): Promise<unknown> {
+    return this.getMeta(MAIL_TEMPLATES);
+  }
+
+  async setMailTemplates(value: unknown): Promise<void> {
+    await this.setMeta(MAIL_TEMPLATES, value);
   }
 
   /** The backup settings as saved (ADR 0051); the backup module reads them whole. */
@@ -2283,7 +2667,7 @@ export class Store {
     for (const row of oldest) await this.run('DELETE FROM not_found WHERE path = ?', [row.path]);
   }
 
-  /** The service account and property Search Console is read with (ADR 0064 d3), when the owner connected it. */
+  /** The service account and property Search Console is read with (ADR 0077 d3), when the owner connected it. */
   async searchConsole(): Promise<SearchConsoleSettings | null> {
     const kept = await this.getMeta(SEARCH_CONSOLE);
     return isObject(kept) && typeof kept.clientEmail === 'string' && typeof kept.privateKey === 'string' && typeof kept.property === 'string' ? (kept as unknown as SearchConsoleSettings) : null;
@@ -2315,26 +2699,6 @@ export class Store {
     else await this.run('DELETE FROM not_found WHERE path = ?', [path]);
   }
 
-  /** The day's totals of the statistics (ADR 0053), added to what each day already has. */
-  async addVisits(rows: readonly VisitRow[]): Promise<void> {
-    const add =
-      this.kind === 'mysql'
-        ? 'INSERT INTO visits (day, kind, name, hits) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE hits = hits + VALUES(hits)'
-        : 'INSERT INTO visits (day, kind, name, hits) VALUES (?, ?, ?, ?) ON CONFLICT (day, kind, name) DO UPDATE SET hits = visits.hits + excluded.hits';
-    for (const row of rows) await this.run(add, [row.day, row.kind, row.name.slice(0, 255), row.hits]);
-  }
-
-  /** The totals of the days from `from` to `to`, both given as YYYY-MM-DD. */
-  async visits(from: string, to: string): Promise<VisitRow[]> {
-    const rows = await this.rows<{ day: string; kind: string; name: string; hits: number | string }>('SELECT day, kind, name, hits FROM visits WHERE day >= ? AND day <= ?', [from, to]);
-    return rows.map((r) => ({ day: r.day, kind: r.kind as VisitRow['kind'], name: r.name, hits: Number(r.hits) }));
-  }
-
-  /** Whether anything was ever counted: an export is told what it loses only then. */
-  async hasVisits(): Promise<boolean> {
-    return (await this.row('SELECT 1 AS found FROM visits LIMIT 1')) !== null;
-  }
-
   /** The owner's time zone, in which the statistics' days begin (ADR 0053 d3); UTC until the owner opens them. */
   async statsZone(): Promise<string> {
     const zone = await this.getMeta('stats:zone');
@@ -2345,16 +2709,25 @@ export class Store {
     await this.setMeta('stats:zone', zone);
   }
 
+  /** The tables of the parts turned on at least once, which a backup holds besides the site's own. */
+  private async optionalTables(): Promise<string[]> {
+    const optional: string[] = [];
+    for (const table of [...BACKED_UP_VISITOR_TABLES, ...BACKED_UP_SHOP_TABLES]) if (await this.hasTable(table)) optional.push(table);
+    return optional;
+  }
+
   /**
    * Every row a backup holds (ADR 0051 d1), table by table, a few at a time so
    * that a site with many pictures is never all in memory. Bytes come as
    * Uint8Array, whichever database gave them.
    */
   async *backupRows(): AsyncGenerator<{ table: string; row: Row }> {
-    for (const table of BACKUP_TABLES) {
+    // The visitors' tables, once the owner has turned the accounts on (ADR 0064 d6); the shop's, once it was (ADR 0065).
+    const optional = await this.optionalTables();
+    for (const table of [...BACKUP_TABLES, ...optional]) {
       const key = TABLE_KEYS[table] as string[];
       const order = key.map((column) => (column === 'key' ? this.dialect.key : column)).join(', ');
-      const step = table === 'media' || table === 'media_variants' ? 20 : 500;
+      const step = table === 'media' || table === 'media_variants' || table === 'extension_files' ? 20 : 500;
       for (let offset = 0; ; offset += step) {
         const rows = await this.rows(`SELECT * FROM ${table} ORDER BY ${order} LIMIT ${step} OFFSET ${offset}`);
         for (const row of rows) {
@@ -2378,13 +2751,36 @@ export class Store {
    */
   async restoreRows(rows: AsyncIterable<{ table: string; row: Row }>): Promise<number> {
     let count = 0;
+    // The settings come first in a backup. A site whose visitor accounts were ever turned on has their
+    // tables, made before the transaction: on MySQL, making a table ends one (ADR 0064 d6).
+    const iterator = rows[Symbol.asyncIterator]();
+    const ahead: { table: string; row: Row }[] = [];
+    for (let next = await iterator.next(); !next.done; next = await iterator.next()) {
+      ahead.push(next.value);
+      if (next.value.table !== 'meta') break;
+    }
+    if (ahead.some(({ table, row }) => table === 'meta' && row.key === VISITOR_SETTINGS)) await this.database().make(visitorSchema(this.kind));
+    // So does a site whose shop was ever turned on (ADR 0065).
+    if (ahead.some(({ table, row }) => table === 'meta' && row.key === SHOP_SETTINGS)) await this.database().make(shopSchema(this.kind));
+    const optional = await this.optionalTables();
+    const all = async function* (): AsyncGenerator<{ table: string; row: Row }> {
+      yield* ahead;
+      for (let next = await iterator.next(); !next.done; next = await iterator.next()) yield next.value;
+    };
     await this.sql.begin(async (tx) => {
       const run = (query: string, params: unknown[] = []) => tx.unsafe(this.dialect.params(query), params);
       await run(`DELETE FROM meta WHERE ${this.dialect.key} NOT IN (${marks(NOT_BACKED_UP_META)})`, NOT_BACKED_UP_META);
-      for (const table of BACKUP_TABLES) if (table !== 'meta') await run(`DELETE FROM ${table}`);
-      for await (const { table, row } of rows) {
+      for (const table of [...BACKUP_TABLES, ...optional]) if (table !== 'meta') await run(`DELETE FROM ${table}`);
+      // A backup from before the statistics were an extension holds their totals: they go to its rows (ADR 0062 d8).
+      const visits: VisitRow[] = [];
+      for await (const { table, row } of all()) {
+        if (table === 'visits') {
+          visits.push({ day: String(row.day), kind: String(row.kind) as Kind, name: String(row.name ?? ''), hits: Number(row.hits) || 0 });
+          count++;
+          continue;
+        }
         const columns = TABLE_COLUMNS[table];
-        if (!columns || !(BACKUP_TABLES as readonly string[]).includes(table)) throw new Error(`a backup holds a table this program does not know: ${table}`);
+        if (!columns || !([...BACKUP_TABLES, ...optional] as readonly string[]).includes(table)) throw new Error(`a backup holds a table this program does not know: ${table}`);
         if (table === 'meta' && NOT_BACKED_UP_META.includes(String(row.key))) continue;
         const names = Object.keys(row);
         const unknown = names.find((name) => !columns.includes(name));
@@ -2392,13 +2788,22 @@ export class Store {
         await run(`INSERT INTO ${table} (${names.map((n) => (n === 'key' ? this.dialect.key : n)).join(', ')}) VALUES (${marks(names)})`, names.map((n) => row[n]));
         count++;
       }
+      await this.addStatsRows(run, visits);
       await run('DELETE FROM sessions WHERE user_id NOT IN (SELECT id FROM users)');
       await run('DELETE FROM links WHERE user_id NOT IN (SELECT id FROM users) AND user_id <> ?', ['']);
+      if (optional.includes('visitors')) {
+        await run('DELETE FROM visitor_sessions WHERE visitor_id NOT IN (SELECT id FROM visitors)');
+        await run('DELETE FROM visitor_links WHERE visitor_id NOT IN (SELECT id FROM visitors)');
+        if (optional.includes('visitor_levels')) await run('DELETE FROM visitor_levels WHERE visitor_id NOT IN (SELECT id FROM visitors)');
+      }
     });
     await this.touch();
     return count;
   }
 }
+
+/** What the shop tells extensions about an order (ADR 0065 d9). */
+export type OrderEvent = 'order.made' | 'order.paid' | 'order.sent' | 'order.refunded';
 
 /** An address visitors asked for that the site does not have (ADR 0063 d1). */
 export interface NotFound {
@@ -2410,9 +2815,31 @@ export interface NotFound {
   referrer: string;
 }
 
+/** Who sees each page, entry and type that is not for everyone (ADR 0064 d4). */
+const AUDIENCES = 'audiences';
+
+/** Where visitor accounts' settings, the mail server and the messages' words are kept (ADR 0064). */
+const VISITOR_SETTINGS = 'visitors';
+const MAIL_SETTINGS = 'mail';
+const MAIL_TEMPLATES = 'mail:templates';
+/** Where the shop's settings are kept (ADR 0065). */
+const SHOP_SETTINGS = 'shop';
+
+/** Plain queries, for a part of the program with tables of its own (ADR 0060 d3). Written with `?`. */
+export interface Database {
+  kind: DatabaseKind;
+  rows: <T = Row>(query: string, params?: unknown[]) => Promise<T[]>;
+  run: (query: string, params?: unknown[]) => Promise<void>;
+  /** How many rows a change touched: the database's own answer. */
+  changed: (query: string, params?: unknown[]) => Promise<number>;
+  upsert: (table: string, columns: string[], key: string[], update: string[]) => string;
+  /** Makes tables, as statements for this database. */
+  make: (statements: string[]) => Promise<void>;
+}
+
 /** Where the IndexNow key is kept (ADR 0063 d2). */
 const INDEXNOW_KEY = 'indexnow:key';
-/** Where the Search Console settings are kept (ADR 0064 d3). */
+/** Where the Search Console settings are kept (ADR 0077 d3). */
 const SEARCH_CONSOLE = 'searchconsole';
 /** How many addresses not found are kept (ADR 0063 d1). */
 export const NOT_FOUND_KEPT = 500;
@@ -2421,6 +2848,8 @@ const BACKUP_SETTINGS = 'backups';
 const BACKUP_LAST = 'backups:last';
 /** Meta that belongs to the server the site runs on, not to the site. */
 const NOT_BACKED_UP_META = [BACKUP_SETTINGS, BACKUP_LAST, 'valkey'];
+/** The statistics extension (ADR 0062 d8), whose rows the totals kept before it are moved into. */
+export const STATS = 'stats';
 /** Every table a backup holds, in the order it is written and read back. Sessions and one-time links are not in it. */
 export const BACKUP_TABLES = [
   'meta',
@@ -2432,6 +2861,7 @@ export const BACKUP_TABLES = [
   'media',
   'media_sizes',
   'media_variants',
+  'media_texts',
   'messages',
   'message_answers',
   'comments',
@@ -2441,16 +2871,19 @@ export const BACKUP_TABLES = [
   'extensions',
   'extension_rows',
   'extension_jobs',
-  'visits',
+  'extension_unique',
+  'extension_later',
+  'extension_files',
   'entry_authors',
   'entry_reviews',
   'user_bios',
   'user_pictures',
+  'user_bar',
 ] as const;
 /** Each table's columns and key, read from the schema, which says them once. */
 const TABLE_COLUMNS: Record<string, string[]> = {};
 const TABLE_KEYS: Record<string, string[]> = {};
-for (const statement of SQLITE.schema) {
+for (const statement of [...SQLITE.schema, ...BACKED_UP_VISITOR_TABLES.map((t) => visitorTable(t) as string), ...BACKED_UP_SHOP_TABLES.map((t) => shopTable(t) as string)]) {
   const [, table, inside] = statement.match(/^CREATE TABLE IF NOT EXISTS (\w+) \((.*)\)$/) as RegExpMatchArray;
   const parts = (inside as string).split(/, (?![^()]*\))/);
   const key = parts.find((p) => p.startsWith('PRIMARY KEY'));
@@ -2471,6 +2904,11 @@ const TOUCHING = [
   'deleteTranslation',
   'deletePage',
   'lockPage',
+  'setAudience',
+  // Turning visitor accounts on or off shows or hides "My account" in the menu (ADR 0064 d8).
+  'setVisitorSettings',
+  // Turning the shop on or off shows or hides each product's Buy part (ADR 0065 d10).
+  'setShopSettings',
   'publishSection',
   'deleteSection',
   'publishEntry',

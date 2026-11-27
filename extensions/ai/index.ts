@@ -1,5 +1,5 @@
 /**
- * AI writing for thecms (ADR 0027): an extension like any other (ADR 0026).
+ * AI writing for Uhlaka (ADR 0027): an extension like any other (ADR 0026).
  * Each action takes the words of a block or a page, asks the model the owner
  * chose for new ones, and gives the block or the page back with them. The
  * editor shows that as a change, to look at, undo or save.

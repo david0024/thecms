@@ -14,7 +14,7 @@ import { startEditor } from '../src/site/server.ts';
 import { Store } from '../src/site/store.ts';
 import plain from '../themes/plain.json';
 
-const dir = await mkdtemp(join(tmpdir(), 'thecms-sizes-'));
+const dir = await mkdtemp(join(tmpdir(), 'uhlaka-sizes-'));
 afterAll(() => rm(dir, { recursive: true, force: true }));
 
 const be32 = (n: number): number[] => [(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255];
@@ -102,7 +102,7 @@ describe('the store, the editor and the export', () => {
     const editor = await startEditor(store, { listen: false });
     const send = async (path: string, body: Uint8Array) => {
       const response = await editor.fetch(
-        new Request(`http://127.0.0.1:4321${path}`, { method: 'POST', headers: { host: '127.0.0.1:4321', 'x-thecms-token': editor.token }, body: body as Uint8Array<ArrayBuffer> }),
+        new Request(`http://127.0.0.1:4321${path}`, { method: 'POST', headers: { host: '127.0.0.1:4321', 'x-uhlaka-token': editor.token }, body: body as Uint8Array<ArrayBuffer> }),
       );
       return { status: response.status, data: (await response.json()) as Record<string, any> };
     };

@@ -12,12 +12,13 @@ import { createReadStream, createWriteStream, existsSync, mkdirSync, readdirSync
 import { dirname, join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { createGunzip, createGzip } from 'node:zlib';
+import { fromOldName } from '../core/index.ts';
 import { IMPORT_MAX_BYTES } from '../import/run.ts';
 import { databaseKind, type Store } from './store.ts';
 import { VERSION } from './version.ts';
 
-export const BACKUP_FORMAT = 'thecms.backup/1';
-export const BACKUP_SUFFIX = '.thecms-backup';
+export const BACKUP_FORMAT = 'uhlaka.backup/1';
+export const BACKUP_SUFFIX = '.uhlaka-backup';
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
 export const KEEP_MIN = 1;
@@ -86,7 +87,7 @@ export function normalizeBackupSettings(input: unknown): BackupSettings {
       region: text(s3raw.region, 40) || 'auto',
       accessKeyId: text(s3raw.accessKeyId, 200),
       secretAccessKey: text(s3raw.secretAccessKey, 200),
-      prefix: prefix === '' ? 'thecms/' : prefix.endsWith('/') ? prefix : `${prefix}/`,
+      prefix: prefix === '' ? 'uhlaka/' : prefix.endsWith('/') ? prefix : `${prefix}/`,
     };
   }
   return {
@@ -103,8 +104,8 @@ export function normalizeBackupSettings(input: unknown): BackupSettings {
 export const shownSettings = (settings: BackupSettings): BackupSettings =>
   settings.s3 ? { ...settings, s3: { ...settings.s3, secretAccessKey: settings.s3.secretAccessKey ? HIDDEN : '' } } : settings;
 
-/** Where backups are kept (ADR 0051 d3): THECMS_BACKUPS, or `backups` beside a site that is a file, or in the folder the program runs in. */
-export function backupsFolder(site: string, given = process.env.THECMS_BACKUPS ?? ''): string {
+/** Where backups are kept (ADR 0051 d3): UHLAKA_BACKUPS, or `backups` beside a site that is a file, or in the folder the program runs in. */
+export function backupsFolder(site: string, given = process.env.UHLAKA_BACKUPS ?? ''): string {
   if (given) return resolve(given);
   if (databaseKind(site) === 'sqlite') return join(dirname(resolve(site.replace(/^sqlite:\/\//i, ''))), 'backups');
   return resolve('backups');
@@ -135,8 +136,8 @@ export function isDue(settings: BackupSettings, last: LastBackup | null, now: Da
 /** A backup's name: what it is, and when it was made, in UTC. */
 export const backupName = (kind: string, now: Date): string => `${kind}-${now.toISOString().slice(0, 19).replace('T', '-').replace(/:/g, '')}${BACKUP_SUFFIX}`;
 
-/** A name the admin may ask for: a backup's, in the folder, never a path. */
-export const isBackupName = (name: string): boolean => /^[a-z][a-z0-9-]{0,80}\.thecms-backup$/.test(name);
+/** A name the admin may ask for: a backup's, in the folder, never a path. One made before the rename (ADR 0066) ends in .thecms-backup. */
+export const isBackupName = (name: string): boolean => /^[a-z][a-z0-9-]{0,80}\.(uhlaka|thecms)-backup$/.test(name);
 
 const asLine = (table: string, row: Record<string, unknown>): string =>
   `${JSON.stringify({ t: table, r: Object.fromEntries(Object.entries(row).map(([k, v]) => [k, v instanceof Uint8Array ? { $b64: Buffer.from(v).toString('base64') } : v])) })}\n`;
@@ -195,7 +196,7 @@ export async function* readBackup(path: string, onHeader?: (header: BackupHeader
   // A file that is not gzip fails in the stream, not in a line: it is said as what it means.
   let started = false;
   const said = (error: unknown): Error =>
-    (error as { code?: unknown }).code?.toString().startsWith('Z_') ? new Error(started ? 'the backup is damaged' : 'this file is not a thecms backup') : (error as Error);
+    (error as { code?: unknown }).code?.toString().startsWith('Z_') ? new Error(started ? 'the backup is damaged' : 'this file is not a Uhlaka backup') : (error as Error);
   const failed = new Promise<never>((_, reject) => {
     gunzip.on('error', (error) => reject(said(error)));
     input.on('error', (error) => reject(error));
@@ -214,7 +215,7 @@ export async function* readBackup(path: string, onHeader?: (header: BackupHeader
     } catch {
       // Said below.
     }
-    if (head.format !== BACKUP_FORMAT) throw new Error('this file is not a thecms backup');
+    if (fromOldName(head.format) !== BACKUP_FORMAT) throw new Error('this file is not a Uhlaka backup');
     started = true;
     onHeader?.({ format: String(head.format), version: String(head.version ?? ''), at: String(head.at ?? ''), database: String(head.database ?? '') });
     for (let line = await next(); !line.done; line = await next()) {
@@ -252,9 +253,18 @@ export function listBackups(dir: string): BackupFile[] {
     .sort((a, b) => b.at.localeCompare(a.at) || b.name.localeCompare(a.name));
 }
 
-/** Deletes what is past the number kept, oldest first; never the one named in `spare`. */
+/**
+ * What a person made or brought on purpose (ADR 0051, amended 2026-11-24): a
+ * backup made by hand, with "Back up now" or `uhlaka backup`, and one uploaded.
+ * The number kept never deletes these; their owner does, from the admin.
+ */
+export const keptByHand = (name: string): boolean => name.startsWith('manual-') || name.startsWith('uploaded-');
+
+/** Deletes what is past the number kept, oldest first, of the backups the site made itself; never the one named in `spare`, nor one made by hand. */
 export function pruneBackups(dir: string, keep: number, spare = ''): string[] {
-  const gone = listBackups(dir).filter((f) => f.name !== spare).slice(Math.max(0, keep - (spare ? 1 : 0)));
+  const gone = listBackups(dir)
+    .filter((f) => f.name !== spare && !keptByHand(f.name))
+    .slice(Math.max(0, keep - (spare ? 1 : 0)));
   for (const f of gone) rmSync(join(dir, f.name), { force: true });
   return gone.map((f) => f.name);
 }
@@ -289,8 +299,8 @@ export function s3Remote(s3: S3Settings): Remote {
       await client.delete(`${s3.prefix}${name}`);
     },
     test: async () => {
-      const key = `${s3.prefix}thecms-test.txt`;
-      await client.write(key, 'thecms checks that it may write here; this file is deleted at once.');
+      const key = `${s3.prefix}uhlaka-test.txt`;
+      await client.write(key, 'uhlaka checks that it may write here; this file is deleted at once.');
       await client.delete(key);
     },
   };
@@ -351,9 +361,9 @@ export function backups(
         try {
           const remote = remoteFor(set.s3);
           await remote.put(done.name, join(dir, done.name));
-          // The newest are kept, whatever kind each is: a name says when it was made.
+          // The newest the site made are kept, whatever kind each is (a name says when it was made); those made by hand stay.
           const there = (await remote.names()).sort((a, b) => stamp(b).localeCompare(stamp(a)));
-          for (const name of there.slice(set.keep)) await remote.remove(name);
+          for (const name of there.filter((n) => !keptByHand(n)).slice(set.keep)) await remote.remove(name);
           done.sent = 'yes';
         } catch (error) {
           done.sent = 'failed';
@@ -415,7 +425,8 @@ export function backups(
         return json(await shown());
       }
       case 'POST /api/backups':
-        await make();
+        // "Back up now": made by hand, so kept until the owner deletes it.
+        await make('manual');
         return json(await shown());
       case 'POST /api/backups/test': {
         const body = (await request.json()) as { settings?: unknown };
@@ -441,7 +452,7 @@ export function backups(
       case 'POST /api/backups/restore':
         return json({ restored: await restore(name), ...(await shown()) });
       case 'POST /api/backups/upload': {
-        if (Number(request.headers.get('content-length') ?? 0) > IMPORT_MAX_BYTES) return json({ error: 'the file is too large; put it back with thecms restore' }, 413);
+        if (Number(request.headers.get('content-length') ?? 0) > IMPORT_MAX_BYTES) return json({ error: 'the file is too large; put it back with uhlaka restore' }, 413);
         mkdirSync(dir, { recursive: true });
         const uploaded = backupName('uploaded', new Date());
         const path = join(dir, uploaded);

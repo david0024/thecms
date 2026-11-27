@@ -12,13 +12,17 @@ import { say, t } from './messages.ts';
 
 let { site }: { site: Site } = $props();
 
-let parts = $state<{ id: string; name: string }[]>([]);
+let parts = $state<{ id: string; name: string; apart?: true }[]>([]);
 let chosen = $state<string[]>([]);
+/** The visitors (ADR 0064 d6) and the shop's orders (ADR 0065): offered apart from the whole site, never chosen for the owner. */
+let apart = $state<{ id: string; name: string }[]>([]);
+let apartChosen = $state<string[]>([]);
 let lose = $state<string[] | null>(null);
 let busy = $state('');
 let problem = $state('');
 
-const words: Record<string, string> = { pages: t.exp.pages, sections: t.exp.sections, forms: t.exp.forms, design: t.exp.design };
+const words: Record<string, string> = { pages: t.exp.pages, sections: t.exp.sections, forms: t.exp.forms, design: t.exp.design, shop: t.exp.shop };
+const apartWords: Record<string, { name: string; hint: string }> = { visitors: { name: t.exp.visitors, hint: t.exp.visitorsHint }, orders: { name: t.exp.orders, hint: t.exp.ordersHint } };
 const all = $derived(parts.length > 0 && chosen.length === parts.length);
 
 async function attempt(what: string, work: () => Promise<void>): Promise<void> {
@@ -36,7 +40,9 @@ async function attempt(what: string, work: () => Promise<void>): Promise<void> {
 onMount(
   () =>
     void attempt('load', async () => {
-      parts = (await api.exportParts()).parts;
+      const offered = (await api.exportParts()).parts;
+      parts = offered.filter((p) => !p.apart);
+      apart = offered.filter((p) => p.apart);
       chosen = parts.map((p) => p.id);
       // What a static host would not do, as the check before publishing says it.
       lose = (await api.check()).check.server ?? [];
@@ -54,7 +60,7 @@ function save({ blob, name }: { blob: Blob; name: string }): void {
 const toggle = (id: string, on: boolean): void => {
   chosen = on ? parts.map((p) => p.id).filter((p) => p === id || chosen.includes(p)) : chosen.filter((p) => p !== id);
 };
-const content = () => attempt('content', async () => save(await api.exportFile('content', all ? [] : chosen)));
+const content = () => attempt('content', async () => save(await api.exportFile('content', apartChosen.length ? [...chosen, ...apartChosen] : all ? [] : chosen)));
 const files = () => attempt('files', async () => save(await api.exportFile('files')));
 </script>
 
@@ -70,7 +76,11 @@ const files = () => attempt('files', async () => save(await api.exportFile('file
       <label class="check"><input type="checkbox" checked={chosen.includes(part.id)} onchange={(e) => toggle(part.id, e.currentTarget.checked)} data-export-part={part.id} /> {words[part.id] ?? part.name}</label>
     {/each}
   </div>
-  <button type="button" class="primary" onclick={content} disabled={busy !== '' || chosen.length === 0} data-export-content>{busy === 'content' ? t.exp.working : t.exp.downloadContent}</button>
+  {#each apart as part (part.id)}
+    <label class="check"><input type="checkbox" checked={apartChosen.includes(part.id)} onchange={(e) => (apartChosen = e.currentTarget.checked ? [...apartChosen, part.id] : apartChosen.filter((p) => p !== part.id))} data-export-apart={part.id} /> <strong>{apartWords[part.id]?.name ?? part.name}</strong></label>
+    <p class="hint apart">{apartWords[part.id]?.hint ?? ''}</p>
+  {/each}
+  <button type="button" class="primary" onclick={content} disabled={busy !== '' || (chosen.length === 0 && apartChosen.length === 0)} data-export-content>{busy === 'content' ? t.exp.working : t.exp.downloadContent}</button>
 
   <h2>{t.exp.filesHeading}</h2>
   <p class="hint">{t.exp.filesIntro}</p>
@@ -100,6 +110,7 @@ const files = () => attempt('files', async () => save(await api.exportFile('file
   h2 { font-size: 14px; margin: 1.8rem 0 0.4rem; }
   .hint { color: #555; font-size: 13px; }
   .parts { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.2rem 0.8rem; margin: 0.3rem 0 0.8rem 1.4rem; }
+  .apart { margin: 0.1rem 0 0.8rem 1.4rem; }
   .check { display: flex; gap: 0.4rem; align-items: center; font-size: 13px; }
   ul { font-size: 13px; margin: 0.2rem 0 0.8rem; }
   .good { color: #067647; font-size: 13px; }

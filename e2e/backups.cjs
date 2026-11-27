@@ -66,7 +66,7 @@ function fakeS3() {
 }
 
 (async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'thecms-e2e-backups-'));
+  const dir = mkdtempSync(join(tmpdir(), 'uhlaka-e2e-backups-'));
   const db = join(dir, 'site.db');
   const shots = process.argv[2];
   cli('init', db);
@@ -86,7 +86,7 @@ function fakeS3() {
     await page.locator('[data-backup-now]').click();
     await page.locator('[data-backup-last="ok"]').waitFor();
     await page.locator('[data-backup]').first().waitFor();
-    assert(readdirSync(join(dir, 'backups')).some((n) => n.endsWith('.thecms-backup')), 'a backup is made at once, in "backups" beside the site');
+    assert(readdirSync(join(dir, 'backups')).some((n) => n.endsWith('.uhlaka-backup')), 'a backup is made at once, in "backups" beside the site');
 
     // When, how many, and a copy sent to S3: tested, saved, and sent with the next one.
     await page.locator('[data-backup-every]').selectOption('week');
@@ -105,6 +105,7 @@ function fakeS3() {
     await page.locator('[data-backup-tested].good').waitFor();
     await page.locator('[data-backup-save]').click();
     await page.locator('[data-backup-note]').waitFor();
+    await page.evaluate(() => history.replaceState(null, "", location.href.replace(/[#&]at=[^&#]*/, ""))); // opened again at its first screen, not the one it was on
     await page.reload();
     await page.locator('[data-nav="backups"]').click();
     await page.locator('[data-backup-keep]').waitFor();
@@ -112,14 +113,15 @@ function fakeS3() {
     assert((await page.locator('[data-s3="secretAccessKey"]').inputValue()) === '***', 'the secret is never shown back');
     await page.locator('[data-backup-now]').click();
     await page.getByText('A copy was sent to the S3 storage.').waitFor();
-    assert([...s3.objects.keys()].some((k) => k.startsWith('thecms/site-')), 'the copy reaches the storage');
+    assert([...s3.objects.keys()].some((k) => k.startsWith('uhlaka/manual-')), 'the copy reaches the storage');
+    assert((await page.locator('[data-backup-kind]').first().textContent()).includes('Kept until you delete it'), '"Back up now" is made by hand, and kept until deleted');
     if (shots) await page.screenshot({ path: join(shots, 'backups.png'), fullPage: true });
 
     // Downloaded.
     const [download] = await Promise.all([page.waitForEvent('download'), page.locator('[data-backup-download]').first().click()]);
-    const saved = join(dir, 'downloaded.thecms-backup');
+    const saved = join(dir, 'downloaded.uhlaka-backup');
     await download.saveAs(saved);
-    assert(download.suggestedFilename().endsWith('.thecms-backup'), 'a backup is downloaded as its file');
+    assert(download.suggestedFilename().endsWith('.uhlaka-backup'), 'a backup is downloaded as its file');
 
     // Put back: asked once, cancelled, then done; the admin opens again.
     await page.locator('[data-backup-restore]').last().click();
@@ -156,11 +158,11 @@ function fakeS3() {
     assert(true, 'a backup from another server is uploaded and put back');
 
     // Not a backup: refused, said.
-    const junk = join(dir, 'junk.thecms-backup');
+    const junk = join(dir, 'junk.uhlaka-backup');
     writeFileSync(junk, 'not a backup');
     await page.locator('[data-backup-file]').setInputFiles(junk);
     await page.locator('[data-backup-upload]').click();
-    await page.locator('[data-backup-problem]', { hasText: 'not a thecms backup' }).waitFor();
+    await page.locator('[data-backup-problem]', { hasText: 'not a Uhlaka backup' }).waitFor();
     assert(true, 'a file that is not a backup is refused');
     // Turned off, and the copy outside the server too.
     await page.locator('[data-backup-on]').uncheck();
@@ -173,12 +175,13 @@ function fakeS3() {
     editor.server.kill();
     const blocked = join(dir, 'blocked');
     writeFileSync(blocked, '');
-    editor = edit(db, { THECMS_BACKUPS: blocked });
+    editor = edit(db, { UHLAKA_BACKUPS: blocked });
     await page.goto('about:blank');
     await page.goto(await editor.url);
     await page.locator('[data-nav="backups"]').click();
     await page.locator('[data-backup-now]').click();
     await page.locator('[data-backup-last="failed"]').waitFor();
+    await page.evaluate(() => history.replaceState(null, "", location.href.replace(/[#&]at=[^&#]*/, ""))); // opened again at its first screen, not the one it was on
     await page.reload();
     await page.locator('[data-backup-failed]').waitFor();
     assert(true, 'a backup that failed is said on its screen and at the top of the admin');

@@ -1,9 +1,9 @@
 #!/bin/sh
-# Installs thecms from its GitHub releases, checked against the release's
+# Installs Uhlaka from its GitHub releases, checked against the release's
 # checksums before anything is put in place (ADR 0023). It asks, one step at a
 # time, where the site will live and what it needs there (ADR 0048):
 #
-#   curl -fsSL https://github.com/david0024/thecms/releases/download/v0.1.0-alpha.2/install.sh | sh
+#   curl -fsSL https://github.com/uhlaka-devs/uhlaka/releases/download/v0.1.0-alpha.11/install.sh | sh
 #
 # - This computer, to try it: the program in ~/.local/bin, the site in a file.
 # - A server of yours (Linux with systemd), as root: the program in /usr/local/bin,
@@ -33,8 +33,8 @@
 set -eu
 
 # The product's name, as in src/core/name.ts (a test keeps them the same).
-NAME=thecms
-REPOSITORY=david0024/thecms
+NAME=uhlaka
+REPOSITORY=uhlaka-devs/uhlaka
 
 host=
 public=
@@ -186,8 +186,8 @@ fi
 previous_site=
 previous_public=
 if [ "$host" = server ] && [ -f "/etc/$NAME/env" ]; then
-  previous_site=$(sed -n 's/^THECMS_SITE=//p' "/etc/$NAME/env")
-  previous_public=$(sed -n 's/^THECMS_PUBLIC=//p' "/etc/$NAME/env")
+  previous_site=$(sed -n 's/^UHLAKA_SITE=//p' "/etc/$NAME/env")
+  previous_public=$(sed -n 's/^UHLAKA_PUBLIC=//p' "/etc/$NAME/env")
   [ -n "$database" ] || database=$previous_site
   [ -n "$public" ] || public=$previous_public
   echo "This server already has a site; the program is updated and the site is left as it is."
@@ -253,17 +253,48 @@ if [ "$host" != computer ]; then
   done
 fi
 
+# The newest of the versions read, one per line, as semantic versions are
+# ordered (ADR 0045): alpha.10 after alpha.9, and a release after its
+# pre-releases. The same order as newer() in src/site/update.ts.
+newest() {
+  awk '
+    function later(a, b,   x, y, ca, cb, pa, pb, i, n, m, ia, ib) {
+      sub(/^v/, "", a); sub(/^v/, "", b)
+      ia = index(a, "-"); ib = index(b, "-")
+      ca = ia ? substr(a, 1, ia - 1) : a; pa = ia ? substr(a, ia + 1) : ""
+      cb = ib ? substr(b, 1, ib - 1) : b; pb = ib ? substr(b, ib + 1) : ""
+      n = split(ca, x, "."); m = split(cb, y, "."); if (m > n) n = m
+      for (i = 1; i <= n; i++) if (x[i] + 0 != y[i] + 0) return x[i] + 0 > y[i] + 0
+      if (pa == pb) return 0
+      if (pa == "" || pb == "") return pa == ""
+      n = split(pa, x, "."); m = split(pb, y, "."); if (m > n) n = m
+      for (i = 1; i <= n; i++) {
+        if (x[i] == y[i]) continue
+        if (i > split(pa, x, ".")) return 0
+        if (i > split(pb, y, ".")) return 1
+        if (x[i] ~ /^[0-9]+$/ && y[i] ~ /^[0-9]+$/) return x[i] + 0 > y[i] + 0
+        if ((x[i] ~ /^[0-9]+$/) != (y[i] ~ /^[0-9]+$/)) return y[i] ~ /^[0-9]+$/
+        return x[i] > y[i]
+      }
+      return 0
+    }
+    NF { if (best == "" || later($0, best)) best = $0 }
+    END { print best }
+  '
+}
+
 # Where the files are: the release on GitHub, or a folder of them (RELEASE_URL, to try a build).
 if [ -n "${RELEASE_URL:-}" ]; then
   base=$RELEASE_URL
 elif [ "$version" = latest ]; then
   # The newest release, a pre-release among them: during alpha and beta those are all there is (ADR 0045).
+  # GitHub does not list them newest first, and extensions' releases (ai-v1.2.0) are among them: the version is compared.
   if command -v curl >/dev/null 2>&1; then
-    listed=$(curl -fsSL "https://api.github.com/repos/$REPOSITORY/releases?per_page=1") || fail "could not ask GitHub for the newest release"
+    listed=$(curl -fsSL "https://api.github.com/repos/$REPOSITORY/releases?per_page=100") || fail "could not ask GitHub for the newest release"
   else
-    listed=$(wget -qO- "https://api.github.com/repos/$REPOSITORY/releases?per_page=1") || fail "could not ask GitHub for the newest release"
+    listed=$(wget -qO- "https://api.github.com/repos/$REPOSITORY/releases?per_page=100") || fail "could not ask GitHub for the newest release"
   fi
-  tag=$(printf '%s' "$listed" | grep -o '"tag_name": *"[^"]*"' | head -n 1 | sed 's/.*"\([^"]*\)"$/\1/')
+  tag=$(printf '%s' "$listed" | grep -o '"tag_name": *"v[0-9][^"]*"' | sed 's/.*"\([^"]*\)"$/\1/' | newest)
   [ -n "$tag" ] || fail "GitHub lists no release of $REPOSITORY yet"
   base="https://github.com/$REPOSITORY/releases/download/$tag"
 else
@@ -319,12 +350,12 @@ if [ "$host" = docker ]; then
     {
       echo "# The site's settings (ADR 0048); compose reads them. Changed here, they count from the next start."
       echo "COMPOSE_PROFILES=$profiles"
-      echo "THECMS_SITE=$site"
-      echo "THECMS_PUBLIC=$public"
-      echo "THECMS_PORT=$port"
-      echo "THECMS_VERSION=${tag:-$version}"
+      echo "UHLAKA_SITE=$site"
+      echo "UHLAKA_PUBLIC=$public"
+      echo "UHLAKA_PORT=$port"
+      echo "UHLAKA_VERSION=${tag:-$version}"
       echo "DATABASE_PASSWORD=$password"
-      [ "$valkey" = no ] || echo "THECMS_VALKEY_URL=redis://valkey:6379"
+      [ "$valkey" = no ] || echo "UHLAKA_VALKEY_URL=redis://valkey:6379"
     } >"$folder/.env"
     umask 022
   fi
@@ -475,16 +506,16 @@ if [ "$valkey" = yes ]; then
     done
     start valkey-server valkey && valkey_url=redis://127.0.0.1:6379
   fi
-  [ -n "$valkey_url" ] || echo "Valkey could not be installed here; the site keeps its pages and counters in its own memory. Install it later and set THECMS_VALKEY_URL in /etc/$NAME/env."
+  [ -n "$valkey_url" ] || echo "Valkey could not be installed here; the site keeps its pages and counters in its own memory. Install it later and set UHLAKA_VALKEY_URL in /etc/$NAME/env."
 fi
 
 umask 077
 cat >"/etc/$NAME/env" <<EOF
-THECMS_SITE=$site
-THECMS_PUBLIC=$public
-THECMS_EXTENSION_RUNNER=/run/$NAME-extensions/runner.sock
+UHLAKA_SITE=$site
+UHLAKA_PUBLIC=$public
+UHLAKA_EXTENSION_RUNNER=/run/$NAME-extensions/runner.sock
 EOF
-[ -z "$valkey_url" ] || echo "THECMS_VALKEY_URL=$valkey_url" >>"/etc/$NAME/env"
+[ -z "$valkey_url" ] || echo "UHLAKA_VALKEY_URL=$valkey_url" >>"/etc/$NAME/env"
 chown "root:$NAME" "/etc/$NAME/env"
 chmod 640 "/etc/$NAME/env"
 umask 022

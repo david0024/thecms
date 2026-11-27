@@ -19,7 +19,7 @@ const run = async (...args: string[]) => {
 };
 
 beforeEach(async () => {
-  dir = await mkdtemp(join(tmpdir(), 'thecms-cli-'));
+  dir = await mkdtemp(join(tmpdir(), 'uhlaka-cli-'));
   log = spyOn(console, 'log').mockImplementation((...words: unknown[]) => void said.push(words.join(' ')));
   process.exitCode = 0;
 });
@@ -47,8 +47,8 @@ describe('the command line', () => {
   });
 
   // A file that exists is refused before it is opened; a database server is opened and looked into.
-  test.skipIf(!process.env.THECMS_TEST_POSTGRES)('a database that already holds a site is not filled again', async () => {
-    const address = process.env.THECMS_TEST_POSTGRES as string;
+  test.skipIf(!process.env.UHLAKA_TEST_POSTGRES)('a database that already holds a site is not filled again', async () => {
+    const address = process.env.UHLAKA_TEST_POSTGRES as string;
     const clear = async () => {
       const store = await Store.open(address);
       for (const table of ['meta', 'pages', 'entries', 'media', 'messages', 'users', 'sessions', 'links']) await store.rawForTests(`DROP TABLE IF EXISTS ${table}`);
@@ -83,7 +83,7 @@ describe('the command line', () => {
     await run('import', db, join(import.meta.dir, 'fixtures', 'wordpress.xml'), '--no-images', '--types=portfolio', '--categories=');
     const out = said.join('\n');
     expect(out).toMatch(/Imported \d+ pages, \d+ posts/);
-    expect(out).toContain('Next: thecms edit');
+    expect(out).toContain('Next: uhlaka edit');
     const store = await Store.open(db);
     try {
       expect((await store.published()).length).toBeGreaterThan(0);
@@ -95,18 +95,18 @@ describe('the command line', () => {
   test('export writes the content in one file, or the site as a ZIP; import brings the content back (ADR 0057)', async () => {
     const db = join(dir, 'site.db');
     await run('init', db);
-    await run('export', db, join(dir, 'site.thecms.json'));
-    expect(said.join('\n')).toMatch(/^Wrote the content of .*site\.db to .*site\.thecms\.json: 3 pages, 2 entries, 0 files\.$/);
-    await run('export', db, join(dir, 'pages.thecms.json'), '--parts=pages');
-    expect(JSON.parse(await readFile(join(dir, 'pages.thecms.json'), 'utf8')).parts).toEqual(['pages']);
+    await run('export', db, join(dir, 'site.uhlaka.json'));
+    expect(said.join('\n')).toMatch(/^Wrote the content of .*site\.db to .*site\.uhlaka\.json: 3 pages, 2 entries, 0 files\.$/);
+    await run('export', db, join(dir, 'pages.uhlaka.json'), '--parts=pages');
+    expect(JSON.parse(await readFile(join(dir, 'pages.uhlaka.json'), 'utf8')).parts).toEqual(['pages']);
     await run('export', db, join(dir, 'site.zip'));
     expect(said.join('\n')).toMatch(/^Wrote \d+ files into .*site\.zip\.$/);
     expect((await readFile(join(dir, 'site.zip'))).subarray(0, 2).toString()).toBe('PK');
 
     const copy = join(dir, 'copy.db');
-    await run('import', copy, join(dir, 'site.thecms.json'));
+    await run('import', copy, join(dir, 'site.uhlaka.json'));
     expect(said.join('\n')).toContain('Imported 3 pages, 2 posts into');
-    expect(said.join('\n')).toContain('Next: thecms edit');
+    expect(said.join('\n')).toContain('Next: uhlaka edit');
     const store = await Store.open(copy);
     try {
       expect((await store.published()).map((p) => p.slug).sort()).toEqual(['', 'about', 'contact']);
@@ -115,7 +115,7 @@ describe('the command line', () => {
       await store.close();
     }
     // Into a site that has them already, each is said to be left as it was.
-    await run('import', copy, join(dir, 'site.thecms.json'));
+    await run('import', copy, join(dir, 'site.uhlaka.json'));
     expect(said.join('\n')).toContain('What to know:');
   });
 
@@ -130,19 +130,19 @@ describe('the command line', () => {
     }
     const forms = await run('forms', db, '0');
     try {
-      expect(said.join('\n')).toContain('Set THECMS_SMTP and THECMS_MAIL_TO to be told by email.');
+      expect(said.join('\n')).toContain('Set UHLAKA_SMTP and UHLAKA_MAIL_TO to be told by email.');
     } finally {
       forms?.stop();
     }
-    process.env.THECMS_SMTP = 'smtp://127.0.0.1:2525';
-    process.env.THECMS_MAIL_TO = 'owner@example.com';
+    process.env.UHLAKA_SMTP = 'smtp://127.0.0.1:2525';
+    process.env.UHLAKA_MAIL_TO = 'owner@example.com';
     try {
       const told = await run('forms', db, '0');
       told?.stop();
       expect(said.join('\n')).toContain('Each message is also sent to owner@example.com.');
     } finally {
-      delete process.env.THECMS_SMTP;
-      delete process.env.THECMS_MAIL_TO;
+      delete process.env.UHLAKA_SMTP;
+      delete process.env.UHLAKA_MAIL_TO;
     }
   });
 
@@ -153,21 +153,21 @@ describe('the command line', () => {
     const runtime = await run('run', db, '--port=0');
     try {
       expect(said.join('\n')).toContain('this command serves it without the editor');
-      expect(said.join('\n')).toContain('Set THECMS_SMTP and THECMS_MAIL_TO to be told by email.');
+      expect(said.join('\n')).toContain('Set UHLAKA_SMTP and UHLAKA_MAIL_TO to be told by email.');
       const page = await fetch(`${(runtime as unknown as { url: string }).url}/`);
       expect(await page.text()).toContain('<h1>Solid wood furniture, made to measure</h1>');
     } finally {
       runtime?.stop();
     }
-    process.env.THECMS_SMTP = 'smtp://127.0.0.1:2525';
-    process.env.THECMS_MAIL_TO = 'owner@example.com';
+    process.env.UHLAKA_SMTP = 'smtp://127.0.0.1:2525';
+    process.env.UHLAKA_MAIL_TO = 'owner@example.com';
     try {
       const told = await run('run', db, '--port=0');
       told?.stop();
       expect(said.join('\n')).toContain('Each message is also sent to owner@example.com.');
     } finally {
-      delete process.env.THECMS_SMTP;
-      delete process.env.THECMS_MAIL_TO;
+      delete process.env.UHLAKA_SMTP;
+      delete process.env.UHLAKA_MAIL_TO;
     }
   });
 
@@ -181,12 +181,12 @@ describe('the command line', () => {
     expect(said.join('\n')).toContain('Usage:');
     expect(process.exitCode).toBe(1);
     await run('version');
-    expect(said.join('\n')).toMatch(/^thecms \d+\.\d+\.\d+/);
+    expect(said.join('\n')).toMatch(/^uhlaka \d+\.\d+\.\d+/);
   });
 
   test('without a command, the site here is made if new and opened in the editor, or served with accounts', async () => {
     const site = join(dir, 'here.db');
-    process.env.THECMS_SITE = site;
+    process.env.UHLAKA_SITE = site;
     try {
       const editor = await run('--port=0');
       editor?.stop();
@@ -195,7 +195,7 @@ describe('the command line', () => {
       const again = await run('--port=0');
       again?.stop();
       expect(said.join('\n')).not.toContain('sample pages');
-      process.env.THECMS_PUBLIC = 'https://cms.example.com';
+      process.env.UHLAKA_PUBLIC = 'https://cms.example.com';
       const served = await run('--port=0');
       served?.stop();
       expect(said.join('\n')).toMatch(/https:\/\/cms\.example\.com\/admin\/#link=[\w-]+/);
@@ -209,8 +209,8 @@ describe('the command line', () => {
       await store.close();
       await expect(run('setup-link', site, '--public=https://cms.example.com')).rejects.toThrow('has an owner');
     } finally {
-      delete process.env.THECMS_SITE;
-      delete process.env.THECMS_PUBLIC;
+      delete process.env.UHLAKA_SITE;
+      delete process.env.UHLAKA_PUBLIC;
     }
   });
 

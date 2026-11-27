@@ -14,7 +14,7 @@ import { type EditorServer, startEditor } from '../src/site/server.ts';
 import { cleanRole, Store, writesAll } from '../src/site/store.ts';
 import plain from '../themes/plain.json';
 
-const dir = await mkdtemp(join(tmpdir(), 'thecms-authors-'));
+const dir = await mkdtemp(join(tmpdir(), 'uhlaka-authors-'));
 afterAll(() => rm(dir, { recursive: true, force: true }));
 
 const PASSWORD = 'a long enough password';
@@ -27,8 +27,8 @@ test('the four roles, and what an unknown one is', () => {
 });
 
 const databases: [string, string][] = [['SQLite', join(dir, 'store.db')]];
-if (process.env.THECMS_TEST_POSTGRES) databases.push(['Postgres', process.env.THECMS_TEST_POSTGRES]);
-if (process.env.THECMS_TEST_MYSQL) databases.push(['MySQL', process.env.THECMS_TEST_MYSQL]);
+if (process.env.UHLAKA_TEST_POSTGRES) databases.push(['Postgres', process.env.UHLAKA_TEST_POSTGRES]);
+if (process.env.UHLAKA_TEST_MYSQL) databases.push(['MySQL', process.env.UHLAKA_TEST_MYSQL]);
 
 for (const [name, address] of databases) {
   describe(`authors on ${name}`, () => {
@@ -120,7 +120,7 @@ describe('the served editor, for an author and a contributor', () => {
     const response = await editor.fetch(
       new Request(`${PUBLIC}${path}`, {
         method,
-        headers: { host: 'cms.example.com', origin: PUBLIC, 'x-thecms-request': '1', cookie: cookies[who] ?? '', ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
+        headers: { host: 'cms.example.com', origin: PUBLIC, 'x-uhlaka-request': '1', cookie: cookies[who] ?? '', ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
         body: body === undefined ? undefined : JSON.stringify(body),
       }),
     );
@@ -130,7 +130,7 @@ describe('the served editor, for an author and a contributor', () => {
   const entry = (slug: string, title = slug) => ({ slug, title, blocks: [] });
 
   beforeEach(async () => {
-    siteDir = await mkdtemp(join(tmpdir(), 'thecms-authors-served-'));
+    siteDir = await mkdtemp(join(tmpdir(), 'uhlaka-authors-served-'));
     store = await Store.open(join(siteDir, 'site.db'));
     await store.setSite({ name: 'S', url: 'https://example.com', types: [postsType(), { id: 'projects', name: 'Projects', singular: 'Project' }] });
     await store.setTheme(plain);
@@ -144,7 +144,7 @@ describe('the served editor, for an author and a contributor', () => {
     ] as const) {
       const user = await store.addUser({ email: `${who}@example.com`, name: who === 'ana' ? 'Ana Pop' : '', role, password: PASSWORD });
       ids[who] = user.id;
-      cookies[who] = `thecms_session=${await store.startSession(user.id)}`;
+      cookies[who] = `uhlaka_session=${await store.startSession(user.id)}`;
     }
   });
   afterEach(async () => {
@@ -272,7 +272,7 @@ describe('the served editor, for an author and a contributor', () => {
   test('on one\'s own computer there are no accounts to name', async () => {
     const local = await startEditor(store, { listen: false });
     const response = await local.fetch(
-      new Request(local.url.split('#')[0]?.replace('/admin/', '/api/me') ?? '', { method: 'PUT', headers: { 'x-thecms-token': local.token, 'content-type': 'application/json' }, body: '{}' }),
+      new Request(local.url.split('#')[0]?.replace('/admin/', '/api/me') ?? '', { method: 'PUT', headers: { 'x-uhlaka-token': local.token, 'content-type': 'application/json' }, body: '{}' }),
     );
     expect(response.status).toBe(404);
     local.stop();

@@ -5,6 +5,11 @@
 import { mkdir, readdir, rm } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import {
+  type Audience,
+  type Audiences,
+  audienceFromWord,
+  audienceWord,
+  NO_AUDIENCES,
   authorPath,
   type Byline,
   datePath,
@@ -45,6 +50,10 @@ import {
   type Site,
   type Theme,
   themeCss,
+  FONTS_PATH,
+  facesUsed,
+  fontFacesCss,
+  SHIPPED_FACES,
   alternates,
   pagesIn,
   fillSections,
@@ -60,13 +69,16 @@ import {
   prefixOf,
 } from '../core/index.ts';
 import { wordsFor } from '../blocks/words.ts';
-import { lockedPage } from './locks.ts';
-import { menuOf, pageSetting, renderBlogList, renderPage, renderPost, STYLESHEET } from './document.ts';
+import { lockedPage, membersPage } from './locks.ts';
+import { menuOf, pageSetting, renderBlogList, renderPage, renderPost, STYLESHEET, withScheme } from './document.ts';
+import { SCHEME_SCRIPT, SCHEME_SCRIPT_PATH } from './scheme.ts';
 import { checkRedirects, checkSeo, checkSite, describeCheck, type SiteCheck, serverOnly } from './check.ts';
-import { BASE_CSS } from './shipped.ts';
-import type { Store } from './store.ts';
+import { BASE_CSS, shippedFonts } from './shipped.ts';
+import { shopGate } from './shop-gate.ts';
+import { STATS, type Store } from './store.ts';
+import type { EditTarget } from './admin-bar.ts';
 
-const MARKER = '.thecms-export';
+const MARKER = '.uhlaka-export';
 const FEED_ENTRIES = 30;
 
 const xml = (v: string): string => v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -122,7 +134,16 @@ function authorsOf(posts: Post[]): { person: Byline; posts: Post[] }[] {
 }
 
 /** What marks a page behind a password, for the runtime: its content is the page's address in the main language. */
-export const LOCK_META = 'thecms-locked';
+export const LOCK_META = 'uhlaka-locked';
+
+/** What marks a page for visitors signed in or for members (ADR 0064 d4): its content says who sees it. */
+export const MEMBERS_META = 'uhlaka-members';
+
+/** Who sees a built file, when it is not for everyone. */
+export const membersOf = (html: string): Audience | null => {
+  const found = new RegExp(`<meta name="${MEMBERS_META}" content="([^"]*)">`).exec(html);
+  return found ? audienceFromWord(found[1] as string) : null;
+};
 
 /** The page behind a password a built file is, or null. */
 export const lockOf = (html: string): string | null => {
@@ -156,9 +177,17 @@ export async function buildSite(
   bylines: Record<string, Byline> = {},
   /** When each page (by its main address) and each entry (by `type/entry`) was last published: the sitemap's dates (ADR 0058 d3). */
   times: PublishedTimes = {},
+  /** Who sees each page, entry and type that is not for everyone (ADR 0064 d4). */
+  audiences: Audiences = NO_AUDIENCES,
+  /** Filled with what each page and entry address is in the editor, for the admin bar of a served site (ADR 0075). */
+  targets?: Map<string, EditTarget>,
 ): Promise<Map<string, string | Uint8Array>> {
   const files = new Map<string, string | Uint8Array>();
-  site = { ...site, pictures: { sizes: images, widths: theme.tokens.width } };
+  /** Each address for visitors signed in or for members, with who sees it: marked for the runtime at the end. */
+  const members = new Map<string, Audience>();
+  /** Who sees an entry: its type's audience first, then its own. */
+  const audienceOf = (typeId: string, post: Post): Audience | undefined => audiences.types[typeId] ?? audiences.entries[`${typeId}/${post.of ?? post.slug}`];
+  site = { ...withScheme(site, theme), pictures: { sizes: images, widths: theme.tokens.width } };
   // Each section block holds its section's blocks from here on, so the pages, their pictures and their links include them.
   pages = pages.map((p) => ({ ...p, blocks: fillSections(p.blocks, sections, languageOf(site, p.slug)) }));
   const published = Array.isArray(entries) ? { [POSTS_TYPE]: entries } : entries;
@@ -209,6 +238,8 @@ export async function buildSite(
 
   // The structure first, the theme after it: where both set the same thing, the theme wins.
   files.set(STYLESHEET.slice(1), `${BASE_CSS}${themeCss(theme)}`);
+  // The switch's script, only while the theme follows the visitor (ADR 0074 d4).
+  if (site.schemeSwitch) files.set(SCHEME_SCRIPT_PATH.slice(1), SCHEME_SCRIPT);
   // What each page and entry is as data, written beside it at the end (ADR 0057 d3).
   const data: Data[] = [];
   for (const p of pages) {
@@ -221,6 +252,9 @@ export async function buildSite(
       imageSources(p.blocks),
     );
     data.push({ path: pagePath(p.slug), language: setting.site.language, page: p });
+    targets?.set(pagePath(p.slug), { kind: 'page', slug: p.slug, main: (p as Partial<PlacedPage>).of ?? p.slug });
+    const audience = audiences.pages[(p as Partial<PlacedPage>).of ?? p.slug];
+    if (audience) members.set(pagePath(p.slug), audience);
   }
   // A page behind a password says so to the runtime, which asks for it; search engines are asked to keep none of it.
   for (const [path, slug] of Object.entries(locked)) {
@@ -251,8 +285,15 @@ export async function buildSite(
           [...(post.cover ? [post.cover.src] : []), ...imageSources(post.blocks)],
         );
         data.push({ path: entryPath(type, post.slug), language, post, type });
+        // An entry in another language is opened in the editor at `ro/<address>` (ADR 0054).
+        targets?.set(entryPath(type, post.slug), { kind: original.id, slug: language === site.language ? post.slug : `${prefixOf(language)}/${post.slug}`, main: from.slug, singular: original.singular });
+        const audience = audienceOf(original.id, from);
+        if (audience) members.set(entryPath(type, post.slug), audience);
       }
-      data.push({ path: listPath(type), language, type, list });
+      // What only members see is in no list of data and in no feed; a list still names it, and its page asks who opens it.
+      const open = list.filter((post) => !audienceOf(original.id, byMain.get(post.of ?? post.slug) as Post));
+      const whole = audiences.types[original.id];
+      if (!whole) data.push({ path: listPath(type), language, type, list: open });
       const listed = site.languages.length ? listAlternates(site, original, has(type.id), here, language) : [];
       type List = { heading: string; path: (n: number) => string; posts: Post[]; alternates: typeof here; person?: Byline; noindex?: boolean };
       const pagesOf: List[] = [
@@ -278,10 +319,12 @@ export async function buildSite(
             noindex: one.noindex,
           });
           page(path, html, one.noindex);
+          // A whole type for members is so in each of its lists (ADR 0064 d4).
+          if (whole) members.set(path, whole);
         });
       }
       // A feed names every entry by its full address, so it needs the site's own.
-      if (site.url && type.feed) files.set(feedPath(type).slice(1), feed(local, type, list));
+      if (site.url && type.feed && !whole) files.set(feedPath(type).slice(1), feed(local, type, open));
     }
     // Each person's page across every dated type of this language (ADR 0056 d3), newest first.
     const all = types.filter((t) => t.type.dated).flatMap(({ type, posts: own }) => own.map((post) => ({ type, post })));
@@ -356,15 +399,29 @@ export async function buildSite(
     const local = siteIn(site, language, pages);
     files.set(`${prefixOf(language)}/404.html`, renderPage(withAreas(local, sections, language), theme, { slug: '404', title: wordsFor(language).notFound, description: '', inMenu: false, blocks: [] }, menuOf(local, pagesIn(site, language, pages), own)));
   }
+  // A page for members says so to the runtime, which asks who opens it; search engines are asked to keep none of it (ADR 0064 d4).
+  for (const [path, audience] of members) {
+    const html = files.get(fileOf(path));
+    if (typeof html !== 'string') continue;
+    files.set(fileOf(path), html.replace('<head>', `<head>\n${html.includes('<meta name="robots" content="noindex">') ? '' : '<meta name="robots" content="noindex">\n'}<meta name="${MEMBERS_META}" content="${xml(audienceWord(audience))}">`));
+    if (paths.includes(path)) paths.splice(paths.indexOf(path), 1);
+  }
   if (site.url) {
     files.set('sitemap.xml', sitemapFile(site, paths, about));
   }
   files.set('robots.txt', robotsFile(site));
-  if (site.data !== false) writeData(files, site, data.filter((d) => !(d.path in locked)));
+  if (site.data !== false) writeData(files, site, data.filter((d) => !(d.path in locked) && !members.has(d.path)));
+  // The faces Uhlaka carries that the theme or a page names, and only those (ADR 0068 d1): declared first in the stylesheet, served beside it.
+  const used = facesUsed([...files.values()].filter((f): f is string => typeof f === 'string'));
+  if (used.size) {
+    const css = STYLESHEET.slice(1);
+    files.set(css, `${fontFacesCss(used)}${files.get(css) as string}`);
+    for (const face of SHIPPED_FACES) if (used.has(face.family)) files.set(`${FONTS_PATH.slice(1)}${face.file}`, (await shippedFonts()).get(face.file) as Uint8Array);
+  }
   return files;
 }
 
-const DATA_FORMAT = 'thecms.data/1';
+const DATA_FORMAT = 'uhlaka.data/1';
 const jsonOf = (path: string): string => `${path.slice(1)}index.json`;
 
 /** A page, an entry or a type's list, kept as it was drawn to be written as data. */
@@ -480,7 +537,7 @@ export async function exportSite(store: Store, outDir: string, warn: (line: stri
   }
   await rm(outDir, { recursive: true, force: true });
 
-  files.set(MARKER, 'Made by thecms export. This folder is replaced on every export.\n');
+  files.set(MARKER, 'Made by uhlaka export. This folder is replaced on every export.\n');
   for (const [path, contents] of files) {
     const target = join(outDir, path);
     await mkdir(dirname(target), { recursive: true });
@@ -503,6 +560,8 @@ export async function exportedFiles(store: Store, warn: (line: string) => void =
   // A page behind a password is not written out: a static host cannot ask for it (ADR 0043).
   const frame = String(files.get('404.html'));
   for (const [path, contents] of files) if (typeof contents === 'string' && lockOf(contents) !== null) files.set(path, lockedPage(frame, null));
+  // Nor one for members: a static host knows nobody (ADR 0064 d4).
+  for (const [path, contents] of files) if (typeof contents === 'string' && membersOf(contents) !== null) files.set(path, membersPage(frame));
   return files;
 }
 
@@ -513,7 +572,7 @@ export async function fullCheck(store: Store, files: Map<string, string | Uint8A
     ...checkSite(files),
     untranslated: await store.untranslated(),
     redirects: checkRedirects(files, await store.redirects()),
-    server: serverOnly(files, { formsElsewhere: (await store.site()).forms !== '', routes, stats: await store.hasVisits() }),
+    server: serverOnly(files, { formsElsewhere: (await store.site()).forms !== '', routes, stats: (await store.extension(STATS))?.enabled === true, visitorLanguage: following(await store.site()) }),
     seo: checkSeo(files),
   };
 }
@@ -524,14 +583,21 @@ export async function fullCheck(store: Store, files: Map<string, string | Uint8A
  * sound and video from the library as they are asked for, so they are only
  * checked to be there and stand in the map empty (ADR 0046).
  */
-export async function publishedSite(store: Store, served = false): Promise<Map<string, string | Uint8Array>> {
+/** Whether the home page follows the visitor's browser (ADR 0071 d3): on as soon as there is a second language, unless the owner turned it off. */
+const following = (site: Site): boolean => site.languages.length > 0 && site.visitorLanguage !== false;
+
+export async function publishedSite(store: Store, served = false, targets?: Map<string, EditTarget>): Promise<Map<string, string | Uint8Array>> {
   const theme = await store.publishedTheme();
   if (!theme) throw new Error('the theme is not published yet');
   const pages = await store.published();
   if (pages.length === 0) throw new Error('nothing is published yet');
   if (!pages.some((p) => p.slug === '')) throw new Error('the home page is not published');
   // Each form block is drawn with the form it names (ADR 0049), each extension's block with what it asks (ADR 0062 d6).
-  const site = { ...(await store.site()), formDefs: await store.formsByName(), extensionBlocks: await store.extensionBlocks() };
+  // "My account" is in the menu only while visitor accounts are on (ADR 0064 d8).
+  const accounts = ((await store.visitorSettings()) as { on?: unknown } | null)?.on === true;
+  // A product's Buy part, only on a served site while the shop is on (ADR 0065 d3, d10): a static host has no cart.
+  const shop = served ? await shopGate(store).shown() : null;
+  const site = { ...(await store.site()), formDefs: await store.formsByName(), extensionBlocks: await store.extensionBlocks(), accounts, ...(shop ? { shop } : {}), ...(served ? { served: true } : {}) };
   const entries: Record<string, Post[]> = {};
   const templates: Record<string, Block[] | null> = {};
   for (const type of contentTypes(site)) {
@@ -542,5 +608,5 @@ export async function publishedSite(store: Store, served = false): Promise<Map<s
   const locked = Object.fromEntries(pages.filter((p) => locks.has(p.of)).map((p) => [pagePath(p.slug), p.of]));
   const media: MediaSource = async (name) =>
     served && mediaKindOf(name) !== 'image' ? ((await store.hasMedia(name)) ? new Uint8Array(0) : null) : ((await store.mediaFile(name))?.bytes ?? null);
-  return buildSite(site, theme, pages, media, entries, await store.redirects(), templates, await store.publishedSections(), await store.mediaSizes(), await store.shownComments(), locked, await store.bylines(), await store.publishedTimes());
+  return buildSite(site, theme, pages, media, entries, await store.redirects(), templates, await store.publishedSections(), await store.mediaSizes(), await store.shownComments(), locked, await store.bylines(), await store.publishedTimes(), await store.audiences(), targets);
 }

@@ -14,7 +14,7 @@ import { startEditor } from '../src/site/server.ts';
 import { Store } from '../src/site/store.ts';
 import plain from '../themes/plain.json';
 
-const dir = await mkdtemp(join(tmpdir(), 'thecms-page-layouts-'));
+const dir = await mkdtemp(join(tmpdir(), 'uhlaka-page-layouts-'));
 afterAll(() => rm(dir, { recursive: true, force: true }));
 const theme = parseTheme(plain).theme as Theme;
 
@@ -88,7 +88,7 @@ describe('the store, the editor and the export', () => {
       const response = await editor.fetch(
         new Request(`http://127.0.0.1:4321${path}`, {
           method,
-          headers: { host: '127.0.0.1:4321', 'x-thecms-token': editor.token, 'content-type': 'application/json' },
+          headers: { host: '127.0.0.1:4321', 'x-uhlaka-token': editor.token, 'content-type': 'application/json' },
           body: body === undefined ? undefined : JSON.stringify(body),
         }),
       );

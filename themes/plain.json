@@ -1,5 +1,5 @@
 {
-  "spec": "thecms.theme/1",
+  "spec": "uhlaka.theme/1",
   "name": "Plain",
   "tokens": {
     "color": {
@@ -9,22 +9,84 @@
       "muted": "#5b6270",
       "border": "#e3e6eb",
       "primary": "#2563eb",
-      "on-primary": "#ffffff"
+      "on-primary": "#ffffff",
+      "link": "#2563eb"
     },
-    "space": { "xs": "0.5rem", "sm": "1rem", "md": "1.5rem", "lg": "3rem", "xl": "5rem" },
-    "radius": { "none": "0", "sm": "4px", "md": "8px", "lg": "16px" },
-    "font": { "body": "system", "heading": "system" },
-    "size": { "sm": "0.875rem", "base": "1.0625rem", "lg": "1.25rem", "xl": "1.5rem", "2xl": "2rem", "3xl": "3rem" },
-    "width": { "narrow": "42rem", "content": "64rem", "wide": "76rem" }
+    "space": {
+      "xs": "0.5rem",
+      "sm": "1rem",
+      "md": "1.5rem",
+      "lg": "3rem",
+      "xl": "5rem"
+    },
+    "radius": {
+      "none": "0",
+      "sm": "4px",
+      "md": "8px",
+      "lg": "16px"
+    },
+    "font": {
+      "body": "system",
+      "heading": "system"
+    },
+    "size": {
+      "sm": "0.875rem",
+      "base": "1.0625rem",
+      "lg": "1.25rem",
+      "xl": "1.5rem",
+      "2xl": "2rem",
+      "3xl": "3rem"
+    },
+    "width": {
+      "narrow": "42rem",
+      "content": "64rem",
+      "wide": "76rem"
+    }
   },
   "blocks": {
     "hero": {
-      "style": { "background": { "token": "surface" } },
+      "style": {
+        "background": {
+          "token": "surface"
+        }
+      },
       "variants": {
-        "bold": { "background": { "token": "primary" }, "color": { "token": "on-primary" } },
-        "centered": { "textAlign": { "value": "center" }, "maxWidth": { "token": "narrow" } }
+        "bold": {
+          "background": {
+            "token": "primary"
+          },
+          "color": {
+            "token": "on-primary"
+          }
+        },
+        "centered": {
+          "textAlign": {
+            "value": "center"
+          },
+          "maxWidth": {
+            "token": "narrow"
+          }
+        }
       }
     },
-    "contact": { "style": { "textAlign": { "value": "center" } } }
-  }
+    "contact": {
+      "style": {
+        "textAlign": {
+          "value": "center"
+        }
+      }
+    }
+  },
+  "dark": {
+    "color": {
+      "background": "#111318",
+      "surface": "#1a1d24",
+      "text": "#eceef2",
+      "muted": "#a2a9b6",
+      "border": "#2c313b",
+      "primary": "#2f6ae0",
+      "link": "#7eaaff"
+    }
+  },
+  "shows": "visitor"
 }

@@ -1,5 +1,5 @@
 /**
- * Links a page could have to the site's other pages (ADR 0064 d1): another
+ * Links a page could have to the site's other pages (ADR 0077 d1): another
  * page or entry whose title the page's words already say, and that it does
  * not link to yet. Search engines and readers find their way by such links.
  */

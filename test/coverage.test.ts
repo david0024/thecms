@@ -12,7 +12,7 @@ import { check, componentLines, counts, fromBrowser, fromLcov, report, toLcov } 
 
 let dir: string;
 beforeAll(async () => {
-  dir = await mkdtemp(join(tmpdir(), 'thecms-coverage-'));
+  dir = await mkdtemp(join(tmpdir(), 'uhlaka-coverage-'));
 });
 afterAll(async () => {
   await rm(dir, { recursive: true, force: true });

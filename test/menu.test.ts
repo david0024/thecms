@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { automaticMenu, holdsCurrent, isMega, type MenuNode, normalizeMenu, normalizePage, normalizeSite, parseTheme, resolveMenu, type Theme, themeCss } from '../src/core/index.ts';
+import { automaticMenu, holdsCurrent, isMega, menuLeadsAway, type MenuNode, normalizeMenu, normalizePage, normalizeSite, parseTheme, resolveMenu, type Theme, themeCss } from '../src/core/index.ts';
 import { DEMO_SITE } from '../src/site/demo.ts';
 import { menuOf, renderPage } from '../src/site/document.ts';
 import { buildSite } from '../src/site/export.ts';
@@ -98,7 +98,8 @@ describe('the menu on the page', () => {
 
   test('an item that holds others opens without script, and its own page is the first link inside', async () => {
     expect(html).toContain('<li><details name="site-menu"><summary class="current">More</summary><div class="sub"><ul><li><a href="/about/" aria-current="page">More</a></li><li><a href="https://example.org/">Elsewhere</a></li></ul></div></details></li>');
-    expect(html).not.toContain('<script');
+    // The one script is the switch of colours (ADR 0074 d4); the menu needs none.
+    expect(html.replace('<script src="/assets/scheme.js"></script>', '')).not.toContain('<script');
   });
 
   test('a wide menu has a column for each sub-item; what the owner typed is text', async () => {
@@ -111,6 +112,16 @@ describe('the menu on the page', () => {
     expect(html).toContain('<input class="menu-check" type="checkbox" id="site-menu" aria-label="Menu"/><label class="menu-button" for="site-menu">Menu</label>');
     const lone = flat(renderPage(normalizeSite({ name: 'One page', menu: null }), theme, page, []));
     expect(lone).not.toContain('menu-check');
+  });
+
+  test('a menu of one page besides the home page is drawn; a menu of the home page alone is not', async () => {
+    const one = normalizeSite({ name: 'Docs only', menu: null });
+    const drawn = flat(renderPage(one, theme, page, [{ title: 'Documentation', href: '/docs/', children: [] }]));
+    expect(drawn).toContain('<ul class="menu"><li><a href="/docs/">Documentation</a></li></ul>');
+    const homeOnly = flat(renderPage(one, theme, page, [{ title: 'Home', href: '/', children: [] }]));
+    expect(homeOnly).not.toContain('class="menu"');
+    expect(menuLeadsAway([{ title: 'Acasă', href: '/ro/', children: [] }], '/ro/')).toBe(false);
+    expect(menuLeadsAway([{ title: 'Documentație', href: '/ro/documentatie/', children: [] }], '/ro/')).toBe(true);
   });
 
   test('in the export an item for a page that is not published is left out', async () => {

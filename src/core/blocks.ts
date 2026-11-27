@@ -18,7 +18,7 @@ import { type Issue, isId, isObject, newId, safeHref, safeSrc, slugify, str } fr
 
 export type Field =
   /** `common`: the same in every language, never translated (ADR 0032): an e-mail address, a price. */
-  | { kind: 'text'; max?: number; multiline?: boolean; common?: true }
+  | { kind: 'text'; max?: number; multiline?: boolean; common?: true; code?: true }
   | { kind: 'richtext' }
   | { kind: 'image' }
   | { kind: 'link' }
@@ -70,6 +70,14 @@ export interface TableValue {
 }
 export const TABLE_MAX_ROWS = 60;
 export const TABLE_MAX_COLUMNS = 8;
+/** How long a code block may be (ADR 0067): a long file, not a whole program. */
+export const CODE_MAX = 20000;
+
+/** A code block's language as it may name it in a class (ADR 0067): `sh`, `ts`, `c++`; '' for anything else. */
+export const codeLanguage = (raw: unknown): string => {
+  const value = typeof raw === 'string' ? raw.trim().toLowerCase() : '';
+  return /^[a-z0-9][a-z0-9+#.-]{0,39}$/.test(value) ? value : '';
+};
 
 /** A link a visitor can follow: it has words and an address. */
 export const isLink = (v: LinkValue | null | undefined): v is LinkValue => !!v && !!v.label && !!v.href;
@@ -162,6 +170,15 @@ export const BLOCKS = {
         ],
       },
     }),
+  },
+  /**
+   * Code, or any text that keeps its lines and spaces (ADR 0067): a command to
+   * type, a file to copy. Drawn as written, in a fixed-width font, never run
+   * and never translated; the language only names it.
+   */
+  code: {
+    fields: { title: text(200), code: { kind: 'text', max: CODE_MAX, multiline: true, common: true, code: true }, language: common(40), caption: text(300) },
+    create: () => ({ code: 'uhlaka --help', language: 'sh' }),
   },
   /** A player from another service (ADR 0047): a video, a song, a map, from the address the author pastes. */
   embed: {
@@ -268,10 +285,11 @@ export type BlockType = keyof typeof BLOCKS;
  * The parts of an entry a page can show: everything above its own blocks as
  * the default page draws it (`header`), each piece of that alone, the
  * entry's own blocks (`body`), the entries linked to it (`related`, ADR 0052
- * d3), or one field of its type (`field:client`).
+ * d3), a product's price and "Add to cart" (`buy`, ADR 0065 d3), or one field
+ * of its type (`field:client`).
  */
-export const ENTRY_PARTS = ['header', 'title', 'meta', 'cover', 'fields', 'body', 'related'] as const;
-export const ENTRY_PART = /^(header|title|meta|cover|fields|body|related|field:[a-z0-9_]{1,40})$/;
+export const ENTRY_PARTS = ['header', 'title', 'meta', 'cover', 'fields', 'body', 'related', 'buy'] as const;
+export const ENTRY_PART = /^(header|title|meta|cover|fields|body|related|buy|field:[a-z0-9_]{1,40})$/;
 
 /** What a type's page starts as when the owner first opens it: the default page, as blocks to change. */
 export const defaultTemplate = (): Block[] => [
@@ -351,6 +369,8 @@ function cleanField(field: Field, raw: unknown): unknown {
   switch (field.kind) {
     case 'text': {
       const value = str(raw, field.max ?? 300);
+      // Code keeps every line and space as written, but not the blank lines around it (ADR 0067).
+      if (field.code) return value.replace(/\r\n?/g, '\n').replace(/^(?:[ \t]*\n)+/, '').replace(/\s+$/, '');
       return field.multiline ? value : value.replace(/\s*\n\s*/g, ' ');
     }
     case 'richtext':
@@ -453,7 +473,8 @@ export function createBlock(type: BlockType): Block {
 function fieldText(field: Field, value: unknown): string {
   switch (field.kind) {
     case 'text':
-      return typeof value === 'string' ? value : '';
+      // Code is not words: it stays out of a description and an excerpt (ADR 0067).
+      return typeof value === 'string' && !field.code ? value : '';
     case 'richtext':
       return richTextPlain((value as RichText) ?? []);
     case 'list':

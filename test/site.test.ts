@@ -6,9 +6,11 @@ import { normalizePage, normalizePost, normalizeSite, parseTheme, postsType, typ
 import { DEMO_PAGES, DEMO_SITE } from '../src/site/demo.ts';
 import { renderPage, renderParts, renderPost } from '../src/site/document.ts';
 import { buildSite, exportSite } from '../src/site/export.ts';
+import { SCHEME_SCRIPT } from '../src/site/scheme.ts';
 import { Store } from '../src/site/store.ts';
 import plain from '../themes/plain.json';
 import studio from '../themes/studio.json';
+import atelier from '../themes/atelier.json';
 
 const themeOf = (input: unknown): Theme => parseTheme(input).theme as Theme;
 const site = normalizeSite({ ...DEMO_SITE, url: 'https://example.com/' });
@@ -17,7 +19,7 @@ const bodyOf = (html: string): string => html.slice(html.indexOf('<body>'));
 let dir: string;
 let store: Store;
 beforeEach(async () => {
-  dir = await mkdtemp(join(tmpdir(), 'thecms-'));
+  dir = await mkdtemp(join(tmpdir(), 'uhlaka-'));
   store = await Store.open(join(dir, 'site.db'));
   await store.setSite(site);
   await store.setTheme(plain);
@@ -30,6 +32,28 @@ afterEach(async () => {
 });
 
 describe('changing the theme (ADR 0001 d7, d8)', () => {
+  test('faces Uhlaka carries: served by the site itself, and only those the theme names (ADR 0068 d1)', async () => {
+    const pages = await store.published();
+    const files = await buildSite(site, themeOf(atelier), pages);
+    const css = files.get('assets/site.css') as string;
+    expect(css).toStartWith('@font-face{font-family:"Bricolage Grotesque"');
+    expect(css).toContain('src:url(/assets/fonts/figtree-latin.woff2) format("woff2")');
+    // Every url() in the stylesheet is one of the site's own files.
+    for (const [, url] of css.matchAll(/url\(([^)]*)\)/g)) expect(files.has((url as string).slice(1))).toBe(true);
+    expect((files.get('assets/fonts/figtree-latin.woff2') as Uint8Array).byteLength).toBeGreaterThan(1000);
+    // A theme of the device's own typefaces carries none.
+    const plainFiles = await buildSite(site, themeOf(plain), pages);
+    expect([...plainFiles.keys()].some((path) => path.startsWith('assets/fonts/'))).toBe(false);
+    expect(plainFiles.get('assets/site.css')).not.toContain('@font-face');
+  });
+
+  test("a block sets its buttons' colours; a theme's tints colour the services cards (ADR 0068 d2, d3)", async () => {
+    const css = (await buildSite(site, themeOf(atelier), await store.published())).get('assets/site.css') as string;
+    expect(css).toContain('.b-hero{background-color:var(--t-color-primary);color:var(--t-color-on-primary);--b-button-bg:var(--t-color-sun);--b-button-fg:var(--t-color-on-sun);--t-color-link:var(--t-color-on-primary)}');
+    expect(css).toContain('--t-color-tint-1:#dfe7ff');
+    expect(css).toContain('--t-radius-button:999px');
+  });
+
   test('the page body is byte for byte the same; only the stylesheet changes', async () => {
     const pages = await store.published();
     const a = await buildSite(site, themeOf(plain), pages);
@@ -70,7 +94,9 @@ describe('what a visitor receives', () => {
         },
       })
       .transform(html);
-    expect([...tags].filter((t) => ['script', 'img', 'iframe', 'object'].includes(t))).toEqual([]);
+    expect([...tags].filter((t) => ['img', 'iframe', 'object'].includes(t))).toEqual([]);
+    // The one script a page may carry is the switch of colours, from the site itself (ADR 0074 d4).
+    expect(html.match(/<script[^>]*>/g) ?? []).toEqual(['<script src="/assets/scheme.js">']);
     expect(attributes.filter((a) => /^on|javascript:/i.test(a))).toEqual([]);
     // The quote stayed inside the one attribute it was typed into.
     expect(attributes).toContain('href=mailto:x&quot;onmouseover=&quot;alert(5)');
@@ -83,7 +109,12 @@ describe('what a visitor receives', () => {
     const files = await buildSite(site, themeOf(plain), await store.published());
     for (const [path, contents] of files) {
       // The one script element allowed is data for search engines, which no browser runs (ADR 0030).
-      const ran = String(contents).replace(/<script type="application\/ld\+json">[^<]*<\/script>/g, '');
+      // The other is the switch of colours, from the site itself (ADR 0074 d4); its file is the script.
+      if (path === 'assets/scheme.js') {
+        expect(contents).toBe(SCHEME_SCRIPT);
+        continue;
+      }
+      const ran = String(contents).replace(/<script type="application\/ld\+json">[^<]*<\/script>/g, '').replace('<script src="/assets/scheme.js"></script>', '');
       expect(`${path}: ${/<script|<!--|@import|url\(/i.test(ran)}`).toBe(`${path}: false`);
     }
     const home = files.get('index.html') as string;
@@ -124,7 +155,7 @@ describe('export', () => {
   test('writes the site, and replaces its own earlier export', async () => {
     const out = join(dir, 'out');
     const first = await exportSite(store, out);
-    expect(first).toEqual(['.thecms-export', '404.html', 'about/index.html', 'about/index.json', 'assets/site.css', 'contact/index.html', 'contact/index.json', 'index.html', 'index.json', 'robots.txt', 'site.json', 'sitemap.xml']);
+    expect(first).toEqual(['.uhlaka-export', '404.html', 'about/index.html', 'about/index.json', 'assets/scheme.js', 'assets/site.css', 'contact/index.html', 'contact/index.json', 'index.html', 'index.json', 'robots.txt', 'site.json', 'sitemap.xml']);
     expect(await Bun.file(join(out, 'about/index.html')).text()).toContain('Three people and a workshop');
 
     // Unpublished, the page leaves links to it on the others: nothing is written, the last export stays.
