@@ -15,12 +15,15 @@ import figtreeLatin from '../../fonts/figtree-latin.woff2' with { type: 'file' }
 import figtreeLatinExt from '../../fonts/figtree-latin-ext.woff2' with { type: 'file' };
 import figtreeItalicLatin from '../../fonts/figtree-italic-latin.woff2' with { type: 'file' };
 import figtreeItalicLatinExt from '../../fonts/figtree-italic-latin-ext.woff2' with { type: 'file' };
+import adminIcon from '../../brand/uhlaka-icon-16.svg' with { type: 'text' };
 import statsPackage from '../../extensions/stats/stats.uhlaka-extension' with { type: 'text' };
 
 /** The themes in `themes/`, by file name. */
 export const SHIPPED_THEMES: Record<string, unknown> = { 'atelier.json': atelier, 'plain.json': plain, 'studio.json': studio };
 /** The language packs in `languages/`, by file name. */
 export const SHIPPED_LANGUAGES: Record<string, unknown> = { 'ro.json': ro };
+/** Uhlaka's tab icon, the logo's 16 px drawing (ADR 0080 d3, d4). */
+export const ADMIN_ICON: string = adminIcon;
 /** The structure every page's CSS starts with; the theme's comes after it. */
 export const BASE_CSS: string = baseCss;
 /**

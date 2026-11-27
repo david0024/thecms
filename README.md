@@ -1,3 +1,5 @@
+<img src="brand/uhlaka.svg" alt="" width="88">
+
 # Uhlaka
 
 **A website builder you own.** Open source, for any kind of site: a business
