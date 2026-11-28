@@ -81,6 +81,13 @@ describe('the editing API', () => {
     }
   });
 
+  test('the admin names its icon, the logo drawn for 16 px, served by the program (ADR 0080 d4)', async () => {
+    expect(await (await call('/admin/')).text()).toContain('<link rel="icon" href="/admin/icon.svg" type="image/svg+xml">');
+    const response = await call('/admin/icon.svg');
+    expect(response.headers.get('content-type')).toContain('image/svg+xml');
+    expect(await response.text()).toStartWith('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">');
+  });
+
   test('render draws what would be saved, cleaned, with editor marks', async () => {
     const response = await call('/api/render', {
       method: 'POST',

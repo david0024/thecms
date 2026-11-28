@@ -1,9 +1,15 @@
+<img src="brand/uhlaka.svg" alt="" width="88">
+
 # Uhlaka
 
 **A website builder you own.** Open source, for any kind of site: a business
 card, a portfolio, a blog, a catalogue, and soon a shop, memberships and courses.
 You build it by arranging blocks on the real page, and change its look without
 ever breaking it.
+
+*Uhlaka* is isiZulu for a framework, and for the outline you draw before you
+speak: the structure your site stands on, which you and an AI can both read
+and neither can break. ([Why the name](#why-the-name))
 
 > Uhlaka is in **alpha**. It stays in alpha until everything planned for it is
 > built, then goes to beta for testing, and only then to a stable release
@@ -193,9 +199,30 @@ More: [working from the sources](docs/development.md), the
 [decisions behind Uhlaka](docs/adr/README.md), each with its reason, and
 [how to contribute](CONTRIBUTING.md).
 
+## Why the name
+
+In isiZulu, *uhlaka* means a framework, and the outline you draw before you
+speak. Before a good talk there is a plan: what comes first, what holds the
+rest, where each idea goes.
+
+A website needs the same. Visitors see the words and the pictures;
+underneath, a frame keeps every page in its place, every heading in its
+order, every colour in its theme. You fill it, move things around, start
+again: the frame holds. Our logo says it: a **U** that holds an **H**.
+
+And because the frame is a plan, not code, anyone can read it. You edit it on
+the page itself. An AI reads the same plan and helps you build. Both work on
+one structure, and neither can break it.
+
+*Structure first. Built for humans and AI.*
+
 ## Licence
 
 The core is [AGPL-3.0-or-later](LICENSE) ([ADR 0020](docs/adr/0020-licence-agpl.md)).
 Themes, language packs and the client SDK are MIT; your themes, extensions and
 the sites you build may carry any licence. Contributions come under a simple
 [CLA](CLA.md).
+
+The name Uhlaka and its logo (`brand/`) are not under these licences: they
+are a reserved mark. Use them to talk about Uhlaka, not on a fork or a
+product that could pass as the official one ([brand/](brand/README.md)).
