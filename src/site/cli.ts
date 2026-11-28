@@ -309,7 +309,7 @@ export async function main(args: string[]): Promise<{ stop: () => void } | undef
 ` +
         `${mailer && to ? `Each message is also sent to ${to}.` : 'Messages are kept and shown in the admin. Set UHLAKA_SMTP and UHLAKA_MAIL_TO to be told by email.'}
 ` +
-        'Put the public address of this service in Site content, then export the site again.',
+        'Put the public address of this service in Settings, then export the site again.',
     );
     return forms;
   }

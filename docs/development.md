@@ -14,7 +14,7 @@ bun run cms export site.db site.uhlaka.json   # the content in one file; `import
 The site's forms, comments and search are answered by its own server. To be
 told of a message by email, set `UHLAKA_SMTP` and `UHLAKA_MAIL_TO`. A site
 exported as files can send its forms to the small form service (ADR 0019): run
-it where visitors can reach it, put its address in Site content, and export
+it where visitors can reach it, put its address in Settings, and export
 again:
 
 ```sh
@@ -35,12 +35,15 @@ MySQL 8.4 must allow `mysql_native_password` for the site's user for now
 store's tests on them too, set `UHLAKA_TEST_POSTGRES` and `UHLAKA_TEST_MYSQL`
 to the address of an empty database each.
 
-The admin opens on the list of pages, with sections for posts, media, the menu
-and settings, and the theme. Choose a page to open it in the builder. There, click any text on the page and type. Add blocks from the left,
-style the selected block on the right, then Publish. **Edit theme** opens the
-theme builder: change the colours, typefaces and spacing, set how each block
-type looks by default, and download the result as a file. A theme is published
-separately from pages, with **Publish theme**. `export` writes what is published; serve `dist` with any static file
+The admin opens on the list of pages, with the navigation in groups: Content,
+Design, People and messages, Tools. Choose a page to open it in the builder.
+There, click any text on the page and type. Add blocks from the left, style the
+selected block on the right, then Publish. **Design** opens beside the page: the
+site's style (start from a ready-made one, then change the colours and
+typefaces), the header with its menu and the footer. A click on the header or
+the footer in the page opens it there. The style is published separately from
+pages, with **Publish the style**. **Settings** holds the rest: the name,
+languages, address, forms, e-mail and so on. `export` writes what is published; serve `dist` with any static file
 server, and read what it says a static host cannot do.
 
 To bring a WordPress site: in WordPress choose Tools, Export, All content. Then open

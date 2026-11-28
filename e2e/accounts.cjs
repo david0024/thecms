@@ -109,7 +109,7 @@ const PASSWORD = 'a long enough password';
       assert((await editor.locator(`[data-nav="${hidden}"]`).count()) === 0, `an editor does not see ${hidden}`);
     await editor.locator('[data-open]').first().click();
     await editor.locator('.builder:not([hidden])').waitFor();
-    assert((await editor.locator('[data-site-mode], [data-theme-mode], [data-theme]').count()) === 0, 'an editor has no site or theme buttons in the builder');
+    assert((await editor.locator('[data-design-mode], [data-nav="settings"], [data-nav="theme"]').count()) === 0, 'an editor has no site or theme buttons in the builder');
     await editor.frameLocator('iframe').locator('h1').first().waitFor();
     assert(true, 'an editor opens a page in the builder');
 

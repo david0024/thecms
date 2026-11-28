@@ -181,6 +181,8 @@ function mailServer(mails) {
     assert(await page.locator('[data-visitor="ana@example.com"] [data-visitor-level="premium"]').isChecked(), 'a level is named and given to a visitor');
 
     // "My account" in the menu, while the accounts are on.
+    // The menu is in Design, under Header and menu (ADR 0082).
+    await page.locator('[data-nav="header"]').click();
     await page.locator('[data-menu-customise]').click();
     await page.locator('[data-menu-add="1"]').click();
     await page.locator('[data-menu-level="1"] > li').last().locator('[data-menu-target]').first().selectOption('account');

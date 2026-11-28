@@ -20,8 +20,6 @@ import {
   type Shows,
   type BlockType,
   FONT_STACKS,
-  FOOTER_ARRANGEMENTS,
-  HEADER_ARRANGEMENTS,
   isFreeValue,
   isTokenName,
   parseTheme,
@@ -32,21 +30,24 @@ import {
 } from '../core/index.ts';
 import { say, t } from './messages.ts';
 import StyleEditor from './StyleEditor.svelte';
+import StyleGallery from './StyleGallery.svelte';
+import { tryTheme } from './themeEdit.ts';
 
 let {
   theme,
   onchange,
   handPicked = 0,
-  changed = false,
-  onpublish,
+  ready = [],
+  onchoose,
 }: {
   theme: Theme;
   onchange: (theme: Theme) => void;
   /** Colours chosen by hand on the page in the canvas: they follow neither scheme (ADR 0074 d5). */
   handPicked?: number;
-  /** The draft theme differs from the one visitors see. */
-  changed?: boolean;
-  onpublish?: () => void;
+  /** The ready-made styles (ADR 0082 d4). */
+  ready?: Theme[];
+  /** A ready-made style taken in place of this one. */
+  onchoose?: (theme: Theme) => void;
 } = $props();
 
 /** What is typed in a field but not valid yet, by field. */
@@ -61,16 +62,10 @@ const entry = $derived(theme.blocks[blockType] ?? {});
 
 /** Try a changed copy of the theme; keep it only if it is a valid theme. */
 function apply(mutate: (draft: Theme) => void): boolean {
-  const draft = structuredClone(theme);
-  mutate(draft);
-  const { theme: valid, issues } = parseTheme(draft);
-  if (!valid) {
-    problem = issues[0] ? `${issues[0].path}: ${issues[0].message}` : t.style.invalid;
-    return false;
-  }
-  problem = '';
-  onchange(valid);
-  return true;
+  const tried = tryTheme(theme, mutate, t.style.invalid);
+  problem = tried.problem;
+  if (tried.theme) onchange(tried.theme);
+  return !!tried.theme;
 }
 
 function setToken(group: TokenGroup, name: string, value: string): void {
@@ -161,11 +156,10 @@ const removeVariant = (variant: string): boolean =>
     delete d.blocks[blockType]?.variants?.[variant];
   });
 
-const setLayoutStyle = (part: 'header' | 'footer' | 'menu', style: BlockStyle): boolean =>
-  apply((d) => {
-    if (Object.keys(style).length) d.layout[part].style = style;
-    else delete d.layout[part].style;
-  });
+/** A colour or typeface by what it is for, when the theme uses one of the usual names; its own name otherwise. */
+const tokenLabel = (group: TokenGroup, name: string): string => (group === 'color' ? t.look.colours[name] : group === 'font' ? t.look.faces[name] : undefined) ?? name;
+const MAIN_GROUPS: readonly TokenGroup[] = ['color', 'font'];
+const MORE_GROUPS = TOKEN_GROUPS.filter((g) => !MAIN_GROUPS.includes(g));
 
 function download(): void {
   const blob = new Blob([`${JSON.stringify(theme, null, 2)}\n`], { type: 'application/json' });
@@ -204,82 +198,20 @@ const canAdd = (group: TokenGroup): boolean =>
 const hex6 = (value: string): string => (/^#[0-9a-f]{6}$/i.test(value) ? value : '#000000');
 </script>
 
-<div class="saved" data-theme-state={changed ? 'changed' : 'published'}>
-  <p class="hint">{changed ? t.theme.savedDraft : t.theme.savedLive}</p>
-  {#if changed && onpublish}<button type="button" class="primary" onclick={onpublish} data-theme-publish-here>{t.theme.publish}</button>{/if}
-</div>
-
-<label class="field">
-  <span>{t.theme.name}</span>
-  <input
-    type="text"
-    maxlength="80"
-    value={theme.name}
-    data-theme-name
-    oninput={(e) => {
-      const name = e.currentTarget.value;
-      if (name.trim()) apply((d) => { d.name = name; });
-    }}
-  />
-</label>
+{#if onchoose && ready.length}
+  <h3 class="part">{t.look.ready}</h3>
+  <StyleGallery {theme} {ready} onchoose={onchoose} ondownload={download} />
+{/if}
 
 {#if problem}<p class="bad problem" role="alert">{problem}</p>{/if}
 
-<details open data-theme-schemes>
-  <summary>{t.theme.schemes.heading}</summary>
-  <fieldset class="shows">
-    <legend>{t.theme.schemes.shows}</legend>
-    {#each SHOWS as option (option)}
-      <label class="check">
-        <input type="radio" name="theme-shows" value={option} checked={shows === option} disabled={option !== ownScheme(theme) && !palette} onchange={() => setShows(option)} data-theme-shows={option} />
-        <span>{t.theme.schemes[option]}</span>
-      </label>
-    {/each}
-  </fieldset>
-  {#if shows === 'visitor'}<p class="hint">{t.theme.schemes.visitorHint}</p>{/if}
-  {#if !palette}
-    <p class="hint">{t.theme.schemes.only[ownScheme(theme)]}</p>
-    <button type="button" onclick={propose} data-theme-propose>{t.theme.schemes.propose[other]}</button>
-  {:else}
-    <h3>{t.theme.schemes.colors[other]}</h3>
-    <p class="hint">{t.theme.schemes.colorsHint}</p>
-    {#each Object.keys(theme.tokens.color) as name (name)}
-      <div class="token">
-        <label>
-          <span>{name}</span>
-          <span class="custom">
-            <input type="color" value={hex6(otherShown(name))} oninput={(e) => setOther(name, e.currentTarget.value)} aria-label={`${t.theme.schemes.colors[other]}: ${name}`} />
-            <input type="text" value={otherShown(name)} oninput={(e) => setOther(name, e.currentTarget.value.trim())} aria-invalid={`${other}.${name}` in drafts} data-other-token={name} />
-          </span>
-        </label>
-        {#if `${other}.${name}` in drafts}<small class="bad">{t.style.invalid}</small>{/if}
-      </div>
-    {/each}
-    <p class="row">
-      <button type="button" class="quiet" onclick={propose} data-theme-propose>{t.theme.schemes.proposeAgain}</button>
-      <button type="button" class="quiet" onclick={removeOther} data-theme-remove-other>{t.theme.schemes.remove}</button>
-    </p>
-  {/if}
-  {#if unreadable.length}
-    <div class="unreadable" role="status" data-contrast>
-      <strong>{t.theme.schemes.unreadable}</strong>
-      <ul>
-        {#each unreadable as issue}<li>{say(t.theme.schemes.pair, { text: issue.text, on: issue.on, scheme: issue.scheme === 'dark' ? t.theme.schemes.previewDark : t.theme.schemes.previewLight, ratio: issue.ratio.toLocaleString() })}</li>{/each}
-      </ul>
-    </div>
-  {:else}
-    <p class="hint good" data-contrast="ok">{t.theme.schemes.readable}</p>
-  {/if}
-  {#if handPicked > 0 && palette}<p class="hint" data-hand-picked>{say(t.theme.schemes.handPicked, { count: handPicked })}</p>{/if}
-</details>
-
-{#each TOKEN_GROUPS as group (group)}
-  <details open={group === 'color'}>
+{#snippet tokens(group: TokenGroup, open: boolean)}
+  <details open={open} data-token-group={group}>
     <summary>{t.theme.groups[group]}</summary>
     {#each Object.keys(theme.tokens[group]) as name (name)}
       <div class="token">
         <label>
-          <span>{name}</span>
+          <span>{tokenLabel(group, name)}</span>
           <span class="custom">
             {#if group === 'font'}
               <select value={theme.tokens.font[name]} onchange={(e) => setToken(group, name, e.currentTarget.value)} data-token={`${group}.${name}`}>
@@ -332,8 +264,63 @@ const hex6 = (value: string): string => (/^#[0-9a-f]{6}$/i.test(value) ? value :
       </span>
     </div>
   </details>
-{/each}
+{/snippet}
 
+{@render tokens('color', true)}
+{@render tokens('font', true)}
+
+<details data-theme-schemes>
+  <summary>{t.theme.schemes.heading}</summary>
+  <fieldset class="shows">
+    <legend>{t.theme.schemes.shows}</legend>
+    {#each SHOWS as option (option)}
+      <label class="check">
+        <input type="radio" name="theme-shows" value={option} checked={shows === option} disabled={option !== ownScheme(theme) && !palette} onchange={() => setShows(option)} data-theme-shows={option} />
+        <span>{t.theme.schemes[option]}</span>
+      </label>
+    {/each}
+  </fieldset>
+  {#if shows === 'visitor'}<p class="hint">{t.theme.schemes.visitorHint}</p>{/if}
+  {#if !palette}
+    <p class="hint">{t.theme.schemes.only[ownScheme(theme)]}</p>
+    <button type="button" onclick={propose} data-theme-propose>{t.theme.schemes.propose[other]}</button>
+  {:else}
+    <h3>{t.theme.schemes.colors[other]}</h3>
+    <p class="hint">{t.theme.schemes.colorsHint}</p>
+    {#each Object.keys(theme.tokens.color) as name (name)}
+      <div class="token">
+        <label>
+          <span>{name}</span>
+          <span class="custom">
+            <input type="color" value={hex6(otherShown(name))} oninput={(e) => setOther(name, e.currentTarget.value)} aria-label={`${t.theme.schemes.colors[other]}: ${name}`} />
+            <input type="text" value={otherShown(name)} oninput={(e) => setOther(name, e.currentTarget.value.trim())} aria-invalid={`${other}.${name}` in drafts} data-other-token={name} />
+          </span>
+        </label>
+        {#if `${other}.${name}` in drafts}<small class="bad">{t.style.invalid}</small>{/if}
+      </div>
+    {/each}
+    <p class="row">
+      <button type="button" class="quiet" onclick={propose} data-theme-propose>{t.theme.schemes.proposeAgain}</button>
+      <button type="button" class="quiet" onclick={removeOther} data-theme-remove-other>{t.theme.schemes.remove}</button>
+    </p>
+  {/if}
+  {#if unreadable.length}
+    <div class="unreadable" role="status" data-contrast>
+      <strong>{t.theme.schemes.unreadable}</strong>
+      <ul>
+        {#each unreadable as issue}<li>{say(t.theme.schemes.pair, { text: issue.text, on: issue.on, scheme: issue.scheme === 'dark' ? t.theme.schemes.previewDark : t.theme.schemes.previewLight, ratio: issue.ratio.toLocaleString() })}</li>{/each}
+      </ul>
+    </div>
+  {:else}
+    <p class="hint good" data-contrast="ok">{t.theme.schemes.readable}</p>
+  {/if}
+  {#if handPicked > 0 && palette}<p class="hint" data-hand-picked>{say(t.theme.schemes.handPicked, { count: handPicked })}</p>{/if}
+</details>
+
+<details class="more" data-theme-more>
+  <summary>{t.look.more}</summary>
+  <p class="hint">{t.look.moreHint}</p>
+  {#each MORE_GROUPS as group (group)}{@render tokens(group, false)}{/each}
 <details>
   <summary>{t.theme.blocks}</summary>
   <label class="field">
@@ -364,40 +351,19 @@ const hex6 = (value: string): string => (/^#[0-9a-f]{6}$/i.test(value) ? value :
     </div>
   {/key}
 </details>
-
-<details data-theme-layout>
-  <summary>{t.layout.heading}</summary>
-  <h3>{t.layout.header}</h3>
-  <label class="field">
-    <span>{t.layout.arrangement}</span>
-    <select value={theme.layout.header.arrangement} onchange={(e) => apply((d) => { d.layout.header.arrangement = e.currentTarget.value as never; })} data-layout="header">
-      {#each HEADER_ARRANGEMENTS as name}<option value={name}>{t.layout.arrangements[name] ?? name}</option>{/each}
-    </select>
-  </label>
-  <label class="check">
-    <input type="checkbox" checked={theme.layout.header.sticky} onchange={(e) => apply((d) => { d.layout.header.sticky = e.currentTarget.checked; })} data-layout-sticky />
-    <span>{t.layout.sticky}</span>
-  </label>
-  <p class="hint">{t.layout.stickyHint}</p>
-  <div data-layout-style="header">
-    <StyleEditor style={theme.layout.header.style} {theme} onstyle={(style) => setLayoutStyle('header', style)} defaultLabel={t.theme.unset} />
-  </div>
-  <h3>{t.menu.panel}</h3>
-  <div data-layout-style="menu">
-    <StyleEditor style={theme.layout.menu.style} {theme} onstyle={(style) => setLayoutStyle('menu', style)} defaultLabel={t.theme.unset} />
-  </div>
-  <h3>{t.layout.footer}</h3>
-  <label class="field">
-    <span>{t.layout.arrangement}</span>
-    <select value={theme.layout.footer.arrangement} onchange={(e) => apply((d) => { d.layout.footer.arrangement = e.currentTarget.value as never; })} data-layout="footer">
-      {#each FOOTER_ARRANGEMENTS as name}<option value={name}>{t.layout.arrangements[name] ?? name}</option>{/each}
-    </select>
-  </label>
-  <div data-layout-style="footer">
-    <StyleEditor style={theme.layout.footer.style} {theme} onstyle={(style) => setLayoutStyle('footer', style)} defaultLabel={t.theme.unset} />
-  </div>
-</details>
-
+<label class="field">
+  <span>{t.theme.name}</span>
+  <input
+    type="text"
+    maxlength="80"
+    value={theme.name}
+    data-theme-name
+    oninput={(e) => {
+      const name = e.currentTarget.value;
+      if (name.trim()) apply((d) => { d.name = name; });
+    }}
+  />
+</label>
 <details>
   <summary>{t.theme.file}</summary>
   <p class="hint">{t.theme.fileHint}</p>
@@ -405,13 +371,12 @@ const hex6 = (value: string): string => (/^#[0-9a-f]{6}$/i.test(value) ? value :
   <button type="button" onclick={() => fileInput?.click()}>{t.theme.upload}</button>
   <input type="file" accept="application/json,.json" bind:this={fileInput} onchange={upload} hidden data-theme-file />
 </details>
+</details>
 
 <style>
-  /* Stays in view: the field that caused it may be far down the panel. */
-  .saved { display: grid; gap: 0.4rem; margin: 0 0 0.8rem; padding: 0.6rem 0.7rem; border-radius: 8px; background: #f2f1f7; }
-  .saved[data-theme-state='changed'] { background: #fff6d6; }
-  .saved p { margin: 0; }
   .problem { position: sticky; top: -0.9rem; z-index: 1; margin: 0 -0.9rem 0.6rem; padding: 0.5rem 0.9rem; background: #fdecea; }
+  .part { display: block; margin: 0 0 0.5rem; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: #5b4cdb; }
+  .more { background: #faf9fd; }
   details { margin-bottom: 0.6rem; border: 1px solid #e4e2ee; border-radius: 6px; padding: 0.5rem 0.6rem; }
   summary { cursor: pointer; font-weight: 600; }
   details[open] > summary { margin-bottom: 0.6rem; }

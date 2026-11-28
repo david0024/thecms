@@ -143,10 +143,10 @@ function png(width, height) {
     assert(true, 'a variant the theme gives a block can be chosen');
     await page.locator('[data-style="paddingBlock"]').selectOption('$custom');
     await page.locator('[data-custom="paddingBlock"]').fill('3rem');
-    await page.getByRole('button', { name: 'Reset to theme' }).waitFor();
+    await page.getByRole('button', { name: 'Reset to the style' }).waitFor();
     await saved();
     assert(await page.locator('.own').first().isVisible(), "a value of the block's own is marked");
-    await page.getByRole('button', { name: 'Reset to theme' }).click();
+    await page.getByRole('button', { name: 'Reset to the style' }).click();
     await saved();
     assert((await page.locator('.own').count()) === 0, "and can be put back to the theme's");
 
@@ -178,10 +178,9 @@ function png(width, height) {
     await page.locator('.status[data-state="error"]').waitFor();
     assert((await page.locator('.status').innerText()).includes('the server is down'), 'a save that fails says why');
     await page.getByRole('button', { name: 'Publish' }).click();
-    await page.locator('[data-theme-mode]').click();
-    await page.locator('[data-theme-mode]').click();
-    await page.locator('[data-site-mode]').click();
-    await page.locator('[data-site-mode]').click();
+    await page.locator('[data-design-mode]').click();
+    await page.locator('[data-design-part="header"]').click();
+    await page.locator('[data-design-mode]').click();
     await page.unroute('**/api/**');
     await canvas.locator('.b-hero h1').click();
     await page.keyboard.type('!');
@@ -321,18 +320,17 @@ function png(width, height) {
     const shown = readFileSync(join(dir, 'out', 'events', 'open-day', 'index.html'), 'utf8');
     assert(shown.includes('The workshop') && shown.includes('Bring a friend.') && shown.includes('href="/contact/"') && shown.includes('datetime="2027-05-01"') && /<img[^>]+\/media\//.test(shown), 'every kind of field typed in the admin is on the published entry');
     // The admin in another language: a pack like any other, chosen in the settings.
-    await page.locator('[data-site-mode]').click();
+    await page.locator('[data-back]').click();
+    await page.locator('[data-nav="settings"]').click();
     await page.locator('[data-admin-language]').selectOption('ro');
     // The admin opens again in its new language, on the settings it was changed in.
-    await page.locator('[data-site-mode]', { hasText: 'Înapoi la pagină' }).waitFor();
+    await page.locator('[data-screen="settings"] h1', { hasText: 'Setări' }).waitFor();
     assert((await page.locator('html').getAttribute('lang')) === 'ro', 'the admin can be in Romanian, from its language pack');
     if (shots) await page.screenshot({ path: join(shots, 'admin-romanian.png') });
     await page.locator('[data-admin-language]').selectOption('');
-    await page.locator('[data-site-mode]', { hasText: 'Back to the page' }).waitFor();
+    await page.locator('[data-screen="settings"] h1', { hasText: 'Settings' }).waitFor();
     assert(true, 'and back in English');
     // The way out to the site, and an address for each screen: reload keeps it, Back goes to the one before.
-    if (await page.locator('[data-site-mode][aria-pressed="true"]').count()) await page.locator('[data-site-mode]').click();
-    await page.locator('[data-back]').click();
     await page.locator('[data-nav="pages"]').click();
     assert((await page.locator('[data-view-site]').getAttribute('href')) === '/' && (await page.locator('[data-view-site]').getAttribute('target')) === '_blank', 'the admin leads to the site, in a tab of its own');
     assert((await page.locator('[data-view="about"]').getAttribute('href')) === '/about/', "a published page's address in the list opens it on the site");

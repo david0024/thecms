@@ -150,7 +150,7 @@ describe('events and products (ADR 0061 d3)', () => {
       offers: { '@type': 'Offer', price: 3200, priceCurrency: 'RON' },
     });
     expect(JSON.stringify(ofType(html, 'Product'))).toContain('OutOfStock');
-    // Without a currency in Site content, no price is said.
+    // Without a currency in Settings, no price is said.
     expect(ofType(renderPost(normalizeSite({ ...shop, business: undefined }), theme, post, [], products), 'Product')).not.toHaveProperty('offers');
   });
 });

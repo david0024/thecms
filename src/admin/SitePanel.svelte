@@ -1,19 +1,17 @@
 <script lang="ts">
 /**
- * What the site says about itself on every page: its name or logo, the button
- * in the header, the footer's words and links. How these are laid out is the
- * theme's (ADR 0006), so nothing here is a colour or a position.
+ * The site's settings (ADR 0082 d6): who it is, its languages and address,
+ * what search engines are told, and how it works (forms, accounts, the shop,
+ * e-mail, old addresses, speed). What it says around every page (logo, menu,
+ * footer) and how it looks are in Design.
  */
-import { type Business, BUSINESS_KINDS, cleanBusiness, WEEKDAYS, cleanRobots, type LinkValue, languageName, MAX_LANGUAGES, type MenuList, prefixOf, type ShopSettings, type Site, type SiteText, verificationCode } from '../core/index.ts';
-import type { LanguageInfo, PageInfo } from './api.ts';
+import { type Business, BUSINESS_KINDS, cleanBusiness, WEEKDAYS, cleanRobots, languageName, MAX_LANGUAGES, prefixOf, type ShopSettings, type Site, verificationCode } from '../core/index.ts';
+import type { LanguageInfo } from './api.ts';
 import ImageField from './ImageField.svelte';
-import MenuBuilder from './MenuBuilder.svelte';
 import { say, t } from './messages.ts';
 
 let {
   site,
-  pages,
-  lists,
   languages = [],
   onchange,
   onadminlanguage,
@@ -21,8 +19,6 @@ let {
   onshop,
 }: {
   site: Site;
-  pages: PageInfo[];
-  lists: MenuList[];
   languages?: LanguageInfo[];
   onchange: (site: Site) => void;
   /** The admin's words are read when it starts, so choosing its language saves and opens it again. */
@@ -37,14 +33,7 @@ const set = (patch: Partial<Site>): void => onchange({ ...site, ...patch });
 /** The business as a place people come to (ADR 0061 d2): each part cleaned as it is left, so the field shows what is kept. */
 const business = $derived(site.business ?? {});
 const setBusiness = (patch: Record<string, unknown>): void => set({ business: cleanBusiness({ ...business, ...patch }) });
-const link = (value: LinkValue | null, patch: Partial<LinkValue>): LinkValue => ({ label: value?.label ?? '', href: value?.href ?? '', ...patch });
-const setFooterLink = (i: number, patch: Partial<LinkValue>): void => set({ footerLinks: site.footerLinks.map((l, j) => (j === i ? link(l, patch) : l)) });
-/** What the header and footer say in another language (ADR 0024). */
-const own = (language: string): SiteText => site.translations[language] ?? { footer: '', action: null, footerLinks: [] };
-const setOwn = (language: string, patch: Partial<SiteText>): void => set({ translations: { ...site.translations, [language]: { ...own(language), ...patch } } });
 let adding = $state('');
-/** Whether visitor accounts are on: the menu may then lead to "My account" (ADR 0064 d4, d8). */
-let accounts = $state(false);
 const addLanguage = (): void => {
   const language = adding.trim();
   if (!language) return;
@@ -108,21 +97,6 @@ import Redirects from './Redirects.svelte';
   <small>{t.site.urlHint}</small>
 </label>
 
-<h3>{t.site.header}</h3>
-<div class="field">
-  <ImageField label={t.site.logo} value={site.logo} named={false} onchange={(logo) => set({ logo: logo.src ? logo : null })} />
-  <small>{t.site.logoHint}</small>
-</div>
-<fieldset class="field" data-site-action>
-  <legend>{t.site.action}</legend>
-  <label><span>{t.inspector.linkLabel}</span>
-    <input type="text" maxlength="80" value={site.action?.label ?? ''} oninput={(e) => set({ action: link(site.action, { label: e.currentTarget.value }) })} />
-  </label>
-  <label><span>{t.inspector.linkHref}</span>
-    <input type="text" value={site.action?.href ?? ''} oninput={(e) => set({ action: link(site.action, { href: e.currentTarget.value }) })} />
-  </label>
-</fieldset>
-
 <h3>{t.site.sharing}</h3>
 <div class="field">
   <ImageField label={t.site.shareImage} value={site.shareImage ?? null} onchange={(image) => set({ shareImage: image.src ? image : undefined })} />
@@ -178,33 +152,6 @@ import Redirects from './Redirects.svelte';
   <small>{t.business.hoursHint}</small>
 </details>
 
-<h3>{t.menu.title}</h3>
-<div class="field" data-menu-builder>
-  <MenuBuilder {site} {pages} {lists} {accounts} nodes={site.menu} onchange={(menu) => set({ menu })} />
-</div>
-
-<h3>{t.site.footer}</h3>
-<label class="field">
-  <span>{t.site.footerText}</span>
-  <input type="text" maxlength="300" value={site.footer} oninput={(e) => set({ footer: e.currentTarget.value })} data-site-footer />
-</label>
-<fieldset class="field" data-site-footer-links>
-  <legend>{t.site.footerLinks}</legend>
-  {#each site.footerLinks as item, i}
-    <div class="item">
-      <label><span>{t.site.linkText}</span>
-        <input type="text" maxlength="80" value={item.label} oninput={(e) => setFooterLink(i, { label: e.currentTarget.value })} />
-      </label>
-      <label><span>{t.inspector.linkHref}</span>
-        <input type="text" value={item.href} oninput={(e) => setFooterLink(i, { href: e.currentTarget.value })} />
-      </label>
-      <button type="button" class="quiet" onclick={() => set({ footerLinks: site.footerLinks.filter((_, j) => j !== i) })}>{t.inspector.remove}</button>
-    </div>
-  {/each}
-  {#if site.footerLinks.length < 12}
-    <button type="button" onclick={() => set({ footerLinks: [...site.footerLinks, { label: '', href: '' }] })}>{t.inspector.add}</button>
-  {/if}
-</fieldset>
 <h3>{t.site.forms}</h3>
 <label class="field">
   <span>{t.site.formsAddress}</span>
@@ -216,25 +163,7 @@ import Redirects from './Redirects.svelte';
   <input type="number" min="1" max="3650" value={site.keepMessages} onchange={(e) => set({ keepMessages: Number(e.currentTarget.value) })} data-site-keep />
 </label>
 
-{#each site.languages as language (language)}
-  <h3>{say(t.site.inLanguage, { language: languageName(language) })}</h3>
-  <label class="field">
-    <span>{t.site.footerText}</span>
-    <input type="text" maxlength="300" value={own(language).footer} oninput={(e) => setOwn(language, { footer: e.currentTarget.value })} data-own-footer={language} />
-  </label>
-  <fieldset class="field" data-own-action={language}>
-    <legend>{t.site.action}</legend>
-    <label><span>{t.inspector.linkLabel}</span>
-      <input type="text" maxlength="80" value={own(language).action?.label ?? ''} oninput={(e) => setOwn(language, { action: link(own(language).action, { label: e.currentTarget.value }) })} />
-    </label>
-    <label><span>{t.inspector.linkHref}</span>
-      <input type="text" value={own(language).action?.href ?? ''} oninput={(e) => setOwn(language, { action: link(own(language).action, { href: e.currentTarget.value }) })} />
-    </label>
-  </fieldset>
-  <small>{t.site.inLanguageHint}</small>
-{/each}
-
-<Visitors languages={[site.language, ...site.languages]} onswitch={(on) => (accounts = on)} />
+<Visitors languages={[site.language, ...site.languages]} />
 
 {#if shop}<ShopSettingsPanel settings={shop} onchange={() => onshop?.()} />{/if}
 
