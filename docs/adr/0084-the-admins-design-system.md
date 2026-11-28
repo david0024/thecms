@@ -1,11 +1,10 @@
 # ADR 0084 — The admin's design system: Material 3's principles, one file of tokens
 
-- **Status:** Proposed. Settled so far by David (2026-11-28): a system of
+- **Status:** Accepted (David, 2026-11-28: the board, "Da, așa cum e", 09:00). Settled with it: a system of
   Uhlaka's own, after Material 3's principles ("material design este mult
   mai mult [decât iconițele] … elementele de design alea contează"); the
   base colour is the blue of the logo (decision card, 08:15); the icons are
-  Lucide, copied as SVG, with a 1.5 stroke (08:58). Still open: the board
-  as a whole.
+  Lucide, copied as SVG, with a 1.5 stroke (08:58).
 - **Date:** 2026-11-28
 - **Builds on:** ADR 0080 (the logo and its colours), ADR 0068 (typefaces
   that ship with Uhlaka), ADR 0074 (dark mode), ADR 0082 (the Design and
@@ -77,15 +76,22 @@ letters. The admin used the system's font until now.
 
 ### d6. Moved a part at a time
 
-The tokens come first, with no visible change. Then the panels of ADR 0082
-(Design, Header, Footer, the style gallery), then the shared controls in
-`App.svelte` (buttons, fields), then the rest, a screen at a time. A test
-counts the colours written by hand in `src/admin/` and does not let the
-count grow.
+First the tokens, the shared controls in `App.svelte` (the side menu,
+buttons, fields, tabs, the builder's bars) and the panels of ADR 0082
+(Design, Header, Footer, the style gallery, Settings). Then the rest, a
+screen at a time. `test/admin-tokens.test.ts` holds the screens already
+moved to no colour by hand, and the others to a count that may only go
+down.
+
+Fields keep their label above them until a field component draws the label
+on the border for every screen at once; dark turns on (`data-scheme` on the
+admin's page, from the device and the Profile) when the last screen has
+moved, so no screen shows light boxes on a dark admin.
 
 ### d7. Icons: Lucide, copied in
 
-The icons are Lucide's (ISC licence), copied into the repository as SVG,
-only the ones the admin uses, drawn with a 1.5 stroke at 20 px. Nothing is
+The icons are Lucide's (ISC licence), their SVG drawings copied into
+`src/admin/icons.ts` with the licence, only the ones the admin uses, drawn
+by `Icon.svelte` with a 1.5 stroke at 20 px. Nothing is
 loaded from a third party and no package is added: the licence goes with
 the files.
