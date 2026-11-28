@@ -406,7 +406,7 @@ export async function runContentImport(store: Store, file: ContentFile, options:
 
   if (comments) notes.push(`${comments === 1 ? 'One comment came' : `${comments} comments came`} with the entries, approved, without the addresses they were sent from.`);
   if (addedPeople) notes.push(`${addedPeople === 1 ? 'One person who wrote there was' : `${addedPeople} people who wrote there were`} added under People, without access, so their entries keep their names. Invite them from there if they should write here again.`);
-  if (dropped.size) notes.push(`This site does not have ${[...dropped].join(', ')}, so the translations into ${dropped.size === 1 ? 'it' : 'them'} stayed behind. Add the language in Site content and import again to bring them.`);
+  if (dropped.size) notes.push(`This site does not have ${[...dropped].join(', ')}, so the translations into ${dropped.size === 1 ? 'it' : 'them'} stayed behind. Add the language in Settings and import again to bring them.`);
   if (kept.length) notes.push(`Already in this site under the same address, and left as they were: ${kept.slice(0, 10).join(', ')}${kept.length > 10 ? ` and ${kept.length - 10} more` : ''}.`);
   if (failed.length) notes.push(`Could not be brought: ${failed.slice(0, 10).join(', ')}${failed.length > 10 ? ` and ${failed.length - 10} more` : ''}.`);
   return { pages, posts, entries, drafts, images, redirects, menu, notes };

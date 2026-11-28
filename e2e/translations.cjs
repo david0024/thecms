@@ -56,14 +56,17 @@ const PORT = 4398;
     await page.locator('[data-language-add]').click();
     await saved;
     await page.locator('[data-site-other="ro"]').getByText('Română').waitFor();
+    // The footer and the button in that language are in Design (ADR 0082).
+    await page.locator('[data-nav="footer"]').click();
     saved = siteSaved();
     await page.locator('[data-own-footer="ro"]').fill('Mobilă făcută de mână');
     await saved;
+    await page.locator('[data-design-part="header"]').click();
     saved = siteSaved();
     await page.locator('[data-own-action="ro"] input').first().fill('Cere o ofertă');
     await page.locator('[data-own-action="ro"] input').nth(1).fill('/ro/');
     await saved;
-    assert(true, 'a second language is added in the settings, with its own footer and button');
+    assert(true, 'a second language is added in the settings, with its own footer and button in Design');
 
     // The home page and "About", translated from the list of pages.
     await page.locator('[data-back]').click();

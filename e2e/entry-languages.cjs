@@ -55,7 +55,7 @@ const PORT = 4400;
     const saved = siteSaved();
     await page.locator('[data-language-add]').click();
     await saved;
-    await page.locator('[data-back]').click();
+    await page.locator('[data-nav="pages"]').click();
     await page.locator('[data-translate="ro"]').click();
     await page.locator('.builder:not([hidden])').waitFor();
     await page.getByRole('button', { name: 'Publish' }).click();

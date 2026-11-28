@@ -91,8 +91,6 @@ const LONG = 'Handmade oak tables, benches and shelves from a small family works
     assert(!post.includes('class="b crumbs"'), 'turned off, the breadcrumbs are not shown on the site');
 
     // Shown to search engines again, the check before publishing names its long title.
-    await page.getByRole('button', { name: 'Back to the page' }).click().catch(() => {});
-    await page.locator('[data-back]').click();
     await page.locator('[data-nav="pages"]').click();
     await page.locator('button[data-open="about"]').click();
     await canvas.locator('main').waitFor();

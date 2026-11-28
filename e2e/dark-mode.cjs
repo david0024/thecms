@@ -122,9 +122,9 @@ const DARK = 'rgb(17, 19, 24)';
     await page.waitForFunction(() => document.querySelector('iframe')?.contentDocument?.documentElement.dataset.scheme === 'light');
     assert((await canvasBackground()) === LIGHT, 'and light again');
 
-    await page.locator('[data-theme-mode]').click();
+    await page.locator('[data-design-mode]').click();
     const section = page.locator('[data-theme-schemes]');
-    await section.waitFor();
+    await section.locator('summary').click();
     assert(await page.locator('[data-theme-shows="visitor"]').isChecked(), 'the theme builder says the site follows the visitor');
     assert(await section.locator('[data-contrast="ok"]').isVisible(), 'and that every text reads well, in both schemes');
 

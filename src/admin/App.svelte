@@ -96,7 +96,8 @@ import SeoTable from './SeoTable.svelte';
 import SearchConsole from './SearchConsole.svelte';
 import SitePanel from './SitePanel.svelte';
 import StylePanel from './StylePanel.svelte';
-import ThemeBuilder from './ThemeBuilder.svelte';
+import DesignPanel from './DesignPanel.svelte';
+import { DESIGN_PARTS, type DesignPart } from './themeEdit.ts';
 
 let site = $state.raw<State | null>(null);
 /** What is open in the editor: a page or a blog post. */
@@ -125,15 +126,19 @@ const linkTargets = $derived.by((): LinkTarget[] => {
 });
 const fixed = $derived(translation !== null && !translation.split);
 /** Which section of the admin is showing: a list, or the builder with one page or post open. */
-let view = $state<'pages' | 'sections' | 'forms' | 'layouts' | 'media' | 'messages' | 'orders' | 'coupons' | 'backups' | 'stats' | 'seo' | 'comments' | 'people' | 'me' | 'review' | 'types' | 'import' | 'export' | 'extensions' | 'edit' | `list:${string}` | `ext:${string}`>('pages');
+let view = $state<'settings' | 'pages' | 'sections' | 'forms' | 'layouts' | 'media' | 'messages' | 'orders' | 'coupons' | 'backups' | 'stats' | 'seo' | 'comments' | 'people' | 'me' | 'review' | 'types' | 'import' | 'export' | 'extensions' | 'edit' | `list:${string}` | `ext:${string}`>('pages');
 let selected = $state<string | null>(null);
 /** The form the Forms screen opens on, when a form block asked for it (ADR 0049). */
 let formAsked = $state('');
 let tab = $state<'content' | 'style'>('content');
 let saving = $state<'saved' | 'saving' | 'unsaved' | 'error'>('saved');
 let failure = $state('');
-let themeMode = $state(false);
-let siteMode = $state(false);
+/** Design open beside the page, and which of its parts (ADR 0082); '' while blocks are edited. */
+let design = $state<'' | DesignPart>('');
+/** The canvas shows the header as on the site, sticky included, while Design is open. */
+const themeMode = $derived(design !== '');
+/** The site's own words are being edited (Settings, or Design's header or footer): the admin keeps what is typed. */
+const siteMode = $derived(view === 'settings' || design === 'header' || design === 'footer');
 let past = $state.raw<Block[][]>([]);
 let future = $state.raw<Block[][]>([]);
 
@@ -418,14 +423,14 @@ const patch = (id: string, fn: (b: Block) => Block, options?: { redraw?: boolean
 
 function onFrameMessage(event: MessageEvent): void {
   if (event.origin !== location.origin || event.source !== frame?.contentWindow || event.data?.uhlaka !== true) return;
-  const message = event.data as { type: string; id: string | null; path: string; value: unknown; action: 'up'; parent: string | null; index: number; blockType: string };
+  const message = event.data as { type: string; part?: string; id: string | null; path: string; value: unknown; action: 'up'; parent: string | null; index: number; blockType: string };
   const place = (): boolean => (message.parent === null || typeof message.parent === 'string') && Number.isInteger(message.index);
   if (message.type === 'ready') {
     frameReady = true;
     draw();
   } else if (message.type === 'site') {
-    themeMode = false;
-    siteMode = true;
+    // Edit where you click (ADR 0082 d3): the header or the footer, whole.
+    if (owner) openDesign(message.part === 'footer' ? 'footer' : 'header');
   } else if (message.type === 'select') {
     selected = message.id;
   } else if (message.type === 'edit' && message.id) {
@@ -470,10 +475,12 @@ async function edit(slug: string, next: Kind): Promise<void> {
 }
 
 /** A section that lives on the page itself: the builder, with that panel open. */
-async function panel(which: 'site' | 'theme'): Promise<void> {
+/** Design, beside the page being edited, at one of its parts (ADR 0082 d2). */
+async function openDesign(part: DesignPart): Promise<void> {
   view = 'edit';
-  if (which === 'site' && !siteMode) await toggleSite();
-  if (which === 'theme' && !themeMode) await toggleTheme();
+  if (design === part) return;
+  design = part;
+  await draw();
 }
 
 /**
@@ -489,7 +496,7 @@ let adding = $state('');
 let following = false;
 /** Addresses are written once the one the admin was opened at has been followed. */
 let routed = $state(false);
-const here = $derived(view !== 'edit' ? view : siteMode ? 'settings' : themeMode ? 'theme' : page ? `edit/${kind}/${page.slug}` : 'pages');
+const here = $derived(view !== 'edit' ? view : design ? `design/${design}` : page ? `edit/${kind}/${page.slug}` : 'pages');
 
 $effect(() => {
   const at = here;
@@ -512,15 +519,21 @@ async function follow(): Promise<void> {
   if (!at || at === here || !site) return;
   following = true;
   try {
-    if (at === 'settings' || at === 'theme') {
-      if (owner) await panel(at === 'settings' ? 'site' : 'theme');
+    if (at === 'settings') {
+      if (owner) {
+        design = '';
+        view = 'settings';
+      }
+    } else if (at === 'theme' || at.startsWith('design/')) {
+      // `#at=theme` was the style before ADR 0082, and still leads there.
+      const part = at === 'theme' ? 'style' : at.slice('design/'.length);
+      if (owner && (DESIGN_PARTS as readonly string[]).includes(part)) await openDesign(part as DesignPart);
     } else if (at.startsWith('edit/')) {
       const rest = at.slice('edit/'.length);
       const cut = rest.indexOf('/');
       const next = (cut < 0 ? rest : rest.slice(0, cut)) as Kind;
       const slug = cut < 0 ? '' : rest.slice(cut + 1);
-      if (siteMode) await toggleSite();
-      themeMode = false;
+      design = '';
       if (!page || next !== kind || slug !== page.slug) await open(slug, next);
       view = 'edit';
     } else if (at.startsWith('new/')) {
@@ -528,14 +541,12 @@ async function follow(): Promise<void> {
       const wanted = at.slice('new/'.length);
       const listed = wanted === 'page' ? ((site.me.role === 'owner' || site.me.role === 'editor') ? 'pages' : '') : types.some((ty) => ty.id === wanted) ? `list:${wanted}` : '';
       if (listed) {
-        if (siteMode) await toggleSite();
-        themeMode = false;
+        design = '';
         adding = wanted;
         view = listed as typeof view;
       }
     } else if (SCREENS.has(at) || (at.startsWith('list:') && types.some((ty) => `list:${ty.id}` === at)) || (at.startsWith('ext:') && site.extensions.some((e) => at.startsWith(`ext:${e.name}/`)))) {
-      if (siteMode) await toggleSite();
-      themeMode = false;
+      design = '';
       view = at as typeof view;
     }
   } finally {
@@ -652,9 +663,9 @@ async function setAuthor(id: string): Promise<void> {
   }
 }
 
-async function chooseTheme(name: string): Promise<void> {
-  const theme = site?.themes.find((th) => th.name === name);
-  if (!site || !theme) return;
+/** A ready-made style in place of the site's own (ADR 0082 d4): the panel has asked first when that loses changes. */
+async function chooseTheme(theme: Theme): Promise<void> {
+  if (!site) return;
   try {
     site = await api.setTheme(theme);
     themeVersion += 1;
@@ -782,10 +793,18 @@ async function reload(): Promise<void> {
   }
 }
 
-async function toggleSite(): Promise<void> {
-  siteMode = !siteMode;
-  themeMode = false;
-  if (siteMode || !site) return;
+/**
+ * Once the site's words are no longer being edited, the server's cleaned copy
+ * is taken (a link left without an address is dropped then, not while typed).
+ */
+let wasSite = false;
+$effect(() => {
+  const now = siteMode;
+  if (wasSite && !now) void settleSite();
+  wasSite = now;
+});
+async function settleSite(): Promise<void> {
+  if (!site) return;
   try {
     clearTimeout(siteTimer);
     site = await api.setSite(site.site);
@@ -795,10 +814,8 @@ async function toggleSite(): Promise<void> {
   }
 }
 
-async function toggleTheme(): Promise<void> {
-  const next = !themeMode;
-  if (siteMode) await toggleSite();
-  themeMode = next;
+async function toggleDesign(): Promise<void> {
+  design = design ? '' : 'style';
   await draw();
 }
 
@@ -852,6 +869,8 @@ onMount(() => {
     <nav class="rail" aria-label={t.nav.label} hidden={view === 'edit'}>
       <!-- The way out to the site, as visitors see it, in a tab of its own (like the admin bar elsewhere). -->
       <a class="site" href="/" target="_blank" rel="noopener" data-view-site><strong>{site.site.name}</strong><small>{t.nav.viewSite} ↗</small></a>
+      <!-- In groups, each named by what it holds (ADR 0082 d5). -->
+      <span class="group">{t.nav.groups.content}</span>
       {#if staff}
       <button type="button" aria-current={view === 'pages' ? 'page' : undefined} onclick={() => (view = 'pages')} data-nav="pages">{t.nav.pages}</button>
       {/if}
@@ -859,39 +878,51 @@ onMount(() => {
         <button type="button" aria-current={view === `list:${ty.id}` ? 'page' : undefined} onclick={() => (view = `list:${ty.id}`)} data-nav={ty.id}>{ty.name}</button>
       {/each}
       {#if staff}
-      <button type="button" aria-current={view === 'review' ? 'page' : undefined} onclick={() => (view = 'review')} data-nav="review">{t.nav.review}{waiting ? ` (${waiting})` : ''}</button>
       <button type="button" aria-current={view === 'sections' ? 'page' : undefined} onclick={() => (view = 'sections')} data-nav="sections">{t.nav.sections}</button>
       {/if}
       <button type="button" aria-current={view === 'media' ? 'page' : undefined} onclick={() => (view = 'media')} data-nav="media">{t.nav.media}</button>
+      {#if owner}
+        <button type="button" aria-current={view === 'forms' ? 'page' : undefined} onclick={() => ((formAsked = ''), (view = 'forms'))} data-nav="forms">{t.nav.forms}</button>
+        <span class="group">{t.nav.groups.design}</span>
+        <button type="button" onclick={() => openDesign('style')} data-nav="theme">{t.look.parts.style}</button>
+        <button type="button" onclick={() => openDesign('header')} data-nav="header">{t.look.parts.header}</button>
+        <button type="button" onclick={() => openDesign('footer')} data-nav="footer">{t.look.parts.footer}</button>
+        <button type="button" aria-current={view === 'layouts' ? 'page' : undefined} onclick={() => (view = 'layouts')} data-nav="layouts">{t.nav.layouts}</button>
+      {/if}
       {#if staff}
-      <button type="button" aria-current={view === 'stats' ? 'page' : undefined} onclick={() => (view = 'stats')} data-nav="stats">{t.nav.stats}</button>
-      <button type="button" aria-current={view === 'seo' ? 'page' : undefined} onclick={() => (view = 'seo')} data-nav="seo">{t.nav.seo}</button>
+      <span class="group">{t.nav.groups.people}</span>
+      <button type="button" aria-current={view === 'review' ? 'page' : undefined} onclick={() => (view = 'review')} data-nav="review">{t.nav.review}{waiting ? ` (${waiting})` : ''}</button>
+      {/if}
+      {#if owner}
+        <button type="button" aria-current={view === 'messages' ? 'page' : undefined} onclick={() => (view = 'messages')} data-nav="messages">{t.nav.messages}</button>
       {/if}
       {#if staff && types.some((ty) => ty.comments)}
         <button type="button" aria-current={view === 'comments' ? 'page' : undefined} onclick={() => (view = 'comments')} data-nav="comments">{t.nav.comments}</button>
       {/if}
+      {#if owner && site.accounts}
+        <button type="button" aria-current={view === 'people' ? 'page' : undefined} onclick={() => (view = 'people')} data-nav="people">{t.nav.people}</button>
+      {/if}
       {#if site.shop.on && (owner || (staff && site.shop.editors))}
+        <span class="group">{t.nav.groups.shop}</span>
         <button type="button" aria-current={view === 'orders' ? 'page' : undefined} onclick={() => (view = 'orders')} data-nav="orders">{t.nav.orders}</button>
         <button type="button" aria-current={view === 'coupons' ? 'page' : undefined} onclick={() => (view = 'coupons')} data-nav="coupons">{t.nav.coupons}</button>
       {/if}
+      {#if staff}
+      <span class="group">{t.nav.groups.tools}</span>
+      <button type="button" aria-current={view === 'stats' ? 'page' : undefined} onclick={() => (view = 'stats')} data-nav="stats">{t.nav.stats}</button>
+      <button type="button" aria-current={view === 'seo' ? 'page' : undefined} onclick={() => (view = 'seo')} data-nav="seo">{t.nav.seo}</button>
+      {/if}
       {#if owner}
-        <button type="button" aria-current={view === 'forms' ? 'page' : undefined} onclick={() => ((formAsked = ''), (view = 'forms'))} data-nav="forms">{t.nav.forms}</button>
-        <button type="button" aria-current={view === 'messages' ? 'page' : undefined} onclick={() => (view = 'messages')} data-nav="messages">{t.nav.messages}</button>
-        <button type="button" onclick={() => panel('site')} data-nav="settings">{t.nav.settings}</button>
-        <button type="button" onclick={() => panel('theme')} data-nav="theme">{t.nav.theme}</button>
-        <button type="button" aria-current={view === 'layouts' ? 'page' : undefined} onclick={() => (view = 'layouts')} data-nav="layouts">{t.nav.layouts}</button>
         <button type="button" aria-current={view === 'types' ? 'page' : undefined} onclick={() => (view = 'types')} data-nav="types">{t.ctypes.heading}</button>
         <button type="button" aria-current={view === 'import' ? 'page' : undefined} onclick={() => (view = 'import')} data-nav="import">{t.nav.import}</button>
         <button type="button" aria-current={view === 'export' ? 'page' : undefined} onclick={() => (view = 'export')} data-nav="export">{t.nav.export}</button>
         <button type="button" aria-current={view === 'extensions' || view.startsWith('ext:') ? 'page' : undefined} onclick={() => (view = 'extensions')} data-nav="extensions">{t.ext.heading}</button>
         <button type="button" aria-current={view === 'backups' ? 'page' : undefined} onclick={() => (view = 'backups')} data-nav="backups">{t.nav.backups}</button>
-        {#if site.accounts}
-          <button type="button" aria-current={view === 'people' ? 'page' : undefined} onclick={() => (view = 'people')} data-nav="people">{t.nav.people}</button>
-        {/if}
+        <button type="button" aria-current={view === 'settings' ? 'page' : undefined} onclick={() => ((design = ''), (view = 'settings'))} data-nav="settings">{t.nav.settings}</button>
       {/if}
       {#if site.accounts}
-        <button type="button" aria-current={view === 'me' ? 'page' : undefined} onclick={() => (view = 'me')} data-nav="me">{t.nav.me}</button>
         <span class="grow"></span>
+        <button type="button" aria-current={view === 'me' ? 'page' : undefined} onclick={() => (view = 'me')} data-nav="me">{t.nav.me}</button>
         <small class="me">{site.me.name || site.me.email}</small>
         <button type="button" onclick={signOut} data-sign-out>{t.door.signOut}</button>
       {/if}
@@ -904,6 +935,12 @@ onMount(() => {
       </div>
     {:else if view === 'sections'}
       <Sections sections={site.sections} site={site.site} onopen={(slug) => edit(slug, SECTION_KIND)} oncreate={(title) => createPage(title, SECTION_KIND)} ontranslate={(slug, language) => translatePage(slug, language, SECTION_KIND)} />
+    {:else if view === 'settings'}
+      <section class="screen settings" data-screen="settings">
+        <h1>{t.site.heading}</h1>
+        <p class="hint" data-panel-intro="site">{t.site.intro}</p>
+        <SitePanel site={site.site} languages={site.languages} onchange={editSite} onadminlanguage={setAdminLanguage} shop={site.shop} onshop={reload} />
+      </section>
     {:else if view === 'layouts'}
       <Layouts site={site.site} sections={site.sections} onsave={saveLayouts} />
     {:else if view === 'types'}
@@ -945,7 +982,7 @@ onMount(() => {
     {:else if view === 'me'}
       <Profile me={site.me} onsaved={(next) => (site = next)} />
     {:else if view === 'extensions'}
-      <Extensions extensions={site.extensions} shop={site.shop.on} onchange={(next) => site && (site = { ...site, extensions: next })} onopen={(name, screen) => (view = `ext:${name}/${screen}`)} onparts={reload} onsettings={() => panel('site')} />
+      <Extensions extensions={site.extensions} shop={site.shop.on} onchange={(next) => site && (site = { ...site, extensions: next })} onopen={(name, screen) => (view = `ext:${name}/${screen}`)} onparts={reload} onsettings={() => ((design = ''), (view = 'settings'))} />
     {:else if view.startsWith('ext:')}
       {@const [name, screen] = view.slice(4).split('/')}
       {@const extension = site.extensions.find((e) => e.name === name)}
@@ -961,7 +998,7 @@ onMount(() => {
     <!-- The builder stays in the page while a list shows, so the canvas is ready when a page is chosen. -->
     <div class="builder" hidden={view !== 'edit'}>
     <header class="bar">
-      <button type="button" class="quiet" onclick={() => (view = home)} data-back>← {designed ? t.ctypes.heading : type ? type.name : t.nav.pages}</button>
+      <button type="button" class="quiet" onclick={() => ((design = ''), (view = home))} data-back>← {designed ? t.ctypes.heading : type ? type.name : t.nav.pages}</button>
       <strong class="doc">{page.title}</strong>
       <button type="button" onclick={undo} disabled={past.length === 0} title={t.bar.undo} aria-label={t.bar.undo}>↶</button>
       <button type="button" onclick={redo} disabled={future.length === 0} title={t.bar.redo} aria-label={t.bar.redo}>↷</button>
@@ -976,15 +1013,8 @@ onMount(() => {
       <span class="status" data-state={saving} role="status">{failure && saving === 'error' ? `${t.bar.error}: ${failure}` : t.bar[saving]}</span>
       <span class="grow"></span>
       {#if owner}
-      <button type="button" onclick={toggleSite} aria-pressed={siteMode} data-site-mode>{siteMode ? t.theme.done : t.site.edit}</button>
-      <label class="inline">
-        <span>{t.bar.theme}</span>
-        <select value={site.theme.name} onchange={(e) => chooseTheme(e.currentTarget.value)} data-theme>
-          {#if !site.themes.some((th) => th.name === site?.theme.name)}<option value={site.theme.name}>{site.theme.name}</option>{/if}
-          {#each site.themes as theme}<option value={theme.name}>{theme.name}</option>{/each}
-        </select>
-      </label>
-      <button type="button" onclick={toggleTheme} aria-pressed={themeMode} data-theme-mode>{themeMode ? t.theme.done : t.theme.edit}</button>
+      <!-- One way in to how the site looks: Design, beside the page (ADR 0082). -->
+      <button type="button" class:on={!!design} onclick={toggleDesign} aria-pressed={!!design} data-design-mode>{design ? t.look.done : t.look.open}</button>
       {#if site.themeChanged}<button type="button" onclick={publishTheme} title={t.theme.changed} data-publish-theme>{t.theme.publish}</button>{/if}
       {/if}
       {#if publicPath && info?.published}<a class="out" href={publicPath} target="_blank" rel="noopener" title={t.bar.viewPageHint} data-view-page>{t.bar.viewPage} ↗</a>{/if}
@@ -1045,14 +1075,22 @@ onMount(() => {
     </main>
 
     <aside class="right">
-      {#if siteMode}
-        <h2>{t.site.heading}</h2>
-        <p class="hint" data-panel-intro="site">{t.site.intro}</p>
-        <SitePanel site={site.site} pages={pagesIn(site.site, site.site.language, site.pages)} lists={menuLists} languages={site.languages} onchange={editSite} onadminlanguage={setAdminLanguage} shop={site.shop} onshop={reload} />
-      {:else if themeMode}
-        <h2>{t.theme.heading}</h2>
-        <p class="hint" data-panel-intro="theme">{t.theme.intro}</p>
-        <ThemeBuilder theme={site.theme} onchange={editTheme} handPicked={page ? countFreeColors(page.blocks) : 0} changed={site.themeChanged} onpublish={publishTheme} />
+      {#if design}
+        <DesignPanel
+          part={design}
+          site={site.site}
+          theme={site.theme}
+          ready={site.themes}
+          changed={site.themeChanged}
+          pages={pagesIn(site.site, site.site.language, site.pages)}
+          lists={menuLists}
+          handPicked={page ? countFreeColors(page.blocks) : 0}
+          onpart={(part) => openDesign(part)}
+          onsite={editSite}
+          ontheme={editTheme}
+          onchoose={chooseTheme}
+          onpublish={publishTheme}
+        />
       {:else if block && def}
         <h2>{t.types[block.type] ?? block.type}</h2>
         <div class="tabs" role="tablist">
@@ -1308,6 +1346,8 @@ onMount(() => {
   .admin.building { grid-template-columns: 1fr; }
   .rail[hidden] { display: none; }
   .rail { display: flex; flex-direction: column; gap: 0.25rem; padding: 0.9rem 0.6rem; background: #1c1b22; color: #fff; }
+  .rail .group { margin: 0.9rem 0.5rem 0.2rem; font-size: 10.5px; font-weight: 600; letter-spacing: 0.09em; text-transform: uppercase; color: #8a87a0; }
+  .rail .group:first-of-type { margin-top: 0.2rem; }
   .rail .me { padding: 0 0.5rem; color: #a9a6bd; overflow-wrap: anywhere; }
   .rail .site { display: grid; gap: 0.1rem; padding: 0.3rem 0.5rem 0.5rem; margin-bottom: 0.4rem; border-radius: 6px; color: #fff; text-decoration: none; overflow-wrap: anywhere; }
   .rail .site small { color: #a9a6bd; }
@@ -1320,6 +1360,10 @@ onMount(() => {
   :global(.editor .rail button[aria-current='page']) { background: #6d5dfc; color: #fff; font-weight: 600; }
   :global(.editor .screen) { overflow-y: auto; padding: 1.5rem 2rem; }
   .stack { min-width: 0; overflow-y: auto; }
+  /* Settings: one column at reading width, each group of settings a card of its own. */
+  .settings { max-width: 46rem; }
+  .settings :global(h3) { margin-top: 1.6rem; padding-top: 1.1rem; border-top: 1px solid #e4e2ee; font-size: 15px; }
+  :global(.editor .bar button.on) { background: #efedff; border-color: #6d5dfc; color: #3a2fb8; font-weight: 600; }
   .stack > :global(.screen) { overflow-y: visible; }
   .toast { position: fixed; inset-block-end: 1rem; inset-inline-end: 1rem; padding: 0.5rem 0.8rem; background: #fff; border: 1px solid #b3261e; border-radius: 6px; }
   .builder { display: grid; min-width: 0; height: 100vh; grid-template: 'bar bar bar' auto 'left canvas right' 1fr / 14rem 1fr 19rem; }
@@ -1372,9 +1416,6 @@ onMount(() => {
   :global(.editor .own) { color: #c77700; font-style: normal; margin-inline-start: 0.3rem; }
   :global(.editor .custom) { display: flex; gap: 0.3rem; margin-top: 0.3rem; }
   :global(.editor .custom input[type='color']) { width: 2.4rem; padding: 0; border: 1px solid #cfccdc; border-radius: 6px; background: none; }
-  .inline { display: flex; align-items: center; gap: 0.4rem; }
-  .inline span { margin: 0; }
-  .inline select { width: auto; }
   .check { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.8rem; }
   .check span { margin: 0; }
   .check.off { opacity: 0.55; }

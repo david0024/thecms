@@ -196,7 +196,7 @@ describe('the picture for sharing is a picture the site uses', () => {
     await store.setSite({ ...site, shareImage: { src: two.path, alt: '' } });
     await store.savePage({ slug: '', title: 'Home', description: '', inMenu: true, blocks: [], shareImage: { src: one.path, alt: '' } });
     expect(await store.mediaUsedBy(one.name)).toEqual(['Home']);
-    expect(await store.mediaUsedBy(two.name)).toEqual(['the picture for sharing, in Site content']);
+    expect(await store.mediaUsedBy(two.name)).toEqual(['the picture for sharing, in Settings']);
     const pages = [page({ slug: '', title: 'Home', shareImage: { src: one.path, alt: '' } })];
     const files = await buildSite(await store.site(), theme, pages, async (name) => (await store.mediaFile(name))?.bytes ?? null);
     expect(files.has(one.path.slice(1))).toBe(true);

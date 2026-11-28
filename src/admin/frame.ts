@@ -11,8 +11,8 @@ import { domToRichText, richTextToDom } from './richdom.ts';
 type Up =
   | { type: 'ready' }
   | { type: 'select'; id: string | null }
-  /** The header or footer was clicked: what they say is in the site's settings. */
-  | { type: 'site' }
+  /** The header or footer was clicked: Design opens at it (ADR 0082 d3). */
+  | { type: 'site'; part: 'header' | 'footer' }
   | { type: 'edit'; id: string; path: string; value: unknown }
   | { type: 'action'; id: string; action: 'up' | 'down' | 'duplicate' | 'delete' }
   /** `index` counts the blocks already in `parent`, the moved one left out. */
@@ -187,7 +187,8 @@ document.addEventListener('click', (event) => {
     showSelection();
     post({ type: 'select', id });
   }
-  if (target.closest('[data-site]')) post({ type: 'site' });
+  const part = target.closest<HTMLElement>('[data-site]')?.dataset.site;
+  if (part) post({ type: 'site', part: part === 'footer' ? 'footer' : 'header' });
 });
 
 document.addEventListener('input', (event) => {

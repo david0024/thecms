@@ -1,6 +1,6 @@
 # ADR 0078 — Site content and Look: two panels named by what they hold
 
-- **Status:** Accepted (Liviu, 2026-11-25, with David's agreement passed on by Liviu: "da")
+- **Status:** Accepted (Liviu, 2026-11-25, with David's agreement passed on by Liviu: "da"). d1 and d2 replaced by [ADR 0082](0082-design-and-settings.md) (2026-11-28); d3 stays.
 - **Date:** 2026-11-25
 - **Builds on:** ADR 0006 (header and footer), ADR 0072 (an address for each screen of the admin)
 
