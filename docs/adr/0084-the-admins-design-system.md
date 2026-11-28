@@ -3,8 +3,9 @@
 - **Status:** Proposed. Settled so far by David (2026-11-28): a system of
   Uhlaka's own, after Material 3's principles ("material design este mult
   mai mult [decât iconițele] … elementele de design alea contează"); the
-  base colour is the blue of the logo (decision card, 08:15). Still open:
-  the board as a whole, and the icon family.
+  base colour is the blue of the logo (decision card, 08:15); the icons are
+  Lucide, copied as SVG, with a 1.5 stroke (08:58). Still open: the board
+  as a whole.
 - **Date:** 2026-11-28
 - **Builds on:** ADR 0080 (the logo and its colours), ADR 0068 (typefaces
   that ship with Uhlaka), ADR 0074 (dark mode), ADR 0082 (the Design and
@@ -82,7 +83,9 @@ The tokens come first, with no visible change. Then the panels of ADR 0082
 counts the colours written by hand in `src/admin/` and does not let the
 count grow.
 
-## Still open
+### d7. Icons: Lucide, copied in
 
-- **Icons.** Proposed: Lucide, copied into the repository as SVG (ISC
-  licence), only the ones the admin uses. Not yet approved.
+The icons are Lucide's (ISC licence), copied into the repository as SVG,
+only the ones the admin uses, drawn with a 1.5 stroke at 20 px. Nothing is
+loaded from a third party and no package is added: the licence goes with
+the files.
