@@ -242,7 +242,16 @@ export interface ShopSettings {
   editors: boolean;
   /** Where each new order is told; '' for the owner's own address. */
   notify: string;
+  /**
+   * Invoices (ADR 0081 d2), made by the owner's invoicing app through an
+   * extension: off; asked for by themselves when an order is paid (or sent,
+   * when paid on delivery); or only by the button on the order.
+   */
+  invoices: InvoicesWhen;
 }
+
+export const INVOICES_WHEN = ['off', 'auto', 'manual'] as const;
+export type InvoicesWhen = (typeof INVOICES_WHEN)[number];
 
 export const MAX_SHIPPING = 10;
 
@@ -257,6 +266,7 @@ export const SHOP_OFF: ShopSettings = {
   account: false,
   editors: false,
   notify: '',
+  invoices: 'off',
 };
 
 /** An IBAN as people type it, in groups or not: `RO49 AAAA 1B31…` → `RO49AAAA1B31…`; '' for what is not one. */
@@ -313,6 +323,7 @@ export function normalizeShopSettings(input: unknown): ShopSettings {
     account: raw.account === true,
     editors: raw.editors === true,
     notify: /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(notify) ? notify : '',
+    invoices: (INVOICES_WHEN as readonly unknown[]).includes(raw.invoices) ? (raw.invoices as InvoicesWhen) : 'off',
   };
 }
 

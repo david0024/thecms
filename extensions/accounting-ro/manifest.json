@@ -1,0 +1,139 @@
+{
+  "name": "accounting-ro",
+  "displayName": "Romanian accounting software integration",
+  "description": "Connects the shop to the owner's accounting or invoicing software in Romania, which makes the invoices: Oblio for now, SmartBill and FGO later. The software numbers each invoice with the owner's series, keeps it and sends it to e-Factura (SPV) when the account is set so; the shop keeps its PDF on the order, for the buyer. A refund makes its storno. For Oblio: the account's e-mail, its API secret, the company's CIF and the series.",
+  "version": "1.0.0",
+  "publisher": "uhlaka",
+  "uhlakaMinVersion": "0.1.0",
+  "egress": [
+    "www.oblio.eu"
+  ],
+  "uses": [
+    "orders"
+  ],
+  "collections": [
+    {
+      "name": "settings",
+      "label": "Settings",
+      "fields": [
+        {
+          "key": "app",
+          "label": "Software",
+          "kind": "choice",
+          "options": [
+            "oblio"
+          ],
+          "initial": "oblio"
+        },
+        {
+          "key": "email",
+          "label": "E-mail of the account",
+          "kind": "text",
+          "required": true
+        },
+        {
+          "key": "secret",
+          "label": "API secret",
+          "kind": "secret",
+          "required": true
+        },
+        {
+          "key": "cif",
+          "label": "The company's CIF",
+          "kind": "text",
+          "required": true
+        },
+        {
+          "key": "series",
+          "label": "Series of the invoices",
+          "kind": "text",
+          "required": true
+        },
+        {
+          "key": "storno_series",
+          "label": "Series of the storno invoices (empty for the same)",
+          "kind": "text"
+        },
+        {
+          "key": "management",
+          "label": "Warehouse, when the app keeps stock (empty for none)",
+          "kind": "text"
+        },
+        {
+          "key": "collect",
+          "label": "Mark a paid order's invoice as collected",
+          "kind": "boolean",
+          "initial": true
+        }
+      ]
+    }
+  ],
+  "actions": [
+    {
+      "name": "make",
+      "label": "Make the invoice",
+      "reads": [
+        "settings"
+      ],
+      "uses": [
+        "orders"
+      ]
+    },
+    {
+      "name": "storno",
+      "label": "Make the storno",
+      "reads": [
+        "settings"
+      ],
+      "uses": [
+        "orders"
+      ]
+    }
+  ],
+  "answers": [
+    {
+      "question": "invoice.make",
+      "action": "make"
+    },
+    {
+      "question": "invoice.storno",
+      "action": "storno"
+    }
+  ],
+  "views": [
+    {
+      "spec": "uhlaka.view/1",
+      "id": "accounting-ro.settings",
+      "title": "Romanian accounting software integration",
+      "type": "list",
+      "collection": "settings",
+      "fields": [
+        "app",
+        "email",
+        "secret",
+        "cif",
+        "series",
+        "storno_series",
+        "management",
+        "collect"
+      ]
+    }
+  ],
+  "messages": {
+    "ro": {
+      "Settings": "Setări",
+      "oblio": "Oblio",
+      "E-mail of the account": "Emailul contului",
+      "API secret": "Secretul API",
+      "The company's CIF": "CIF-ul firmei",
+      "Series of the invoices": "Seria facturilor",
+      "Series of the storno invoices (empty for the same)": "Seria facturilor de stornare (gol pentru aceeași)",
+      "Warehouse, when the app keeps stock (empty for none)": "Gestiunea, când aplicația ține stocul (gol pentru niciuna)",
+      "Mark a paid order's invoice as collected": "Marchează încasată factura unei comenzi plătite",
+      "Make the invoice": "Fă factura",
+      "Make the storno": "Fă stornarea",
+      "Software": "Programul",
+      "Romanian accounting software integration": "Integrare programe de contabilitate (România)"
+    }
+  }
+}

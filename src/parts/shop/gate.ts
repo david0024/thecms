@@ -7,6 +7,7 @@
 import { type ContentType, normalizeShopSettings, type ShopSettings, type ShopShown, slugify } from '../../core/index.ts';
 import { wordsFor } from '../../blocks/words.ts';
 import type { OrdersLent, Shop, ShopDeps } from './shop.ts';
+import type { Invoicer } from './pages.ts';
 import type { Store, User } from '../../site/store.ts';
 
 const json = (data: unknown, status = 200): Response =>
@@ -28,6 +29,8 @@ export interface ShopGate {
   lent: OrdersLent;
   /** Whether the shop's code was loaded in this process: never, while it stays off (the tests ask). */
   loaded: () => boolean;
+  /** Who makes the invoices (ADR 0081 d3): the extensions, given by the process that runs them. */
+  invoiceBy: (invoicer: Invoicer) => void;
 }
 
 /** One gate a store: the admin and the build share what was loaded. */
@@ -37,8 +40,9 @@ export function shopGate(store: Store): ShopGate {
   const known = gates.get(store);
   if (known) return known;
   let loading: Promise<Shop> | null = null;
+  let invoicer: Invoicer | null = null;
   const open = (): Promise<Shop> => {
-    loading ??= import('./shop.ts').then((m) => m.openShop(store)).catch((error: unknown) => {
+    loading ??= import('./shop.ts').then((m) => m.openShop(store, () => invoicer)).catch((error: unknown) => {
       loading = null;
       throw error;
     });
@@ -117,6 +121,9 @@ export function shopGate(store: Store): ShopGate {
       completed: (id) => lend((l) => l.completed(id)),
     },
     loaded: () => loading !== null,
+    invoiceBy(given) {
+      invoicer = given;
+    },
   };
   gates.set(store, gate);
   return gate;
