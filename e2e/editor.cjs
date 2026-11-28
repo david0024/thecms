@@ -122,6 +122,15 @@ const assert = (condition, message) => {
     const buttonColour = () => canvas.locator('a.button').first().evaluate((el) => getComputedStyle(el).backgroundColor);
     await page.waitForFunction(() => getComputedStyle(document.querySelector('iframe').contentDocument.querySelector('a.button')).backgroundColor === 'rgb(255, 0, 102)');
     assert(true, 'a colour changed in the theme builder repaints the page');
+    // The style now has changes: another ready-made one asks first (ADR 0082 d4).
+    await page.locator('[data-style="Studio"] small', { hasText: 'changed by you' }).waitFor();
+    await page.locator('[data-style="Atelier"]').click();
+    await page.locator('[data-style-ask]').waitFor();
+    const [kept] = await Promise.all([page.waitForEvent('download'), page.locator('[data-style-keep]').click()]);
+    assert(JSON.parse(readFileSync(await kept.path(), 'utf8')).tokens.color.primary === '#ff0066', 'before another style replaces it, the changed one can be kept as a file');
+    await page.locator('[data-style-cancel]').click();
+    await page.locator('[data-style-ask]').waitFor({ state: 'detached' });
+    assert((await buttonColour()) === 'rgb(255, 0, 102)', 'cancelling keeps the changed style');
     if (shots) await page.screenshot({ path: join(shots, 'theme-colours.png') });
     await primary.fill('red;}body{display:none');
     await page.waitForTimeout(600);
@@ -329,6 +338,25 @@ const assert = (condition, message) => {
     await added.locator('input').last().fill('/preturi-si-comenzi/');
     await canvas.locator('.site-footer nav a', { hasText: 'Prices' }).waitFor();
     assert((await canvas.locator('.site-footer p').innerText()) === '© Atelier Nord, since 2014', 'the footer shows what was typed in the site settings');
+    const links = page.locator('[data-site-footer-links] .item');
+    const linkCount = await links.count();
+    await page.locator('[data-site-footer-links]').getByRole('button', { name: 'Add' }).click();
+    await links.last().getByRole('button', { name: 'Remove' }).click();
+    assert((await links.count()) === linkCount, 'a footer link can be taken off again');
+    // How the footer looks is the style's: centre it, colour it, then put both back.
+    const footerAlign = () => canvas.locator('.site-footer').evaluate((el) => getComputedStyle(el).textAlign);
+    await page.locator('[data-layout="footer"] label', { hasText: 'Centred' }).click();
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('iframe').contentDocument.querySelector('.site-footer')).textAlign === 'center');
+    await page.getByText('Colours and spacing of the footer', { exact: true }).click();
+    const footerBackground = page.locator('[data-layout-style="footer"] select[data-style="background"]');
+    await footerBackground.selectOption('token:primary');
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('iframe').contentDocument.querySelector('.site-footer')).backgroundColor === 'rgb(255, 0, 102)');
+    await footerBackground.selectOption('');
+    await page.locator('[data-layout="footer"] label', { hasText: 'In one row' }).click();
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('iframe').contentDocument.querySelector('.site-footer')).textAlign !== 'center');
+    assert((await footerAlign()) !== 'center', 'the footer is arranged and coloured by the style, and goes back as it was');
+    await page.locator('[data-publish-theme]').click();
+    await page.locator('[data-publish-theme]').waitFor({ state: 'detached' });
     const mark = join(dir, 'logo.png');
     const png = await page.evaluate(() => {
       const c = document.createElement('canvas');
