@@ -1,4 +1,4 @@
-# ADR 0083 — The admin's design system: Material 3's principles, one file of tokens
+# ADR 0084 — The admin's design system: Material 3's principles, one file of tokens
 
 - **Status:** Proposed. Settled so far by David (2026-11-28): a system of
   Uhlaka's own, after Material 3's principles ("material design este mult
