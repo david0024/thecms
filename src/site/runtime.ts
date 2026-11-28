@@ -193,6 +193,8 @@ export function startRuntime(
   const log = options.log ?? ((line: string) => console.log(line));
   // The shop (ADR 0065): nothing of it is loaded while the owner has not turned it on either.
   const shop = shopGate(store);
+  // Invoices are made by an extension for the owner's invoicing app (ADR 0081 d3).
+  if (extensions.invoicing) shop.invoiceBy(extensions.invoicing);
   const visitors = visitorGate(
     store,
     { shared, log, mail, frame: frameFor, headers: HEADERS, orders: (id, language) => shop.ordersOf(id, language) },

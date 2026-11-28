@@ -43,6 +43,13 @@ export interface OrderAction {
   label: string;
 }
 
+/** An order's invoices (ADR 0081 d2): whether they are on, who makes them, and each asked for. */
+export interface OrderInvoices {
+  when: 'off' | 'auto' | 'manual';
+  by: string;
+  list: { id: string; kind: 'invoice' | 'storno'; state: 'waiting' | 'making' | 'made' | 'failed'; series: string; number: string; link: string; file: string; said: string; createdAt: string }[];
+}
+
 /** A file an extension put on an order (ADR 0076 d4.4). */
 export interface OrderFile {
   id: string;
@@ -394,7 +401,9 @@ export const api = {
   stock: (kind: string, slug: string) => call<{ stock: Record<string, number> }>('GET', `/api/shop/stock?kind=${encodeURIComponent(kind)}&slug=${encodeURIComponent(slug)}`),
   setStock: (kind: string, slug: string, stock: Record<string, number | null>) => call<{ stock: Record<string, number> }>('PUT', '/api/shop/stock', { kind, slug, stock }),
   orders: (state = '') => call<{ orders: OrderListed[] }>('GET', `/api/shop/orders${state ? `?state=${encodeURIComponent(state)}` : ''}`),
-  order: (id: string) => call<{ order: Order }>('GET', `/api/shop/orders?id=${encodeURIComponent(id)}`),
+  order: (id: string) => call<{ order: Order; invoices: OrderInvoices }>('GET', `/api/shop/orders?id=${encodeURIComponent(id)}`),
+  /** Asks for the order's invoice now, or again (ADR 0081 d2). */
+  invoice: (id: string) => call<{ said: string; invoices: OrderInvoices }>('POST', '/api/shop/invoice', { id }),
   setOrder: (id: string, change: { state?: OrderState; tracking?: string }) => call<{ order: Order }>('PUT', '/api/shop/orders', { id, ...change }),
   /** What extensions do on an order (ADR 0076 d4.2, d4.4): the actions offered on it, and the files they put on it. */
   orderExtensions: (id: string, language: string) => call<{ actions: OrderAction[]; files: OrderFile[] }>('GET', `/api/shop/orders/extensions?id=${encodeURIComponent(id)}&l=${encodeURIComponent(language)}`),

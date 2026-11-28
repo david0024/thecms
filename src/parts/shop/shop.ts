@@ -43,7 +43,7 @@ import {
 import { wordsFor } from '../../blocks/words.ts';
 import { openMailQueue } from '../../site/mail-queue.ts';
 import { normalizeTemplates, type OrderValues, renderTemplate, type TemplateName } from '../../site/site-mail.ts';
-import { byExtension, type CartLine, checkoutForm, dayOf, linesPart, type Order, type OrderData, orderPart, orderText, type PaymentChoice, type ShopProviders, stateName, type Totals, totalsPart, type Typed } from './pages.ts';
+import { byExtension, type CartLine, type Invoicer, checkoutForm, dayOf, linesPart, type Order, type OrderData, orderPart, orderText, type PaymentChoice, type ShopProviders, stateName, type Totals, totalsPart, type Typed } from './pages.ts';
 import { asCoupon, shopSchema, stockId } from './schema.ts';
 import { escape, framed, type Notice } from '../../site/framed.ts';
 import { cleanEmail, type Database, type OrderEvent, type Store, type User } from '../../site/store.ts';
@@ -61,6 +61,47 @@ export const CART_DAYS = 30;
 const CART_LINES = 50;
 const QUANTITY_MAX = 999;
 const DAY = 86_400_000;
+
+/** An invoice asked for an order (ADR 0081 d2), and the one that cancels it. */
+export type InvoiceKind = 'invoice' | 'storno';
+export interface InvoiceRow {
+  id: string;
+  order: string;
+  kind: InvoiceKind;
+  state: 'waiting' | 'making' | 'made' | 'failed';
+  /** The extension that made it. */
+  extension: string;
+  series: string;
+  number: string;
+  link: string;
+  /** Its PDF on the order, by the file's id; '' for none. */
+  file: string;
+  tries: number;
+  /** What the app answered the last time it failed. */
+  said: string;
+  due: string;
+  createdAt: string;
+}
+const asInvoice = (r: Row): InvoiceRow => ({
+  id: String(r.id),
+  order: String(r.order_id),
+  kind: r.kind === 'storno' ? 'storno' : 'invoice',
+  state: (['waiting', 'making', 'made', 'failed'] as const).find((x) => x === r.state) ?? 'failed',
+  extension: String(r.extension ?? ''),
+  series: String(r.series ?? ''),
+  number: String(r.number ?? ''),
+  link: String(r.link ?? ''),
+  file: String(r.file ?? ''),
+  tries: Number(r.tries) || 0,
+  said: String(r.said ?? ''),
+  due: String(r.due_at ?? ''),
+  createdAt: String(r.created_at ?? ''),
+});
+/** How many times an invoice is asked for before the shop gives up, and how long it waits first (doubled each time). */
+export const INVOICE_TRIES = 8;
+export const INVOICE_WAIT_MINUTES = 5;
+/** An invoice still being made after this long was stopped half way: given up, for the owner to look. */
+const INVOICE_STUCK_MINUTES = 30;
 
 /** What the runtime gives the shop to draw its pages and know its buyer. */
 export interface ShopDeps {
@@ -105,6 +146,8 @@ export interface LentOrder {
   totals: Totals;
   currency: string;
   tracking: string;
+  /** VAT was charged when it was placed: an invoicing app is told (ADR 0081 d4). */
+  vat: boolean;
 }
 
 /**
@@ -146,6 +189,7 @@ const lentOrder = (o: Order): LentOrder => ({
   totals: o.data.totals,
   currency: o.data.currency,
   tracking: o.data.tracking,
+  vat: o.data.vat,
 });
 
 const json = (data: unknown, status = 200): Response =>
@@ -226,7 +270,7 @@ export function totalsOf(lines: { price: number; quantity: number; rate: number 
   return { subtotal, ...(coupon && discount ? { coupon: coupon.code, discount } : {}), shipping, total: subtotal - discount + shipping, vat };
 }
 
-export async function openShop(store: Store): Promise<Shop> {
+export async function openShop(store: Store, invoicerOf: () => Invoicer | null = () => null): Promise<Shop> {
   const db: Database = store.database();
   await db.make(shopSchema(db.kind));
   // Orders are told by e-mail through the site's queue (ADR 0065 d7); the runtime's clock sends it.
@@ -782,6 +826,111 @@ export async function openShop(store: Store): Promise<Shop> {
   const told = (event: OrderEvent, order: Order): void => store.tell(event, { id: order.id, number: order.number, total: order.total, currency: order.data.currency });
 
   /**
+   * Invoices (ADR 0081 d2): asked of the extension for the owner's invoicing
+   * app, one for an order and one storno at most (the row's id is
+   * `<order>:<kind>`, written before the app is asked). What fails is asked
+   * again, waiting longer each time, and said on the order when it gives up.
+   */
+  const invoiceRow = async (order: string, kind: InvoiceKind): Promise<InvoiceRow | null> => {
+    const row = await one('SELECT * FROM shop_invoices WHERE id = ?', [`${order}:${kind}`]);
+    return row ? asInvoice(row) : null;
+  };
+  const invoicesOf = async (order: string): Promise<InvoiceRow[]> => (await db.rows<Row>('SELECT * FROM shop_invoices WHERE order_id = ? ORDER BY created_at', [order])).map(asInvoice);
+
+  /** Queues an invoice to be asked for now; none when the order has one of that kind already. */
+  async function queueInvoice(order: string, kind: InvoiceKind, now = new Date()): Promise<boolean> {
+    if (await invoiceRow(order, kind)) return false;
+    const at = now.toISOString();
+    try {
+      await db.run('INSERT INTO shop_invoices (id, order_id, kind, state, extension, series, number, link, file, tries, said, due_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [
+        `${order}:${kind}`, order, kind, 'waiting', '', '', '', '', '', 0, '', at, at, at,
+      ]);
+      return true;
+    } catch {
+      // Queued at the same moment by another ask: that one stands.
+      return false;
+    }
+  }
+
+  /**
+   * Asks the app for one invoice that waits, claimed first so that two
+   * processes never both ask. Its PDF is kept on the order for the buyer.
+   */
+  async function askInvoice(row: InvoiceRow, now = new Date()): Promise<InvoiceRow> {
+    const invoicer = invoicerOf();
+    const at = now.toISOString();
+    if ((await db.changed("UPDATE shop_invoices SET state = 'making', updated_at = ? WHERE id = ? AND state = 'waiting'", [at, row.id])) !== 1) return (await invoiceRow(row.order, row.kind)) ?? row;
+    const order = await orderBy('id', row.order);
+    try {
+      if (!order) throw new Error('there is no such order');
+      if (!invoicer) throw new Error('no extension that is on makes invoices');
+      const of = row.kind === 'storno' ? await invoiceRow(row.order, 'invoice') : null;
+      if (row.kind === 'storno' && of?.state !== 'made') throw new Error('the order has no invoice to cancel');
+      const made = await invoicer.make(row.kind === 'storno' ? 'invoice.storno' : 'invoice.make', lentOrder(order), of ? { series: of.series, number: of.number } : undefined);
+      let file = '';
+      if (made.pdf) {
+        const name = `${row.kind === 'storno' ? 'storno' : 'invoice'}-${`${made.series}${made.number}`.replace(/[^A-Za-z0-9._-]+/g, '-')}.pdf`;
+        file = await store.saveExtensionFile({ extension: made.extension, order: order.id, name, type: 'application/pdf', buyer: true, bytes: new Uint8Array(Buffer.from(made.pdf, 'base64')) });
+      }
+      await db.run("UPDATE shop_invoices SET state = 'made', extension = ?, series = ?, number = ?, link = ?, file = ?, said = '', updated_at = ? WHERE id = ?", [
+        made.extension, made.series, made.number, made.link, file, new Date().toISOString(), row.id,
+      ]);
+    } catch (error) {
+      const tries = row.tries + 1;
+      const said = (error instanceof Error ? error.message : String(error)).replace(/\s+/g, ' ').slice(0, 300);
+      const done = tries >= INVOICE_TRIES || !order;
+      const due = new Date(now.getTime() + INVOICE_WAIT_MINUTES * 2 ** (tries - 1) * 60_000).toISOString();
+      await db.run('UPDATE shop_invoices SET state = ?, tries = ?, said = ?, due_at = ?, updated_at = ? WHERE id = ?', [done ? 'failed' : 'waiting', tries, said, due, new Date().toISOString(), row.id]);
+    }
+    return (await invoiceRow(row.order, row.kind)) ?? row;
+  }
+
+  /** What the clock does for invoices: asks for those due, and gives up on one left half made. */
+  async function invoiceChores(now: Date): Promise<void> {
+    if (!invoicerOf()) return;
+    const at = now.toISOString();
+    await db.run("UPDATE shop_invoices SET state = 'failed', said = ?, updated_at = ? WHERE state = 'making' AND updated_at <= ?", [
+      'stopped while it was being made: look in the invoicing app before asking again',
+      at,
+      new Date(now.getTime() - INVOICE_STUCK_MINUTES * 60_000).toISOString(),
+    ]);
+    const due = (await db.rows<Row>("SELECT * FROM shop_invoices WHERE state = 'waiting' AND due_at <= ? ORDER BY due_at LIMIT 10", [at])).map(asInvoice);
+    for (const row of due) await askInvoice(row, now);
+  }
+
+  /**
+   * What an order's change asks of invoices (ADR 0081 d2): with invoices made
+   * by themselves, one when the order is paid, or sent or completed when it
+   * is paid on delivery; and, invoices on, a storno when an invoiced order is
+   * refunded. Asked at once, without holding up the change.
+   */
+  async function invoicesFor(order: Order, before: OrderState): Promise<void> {
+    if (order.state === before) return;
+    const when = (await settingsOf()).invoices;
+    if (when === 'off' || !invoicerOf()) return;
+    let queued = false;
+    if (when === 'auto' && (order.state === 'paid' || (order.data.payment === 'cod' && (order.state === 'sent' || order.state === 'completed')))) queued = await queueInvoice(order.id, 'invoice');
+    if (order.state === 'refunded' && (await invoiceRow(order.id, 'invoice'))?.state === 'made') queued = (await queueInvoice(order.id, 'storno')) || queued;
+    if (queued) void invoiceChores(new Date()).catch(() => {});
+  }
+
+  /** The button on the order (ADR 0081 d2): asks for its invoice now, or again after it failed; one made is said. */
+  async function invoiceNow(order: Order): Promise<{ invoices: InvoiceRow[]; said: string } | { error: string; status: number }> {
+    if ((await settingsOf()).invoices === 'off') return { error: 'invoices are off: turn them on in Settings → Shop', status: 409 };
+    if (!invoicerOf() || !(await invoicerOf()?.who())) return { error: 'no extension that is on makes invoices', status: 409 };
+    if (order.state === 'cancelled') return { error: 'a cancelled order is not invoiced', status: 409 };
+    const kind: InvoiceKind = order.state === 'refunded' && (await invoiceRow(order.id, 'invoice'))?.state === 'made' ? 'storno' : 'invoice';
+    let row = await invoiceRow(order.id, kind);
+    if (row?.state === 'made') return { invoices: await invoicesOf(order.id), said: 'made' };
+    if (row?.state === 'making') return { error: 'the invoice is being made: look again in a minute', status: 409 };
+    if (row) await db.run("UPDATE shop_invoices SET state = 'waiting', tries = 0, due_at = ?, updated_at = ? WHERE id = ? AND state IN ('waiting', 'failed')", [new Date().toISOString(), new Date().toISOString(), row.id]);
+    else await queueInvoice(order.id, kind);
+    row = await invoiceRow(order.id, kind);
+    if (row) row = await askInvoice(row);
+    return { invoices: await invoicesOf(order.id), said: row?.state === 'made' ? 'made' : row?.said || 'waiting' };
+  }
+
+  /**
    * Moves an order to a state, or sets its tracking number: from the Orders
    * screen, or by an extension that uses `orders`. Cancelling gives back the
    * stock and the coupon's use; the buyer is told when it is paid, sent or
@@ -812,8 +961,16 @@ export async function openShop(store: Store): Promise<Shop> {
       const event: Partial<Record<OrderState, OrderEvent>> = { paid: 'order.paid', sent: 'order.sent', refunded: 'order.refunded' };
       const heard = event[state];
       if (heard) told(heard, next);
+      await invoicesFor(next, order.state).catch(() => {});
     }
     return { order: next };
+  }
+
+  /** What the Orders screen shows of an order's invoices (ADR 0081 d2): whether they are on, who makes them, and each asked for. */
+  async function invoicing(order: Order): Promise<{ when: ShopSettings['invoices']; by: string; list: InvoiceRow[] }> {
+    const when = (await settingsOf()).invoices;
+    const by = when === 'off' ? null : await invoicerOf()?.who().catch(() => null);
+    return { when, by: by?.title ?? '', list: await invoicesOf(order.id) };
   }
 
   /** An order as the admin lists it. */
@@ -879,7 +1036,16 @@ export async function openShop(store: Store): Promise<Shop> {
         return 'error' in changed ? json({ error: changed.error }, changed.status) : json(changed);
       }
       if (request.method !== 'GET') return json({ error: 'not found' }, 404);
-      return json({ order });
+      return json({ order, invoices: await invoicing(order) });
+    }
+    if (url.pathname === '/api/shop/invoice') {
+      const settings = await settingsOf();
+      if (!(me.role === 'owner' || (me.role === 'editor' && settings.editors))) return json({ error: 'only the owner handles orders' }, 403);
+      if (request.method !== 'POST') return json({ error: 'not found' }, 404);
+      const order = await orderBy('id', String(body.id ?? ''));
+      if (!order) return json({ error: 'there is no such order' }, 404);
+      const done = await invoiceNow(order);
+      return 'error' in done ? json({ error: done.error }, done.status) : json({ said: done.said, invoices: await invoicing(order) });
     }
     if (url.pathname === '/api/shop/coupons') {
       const settings = await settingsOf();
@@ -970,6 +1136,7 @@ export async function openShop(store: Store): Promise<Shop> {
     fetch,
     async chores(now) {
       await db.run('DELETE FROM shop_carts WHERE updated_at <= ?', [new Date(now.getTime() - CART_DAYS * DAY).toISOString()]);
+      await invoiceChores(now);
     },
     ordersOf,
     lent: {
