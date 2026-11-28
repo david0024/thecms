@@ -55,7 +55,7 @@ what the app said. `invoice.storno`, given the order and the invoice, answers
 the storno invoice the same way. One extension answers them on a site: the
 first that is on is asked, so the owner keeps one on.
 
-### d4. Romania: `extensions/invoicing-ro`
+### d4. Romania: `extensions/accounting-ro`
 
 In its settings the owner chooses the app, from a list: **Oblio** first,
 then SmartBill and FGO, each a small piece of code in the extension. The
@@ -77,7 +77,7 @@ is the program's rule for the Orders screen.
 ### d6. The order of the work
 
 1. This ADR and the generic part (d2, d3), one PR.
-2. `invoicing-ro` with Oblio, one PR.
+2. `accounting-ro` with Oblio, one PR.
 3. SmartBill and FGO, later.
 
 ## Not decided here
@@ -114,7 +114,10 @@ is the program's rule for the Orders screen.
   given `{ question, order }` (and `invoice: { series, number }` for a
   storno), the order as `orders` lends it, which now says `vat`.
 - `shop_invoices` is in backups with the shop's other tables.
-- **Romania with Oblio (2026-11-27):** `extensions/invoicing-ro`, packed
+- **Romania with Oblio (2026-11-27):** `extensions/accounting-ro`, named
+  **Romanian accounting software integration** (David, 2026-11-28: a name
+  that says it connects to the owner's software, not that it invoices, nor
+  that it is Oblio), packed
   like the couriers. Its settings: the app (Oblio, the only one yet), the
   account's e-mail and API secret (a secret), the company's CIF, the
   invoices' series and, if wanted, the storno's; a warehouse when Oblio

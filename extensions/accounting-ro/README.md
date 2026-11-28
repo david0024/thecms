@@ -1,13 +1,13 @@
-# Invoicing (Romania)
+# Romanian accounting software integration
 
 The shop's invoices made by your invoicing app (ADR 0081 d4): Oblio for now,
 SmartBill and FGO later. The app numbers the invoice with your series, keeps
 it and sends it to e-Factura (SPV) when your account is set so; Uhlaka keeps
 its PDF on the order, where the buyer sees it.
 
-1. Pack it: `bun tools/pack-extension.ts extensions/invoicing-ro`, then
+1. Pack it: `bun tools/pack-extension.ts extensions/accounting-ro`, then
    install the file in Extensions.
-2. In Extensions → Invoicing (Romania), add the Oblio account: its e-mail,
+2. In Extensions → Romanian accounting software integration, add the Oblio account: its e-mail,
    its API secret (in Oblio, Setări → Date cont), the company's CIF and the
    series of the invoices. A storno series is optional (empty: the same
    series). Give the warehouse (gestiune) only when Oblio keeps your stock.

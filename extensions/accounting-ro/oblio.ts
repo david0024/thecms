@@ -1,5 +1,5 @@
 /**
- * Oblio (www.oblio.eu), the first invoicing app of `invoicing-ro` (ADR 0081
+ * Oblio (www.oblio.eu), the first invoicing app of `accounting-ro` (ADR 0081
  * d4). The invoice is made in the owner's account, with their series; Oblio
  * numbers it, keeps it and sends it to e-Factura (SPV) when the account is
  * set so. Its API, as https://www.oblio.eu/api describes it: a token from

@@ -1,5 +1,5 @@
 /**
- * Invoicing for Romania (ADR 0081 d4): the shop's invoices made by the
+ * Romanian accounting software integration (ADR 0081 d4): the shop's invoices made by the
  * owner's Oblio account. Oblio's API is answered here, as its documentation
  * describes it; the first invoices must still be tried on a real account.
  */
@@ -14,10 +14,10 @@ import { importOrders } from '../src/parts/shop/transfer.ts';
 import { extensionHost } from '../src/site/extensions.ts';
 import { Store, type User } from '../src/site/store.ts';
 import { packExtension } from '../tools/pack-extension.ts';
-import type { Order } from '../extensions/invoicing-ro/index.ts';
-import { actions } from '../extensions/invoicing-ro/index.ts';
-import { collectOf, deliveryRate, invoiceOf, stornoOf } from '../extensions/invoicing-ro/oblio.ts';
-import manifest from '../extensions/invoicing-ro/manifest.json';
+import type { Order } from '../extensions/accounting-ro/index.ts';
+import { actions } from '../extensions/accounting-ro/index.ts';
+import { collectOf, deliveryRate, invoiceOf, stornoOf } from '../extensions/accounting-ro/oblio.ts';
+import manifest from '../extensions/accounting-ro/manifest.json';
 import { courierHost, PDF, type Reply } from './fixtures/courier-host.ts';
 
 const account = { app: 'oblio', email: 'shop@example.com', secret: 's3cret', cif: 'RO37311090', series: 'UH', storno_series: '', management: '', collect: true };
@@ -56,7 +56,7 @@ const oblioReplies =
     return { status: 404, body: { status: 404, statusMessage: 'Not found' } };
   };
 
-describe('the Invoicing (Romania) extension', () => {
+describe('the Romanian accounting software integration extension', () => {
   test('is a valid extension of the fourth format that answers both questions, reading the order', () => {
     const { problems, pkg } = parseExtension({ format: EXTENSION_FORMAT, manifest, code: 'export const actions = {}' });
     expect(problems).toEqual([]);
@@ -165,7 +165,7 @@ describe('the Invoicing (Romania) extension', () => {
 });
 
 describe('the shop and the extension together', () => {
-  const dir = mkdtemp(join(tmpdir(), 'uhlaka-invoicing-ro-'));
+  const dir = mkdtemp(join(tmpdir(), 'uhlaka-accounting-ro-'));
   afterAll(async () => rm(await dir, { recursive: true, force: true }));
 
   test('an order the shop lends becomes an Oblio invoice, and its refund a storno', async () => {
@@ -200,10 +200,10 @@ describe('the shop and the extension together', () => {
     const { host, calls } = courierHost(account, oblioReplies());
     // The program's part, as `extensionHost` does it: the action asked with the order.
     const invoicer: Invoicer = {
-      who: async () => ({ name: 'invoicing-ro', title: 'Invoicing (Romania)' }),
+      who: async () => ({ name: 'accounting-ro', title: 'Romanian accounting software integration' }),
       async make(question, order, of) {
         const given = question === 'invoice.make' ? await actions.make({ question, order: order as Order }, host) : await actions.storno({ question, order: order as Order, invoice: of }, host);
-        return { extension: 'invoicing-ro', ...given };
+        return { extension: 'accounting-ro', ...given };
       },
     };
     const shop = await openShop(store, () => invoicer);
@@ -223,10 +223,10 @@ describe('the shop and the extension together', () => {
 
 describe('packed and run by the program', () => {
   test('the bundle answers invoice.make through the runner, calling only Oblio, and the program keeps its answer', async () => {
-    const folder = await mkdtemp(join(tmpdir(), 'uhlaka-invoicing-ro-pack-'));
+    const folder = await mkdtemp(join(tmpdir(), 'uhlaka-accounting-ro-pack-'));
     const store = await Store.open(join(folder, 'site.db'));
     try {
-      const { file } = await packExtension('extensions/invoicing-ro', folder);
+      const { file } = await packExtension('extensions/accounting-ro', folder);
       const text = await Bun.file(file).text();
       const out: string[] = [];
       const host = extensionHost(store, {
@@ -239,10 +239,10 @@ describe('packed and run by the program', () => {
         },
       });
       await host.install(text, (await host.offer(text)).sha256);
-      await store.saveExtensionRow('invoicing-ro', 'settings', account);
-      expect(await host.invoicing.who()).toEqual({ name: 'invoicing-ro', title: 'Invoicing (Romania)' });
+      await store.saveExtensionRow('accounting-ro', 'settings', account);
+      expect(await host.invoicing.who()).toEqual({ name: 'accounting-ro', title: 'Romanian accounting software integration' });
       const made = await host.invoicing.make('invoice.make', anOrder());
-      expect(made).toEqual({ extension: 'invoicing-ro', series: 'UH', number: '0053', link: 'https://www.oblio.eu/utils/show_file/?ic=1&id=2&it=3', pdf: PDF });
+      expect(made).toEqual({ extension: 'accounting-ro', series: 'UH', number: '0053', link: 'https://www.oblio.eu/utils/show_file/?ic=1&id=2&it=3', pdf: PDF });
       const storno = await host.invoicing.make('invoice.storno', anOrder(), { series: 'UH', number: '0053' });
       expect([storno.series, storno.number]).toEqual(['ST', '0002']);
       expect(out.every((o) => o.includes('https://www.oblio.eu/'))).toBe(true);

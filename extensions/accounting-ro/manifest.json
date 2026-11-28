@@ -1,7 +1,7 @@
 {
-  "name": "invoicing-ro",
-  "displayName": "Invoicing (Romania)",
-  "description": "The shop's invoices made by the owner's invoicing app in Romania: Oblio for now, SmartBill and FGO later. The app numbers the invoice with the owner's series, keeps it and sends it to e-Factura (SPV) when the account is set so; the shop keeps its PDF on the order, for the buyer. A refund makes its storno. Needs an Oblio account: its e-mail, its API secret, the company's CIF and the series.",
+  "name": "accounting-ro",
+  "displayName": "Romanian accounting software integration",
+  "description": "Connects the shop to the owner's accounting or invoicing software in Romania, which makes the invoices: Oblio for now, SmartBill and FGO later. The software numbers each invoice with the owner's series, keeps it and sends it to e-Factura (SPV) when the account is set so; the shop keeps its PDF on the order, for the buyer. A refund makes its storno. For Oblio: the account's e-mail, its API secret, the company's CIF and the series.",
   "version": "1.0.0",
   "publisher": "uhlaka",
   "uhlakaMinVersion": "0.1.0",
@@ -18,7 +18,7 @@
       "fields": [
         {
           "key": "app",
-          "label": "Invoicing app",
+          "label": "Software",
           "kind": "choice",
           "options": [
             "oblio"
@@ -103,8 +103,8 @@
   "views": [
     {
       "spec": "uhlaka.view/1",
-      "id": "invoicing-ro.settings",
-      "title": "Invoicing (Romania)",
+      "id": "accounting-ro.settings",
+      "title": "Romanian accounting software integration",
       "type": "list",
       "collection": "settings",
       "fields": [
@@ -122,7 +122,6 @@
   "messages": {
     "ro": {
       "Settings": "Setări",
-      "Invoicing app": "Aplicația de facturare",
       "oblio": "Oblio",
       "E-mail of the account": "Emailul contului",
       "API secret": "Secretul API",
@@ -133,7 +132,8 @@
       "Mark a paid order's invoice as collected": "Marchează încasată factura unei comenzi plătite",
       "Make the invoice": "Fă factura",
       "Make the storno": "Fă stornarea",
-      "Invoicing (Romania)": "Facturare (România)"
+      "Software": "Programul",
+      "Romanian accounting software integration": "Integrare programe de contabilitate (România)"
     }
   }
 }
