@@ -83,3 +83,4 @@ work it decides. A new one that changes an old one says so at its top.
 - [ADR 0079 — The couriers: Fan Courier, Sameday and Cargus, each an extension](0079-couriers.md)
 - [ADR 0080 — The logo: the UH monogram](0080-the-logo.md)
 - [ADR 0081 — Invoices: the shop asks, an extension for the country makes them](0081-invoices-by-the-owners-invoicing-app.md)
+- [ADR 0083 — The admin's design system: Material 3's principles, one file of tokens](0083-the-admins-design-system.md)
