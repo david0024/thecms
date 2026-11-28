@@ -40,7 +40,8 @@ describe('the style says how the header and the menu look', () => {
 
   test('the two arrangements move the parts only where the menu is not folded', () => {
     const logo = themeCss(withLayout({ header: { arrangement: 'logo-centre' } }).theme as Theme);
-    expect(logo).toContain('@media (min-width:48.01rem){.site-header .site-nav{display:contents}');
+    expect(logo).toContain('@media (min-width:48.01rem){.site-header .site-in{flex-wrap:nowrap}.site-header .site-nav{display:contents}');
+    expect(logo).toContain('.site-header .site-name{position:absolute;left:50%;top:50%;translate:-50% -50%}');
     const menu = themeCss(withLayout({ header: { arrangement: 'menu-centre' } }).theme as Theme);
     expect(menu).toContain('.site-header .site-nav>nav{margin-inline:auto}');
   });
