@@ -132,8 +132,6 @@ const PORT = 4395;
     assert(true, 'without an address, each process keeps its own again');
 
     // The check before publishing says which lead nowhere; one is removed.
-    await page.getByRole('button', { name: 'Back to the page' }).click().catch(() => {});
-    await page.locator('[data-back]').click();
     await page.locator('[data-nav="pages"]').click();
     await page.locator('[data-check-run]').click();
     await page.locator('[data-check-redirects]', { hasText: '/old-shop/' }).waitFor();

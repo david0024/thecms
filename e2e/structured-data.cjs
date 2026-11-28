@@ -81,8 +81,6 @@ const PORT = 4399;
     assert(business?.address?.addressLocality === 'Cluj' && business.openingHoursSpecification?.[0]?.opens === '09:00', 'the home page says the business is a bakery in Cluj, open Mondays from nine');
 
     // A type of products, its fields saying what they are.
-    await page.getByRole('button', { name: 'Back to the page' }).click();
-    await page.locator('[data-back]').click();
     await page.locator('[data-nav="types"]').click();
     await page.locator('[data-new-type]').click();
     await page.locator('[data-type-name]').fill('Products');

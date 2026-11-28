@@ -564,7 +564,7 @@ export function planImport(
   if (menu && !menu.length) menu = null;
   if (menu) {
     const tooDeep = (nodes: MenuNode[], depth: number): boolean => nodes.length > MENU_MAX_ITEMS || nodes.some((n) => (depth >= MENU_DEPTH ? n.children.length > 0 : tooDeep(n.children, depth + 1)));
-    if (tooDeep(menu, 1)) notes.push(`The old menu was larger than a menu here can be (${MENU_MAX_ITEMS} items at each level, ${MENU_DEPTH} levels). What did not fit was left out; check the menu in Site content.`);
+    if (tooDeep(menu, 1)) notes.push(`The old menu was larger than a menu here can be (${MENU_MAX_ITEMS} items at each level, ${MENU_DEPTH} levels). What did not fit was left out; check the menu in Design, under Header and menu.`);
   }
 
   // Old addresses that moved.

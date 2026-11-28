@@ -111,8 +111,8 @@ describe('a static export', () => {
       expect(serverOnly(new Map([['index.html', '<form action="/_/comment">']]))).toEqual(['comments']);
       expect((await fullCheck(store, files)).server).toEqual(['forms', 'search', 'locked']);
       expect(describeCheck({ broken: [], unnamed: [], server: ['forms', 'comments', 'search', 'locked', 'extensions'] }).warnings).toEqual([
-        'on a static host, the contact forms have nowhere to send (set a form service in Site content)',
-        'on a static host, comments cannot be sent (set a form service in Site content)',
+        'on a static host, the contact forms have nowhere to send (set a form service in Settings)',
+        'on a static host, comments cannot be sent (set a form service in Settings)',
         'on a static host, the search field finds nothing',
         'on a static host, the pages behind a password cannot be opened',
         'on a static host, the addresses extensions answer at, under /_/x/, do not exist',

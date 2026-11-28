@@ -105,8 +105,9 @@ const assert = (condition, message) => {
     await page.waitForFunction((w) => Math.abs(document.querySelector("iframe").getBoundingClientRect().width - w) < 2, wideFrame);
     assert(true, 'the canvas shows the page as on a phone, a tablet, and a wide screen');
 
-    // Change the theme; the page is drawn again with the same content.
-    await page.locator('select[data-theme]').selectOption('Studio');
+    // Change the style (ADR 0082 d4): a ready-made one over one not changed needs no question.
+    await page.locator('[data-design-mode]').click();
+    await page.locator('[data-style="Studio"]').click();
     await page.waitForFunction(() => getComputedStyle(document.querySelector('iframe').contentDocument.body).backgroundColor === 'rgb(18, 17, 15)');
     assert(true, 'changing the theme repaints the canvas');
     const padding = await canvas.locator('section.b-text').evaluate((el) => getComputedStyle(el).paddingTop);
@@ -115,8 +116,7 @@ const assert = (condition, message) => {
     assert(background === 'rgb(29, 27, 24)', `the token followed the new theme (${background})`);
     if (shots) await page.screenshot({ path: join(shots, 'editor-studio.png') });
 
-    // The theme builder: change a colour and see it on the page at once.
-    await page.locator('[data-theme-mode]').click();
+    // The style: change a colour and see it on the page at once.
     const primary = page.locator('input[data-token="color.primary"]');
     await primary.fill('#ff0066');
     const buttonColour = () => canvas.locator('a.button').first().evaluate((el) => getComputedStyle(el).backgroundColor);
@@ -132,6 +132,7 @@ const assert = (condition, message) => {
     await page.locator('[data-new-token-name="color"]').fill('brand');
     await page.locator('[data-new-token-value="color"]').fill('#00aa88');
     await page.locator('[data-add-token="color"]').click();
+    await page.getByText('More settings', { exact: true }).click();
     await page.getByText('Blocks', { exact: true }).click();
     await page.locator('select[data-theme-block]').selectOption('services');
     await page.locator('[data-theme-style="default"] select[data-style="background"]').selectOption('token:brand');
@@ -147,8 +148,9 @@ const assert = (condition, message) => {
     // The header and footer are laid out by the theme: the same markup, another stylesheet.
     const headerHtml = () => canvas.locator('.site-header').evaluate((el) => el.innerHTML);
     const before = await headerHtml();
-    await page.getByText('Header and footer', { exact: true }).click();
-    await page.locator('select[data-layout="header"]').selectOption('centered');
+    await page.locator('[data-design-part="header"]').click();
+    await page.locator('[data-layout="header"] label', { hasText: 'Centred' }).click();
+    await page.getByText('Colours and spacing of the header', { exact: true }).click();
     await page.locator('[data-layout-style="header"] select[data-style="background"]').selectOption('token:brand');
     await page.waitForFunction(() => {
       const header = document.querySelector('iframe').contentDocument.querySelector('.site-header');
@@ -158,8 +160,10 @@ const assert = (condition, message) => {
     if (shots) await page.screenshot({ path: join(shots, 'theme-header.png') });
 
     // A theme is a file: download it, and refuse a file that is not a theme.
-    await page.getByText('Save or load a theme file').click();
-    const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Download this theme' }).click()]);
+    await page.locator('[data-design-part="style"]').click();
+    await page.getByText('More settings', { exact: true }).click();
+    await page.getByText('Save or load a style file').click();
+    const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Download this style' }).click()]);
     const themeFile = join(dir, 'downloaded.theme.json');
     await download.saveAs(themeFile);
     const downloaded = JSON.parse(readFileSync(themeFile, 'utf8'));
@@ -167,7 +171,7 @@ const assert = (condition, message) => {
     const bad = join(dir, 'bad.theme.json');
     writeFileSync(bad, JSON.stringify({ ...downloaded, tokens: { ...downloaded.tokens, color: { ...downloaded.tokens.color, primary: 'url(https://evil.example)' } } }));
     await page.locator('[data-theme-file]').setInputFiles(bad);
-    await page.getByText('This file is not a valid theme.').waitFor();
+    await page.getByText('This file is not a valid style.').waitFor();
     assert((await buttonColour()) === 'rgb(255, 0, 102)', 'a theme file with a bad value is refused whole');
     if (shots) await page.screenshot({ path: join(shots, 'theme-builder.png') });
 
@@ -178,7 +182,7 @@ const assert = (condition, message) => {
     assert(readFileSync(join(early, 'assets/site.css'), 'utf8').includes('--t-color-primary:#2563eb'), 'until the theme is published, the export keeps the published theme');
     await page.locator('[data-publish-theme]').click();
     await page.locator('[data-publish-theme]').waitFor({ state: 'detached' });
-    await page.locator('[data-theme-mode]').click();
+    await page.locator('[data-design-mode]').click();
 
     // Undo brings the padding back off, redo puts it on again.
     await page.locator('aside.left h2').first().click();
@@ -315,11 +319,10 @@ const assert = (condition, message) => {
     await page.keyboard.press('ControlOrMeta+z');
     assert((await order()) === 'contact hero group(text,image)', 'one undo takes one drag back');
 
-    // What the header and footer say is the site's: click the footer, change it, give the site a logo.
+    // Edit where you click (ADR 0082 d3): the footer opens the footer; change it, then give the header a logo.
     await canvas.locator('.site-footer').click();
+    await page.locator('[data-design="footer"]').waitFor();
     await page.locator('[data-site-footer]').fill('© Atelier Nord, since 2014');
-    await page.locator('aside.right input[type="url"]').first().fill('https://example.com/');
-    await page.keyboard.press('Tab');
     await page.locator('[data-site-footer-links]').getByRole('button', { name: 'Add' }).click();
     const added = page.locator('[data-site-footer-links] .item').last();
     await added.locator('input').first().fill('Prices');
@@ -337,6 +340,8 @@ const assert = (condition, message) => {
       return c.toDataURL('image/png').split(',')[1];
     });
     writeFileSync(mark, Buffer.from(png, 'base64'));
+    await canvas.locator('.site-header').click({ position: { x: 5, y: 5 } });
+    await page.locator('[data-design="header"]').waitFor();
     await page.getByRole('group', { name: 'Logo' }).locator('[data-media-file]').setInputFiles(mark);
     await canvas.locator('.site-header img.site-logo').waitFor();
     assert((await canvas.locator('.site-logo').getAttribute('alt')) === 'Atelier Nord', 'the logo takes the place of the name, and is read out as the name');
@@ -371,12 +376,19 @@ const assert = (condition, message) => {
     const columns = await wide.locator('.col-title').allInnerTexts();
     assert(columns.join('|') === 'Tables|Contact', `sub-items with links of their own become columns; one without a label takes its page's title (${columns.join('|')})`);
     if (shots) await page.screenshot({ path: join(shots, 'menu-builder.png') });
-    await page.locator('[data-site-mode]').click();
+    await page.locator('[data-design-mode]').click();
     await page.getByRole('button', { name: 'Publish' }).click();
     await page.getByText('Published', { exact: true }).waitFor();
 
-    // A blog post: the same editor, with a date, categories and a summary.
+    // The site's address is in Settings, a screen of its own (ADR 0082 d6).
     await page.locator('[data-back]').click();
+    await page.locator('[data-nav="settings"]').click();
+    const addressSaved = page.waitForResponse((r) => r.url().endsWith('/api/site') && r.request().method() !== 'GET');
+    await page.getByLabel('Address (https://example.com)').fill('https://example.com/');
+    await page.keyboard.press('Tab');
+    await addressSaved;
+
+    // A blog post: the same editor, with a date, categories and a summary.
     await page.locator('[data-nav="posts"]').click();
     assert((await page.locator('[data-list="post"] tbody tr').count()) === 2, 'the posts have a section of their own');
     await page.locator('[data-new="post"]').click();

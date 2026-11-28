@@ -138,7 +138,7 @@ const PORT = 4398;
     assert(home.includes('<meta name="google-site-verification" content="abc123XYZ">') && home.includes('<meta name="msvalidate.01" content="BING42">'), 'the home page carries both codes');
     const robots = await (await page.request.get(site('/robots.txt'))).text();
     assert(robots.includes('Disallow: /\n'), `robots.txt has the owner's line (${JSON.stringify(robots)})`);
-    await page.locator('[data-back]').click().catch(() => {});
+    await page.locator('[data-nav="pages"]').click();
     await page.locator('[data-check-run]').click();
     await page.locator('[data-check-seo] [data-seo-problem="blocked"]').waitFor();
     assert(true, 'the check says the lines shut the whole site to search engines');
