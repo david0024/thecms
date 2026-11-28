@@ -55,7 +55,7 @@ what the app said. `invoice.storno`, given the order and the invoice, answers
 the storno invoice the same way. One extension answers them on a site: the
 first that is on is asked, so the owner keeps one on.
 
-### d4. Romania: `extensions/invoicing-ro`
+### d4. Romania: `extensions/accounting-ro`
 
 In its settings the owner chooses the app, from a list: **Oblio** first,
 then SmartBill and FGO, each a small piece of code in the extension. The
@@ -77,7 +77,7 @@ is the program's rule for the Orders screen.
 ### d6. The order of the work
 
 1. This ADR and the generic part (d2, d3), one PR.
-2. `invoicing-ro` with Oblio, one PR.
+2. `accounting-ro` with Oblio, one PR.
 3. SmartBill and FGO, later.
 
 ## Not decided here
@@ -114,3 +114,31 @@ is the program's rule for the Orders screen.
   given `{ question, order }` (and `invoice: { series, number }` for a
   storno), the order as `orders` lends it, which now says `vat`.
 - `shop_invoices` is in backups with the shop's other tables.
+- **Romania with Oblio (2026-11-27):** `extensions/accounting-ro`, named
+  **Romanian accounting software integration** (David, 2026-11-28: a name
+  that says it connects to the owner's software, not that it invoices, nor
+  that it is Oblio), packed
+  like the couriers. Its settings: the app (Oblio, the only one yet), the
+  account's e-mail and API secret (a secret), the company's CIF, the
+  invoices' series and, if wanted, the storno's; a warehouse when Oblio
+  keeps the stock; and whether a paid order's invoice is marked collected.
+  It declares `www.oblio.eu` only and uses `orders` only. Each app is a file
+  of its own (`oblio.ts`) behind one shape (`App`, in `index.ts`), so SmartBill and FGO
+  are added beside it.
+  - **What Oblio is sent** (`POST /api/docs/invoice`, after a token from
+    `/api/authorize/token`): the buyer, or the company with its CIF and
+    registration number; each line with its price with VAT and its rate;
+    a coupon as a discount on all the lines above it; delivery as a line,
+    at the site's first rate; the currency; the order's number in the
+    mentions and as the order number; how it was paid, as a collection
+    (`Ordin de plata` for a transfer, `Card` for a way an extension offers,
+    `Ramburs` once an order paid on delivery is completed, nothing while
+    unpaid); `idempotencyKey` from the order, so an ask repeated after a
+    timeout does not make a second invoice. Without VAT charged, no rate is
+    sent and the account's own applies.
+  - **The storno** is an invoice that names the one it cancels
+    (`referenceDocument`, type `Factura`, `refund: 1`).
+  - **The PDF** is read from the link Oblio answers; when it gives none
+    (or sends elsewhere), the invoice is kept with its link only.
+  - The tests answer Oblio in its place, from its documentation; the first
+    invoices must be tried on a real account.
